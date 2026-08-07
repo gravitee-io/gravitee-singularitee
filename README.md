@@ -4,7 +4,6 @@
 
 <p align="center">
   <a href="https://circleci.com/gh/gravitee-io/gravitee-singularitee"><img src="https://img.shields.io/circleci/build/github/gravitee-io/gravitee-singularitee/main?style=flat-square&color=EE7B2E&label=build" alt="CircleCI"></a>
-  <a href="https://github.com/gravitee-io/gravitee-singularitee/releases"><img src="https://img.shields.io/badge/version-0.0.1-EE7B2E?style=flat-square" alt="Version"></a>
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/license-Apache%202.0-1E90FF?style=flat-square" alt="License"></a>
   <a href="https://community.gravitee.io"><img src="https://img.shields.io/badge/community-forum-FFFFFF?style=flat-square&labelColor=555555" alt="Community"></a>
 </p>
