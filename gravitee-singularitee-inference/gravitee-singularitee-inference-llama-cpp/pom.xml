@@ -23,7 +23,7 @@
     <parent>
         <groupId>io.gravitee.singularitee.inference</groupId>
         <artifactId>gravitee-singularitee-inference</artifactId>
-        <version>0.0.1</version>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>gravitee-singularitee-inference-llama-cpp</artifactId>
