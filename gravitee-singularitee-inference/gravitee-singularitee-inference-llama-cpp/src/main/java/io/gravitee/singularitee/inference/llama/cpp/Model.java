@@ -31,11 +31,26 @@ public final class Model implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Model.class);
 
-  static {
-    LlamaBackend.init();
-  }
-
+  private static volatile boolean backendInitialized;
   private static volatile boolean backendsLoaded;
+
+  /**
+   * Initializes the llama.cpp backend (native library load). Deliberately NOT a static
+   * initializer: static helpers like {@link #totalContext(int, int)} must stay usable
+   * without native libraries installed (e.g. in unit tests and on hosts without them).
+   */
+  private static void ensureBackendInitialized() {
+    if (backendInitialized) {
+      return;
+    }
+    synchronized (Model.class) {
+      if (backendInitialized) {
+        return;
+      }
+      LlamaBackend.init();
+      backendInitialized = true;
+    }
+  }
 
   /**
    * Registers the compute backends (CPU/CUDA/…) from the native library directory. Idempotent.
@@ -52,6 +67,7 @@ public final class Model implements AutoCloseable {
       if (backendsLoaded) {
         return;
       }
+      ensureBackendInitialized();
       String location = LlamaLibLoader.load();
       try (Arena a = Arena.ofConfined()) {
         LlamaRuntime.ggml_backend_load_all_from_path(a, location);
@@ -97,6 +113,7 @@ public final class Model implements AutoCloseable {
   private volatile boolean chatTemplateResolved;
 
   public Model(ModelConfig config) {
+    ensureBackendInitialized();
     this.arena = Arena.ofAuto();
     this.promptCacheEnabled = config.promptCache();
     this.eogRampStart = config.eogRampStart();
