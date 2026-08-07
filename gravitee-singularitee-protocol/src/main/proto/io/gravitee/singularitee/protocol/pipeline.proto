@@ -1,0 +1,575 @@
+//
+// Copyright © 2015 The Gravitee team (http://gravitee.io)
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+/*
+ * Copyright © 2015 The Gravitee team (http://gravitee.io)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// Singularitee — pipeline lifecycle protocol.
+//
+// Defines the CRUD service for pipelines and the full DAG step vocabulary:
+// text generation, classification, embedding, routing, sub-pipeline calls,
+// guard (input-side safety), break (output-side halt), and bounded CoT loops.
+
+syntax = "proto3";
+
+package io.gravitee.singularitee.protocol;
+
+import "io/gravitee/singularitee/protocol/inference.proto";
+import "google/protobuf/struct.proto";
+
+option java_package = "io.gravitee.singularitee.protocol";
+option java_outer_classname = "PipelineProto";
+option java_multiple_files = true;
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service GraviteePipelineService {
+  rpc GetPipeline      (GetPipelineRequest)      returns (GetPipelineResponse);
+  rpc ListPipelines    (ListPipelinesRequest)    returns (ListPipelinesResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline status
+// ---------------------------------------------------------------------------
+
+enum PipelineStatus {
+  PIPELINE_STATUS_UNSPECIFIED = 0;
+  // All referenced models are active and the pipeline accepts requests.
+  PIPELINE_STATUS_ACTIVE      = 1;
+  // Pipeline definition is invalid or an unrecoverable error occurred.
+  PIPELINE_STATUS_ERROR       = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline definition
+// ---------------------------------------------------------------------------
+
+message Pipeline {
+  // Optional caller-supplied stable identifier.
+  // When set the server uses this as the pipeline_id instead of generating a UUID.
+  // On GetPipeline responses: always populated by the server.
+  string pipeline_id   = 1;
+  // Human-readable name.
+  string pipeline_name = 2;
+  // step_id of the first step to execute.
+  string entry_step_id = 3;
+  // Ordered list of steps (order has no execution meaning; the DAG is defined
+  // by edges and step configs).
+  repeated PipelineStep steps = 4;
+  // Non-routing, non-looping edges: step_id → next_step_id.
+  // Terminal steps have no entry. Routing and loop steps declare their own targets.
+  map<string, string> edges   = 5;
+  // stream_intermediate_steps removed — replaced by per-step StepRole.
+  reserved 6; reserved "stream_intermediate_steps";
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline step
+// ---------------------------------------------------------------------------
+
+message PipelineStep {
+  string   step_id = 1;
+  StepType type    = 2;
+  // Semantic role of this step's output (only meaningful for STEP_TYPE_INFER).
+  // Defined in inference.proto, imported via the import above.
+  StepRole role    = 3;
+
+  oneof config {
+    InferStepConfig           infer_config         = 10;
+    ClassifyStepConfig        classify_config      = 11;
+    EmbedStepConfig           embed_config         = 12;
+    RouteStepConfig           route_config         = 13;
+    SubPipelineStepConfig     sub_pipeline         = 14;
+    GuardStepConfig           guard_config         = 15;
+    BreakStepConfig           break_config         = 16;
+    LoopStepConfig            loop_config          = 17;
+    LlmGuardStepConfig        llm_guard_config     = 18;
+    RegexGuardStepConfig      regex_guard_config   = 20;
+    ToolSelectStepConfig      tool_select_config   = 21;
+  }
+  // 19 retired: stop_words_config (stop-words guard removed).
+  reserved 19;
+  reserved "stop_words_config";
+}
+
+enum StepType {
+  STEP_TYPE_UNSPECIFIED    = 0;
+  // Streaming text generation via a published text-gen model.
+  STEP_TYPE_INFER          = 1;
+  // Synchronous ONNX classification; writes label + score into context.
+  STEP_TYPE_CLASSIFY       = 2;
+  // Synchronous ONNX embedding; writes float[] into context.
+  STEP_TYPE_EMBED          = 3;
+  // Reads a context field and routes to a named next step.
+  STEP_TYPE_ROUTE          = 4;
+  // Invokes another published pipeline as a nested sub-graph.
+  STEP_TYPE_SUB_PIPELINE   = 5;
+  // Input-side safety check; short-circuits on trigger.
+  STEP_TYPE_GUARD          = 6;
+  // Output-side condition check; halts with the named output field as response.
+  STEP_TYPE_BREAK          = 7;
+  // Back-edge for bounded Chain-of-Thought loops.
+  STEP_TYPE_LOOP           = 8;
+  // LLM-based safety check; uses a TextGenEngine to produce a verdict.
+  STEP_TYPE_LLM_GUARD      = 9;
+  // Regex-based guard; matches patterns or named entities for REJECT/WARN/REDACT.
+  STEP_TYPE_REGEX_GUARD    = 11;
+  // Zero-shot tool shortlisting: classifies the last user message against the
+  // request's tool list (GLiNER) and writes a shortlist of tool names into the
+  // pipeline context for downstream infer steps to filter injected tool schemas.
+  STEP_TYPE_TOOL_SELECT    = 12;
+  // 10 retired: STEP_TYPE_STOP_WORDS_GUARD (stop-words guard removed).
+  reserved 10;
+  reserved "STEP_TYPE_STOP_WORDS_GUARD";
+}
+
+// ---------------------------------------------------------------------------
+// Step configs
+// ---------------------------------------------------------------------------
+
+// A single message entry in a structured prompt.
+// The content field supports {{expr}} template expressions resolved at execution time:
+//   {{prompt}}          — last user message in the current conversation
+//   {{system}}          — system message from the incoming request (if any)
+//   {{history}}         — full prior conversation as "role: content" lines
+//   {{context.<key>}}   — any value from the pipeline execution context map
+//   {{<step_id>.output}}— output written by a named prior step
+message MessageDef {
+  // Message role: "system", "user", or "assistant".
+  string role    = 1;
+  // Message content — may contain {{expr}} template expressions.
+  string content = 2;
+}
+
+// Text generation step.
+// Prompt is defined as a structured list of MessageDef entries.
+// Each message content is a Jinja2 template resolved by Jinja4j against the
+// pipeline context (prompt, step outputs, tools, per-step context variables).
+message InferStepConfig {
+  string          model_id        = 1;
+  SamplingParams  sampling_params = 2;
+  TagConfig       reasoning_tags  = 3;
+  TagConfig       tool_call_tags  = 4;
+  repeated string stop            = 5;
+  LoraConfig      lora            = 6;
+  // Fields 7 (input_field) and 8 (prompt_template) removed — replaced by messages.
+  reserved 7, 8;
+  reserved "input_field", "prompt_template";
+  // Context key to write the generated text into (default: "<step_id>.output").
+  string          output_field    = 9;
+  // Structured prompt messages. Each content field is a Jinja2 template string
+  // resolved against the full rendering context (pipeline vars, step outputs,
+  // tools, per-step context). When empty, the caller's messages are used as-is
+  // (implicit passthrough). Persona messages are prepended at workspace load time.
+  repeated MessageDef messages    = 10;
+  // Raw prompt template string (Jinja2). When set, messages are ignored and the
+  // resolved string is sent as a bare prompt — bypassing the model's chat template.
+  // Used for LLM Guard and other models that need exact prompt control.
+  string          raw_template    = 11;
+  // Fields 12 (template_mode), 13 (passthrough), 14 (old system_prompt) removed;
+  // system_prompt reintroduced as field 18 with default-only-when-absent semantics.
+  reserved 12, 13, 14;
+  reserved "template_mode", "passthrough";
+  // Per-step context variables injected into the Jinja4j rendering context.
+  // Supports arbitrary typed values: strings, numbers, booleans, lists, maps.
+  // Available as top-level Jinja2 variables alongside messages, tools, prompt, etc.
+  google.protobuf.Struct context  = 16;
+  // When false, the caller's tools are NOT passed to this step — neither
+  // injected into raw templates via {{tools}}, nor forwarded to the model's
+  // native chat template. Defaults to true (tools are forwarded). Useful for
+  // response branches that should ignore tools while letting the model's
+  // built-in chat template handle everything else.
+  optional bool inject_tools = 15;
+  // When true, the engine suppresses tokens emitted between the reasoning
+  // open/close tags (default: <think>…</think>) so they are neither streamed
+  // to the client nor stored in the pipeline context / conversation history.
+  // The tag pair used is taken from reasoning_tags (field 3); when unset the
+  // engine defaults to "<think>" / "</think>".
+  // This is independent of context.enable_thinking — one controls whether the
+  // model is asked to think, the other controls whether thinking output is
+  // emitted.
+  optional bool strip_thinking = 17;
+
+  // Default system prompt (successor of the removed field 14 `system_prompt`): prepended
+  // ONLY when the incoming request carries no system message — a caller-supplied system
+  // always wins. Applies on the native chat-template path; empty = no default.
+  string system_prompt = 18;
+  // Context-window history trimming. When the engine reports a context size,
+  // older conversation turns are dropped (system messages pinned, tool
+  // call/result pairs atomic) so the prompt plus the completion reservation
+  // fits the window. Unset or true = enabled; explicit false disables it.
+  optional bool trim_history = 19;
+
+  // Jinja template that extracts tool calls from the generated tool span.
+  // Either the name of a built-in dialect template ("chatml-json",
+  // "xml-function", "gemma-call") or inline Jinja source. The template
+  // receives {{output}} (raw tool-span text) and {{tools}} (the request's
+  // tool list) and must render a JSON array of {"name", "arguments"} objects.
+  // When absent, the built-ins are tried in order (chatml-json, xml-function,
+  // gemma-call) until one yields calls — the legacy behavior.
+  string tool_extraction_template = 20;
+
+  // Per-step chat-template override (Jinja source). When set, the step renders
+  // its prompt with this template INSTEAD of the engine's GGUF-metadata chat
+  // template. In workspace YAML the value may reference a workspace
+  // `templates:` entry by id — the loader resolves it to the template's
+  // content before it reaches this field. Unset = use the model's own
+  // template (current behaviour).
+  optional string chat_template = 21;
+}
+
+// Classification step.
+message ClassifyStepConfig {
+  string model_id     = 1;
+  string input_field  = 2;
+  // Context key to write the ClassifyResult into.
+  // The value written is the top label string; the score is written to
+  // "<output_field>.score" as a float string.
+  string output_field = 3;
+  // Minimum score required to act on the top label (informational; used by
+  // GuardStep and BreakStep conditions that reference this step's output).
+  float  threshold    = 4;
+}
+
+// Tool-select step — zero-shot shortlisting of the caller's tools.
+//
+// The step classifies the LAST USER MESSAGE against the request's tool list
+// using a zero-shot GLiNER classifier (per-request label overrides), in
+// batches of batch_size tools plus a synthetic "none_of_these" label. A tool
+// is selected when its score >= threshold AND beats the none_of_these score.
+// The resulting shortlist of tool names is written into the pipeline context
+// (KEY_SELECTED_TOOLS); the infer step then injects only shortlisted tool
+// schemas. always_include names are unioned into a NON-EMPTY shortlist only:
+// when every batch elects none_of_these the shortlist stays empty
+// (conversational turn → no tools injected at all).
+message ToolSelectStepConfig {
+  // model_id of a published GLiNER zero-shot classifier model.
+  string model_id       = 1;
+  // Context field to classify. Blank = last user message (fallback: prompt).
+  string input_field    = 2;
+  // Tools per classify call (default 4 → ≤5 labels incl. none_of_these).
+  int32  batch_size     = 3;
+  // Minimum score to select a tool (default 0.3).
+  float  threshold      = 4;
+  // Optional Jinja2 template used to condense each tool into a label
+  // description; rendered with a `tool` map {name, description}. Blank =
+  // built-in default (first sentence of the description, capped at 160 chars).
+  string label_template = 5;
+  // Tool names always added to a non-empty shortlist (see message doc).
+  repeated string always_include = 6;
+  // When true, condensed descriptions are computed for the SELECTED tools and
+  // written to the pipeline context; the infer step then injects the trimmed
+  // description (and patches it inside each tool's template JSON) instead of
+  // the full original description.
+  bool trim_descriptions = 7;
+  // Optional Jinja2 template used to build the injected (trimmed) description;
+  // rendered with a `tool` map {name, description}. Blank = the same built-in
+  // default condenser as label_template (first sentence, capped at 160 chars).
+  string description_template = 8;
+}
+
+// Embedding step.
+message EmbedStepConfig {
+  string model_id     = 1;
+  string input_field  = 2;
+  // Context key to write the serialised float[] into (JSON array string).
+  string output_field = 3;
+}
+
+// Routing step — reads a context field and dispatches to a named next step.
+message RouteStepConfig {
+  string          model_id        = 1;
+  RoutingStrategy strategy        = 2;
+  repeated RouteRule rules        = 3;
+  // Fallback step_id when no rule matches.
+  string          default_step_id = 4;
+  string          input_field     = 5;
+}
+
+enum RoutingStrategy {
+  // ONNX classifier: top label is matched against RouteRule.label values.
+  ROUTING_STRATEGY_CLASSIFIER     = 0;
+  // Embedding KNN: nearest neighbour label is matched against RouteRule.label values.
+  ROUTING_STRATEGY_EMBEDDING_KNN  = 1;
+  // LLM structured output: model emits a JSON label matched against RouteRule.label values.
+  ROUTING_STRATEGY_LLM_STRUCTURED = 2;
+}
+
+message RouteRule {
+  string label        = 1;
+  string next_step_id = 2;
+  // Optional reference sentences for ROUTING_STRATEGY_EMBEDDING_KNN.
+  // When present, each sentence is embedded and compared against the user input;
+  // the rule whose best-matching sentence has the highest cosine similarity wins.
+  // When empty, the label itself is used as the sole reference text (backward compat).
+  repeated string sentences = 3;
+}
+
+// Sub-pipeline step — delegates to another published pipeline.
+message SubPipelineStepConfig {
+  // ID of the published pipeline to invoke.
+  string pipeline_id       = 1;
+  // Context key to pass as the sub-pipeline's entry prompt.
+  string input_field       = 2;
+  // Context key to write the sub-pipeline's final output into.
+  string output_field      = 3;
+  // If non-empty, the sub-pipeline is executed on the named remote server
+  // declared in the workspace's remote config. Empty = execute locally.
+  string remote_id         = 4;
+  // Optional system prompt prepended as ROLE_SYSTEM to the sub-pipeline's
+  // message list. When set, replaces any existing system message from the
+  // parent context.
+  string system_prompt     = 5;
+  // When true, the parent pipeline's chat messages (including system prompt
+  // and conversation history) are forwarded to the sub-pipeline instead of
+  // sending only the flat prompt string. Default false for backward compat.
+  bool   forward_messages  = 6;
+}
+
+// Guard step — input-side safety. Evaluated before generation begins.
+// On trigger the pipeline short-circuits with FINISH_REASON_GUARD_BLOCKED.
+message GuardStepConfig {
+  string      model_id      = 1;
+  string      input_field   = 2;
+  GuardAction action        = 3;
+  // DEPRECATED: use triggers instead. Kept for backward compatibility.
+  // When triggers is empty, these single-trigger fields are used as a fallback.
+  string      trigger_label = 4;
+  // DEPRECATED: use triggers instead.
+  float       trigger_score = 5;
+  // Context key to write the (possibly redacted) text into.
+  // For REDACT: the redacted text is written here; the original input_field
+  // is left untouched. Downstream steps can read from this field.
+  // When empty, defaults to "<step_id>.output".
+  string      output_field  = 6;
+  // Human-readable message returned to the caller as guard_message in InferResponse
+  // when action = GUARD_ACTION_REJECT. Supports {{expr}} template expressions;
+  // {{<step_id>.label}} and {{<step_id>.score}} are available at resolution time.
+  optional string message   = 7;
+  // When true and action = GUARD_ACTION_REDACT, each matched span is replaced
+  // with [ENTITY_TYPE] (e.g. [PERSON], [EMAIL ADDRESS]) instead of [REDACTED].
+  // Works with both ONNX TOKEN classifiers and GLiNER NER models.
+  bool   redact_with_entity_type = 8;
+  // Multiple trigger conditions. The guard fires if ANY trigger matches
+  // (i.e. the result contains a label whose score >= the trigger's threshold).
+  // When non-empty, trigger_label / trigger_score are ignored.
+  repeated GuardTrigger triggers = 9;
+}
+
+// A single trigger condition for a guard step.
+// The guard fires when the classifier returns the given label with a confidence
+// at or above the given score threshold.
+message GuardTrigger {
+  // Classifier label to match.
+  string label = 1;
+  // Minimum classifier score to trigger (0.0 = any score).
+  float  score = 2;
+}
+
+// LLM Guard step — safety check using a TextGenEngine (e.g. Llama Guard).
+// Same semantics as GuardStepConfig (REJECT / WARN) but replaces the ONNX
+// classifier with a generative model that produces a short verdict string.
+// GUARD_ACTION_REDACT is not supported — falls back to GUARD_ACTION_WARN.
+message LlmGuardStepConfig {
+  string      model_id        = 1;
+  // Field 2 (input_field) removed — LLM steps get their content through
+  // messages / raw_template with {{expr}} resolution, not a single text field.
+  reserved 2;
+  reserved "input_field";
+  GuardAction action          = 3;
+  // First token expected from the model when the content is safe.
+  // Comparison is case-insensitive, leading whitespace stripped.
+  // Default "safe".
+  string      safe_token      = 4;
+  // Structured prompt messages. Each content field supports {{expr}}.
+  repeated MessageDef messages = 5;
+  // Optional sampling override (temperature, max_tokens, etc.).
+  optional SamplingParams sampling_params = 6;
+  // Human-readable message returned on GUARD_ACTION_REJECT.
+  // Supports {{expr}} template expressions.
+  optional string message     = 7;
+  // Raw prompt template string with {{expr}} interpolation. When set, messages
+  // are ignored and the resolved string is sent as a bare prompt — giving full
+  // control over formatting and special tokens. Mutually exclusive with messages.
+  string      raw_template    = 8;
+  // Per-step template variables merged into the Jinja2 rendering context
+  // (e.g. a list of safety categories referenced by {% for cat in categories %}).
+  // Values can be any JSON-compatible scalar or collection.
+  google.protobuf.Struct context = 9;
+}
+
+enum GuardAction {
+  // Short-circuit: return FINISH_REASON_GUARD_BLOCKED immediately.
+  GUARD_ACTION_REJECT = 0;
+  // Mask matched entities in the output before returning.
+  GUARD_ACTION_REDACT = 1;
+  // Log the trigger but pass through.
+  GUARD_ACTION_WARN   = 2;
+}
+
+// Break step — output-side conditional halt.
+// Placed after a step that writes a classifiable or text output.
+// When the condition is met, the pipeline halts and returns the value of
+// output_field as the final response with FINISH_REASON_BREAK_CONDITION.
+message BreakStepConfig {
+  // Context field to evaluate.
+  string         input_field  = 1;
+  BreakCondition condition    = 2;
+  // Reference value for EQUALS / CONTAINS / LABEL_EQUALS conditions.
+  string         match_value  = 3;
+  // Reference value for SCORE_ABOVE / SCORE_BELOW conditions.
+  float          threshold    = 4;
+  // Context field whose value is returned as the final response on trigger.
+  string         output_field = 5;
+}
+
+// Loop step — bounded back-edge for Chain-of-Thought revision cycles.
+// Evaluated after each iteration: if the condition is NOT met, execution
+// jumps back to target_step_id (bounded by max_iterations). When the condition
+// IS met (or max_iterations is reached), execution continues to next_step_id.
+message LoopStepConfig {
+  // Step to jump back to when the exit condition has not been met.
+  string         target_step_id  = 1;
+  // Step to continue to when the exit condition is met.
+  string         next_step_id    = 2;
+  BreakCondition condition       = 3;
+  // Context field to evaluate against the condition.
+  string         input_field     = 4;
+  string         match_value     = 5;
+  float          threshold       = 6;
+  // Hard ceiling on the number of loop iterations. Must be > 0.
+  int32          max_iterations  = 7;
+  // Step to branch to when max_iterations is reached instead of next_step_id.
+  // If unset, falls back to next_step_id.
+  string         fallback_step_id = 8;
+  // Optional message appended to the conversation (pctx.messages()) every
+  // time the loop condition is NOT met and execution branches back to
+  // target_step_id. Enables conversational refinement: the next loop
+  // iteration sees the injected turn as real chat context.
+  //
+  // Not injected on condition-met exit (happy path) or on max-iterations
+  // fallback. MessageDef.content supports Jinja2 interpolation against the
+  // full pipeline context (e.g. "{{evaluate.output}}", "{{reason.output}}").
+  // MessageDef.role defaults to "user".
+  MessageDef     loopback_message = 9;
+}
+
+// Shared condition enum used by both BreakStepConfig and LoopStepConfig.
+enum BreakCondition {
+  BREAK_CONDITION_UNSPECIFIED  = 0;
+  // field value string-equals match_value.
+  BREAK_CONDITION_EQUALS       = 1;
+  // field value contains match_value as a substring.
+  BREAK_CONDITION_CONTAINS     = 2;
+  // classifier top-label equals match_value.
+  BREAK_CONDITION_LABEL_EQUALS = 3;
+  // classifier top-score >= threshold.
+  BREAK_CONDITION_SCORE_ABOVE  = 4;
+  // classifier top-score < threshold.
+  BREAK_CONDITION_SCORE_BELOW  = 5;
+  // field value is non-null and non-blank.
+  BREAK_CONDITION_NOT_EMPTY    = 6;
+  // field value is null or blank.
+  BREAK_CONDITION_EMPTY        = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline CRUD messages
+// ---------------------------------------------------------------------------
+
+// A single named pattern entry used by RegexGuardStepConfig.
+// Applies to both trigger mode (REJECT/WARN) and redaction mode (REDACT).
+//   name    — free-form label exposed as <step_id>.entity_types on match and
+//             used as the replacement token when redact_with_entity_type = true
+//             (e.g. name="CREDIT CARD" → "[CREDIT CARD]"). No Java identifier
+//             restrictions — the executor assigns positional named groups
+//             internally so users never write group syntax in patterns.
+//   pattern — any valid Java regex. Named capture groups written by the user
+//             are still supported inside the pattern but are not required.
+message RegexEntityDef {
+  string name    = 1;
+  string pattern = 2;
+}
+
+// Regex guard — model-free, pattern-based guard with optional entity redaction.
+//
+// All patterns are declared as a unified list of {name, pattern} entries.
+// The action determines the behaviour:
+//
+//   REJECT / WARN  — any pattern match triggers. The executor combines all
+//                    patterns into one alternation with positional named groups
+//                    (?<P0>…)|(?<P1>…)|… so that the matching index can be
+//                    mapped back to the entry's name without requiring the user
+//                    to write Java named groups in their patterns.
+//                    The first matched entry's name is written to
+//                    <step_id>.entity_type. The matched text goes to
+//                    <step_id>.match.
+//
+//   REDACT         — all patterns are scanned for character-level spans
+//                    (Matcher.find() per entry). Overlapping spans are merged.
+//                    Each span is replaced with [NAME] (when
+//                    redact_with_entity_type = true) or [REDACTED].
+//                    pctx.messages() and KEY_PROMPT are updated so that
+//                    {{ prompt }} / {{ messages }} / {{ history }} always
+//                    reflect the redacted text downstream.
+//
+// Entry names are completely free-form — spaces, dashes, slashes are all
+// valid because they never appear in a Java regex group name; the executor
+// generates those internally.
+message RegexGuardStepConfig {
+  // Context field to read. Defaults to the pipeline prompt when blank.
+  string                 input_field          = 1;
+  // Unified named pattern list. Each entry carries a free-form name (label)
+  // and a Java regex. Behaviour depends on action (see above).
+  repeated RegexEntityDef patterns            = 2;
+  // Field 3 was formerly "entities" — now unified into patterns.
+  reserved 3; reserved "entities";
+  // When true and action = GUARD_ACTION_REDACT, replace each matched span with
+  // [NAME] (e.g. [CREDIT CARD]). When false, replace with [REDACTED].
+  bool                   redact_with_entity_type = 4;
+  // Action to take on match.
+  GuardAction            action               = 5;
+  // Context key to write the (possibly redacted) text into.
+  // Defaults to "<step_id>.output" when blank.
+  string                 output_field         = 6;
+  // Human-readable reject message. Supports {{expr}} Jinja2 expressions.
+  optional string        message              = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline CRUD messages
+// ---------------------------------------------------------------------------
+
+message GetPipelineRequest      { string pipeline_id   = 1; }
+message GetPipelineResponse     { Pipeline pipeline    = 1; PipelineStatus status = 2; }
+
+message ListPipelinesRequest    {}
+message ListPipelinesResponse   { repeated GetPipelineResponse pipelines = 1; }

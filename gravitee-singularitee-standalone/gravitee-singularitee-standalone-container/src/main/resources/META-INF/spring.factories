@@ -1,0 +1,2 @@
+io.gravitee.node.container.ContainerInitializer=\
+    io.gravitee.singularitee.standalone.SingulariteeProductInitializer

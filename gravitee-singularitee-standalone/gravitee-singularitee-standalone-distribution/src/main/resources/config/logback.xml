@@ -1,0 +1,38 @@
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${gravitee.home}/logs/gravitee-singularitee.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${gravitee.home}/logs/gravitee-singularitee.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="io.gravitee.singularitee.pipeline" level="INFO"/>
+    <logger name="io.gravitee.singularitee.inference" level="INFO"/>
+    <logger name="io.gravitee.singularitee.service" level="INFO"/>
+    <logger name="io.gravitee.singularitee.standalone" level="INFO"/>
+    <logger name="io.gravitee.singularitee.workspace" level="INFO"/>
+    <logger name="io.gravitee.singularitee.adapter" level="WARN"/>
+    <logger name="io.gravitee.singularitee.registry" level="INFO"/>
+    <logger name="io.gravitee.singularitee.grpc.resolver" level="INFO"/>
+    <logger name="io.gravitee.node" level="INFO"/>
+    <logger name="io.gravitee.inference" level="WARN"/>
+    <logger name="io.grpc" level="ERROR"/>
+    <logger name="io.vertx" level="ERROR"/>
+    <logger name="io.netty" level="ERROR"/>
+    <logger name="org.springframework" level="WARN"/>
+
+    <root level="WARN">
+        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>

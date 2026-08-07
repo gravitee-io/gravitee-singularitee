@@ -1,0 +1,29 @@
+{#-
+  ChatML / Qwen3 JSON tool-call dialect.
+
+  Accepts:
+    - <tool_call>{"name":...,"arguments":{...}}</tool_call> blocks (tagged text);
+    - a bare JSON array of call objects;
+    - one or more bare/concatenated {"name":...,"arguments":...} objects
+      (marker-less TOOL-channel payload);
+    - a single JSON object as the whole output (legacy whole-content fallback).
+
+  Renders a JSON array of the call objects verbatim. Arguments carry native
+  JSON types, so no "coerce" hints are emitted (legacy: JSON flavor untouched).
+-#}
+{%- set out = output | trim -%}
+{%- set blocks = output | regex_findall('(?s)<tool_call>\\s*(\\{.*?})\\s*</tool_call>') -%}
+{%- if blocks -%}
+[{{ blocks | join(',') }}]
+{%- elif out | regex_first('^\\[') is not none -%}
+{{ out }}
+{%- elif out | regex_first('^\\{') is not none -%}
+{%- set objs = out | regex_findall('(?s)\\{\\s*"name".*?(?=\\{\\s*"name"|$)') -%}
+{%- if objs | length > 1 -%}
+[{% for o in objs %}{{ o | trim }}{{ "," if not loop.last }}{% endfor %}]
+{%- else -%}
+[{{ out }}]
+{%- endif -%}
+{%- else -%}
+[]
+{%- endif -%}

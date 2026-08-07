@@ -1,0 +1,126 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# gpt-oss-20b · Harmony (chained channels)
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/llama/gpt-oss-20b.yaml
+#
+# One model (id: llm) and one pipeline (id: agent), so the same client config and
+# curls work across every example file. Prose, measurements and caveats for this
+# model live in docs/models/README.md.
+#
+# n_ctx is PER SEQUENCE: total KV allocated is n_ctx * n_seq_max.
+# MoE (3.6B active), full+SWA attention, Apache-2.0, native MXFP4 (~12 GB, no
+# quantization loss). Harmony CHAINS channels rather than nesting them: an
+# analysis span ends either into the final answer or straight into a tool call —
+# expressed by folding each continuation header into the corresponding marker.
+# Reasoning effort is set by system-prompt text (e.g. "Reasoning: low"), not a
+# template flag. Identical config works for gpt-oss-120b on larger hardware.
+
+workspace:
+  name: gpt-oss-20b
+
+  models:
+    - id: llm
+      name: ggml-org/gpt-oss-20b-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: gpt-oss-20b-MXFP4.gguf
+        n_ctx: 128000
+        n_seq_max: 1
+        n_gpu_layers: 99999
+        flash_attn_type: ENABLED
+        cache_type_k: q8_0
+        cache_type_v: q8_0
+        mtp: false
+        eog_ramp_start: 0.75
+        eog_ramp_max_bias: 100.0
+
+  pipelines:
+    - id: agent
+      name: gpt-oss-20b Agent Pipeline
+      entry: agent
+      steps:
+        - id: agent
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: agent.output
+            context:
+              # medium, not low: at low this model writes malformed JSON for tool
+              # arguments often enough to break agent flows — mismatched brackets,
+              # one edit split across two objects, stray trailing punctuation. The
+              # extra reasoning tokens cost latency; a rejected tool call costs the
+              # whole turn.
+              reasoning_effort: medium
+            tags:
+              # Every run-anchored form, exactly like tool_open: a chained transition
+              # (analysis straight into a commentary preamble) emits
+              # <|end|><|start|>assistant<|channel|>commentary<|message|> as ONE run,
+              # and a marker anchored at <|channel|> can never match it — the whole
+              # header leaked into the stream as raw text.
+              reasoning_repeatable: true
+              reasoning_open:
+                - "<|end|><|start|>assistant<|channel|>analysis<|message|>"
+                - "<|end|><|start|>assistant<|channel|>commentary<|message|>"
+                - "<|start|>assistant<|channel|>analysis<|message|>"
+                - "<|start|>assistant<|channel|>commentary<|message|>"
+                - "<|channel|>analysis<|message|>"
+                - "<|channel|>commentary<|message|>"
+              # Two ways out of the analysis channel. Answering directly, the run ends
+              # with <|end|> and the final header follows; when a tool call intervenes
+              # the terminator is <|call|> instead. Listing one marker leaks the other
+              # path's header into the answer as visible syntax.
+              reasoning_close:
+                - "<|end|><|start|>assistant<|channel|>final<|message|>"
+                - "<|call|><|start|>assistant<|channel|>final<|message|>"
+                # The bare header, for the turn that FOLLOWS a tool call: that
+                # generation starts fresh with no analysis span open, and the model
+                # still prefixes its reply with it. A close marker reaching the
+                # answer channel is stray syntax, so it is suppressed there too —
+                # otherwise the reply reads "<|channel|>final<|message|>DONE".
+                - "<|channel|>final<|message|>"
+                # Bare terminator, as a safety net: when <|end|> is followed by
+                # something no marker anticipates, the short close settles and only
+                # the genuinely unknown remainder shows — instead of the whole
+                # buffered header. Longest match keeps the folded forms winning.
+                - "<|end|>"
+              # BOTH header orders occur in practice. Observed live:
+              # "<|end|><|start|>assistant<|channel|>commentary to=functions.write", i.e.
+              # the channel segment BEFORE to=functions; the form without it shows up too.
+              # Listing only one leaks the other's entire header into the answer as visible
+              # syntax. The <|end|>/<|call|>-prefixed forms matter because a run that leaves
+              # the analysis channel for a tool call starts at that terminator — nothing
+              # else consumes it — so a marker anchored at <|channel|> can never match there.
+              tool_open:
+                - "<|end|><|start|>assistant<|channel|>commentary to=functions."
+                - "<|end|><|start|>assistant<|channel|>analysis to=functions."
+                - "<|call|><|start|>assistant<|channel|>commentary to=functions."
+                - "<|end|><|start|>assistant to=functions."
+                - "<|start|>assistant<|channel|>commentary to=functions."
+                - "<|start|>assistant to=functions."
+                - "<|channel|>commentary to=functions."
+                - "<|channel|>analysis to=functions."
+              # Longest first: when the model continues past the call, the header is part
+              # of the marker; when <|call|> ends generation (the agent flow, it is an EOS
+              # token) the short form settles the span at flush.
+              tool_close:
+                - "<|call|><|start|>assistant<|channel|>final<|message|>"
+                - "<|call|>"
+            tool_extraction_template: harmony # built-in

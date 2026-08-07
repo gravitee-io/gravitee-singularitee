@@ -1,0 +1,183 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+#
+# vLLM image (CUDA).
+#
+# Serves vllm / vllm_embedding / vllm_reranker. Built on vllm/vllm-openai, which
+# already carries CUDA, Python and vLLM itself — we only add the JVM and the
+# distribution. Nothing here runs vLLM's OpenAI server; the image is used purely
+# as a correctly-assembled vLLM runtime that vLLM4j drives in-process over FFM.
+#
+# Keep VLLM_IMAGE's version in step with scripts/setup-venv.sh's VLLM_VERSION:
+# vLLM4j is compiled against a specific vLLM Python API and both must agree.
+#
+# Build (the distribution must be assembled first):
+#   mvn clean install -DskipTests -Pdist-vllm
+#   DOCKER_BUILDKIT=1 docker build -f Dockerfile.vllm-cuda -t singularitee-vllm-cuda .
+#
+# Run:
+#   docker run --gpus all -p 9090:9090 -v $PWD/examples:/workspaces singularitee-vllm-cuda
+#
+
+# cu129 runs on driver r525+; the default tag is CUDA 13 and needs r580+.
+ARG VLLM_IMAGE=vllm/vllm-openai:v0.23.0-cu129
+
+FROM ${VLLM_IMAGE} AS runtime
+
+LABEL maintainer="contact@graviteesource.com"
+LABEL org.opencontainers.image.source="https://github.com/gravitee-io/gravitee-singularitee"
+LABEL org.opencontainers.image.description="Singularitee Gateway - gRPC inference server (CUDA / vLLM)"
+
+ENV GRAVITEEIO_HOME=/opt/graviteeio-singularitee
+
+# The base image's Ubuntu release is read from os-release rather than pinned:
+# vllm/vllm-openai has moved between Ubuntu versions across releases.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      curl ca-certificates gnupg libjemalloc2 libgomp1 tini; \
+    install -m 0755 -d /etc/apt/keyrings; \
+    curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
+      | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg; \
+    . /etc/os-release; \
+    echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb ${VERSION_CODENAME} main" \
+      > /etc/apt/sources.list.d/adoptium.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends temurin-25-jdk; \
+    apt-get purge -y --auto-remove gnupg; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r -f graviteeio \
+    && useradd -r -g root -d ${GRAVITEEIO_HOME} -s /usr/sbin/nologin graviteeio
+
+# vLLM4j needs a *venv* — it reads pyvenv.cfg to locate libpython — but the base
+# image may install vLLM into either a venv or the system interpreter depending
+# on the release. Reuse the former when present, otherwise create one over the
+# system site-packages so vLLM is still importable. Either way libpython is
+# symlinked into <venv>/lib, which is where PythonLibLoader looks first.
+RUN set -eux; \
+    PYBIN="$(sed -n '1s/^#![[:space:]]*//p' "$(command -v vllm)" | awk '{print $1}')"; \
+    case "$PYBIN" in */env|"") PYBIN="$(command -v python3)";; esac; \
+    VENV_PREFIX="$("$PYBIN" -c 'import sys; print(sys.prefix if sys.prefix != sys.base_prefix else "")')"; \
+    if [ -n "$VENV_PREFIX" ]; then \
+        ln -s "$VENV_PREFIX" "${GRAVITEEIO_HOME}/vllm-venv"; \
+    else \
+        "$PYBIN" -m venv --system-site-packages "${GRAVITEEIO_HOME}/vllm-venv"; \
+    fi; \
+    LIBDIR="$("$PYBIN" -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"; \
+    LIBPY="$(find -L "$LIBDIR" -maxdepth 1 -name 'libpython3*.so*' | sort | head -1)"; \
+    test -n "$LIBPY"; \
+    mkdir -p "${GRAVITEEIO_HOME}/vllm-venv/lib"; \
+    ln -sf "$LIBPY" "${GRAVITEEIO_HOME}/vllm-venv/lib/$(basename "${LIBPY%%.so*}").so"; \
+    "${GRAVITEEIO_HOME}/vllm-venv/bin/python" -c 'import vllm; print("vllm", vllm.__version__)'; \
+    chown -h graviteeio:root "${GRAVITEEIO_HOME}/vllm-venv" || true
+
+# cuda-env.sh turns this into -Dvllm4j.venv=... and preloads libpython.
+ENV VLLM4J_VENV=${GRAVITEEIO_HOME}/vllm-venv
+
+# Optionally bake a model and a workspace into the image.
+#
+# Both default to empty, which leaves the image exactly as it was: generic, with
+# weights fetched from HuggingFace on first start and the workspace mounted at
+# run time. That is what CI builds. Setting them produces a self-contained image
+# for a platform that offers no volumes and no persistent cache — a serverless
+# GPU runtime — at the cost of carrying the weights in every pull.
+#
+#   --build-arg BAKE_MODEL=openai/gpt-oss-20b
+#   --build-arg BAKE_WORKSPACE=vllm/gpt-oss-20b.yaml
+ARG BAKE_MODEL=
+ARG BAKE_WORKSPACE=
+
+# The model layer sits ABOVE the distribution COPY on purpose: it is the most
+# expensive layer in the image and the least likely to change, while the
+# distribution changes on every code edit. Ordered the other way, a one-line
+# Java change invalidated 65 GB of weights and re-downloaded them.
+# Weights land where the Java resolver already looks — <models>/<org>/<model>,
+# with models path defaulting to ${gravitee.home}/models — so its cache-complete
+# check (config.json plus one weight file) short-circuits the download instead of
+# this needing a second code path.
+#
+# The ignore_patterns mirror what a workspace's download.exclude would drop:
+# repositories such as openai/gpt-oss-20b ship the same weights two more times,
+# under original/ and metal/, which would otherwise double the image.
+# The token arrives as a BuildKit secret, never a build arg: build args are
+# recorded in the image history for anyone who pulls it. Optional — without one
+# the download still works, but HF throttles anonymous traffic and says so:
+#   "You are sending unauthenticated requests to the HF Hub. Please set a
+#    HF_TOKEN to enable higher rate limits and faster downloads."
+# which on a 65 GB model is the difference between minutes and an hour.
+#
+#   HF_TOKEN=hf_... docker build --secret id=hf_token,env=HF_TOKEN ...
+#   docker build --secret id=hf_token,src=$HOME/.cache/huggingface/token ...
+#
+# No download accelerator is added here: the base image already ships
+# huggingface_hub 1.19 with hf_xet, and Xet is what these repositories are backed
+# by. hf_transfer is obsolete — setting HF_HUB_ENABLE_HF_TRANSFER only earns a
+# deprecation warning ("hf_transfer is not used anymore").
+RUN --mount=type=secret,id=hf_token,required=false \
+    set -eux; \
+    if [ -n "${BAKE_MODEL}" ]; then \
+      if [ -s /run/secrets/hf_token ]; then \
+        HF_TOKEN="$(tr -d '\n' < /run/secrets/hf_token)"; export HF_TOKEN; \
+        echo "using an authenticated HF session"; \
+      else \
+        echo "no hf_token secret — downloading anonymously (throttled)"; \
+      fi; \
+      BAKE_MODEL="${BAKE_MODEL}" TARGET_HOME="${GRAVITEEIO_HOME}" \
+      "${GRAVITEEIO_HOME}/vllm-venv/bin/python" -c '\
+import os; \
+from huggingface_hub import snapshot_download; \
+model = os.environ["BAKE_MODEL"]; \
+snapshot_download(model, \
+                  local_dir=os.path.join(os.environ["TARGET_HOME"], "models", model), \
+                  ignore_patterns=["original/*", "metal/*"])'; \
+      chown -R graviteeio:root "${GRAVITEEIO_HOME}/models"; \
+      du -sh "${GRAVITEEIO_HOME}/models"; \
+    fi
+
+COPY --chown=graviteeio:root \
+     ./gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution/ \
+     ${GRAVITEEIO_HOME}/
+
+
+COPY --chown=graviteeio:root examples/ ${GRAVITEEIO_HOME}/examples/
+
+# Picked up by cuda-entrypoint.sh unless GRAVITEE_AI_WORKSPACE_PATH overrides it.
+RUN set -eux; \
+    if [ -n "${BAKE_WORKSPACE}" ]; then \
+      cp "${GRAVITEEIO_HOME}/examples/${BAKE_WORKSPACE}" "${GRAVITEEIO_HOME}/workspace.yaml"; \
+      chown graviteeio:root "${GRAVITEEIO_HOME}/workspace.yaml"; \
+    fi
+
+COPY --chown=graviteeio:root docker/cuda/cuda-env.sh    ${GRAVITEEIO_HOME}/bin/cuda-env.sh
+COPY --chown=graviteeio:root docker/cuda/entrypoint.sh  ${GRAVITEEIO_HOME}/bin/cuda-entrypoint.sh
+RUN chmod 0755 ${GRAVITEEIO_HOME}/bin/cuda-env.sh ${GRAVITEEIO_HOME}/bin/cuda-entrypoint.sh
+
+# Group-writable so an arbitrary runtime uid in group root can still create it.
+RUN set -eux; \
+    mkdir -p "${GRAVITEEIO_HOME}/models"; \
+    chown graviteeio:root "${GRAVITEEIO_HOME}" "${GRAVITEEIO_HOME}/models"; \
+    chmod 0775 "${GRAVITEEIO_HOME}" "${GRAVITEEIO_HOME}/models"
+
+# The base image sets its own ENTRYPOINT for vLLM's OpenAI server — override it.
+WORKDIR ${GRAVITEEIO_HOME}
+EXPOSE 9090
+USER graviteeio
+
+ENTRYPOINT ["/usr/bin/tini", "--", "./bin/cuda-entrypoint.sh"]
+CMD []

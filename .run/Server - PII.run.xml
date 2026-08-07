@@ -1,0 +1,21 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Server - PII" type="Application" factoryName="Application" folderName="Workspaces">
+    <envs>
+      <env name="GRAVITEE_GRPC_PORT" value="9100" />
+      <env name="GRAVITEE_AI_WORKSPACE_PATH" value="$PROJECT_DIR$/examples/classifier/pii-bert.yaml" />
+      <env name="GRAVITEE_HTTP_ENABLED" value="true" />
+      <env name="GRAVITEE_HTTP_PORT" value="8100" />
+      <env name="GRAVITEE_GRPC_AUTH_ENABLED" value="true" />
+      <env name="GRAVITEE_GRPC_AUTH_TYPE" value="basic" />
+      <env name="GRAVITEE_GRPC_AUTH_USERS_PII" value="changeme" />
+      <env name="GRAVITEE_SERVICES_CORE_HTTP_PORT" value="18100" />
+      <env name="GRAVITEE_SERVICES_CORE_HTTP_AUTHENTICATION_USERS_ADMIN" value="changeme" />
+    </envs>
+    <option name="MAIN_CLASS_NAME" value="io.gravitee.singularitee.standalone.SingulariteeContainer" />
+    <module name="gravitee-singularitee-standalone-container" />
+    <option name="VM_PARAMETERS" value="--enable-preview --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -Dgravitee.home=$PROJECT_DIR$/gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution -Dlogback.configurationFile=$PROJECT_DIR$/gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution/config/logback.xml -Dvertx.disableDnsResolver=true" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

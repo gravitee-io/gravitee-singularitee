@@ -1,0 +1,57 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+services:
+  k6:
+    image: grafana/k6:0.57.0
+    command: >
+      run /scripts/${SCRIPT:-pii-corpus-load-test.js}
+      --out json=/reports/${SCENARIO:-unset}-raw-metrics.json
+    environment:
+      SCENARIO: ${SCENARIO:-}
+      BASE_URL: ${BASE_URL:-http://host.docker.internal:8090}
+      API_KEY: ${API_KEY:-}
+      RATE: ${RATE:-100}
+      RAMP_STEPS: ${RAMP_STEPS:-4}
+      STAGE_TIME: ${STAGE_TIME:-3m}
+      RAMP_TIME: ${RAMP_TIME:-30s}
+      MAX_VUS: ${MAX_VUS:-400}
+      MODEL: ${MODEL:-}
+      CORPUS: ${CORPUS:-}
+    volumes:
+      - ./guardrails-corpus-load-test.js:/scripts/guardrails-corpus-load-test.js:ro
+      - ./pii-corpus-load-test.js:/scripts/pii-corpus-load-test.js:ro
+      - ./data:/data:ro
+      - ./reports:/reports
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Corpus builders — run before the corpus-driven load tests:
+  #   docker compose run --rm corpus-builder build_toxicity_corpus.py --split train
+  #   docker compose run --rm corpus-builder build_pii_corpus.py --per-lang 200
+  corpus-builder:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    entrypoint: ["uv", "run"]
+    working_dir: /k6/tools
+    volumes:
+      - ./tools:/k6/tools:ro
+      - ./data:/k6/data
+      - hf-cache:/root/.cache/huggingface
+      - uv-cache:/root/.cache/uv
+
+volumes:
+  hf-cache:
+  uv-cache:

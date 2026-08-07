@@ -1,0 +1,204 @@
+//
+// Copyright © 2015 The Gravitee team (http://gravitee.io)
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+/*
+ * Copyright © 2015 The Gravitee team (http://gravitee.io)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// Singularitee — vector operations protocol.
+//
+// Provides SIMD-accelerated vector math (cosine similarity, ranking) and
+// ONNX-backed text embedding.  Also exposes high-level text-to-text
+// similarity and reranking endpoints that handle embedding internally.
+
+syntax = "proto3";
+
+package io.gravitee.singularitee.protocol;
+
+option java_package = "io.gravitee.singularitee.protocol";
+option java_outer_classname = "VectorProto";
+option java_multiple_files = true;
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service GraviteeVectorService {
+  // Computes cosine similarity between two float vectors.
+  rpc CosineSimilarity (CosineSimilarityRequest) returns (CosineSimilarityResponse);
+
+  // Ranks a list of candidate vectors against a query vector and returns top-k.
+  rpc Rank             (RankRequest)             returns (RankResponse);
+
+  // Encodes a single text string using a published ONNX embedding model.
+  rpc Embed            (EmbedRequest)            returns (EmbedResponse);
+
+  // Encodes a batch of text strings in a single call.
+  rpc EmbedBatch       (EmbedBatchRequest)        returns (EmbedBatchResponse);
+
+  // Computes text-to-text similarity: embeds both arrays and returns cosine scores.
+  rpc TextSimilarity   (TextSimilarityRequest)    returns (TextSimilarityResponse);
+
+  // Reranks documents against a query: embeds everything and returns sorted scores.
+  rpc TextRerank       (TextRerankRequest)        returns (TextRerankResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Shared vector type
+// ---------------------------------------------------------------------------
+
+message FloatVector { repeated float values = 1; }
+
+// ---------------------------------------------------------------------------
+// Cosine similarity
+// ---------------------------------------------------------------------------
+
+message CosineSimilarityRequest {
+  FloatVector a = 1;
+  FloatVector b = 2;
+}
+
+message CosineSimilarityResponse { float score = 1; }
+
+// ---------------------------------------------------------------------------
+// Rank (top-k nearest neighbours)
+// ---------------------------------------------------------------------------
+
+message RankRequest {
+  FloatVector          query      = 1;
+  repeated FloatVector candidates = 2;
+  // Number of top results to return. 0 = return all candidates sorted.
+  int32                top_k      = 3;
+}
+
+message RankResponse {
+  repeated RankedResult results = 1;
+
+  message RankedResult {
+    // Zero-based index into the original candidates list.
+    int32 index = 1;
+    float score = 2;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Embed
+// ---------------------------------------------------------------------------
+
+message EmbedRequest {
+  // model_id returned by PublishModel (must be MODEL_TYPE_ONNX_EMBEDDING).
+  string model_id = 1;
+  string text     = 2;
+}
+
+message EmbedResponse {
+  FloatVector embedding   = 1;
+  int32       token_count = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Embed batch
+// ---------------------------------------------------------------------------
+
+message EmbedBatchRequest {
+  string          model_id = 1;
+  repeated string texts    = 2;
+}
+
+message EmbedBatchResponse {
+  repeated EmbedBatchItem items = 1;
+}
+
+message EmbedBatchItem {
+  FloatVector embedding   = 1;
+  int32       token_count = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Text similarity (high-level: text in, scores out)
+// ---------------------------------------------------------------------------
+
+enum SimilarityMode {
+  // Cross-product (all pairs): score[i][j] = cosine(input[i], candidates[j]).
+  // Returns |input| x |candidates| scores as a flat row-major array.
+  SIMILARITY_MODE_CROSS  = 0;
+  // Zipped (1-to-1 positional): score[i] = cosine(input[i], candidates[i]).
+  // Arrays must be the same length; returns |input| scores.
+  SIMILARITY_MODE_ZIPPED = 1;
+}
+
+message TextSimilarityRequest {
+  // Embedding model to use.
+  string          model_id   = 1;
+  // Input texts.
+  repeated string input      = 2;
+  // Candidate texts to compare against.
+  repeated string candidates = 3;
+  // Comparison mode.
+  SimilarityMode  mode       = 4;
+}
+
+message TextSimilarityResponse {
+  // For DOT_PRODUCT mode: a flat row-major matrix of size |input| x |candidates|.
+  // results[i * |candidates| + j] = cosine(input[i], candidates[j]).
+  // For PAIRWISE mode: results[i] = cosine(input[i], candidates[i]).
+  repeated float scores      = 1;
+  // Dimensions for interpreting the scores array.
+  int32 input_count          = 2;
+  int32 candidate_count      = 3;
+  // Total tokens processed (input + candidates).
+  int32 total_tokens         = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Text rerank (high-level: query + documents in, ranked results out)
+// ---------------------------------------------------------------------------
+
+message TextRerankRequest {
+  // Embedding model to use.
+  string          model_id   = 1;
+  // The query text.
+  string          query      = 2;
+  // Documents to rank against the query.
+  repeated string documents  = 3;
+  // Number of top results to return. 0 = return all sorted.
+  int32           top_k      = 4;
+}
+
+message TextRerankResponse {
+  repeated TextRerankResult results = 1;
+  // Total tokens processed (query + all documents).
+  int32 total_tokens                = 2;
+}
+
+message TextRerankResult {
+  // Zero-based index into the original documents list.
+  int32 index = 1;
+  // Cosine similarity score.
+  float score = 2;
+}

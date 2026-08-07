@@ -1,0 +1,144 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Pipeline — embedding router: nearest-neighbour routing on sentence similarity
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/pipelines/embedding-router.yaml
+#
+#   route ──→ [ respond_support | respond_sales | respond_general ]
+#
+# `strategy: embedding_knn` — instead of a classifier's label, each rule carries
+# example `sentences`. Every sentence is embedded ONCE at workspace load time and
+# cached; at request time the prompt is embedded and the SINGLE nearest reference
+# sentence wins (best match, not a per-rule average — so one sharp example beats
+# five vague ones, and adding weak examples to a rule cannot dilute it).
+#
+# Why choose this over gliner-router.yaml: you teach it by EXAMPLE rather than by
+# label. When routes are fuzzy, overlapping, or evolve from real user phrasings
+# you can paste in, examples are easier to get right than label descriptions. Cost
+# is one embedding call per request — cheaper than a zero-shot classifier pass.
+#
+# Try:
+#   "my invoice is wrong and I got charged twice"  → respond_support
+#   "what does the enterprise plan cost?"          → respond_sales
+#   "tell me a joke"                               → respond_general
+
+workspace:
+  name: embedding-router
+
+  models:
+    - id: llm
+      name: Qwen/Qwen3-0.6B-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: Qwen3-0.6B-Q8_0.gguf
+        n_ctx: 8192
+        n_seq_max: 4
+        n_gpu_layers: 999
+        flash_attn_type: AUTO
+
+    # English-only and small, because routing runs on every single request.
+    - id: text-embedding
+      name: BAAI/bge-small-en-v1.5
+      type: onnx_embedding
+      memory_check: disabled
+      onnx_embedding:
+        model_path: onnx/model.onnx
+        tokenizer_path: tokenizer.json
+        config_json_path: config.json
+        max_sequence_length: 512
+        pooling_mode: CLS
+        normalize: true
+
+  pipelines:
+    - id: embedding-router
+      name: Embedding KNN Routing Pipeline
+      entry: route
+
+      steps:
+        - id: route
+          type: route
+          config:
+            model_id: text-embedding
+            strategy: embedding_knn
+            input_field: prompt
+            default_step: respond_general
+            rules:
+              - label: support
+                next_step: respond_support
+                sentences:
+                  - "I was charged twice for my subscription"
+                  - "my invoice is wrong"
+                  - "the app crashes when I upload a file"
+                  - "I cannot log in to my account"
+                  - "how do I reset my password?"
+              - label: sales
+                next_step: respond_sales
+                sentences:
+                  - "what does the enterprise plan cost?"
+                  - "can I get a demo of the product?"
+                  - "do you offer annual billing discounts?"
+                  - "how many seats are included in the team tier?"
+              - label: general
+                next_step: respond_general
+                sentences:
+                  - "tell me a joke"
+                  - "what can you do?"
+                  - "hello there"
+
+        - id: respond_support
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: respond_support.output
+            context: { enable_thinking: false }
+            prompt:
+              messages:
+                - role: system
+                  content: "You are a technical support agent. Acknowledge the problem, then give concrete troubleshooting steps."
+                - role: user
+                  content: "{{prompt}}"
+
+        - id: respond_sales
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: respond_sales.output
+            context: { enable_thinking: false }
+            prompt:
+              messages:
+                - role: system
+                  content: "You are a sales engineer. Answer commercial questions plainly and never invent prices you were not given."
+                - role: user
+                  content: "{{prompt}}"
+
+        - id: respond_general
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: respond_general.output
+            context: { enable_thinking: false }
+            prompt:
+              messages:
+                - role: system
+                  content: "You are a helpful, friendly assistant. Respond naturally."
+                - role: user
+                  content: "{{prompt}}"

@@ -1,0 +1,48 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Pipeline — single-step Qwen3 generation that SEPARATES reasoning.
+#
+# Same as infer.yaml, but the infer step declares the model's reasoning tags
+# (<think>…</think>) and does NOT strip them (strip_thinking omitted → default
+# false). The executor then ROUTEs the reasoning onto a separate
+# STEP_ROLE_THINKING stream instead of leaving it inline in the output.
+#
+# Over the OpenAI-compatible HTTP API this surfaces as `reasoning_content`
+# (streaming `delta.reasoning_content`, buffered `message.reasoning_content`),
+# while the final answer is normal `content`.
+#
+# Call it with the OpenAI client using model id "reasoning-pipeline".
+
+workspace:
+  pipelines:
+    - id: reasoning-pipeline
+      name: Reasoning Pipeline
+      entry: infer
+
+      steps:
+        - id: infer
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: infer.output
+            # Route the <think>…</think> span to reasoning_content (not stripped).
+            tags:
+              reasoning_open: "<think>"
+              reasoning_close: "</think>"
+            sampling:
+              max_tokens: 512

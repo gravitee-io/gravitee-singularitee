@@ -1,0 +1,18 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Server - vLLM GPTQ" type="Application" factoryName="Application" folderName="Examples">
+    <option name="MAIN_CLASS_NAME" value="io.gravitee.singularitee.standalone.SingulariteeContainer" />
+    <envs>
+      <env name="GRAVITEE_GRPC_PORT" value="9091" />
+      <env name="GRAVITEE_AI_WORKSPACE_PATH" value="$PROJECT_DIR$/examples/modular/server-vllm-gptq.yaml" />
+      <env name="GRAVITEE_HTTP_ENABLED" value="true" />
+      <env name="GRAVITEE_HTTP_PORT" value="8091" />
+    </envs>
+    <option name="VM_PARAMETERS" value="--enable-preview --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -Dgravitee.home=$PROJECT_DIR$/gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution -Dlogback.configurationFile=$PROJECT_DIR$/gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution/config/logback.xml -Dvertx.disableDnsResolver=true -Dvllm4j.venv=$PROJECT_DIR$/../vLLM4j/.venv" />
+    <option name="PROGRAM_PARAMETERS" value="" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <module name="gravitee-singularitee-standalone-container" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

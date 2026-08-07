@@ -1,0 +1,109 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Pipeline — tool router: shortlist the caller's tools with a zero-shot classifier
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/pipelines/tool-router.yaml
+#
+#   select_tools ──→ agent
+#
+# THE PROBLEM: an agent with 60 tools pays for all 60 schemas in every prompt —
+# thousands of tokens of JSON before the user's question is even read, on every
+# turn — and a small model's accuracy degrades as the tool list grows.
+#
+# THE FIX: the `tool_select` step classifies the LAST USER MESSAGE against the
+# tools THE CALLER SENT on this request. Nothing is configured ahead of time: each
+# tool's name and description become zero-shot labels at request time, so the same
+# pipeline works for any client with any tool set. Tools are scored in batches of
+# `batch_size`, each batch carrying a synthetic "none_of_these" label; a tool is
+# kept when it clears `threshold` AND outscores none_of_these. The shortlist lands
+# in the pipeline context and the infer step injects ONLY those schemas.
+#
+# Two behaviours worth knowing:
+#   - Every batch electing none_of_these (a plain conversational turn) leaves the
+#     shortlist EMPTY and injects no tools at all — `always_include` is unioned in
+#     only when the shortlist is non-empty, so chit-chat stays clean.
+#   - A failed classify call fails OPEN: that batch's tools are all included.
+#     Degraded routing beats a silently tool-less agent.
+#
+# Try it — send several tools and watch only the relevant one get injected:
+#   curl localhost:8080/v1/chat/completions -H 'content-type: application/json' \
+#     -d '{"model":"tool-router","messages":[{"role":"user","content":"What is the weather in Paris?"}],
+#          "tools":[{"type":"function","function":{"name":"get_weather","description":"Get the current weather for a city."}},
+#                   {"type":"function","function":{"name":"send_email","description":"Send an email to a recipient."}},
+#                   {"type":"function","function":{"name":"run_sql","description":"Run a SQL query against the analytics warehouse."}}]}'
+
+workspace:
+  name: tool-router
+
+  models:
+    - id: llm
+      name: Qwen/Qwen3-0.6B-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: Qwen3-0.6B-Q8_0.gguf
+        n_ctx: 8192
+        n_seq_max: 4
+        n_gpu_layers: 999
+        flash_attn_type: AUTO
+
+    # Zero-shot classifier. No `labels` here on purpose: the tool_select step
+    # supplies one label per tool as a PER-REQUEST override, built from the tool
+    # names and descriptions on the incoming request.
+    - id: tool-router
+      name: gravitee-io/gliner4j-gliner2-base-v1
+      type: gliner_classifier
+      memory_check: disabled
+      gliner_classifier:
+        variant: onnx_fp16
+        threshold: 0.3
+
+  pipelines:
+    - id: tool-router
+      name: Tool Router Pipeline
+      entry: select_tools
+
+      steps:
+        - id: select_tools
+          type: tool_select
+          next_step: agent
+          config:
+            model_id: tool-router
+            # Blank input_field = classify the last user message (falls back to prompt).
+            batch_size: 4
+            threshold: 0.3
+            # Tools the agent should keep whenever it decided to use tools at all.
+            # always_include: [ "read_file" ]
+            #
+            # Also rewrite each SELECTED tool's description down to its condensed
+            # form before injecting it — saves tokens twice over.
+            trim_descriptions: true
+
+        - id: agent
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: agent.output
+            tags:
+              reasoning_open: "<think>"
+              reasoning_close: "</think>"
+              tool_open: "<tool_call>"
+              tool_close: "</tool_call>"
+            context:
+              enable_thinking: false

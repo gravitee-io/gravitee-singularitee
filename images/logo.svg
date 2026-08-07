@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2280 430" width="100%" height="100%">
+  <defs>
+    <linearGradient id="gravitee-grad" x1="223.45" x2="223.45" y1="12.54" y2="439.42" gradientTransform="matrix(1 0 0 -1 0 439.42)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff0c0b" />
+      <stop offset="1" stop-color="#ff8401" />
+    </linearGradient>
+  </defs>
+
+  <style>
+    .brand-text {
+      font-family: 'Inter', 'Euclid Circular A', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 340px;
+      font-weight: 700;
+      fill: #ffffff;
+      letter-spacing: -0.03em;
+    }
+  </style>
+
+  <!-- Prefix "Sin" -->
+  <text x="40" y="348" class="brand-text">Sin</text>
+
+  <!-- Gravitee 'G' Icon replacing the letter G -->
+  <g transform="translate(560, 0)">
+    <path fill="url(#gravitee-grad)" d="M213.48 0C95.58 0 0 95.56 0 213.44s95.57 213.44 213.48 213.44h97.43V322.35h136l-102.3-119.39H207.93l102.2 119.28h-96.65c-60.1 0-108.81-48.71-108.81-108.79s48.72-108.79 108.81-108.79c29.86 0 56.9 12.01 76.58 31.5l8.63 8.55 73.08-74.98-8.54-8.41C324.71 23.42 271.82.01 213.49.01" />
+  </g>
+
+  <!-- Suffix "ularitee" -->
+  <text x="1045" y="348" class="brand-text">ularitee</text>
+</svg>

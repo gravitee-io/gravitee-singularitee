@@ -1,0 +1,22 @@
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="io.gravitee.singularitee.pipeline" level="INFO"/>
+    <logger name="io.gravitee.singularitee.service" level="INFO"/>
+    <logger name="io.gravitee.singularitee.grpc" level="INFO"/>
+    <logger name="io.gravitee.singularitee.workspace" level="INFO"/>
+    <logger name="io.gravitee.singularitee.adapter" level="WARN"/>
+    <logger name="io.gravitee.singularitee.registry" level="INFO"/>
+    <logger name="io.gravitee.inference" level="WARN"/>
+    <logger name="io.grpc" level="ERROR"/>
+    <logger name="io.vertx" level="ERROR"/>
+    <logger name="io.netty" level="ERROR"/>
+
+    <root level="WARN">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>

@@ -1,0 +1,41 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Server — safety / classifier backend (:9092)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Hosts the lightweight ONNX classifiers — "pii" (bert-small token classifier),
+# "toxicity" (distilbert sequence classifier) and "router" (GLiNER zero-shot
+# intent classifier). No LLM, no pipelines: these are leaf models a client
+# stitches into a guard or routing pipeline alongside a generation model that
+# lives on a SEPARATE server. Cross-platform (ONNX Runtime, CPU).
+#
+# Swap the PII backend: replace "classifier/pii-bert.yaml" with "classifier/pii-gliner.yaml"
+# (both declare id "pii" — include exactly one).
+#
+# Launch (port via -Dgrpc.port):
+#   java -Dgrpc.port=9092 -Dai.workspace.path=examples/modular/server-safety.yaml \
+#        io.gravitee.singularitee.standalone.SingulariteeContainer
+
+workspace:
+  name: server-safety
+
+  includes:
+    models:
+      - classifier/pii-bert.yaml
+      - classifier/toxicity-bert.yaml
+      - classifier/router-gliner.yaml

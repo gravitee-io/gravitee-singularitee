@@ -1,0 +1,61 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Mistral-7B · vLLM backend
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/vllm/mistral-7b.yaml
+#
+# Dense 7.2B, bf16, 32k context. Mistral's template has no reasoning markers, so
+# only tool tags are set. A single 24GB card fits this at bf16 with room for KV.
+#
+# ⚠ Linux + CUDA only. vLLM runs from a host venv (scripts/setup-venv.sh) unless
+#   you use the -vllm-cuda image, which bundles it:
+#     ./run-server.sh --workspace examples/vllm/mistral-7b.yaml   -Dvllm4j.venv=/path/to/.venv
+#
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each loads its own
+# native CUDA bindings. One backend per server, composed over gRPC.
+
+workspace:
+  name: mistral-7b
+
+  models:
+    - id: llm
+      name: mistralai/Mistral-7B-Instruct-v0.3
+      type: vllm
+      memory_check: warn
+      vllm:
+        dtype: auto
+        max_model_len: 32768
+        max_num_seqs: 8
+        gpu_memory_utilization: 0.85
+        enforce_eager: false
+        enable_prefix_caching: true
+
+  pipelines:
+    - id: agent
+      name: Mistral-7B Agent Pipeline
+      entry: agent
+      steps:
+        - id: agent
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: agent.output
+            tags:
+              tool_open: "[TOOL_CALLS]"
+              tool_close: "</s>"

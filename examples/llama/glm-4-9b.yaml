@@ -1,0 +1,76 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# GLM-4-9B-0414 · markerless tool dialect
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/llama/glm-4-9b.yaml
+#
+# One model (id: llm) and one pipeline (id: agent), so the same client config and
+# curls work across every example file. Prose, measurements and caveats for this
+# model live in docs/models/README.md.
+#
+# n_ctx is PER SEQUENCE: total KV allocated is n_ctx * n_seq_max.
+# Dense 9B, MIT. No tool markers: a call IS the whole message — function name on
+# the first line, JSON arguments after. glm-name-json first-line tool-name
+# matching keeps false positives near zero. Both tested GGUF conversions have
+# incomplete EOG lists, so the model may role-play past its tool call — the
+# extraction template cuts at the first turn marker. Keep sampling modest.
+# Same dialect applies to GLM-4-32B-0414.
+
+workspace:
+  name: glm-4-9b
+
+  models:
+    - id: llm
+      name: lmstudio-community/GLM-4-9B-0414-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: GLM-4-9B-0414-Q4_K_M.gguf
+        n_ctx: 8192
+        n_seq_max: 1
+        n_gpu_layers: 999
+        flash_attn_type: AUTO
+        mtp: false
+
+  pipelines:
+    - id: agent
+      name: GLM-4-9B Agent Pipeline
+      entry: agent
+      steps:
+        - id: agent
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: agent.output
+            # no tags: the whole message is the call
+            tool_extraction_template: glm-name-json
+            sampling:
+              temperature: 0.6
+              top_p: 0.85
+              # GLM ends a tool call by emitting <|observation|> and expects the runtime to
+              # supply the result. The GGUF does not flag it end-of-generation, so without a
+              # stop string the model runs straight past it and writes the observation itself
+              # — a fabricated tool result, indistinguishable from a real one downstream.
+              # <|user|> is the same hazard for the next turn.
+              stop:
+                - "<|observation|>"
+                - "<|user|>"
+            # optional: compact tool schemas (~half the tool-block tokens) via a
+            # workspace template override of the official chat template:
+            # chat_template: glm-compact

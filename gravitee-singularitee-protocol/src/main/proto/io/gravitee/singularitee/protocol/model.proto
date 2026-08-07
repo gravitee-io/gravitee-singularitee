@@ -1,0 +1,149 @@
+//
+// Copyright © 2015 The Gravitee team (http://gravitee.io)
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+/*
+ * Copyright © 2015 The Gravitee team (http://gravitee.io)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// Singularitee — model lifecycle protocol.
+//
+// Defines the read-only query service for models (Get / List) and all
+// engine configuration messages. Models are loaded once at startup from the
+// workspace YAML and live for the lifetime of the process — there is no
+// runtime model lifecycle (no Publish, no Update, no Retire, no drain-and-swap).
+
+syntax = "proto3";
+
+package io.gravitee.singularitee.protocol;
+
+option java_package = "io.gravitee.singularitee.protocol";
+option java_outer_classname = "ModelProto";
+option java_multiple_files = true;
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service GraviteeModelService {
+  rpc GetModel     (GetModelRequest)      returns (GetModelResponse);
+  rpc ListModels   (ListModelsRequest)    returns (ListModelsResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+// Categorises a published model by its inference modality.
+enum ModelType {
+  MODEL_TYPE_UNSPECIFIED             = 0;
+  MODEL_TYPE_LLAMA_CPP               = 1;
+  MODEL_TYPE_VLLM                    = 2;
+  MODEL_TYPE_ONNX_CLASSIFIER         = 3;
+  MODEL_TYPE_ONNX_EMBEDDING          = 4;
+  MODEL_TYPE_GLINER_CLASSIFIER       = 5;
+  MODEL_TYPE_GLINER_NER              = 6;
+  MODEL_TYPE_ONNX_RERANKER           = 7;
+  MODEL_TYPE_LLAMA_CPP_EMBEDDING     = 8;
+  MODEL_TYPE_LLAMA_CPP_RERANKER      = 9;
+}
+
+// Lifecycle state of a published model.
+enum ModelStatus {
+  MODEL_STATUS_UNSPECIFIED = 0;
+  // The model is live and accepting inference requests.
+  MODEL_STATUS_ACTIVE      = 1;
+  // The model failed to load or an unrecoverable error occurred.
+  MODEL_STATUS_ERROR       = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Publish
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Get / List
+// ---------------------------------------------------------------------------
+
+message GetModelRequest  { string model_id = 1; }
+
+message GetModelResponse {
+  string      model_id   = 1;
+  string      model_name = 2;
+  ModelType   model_type = 3;
+  ModelStatus status     = 4;
+
+  // Chat template metadata (populated for LLM models).
+  // Allows remote clients to render the chat template locally.
+  string chat_template = 10;
+  string bos_token     = 11;
+  string eos_token     = 12;
+
+  // Pipeline task slug describing what API surface this model exposes.
+  // Lets remote callers route requests to the appropriate endpoint
+  // (/chat/completions, /embeddings, /classify, …) without having to
+  // introspect engine-specific modes.
+  //
+  // Known values:
+  //   "text-generation"       — causal/seq2seq LMs; maps to /chat/completions, /completions, /responses
+  //   "text-classification"   — sequence-level classifiers (sentiment, toxicity, topic); /classify without spans
+  //   "token-classification"  — token-level classifiers / NER / PII; /classify with character spans
+  //   "feature-extraction"    — dense vector embeddings; /embeddings
+  //
+  // Empty string when the task cannot be determined.
+  string task          = 13;
+}
+
+// ---------------------------------------------------------------------------
+// List
+// ---------------------------------------------------------------------------
+
+message ListModelsRequest  {}
+message ListModelsResponse { repeated GetModelResponse models = 1; }
+
+// ---------------------------------------------------------------------------
+// Engine configs
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Memory check
+// ---------------------------------------------------------------------------
+
+enum MemoryCheckPolicy {
+  MEMORY_CHECK_POLICY_UNSPECIFIED = 0;
+  // Abort loading if the model will not fit in available VRAM.
+  MEMORY_CHECK_POLICY_FAIL        = 1;
+  // Log a warning but continue loading.
+  MEMORY_CHECK_POLICY_WARN        = 2;
+  // Skip the memory check entirely.
+  MEMORY_CHECK_POLICY_DISABLED    = 3;
+}
+
+// ---------------------------------------------------------------------------
+// GLiNER4j configs
+// ---------------------------------------------------------------------------
+

@@ -1,0 +1,160 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# gpt-oss-20b · vLLM backend
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/vllm/gpt-oss-20b-mac.yaml
+#
+# MoE 21B (32 experts), 131k context. Ships PRE-QUANTIZED (MXFP4) — leave
+# `quantization` unset so vLLM reads it from the checkpoint's own
+# quantization_config rather than being told something that contradicts it.
+# The VRAM pre-flight reads those 4-bit weights correctly.
+#
+# ⚠ Linux + CUDA only. vLLM runs from a host venv (scripts/setup-venv.sh) unless
+#   you use the -vllm-cuda image, which bundles it:
+#     ./run-server.sh --workspace examples/vllm/gpt-oss-20b.yaml   -Dvllm4j.venv=/path/to/.venv
+#
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each loads its own
+# native CUDA bindings. One backend per server, composed over gRPC.
+
+workspace:
+  name: gpt-oss-20b
+
+  models:
+    - id: llm
+      name: openai/gpt-oss-20b
+      type: vllm
+      memory_check: warn
+      # The repo ships the same weights three times: the sharded safetensors
+      # vLLM loads (13.8 GB), original/model.safetensors (another 13.8 GB), and
+      # metal/model.bin for Apple's runtime (13.7 GB). The .bin is already
+      # skipped — safetensors is the preferred format — but original/ is
+      # safetensors too, so without this the download is 27.5 GB for a 13.8 GB
+      # model.
+      download:
+        exclude:
+          - "original/*"
+      vllm:
+        dtype: auto
+        # 48 KiB of KV per token (24 layers x 8 KV heads x 64 head_dim, K+V, bf16),
+        # so the CUDA file's 131072 wants 6.0 GiB of KV per sequence on top of
+        # 12.8 GiB of weights. 16384 costs 0.75 GiB.
+        max_model_len: 16384
+        max_num_seqs: 2
+        # Sizes the profiling forward pass that runs right after the weights load.
+        # With chunked prefill off it defaults to max_model_len, i.e. one batch of
+        # activations for the whole window — that allocation is what aborts Metal
+        # with kIOGPUCommandBufferCallbackErrorOutOfMemory before serving starts.
+        max_num_batched_tokens: 2048
+        enable_chunked_prefill: true
+        # Applied to TOTAL unified memory, not what is free: on a 38.7 GB machine
+        # reporting 23.7 GB available and a 28.1 GB wired limit, 0.85 asks for
+        # 32.9 GB and cannot succeed.
+        gpu_memory_utilization: 0.5
+        # torch.compile/inductor on MPS costs memory and a long cold start for no
+        # win — the Metal backend runs without CUDA graphs or fused kernels anyway.
+        enforce_eager: true
+        # Left unset on purpose: the server turns prefix caching off by itself on
+        # Metal, where the paged-attention runtime loses the RequestState for
+        # cached requests and emits token id 0 as a placeholder —
+        #   WARNING [model_runner.py:2080] Paged cached request ... has no
+        #   RequestState; emitting placeholder token
+        # Set it to true here to re-test once that is fixed upstream.
+
+  pipelines:
+    - id: agent
+      name: gpt-oss-20b Agent Pipeline
+      entry: agent
+      steps:
+        - id: agent
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: agent.output
+            # Harmony renders "Reasoning: <effort>" into the system block from this
+            # variable (low | medium | high; the template defaults to medium when
+            # unset). Set explicitly so the knob is visible — lower it for latency,
+            # raise it for harder tasks. Step context merges into the Jinja root, so
+            # this is just a template variable; models that don't read it ignore it.
+            context:
+              # medium, not low: at low this model writes malformed JSON for tool
+              # arguments often enough to break agent flows — mismatched brackets,
+              # one edit split across two objects, stray trailing punctuation. The
+              # extra reasoning tokens cost latency; a rejected tool call costs the
+              # whole turn.
+              reasoning_effort: medium
+            tags:
+              # Harmony enters its non-answer channels two ways, and re-enters them
+              # WITHIN one generation: analysis, back to final, then a commentary
+              # preamble before a tool call. Without reasoning_repeatable that second
+              # opening stops matching and its header reaches the client as raw text
+              # ("<|channel|>commentary<|message|>Now step 2..."), billed as answer.
+              # Every run-anchored form, exactly like tool_open: a chained transition
+              # (analysis straight into a commentary preamble) emits
+              # <|end|><|start|>assistant<|channel|>commentary<|message|> as ONE run,
+              # and a marker anchored at <|channel|> can never match it — the whole
+              # header leaked into the stream as raw text.
+              reasoning_open:
+                - "<|end|><|start|>assistant<|channel|>analysis<|message|>"
+                - "<|end|><|start|>assistant<|channel|>commentary<|message|>"
+                - "<|start|>assistant<|channel|>analysis<|message|>"
+                - "<|start|>assistant<|channel|>commentary<|message|>"
+                - "<|channel|>analysis<|message|>"
+                - "<|channel|>commentary<|message|>"
+              reasoning_repeatable: true
+              # Two ways out of the analysis channel. Answering directly, the run ends
+              # with <|end|> and the final header follows; when a tool call intervenes
+              # the terminator is <|call|> instead. Listing one marker leaks the other
+              # path's header into the answer as visible syntax.
+              reasoning_close:
+                - "<|end|><|start|>assistant<|channel|>final<|message|>"
+                - "<|call|><|start|>assistant<|channel|>final<|message|>"
+                # The bare header, for the turn that FOLLOWS a tool call: that
+                # generation starts fresh with no analysis span open, and the model
+                # still prefixes its reply with it. A close marker reaching the
+                # answer channel is stray syntax, so it is suppressed there too —
+                # otherwise the reply reads "<|channel|>final<|message|>DONE".
+                - "<|channel|>final<|message|>"
+                # Bare terminator, as a safety net: when <|end|> is followed by
+                # something no marker anticipates, the short close settles and only
+                # the genuinely unknown remainder shows — instead of the whole
+                # buffered header. Longest match keeps the folded forms winning.
+                - "<|end|>"
+              # BOTH header orders occur in practice. Observed live:
+              # "<|end|><|start|>assistant<|channel|>commentary to=functions.write", i.e.
+              # the channel segment BEFORE to=functions; the form without it shows up too.
+              # Listing only one leaks the other's entire header into the answer as visible
+              # syntax. The <|end|>/<|call|>-prefixed forms matter because a run that leaves
+              # the analysis channel for a tool call starts at that terminator — nothing
+              # else consumes it — so a marker anchored at <|channel|> can never match there.
+              tool_open:
+                - "<|end|><|start|>assistant<|channel|>commentary to=functions."
+                - "<|end|><|start|>assistant<|channel|>analysis to=functions."
+                - "<|call|><|start|>assistant<|channel|>commentary to=functions."
+                - "<|end|><|start|>assistant to=functions."
+                - "<|start|>assistant<|channel|>commentary to=functions."
+                - "<|start|>assistant to=functions."
+                - "<|channel|>commentary to=functions."
+                - "<|channel|>analysis to=functions."
+              # Longest first: when the model continues past the call, the header is part
+              # of the marker; when <|call|> ends generation (the agent flow, it is an EOS
+              # token) the short form settles the span at flush.
+              tool_close:
+                - "<|call|><|start|>assistant<|channel|>final<|message|>"
+                - "<|call|>"
+            tool_extraction_template: harmony # built-in

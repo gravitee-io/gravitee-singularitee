@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Copyright © 2015 The Gravitee team (http://gravitee.io)
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+<!--
+    Directory layout shared by every distribution flavour.
+
+    The flavours (full / onnx / llama / vllm) differ only in which engine JARs
+    they carry, so the bin/, config/, logs/ and plugins/ layout lives here once
+    rather than being repeated in each descriptor.
+-->
+<component xmlns="http://maven.apache.org/ASSEMBLY-COMPONENT/2.2.0"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://maven.apache.org/ASSEMBLY-COMPONENT/2.2.0 https://maven.apache.org/xsd/assembly-component-2.2.0.xsd">
+    <fileSets>
+        <fileSet>
+            <directory>src/main/resources/bin</directory>
+            <outputDirectory>bin</outputDirectory>
+            <fileMode>0755</fileMode>
+        </fileSet>
+        <fileSet>
+            <directory>src/main/resources/config</directory>
+            <outputDirectory>config</outputDirectory>
+            <filtered>true</filtered>
+        </fileSet>
+        <fileSet>
+            <directory>.</directory>
+            <outputDirectory>logs</outputDirectory>
+            <excludes>
+                <exclude>**/*</exclude>
+            </excludes>
+        </fileSet>
+        <fileSet>
+            <directory>.</directory>
+            <outputDirectory>plugins</outputDirectory>
+            <excludes>
+                <exclude>**/*</exclude>
+            </excludes>
+        </fileSet>
+    </fileSets>
+</component>

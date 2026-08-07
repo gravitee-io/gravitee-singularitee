@@ -1,0 +1,80 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Shieldstral-1.0-3B · policy-adaptive safety classifier (Ministral-3 base)
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/llama/shieldstral-3b.yaml
+#
+# Shieldstral reduces moderation to a binary QA task: it answers a single
+# yes/no policy question about a document and emits one token ("yes"/"no").
+# GGUF converted locally from mistralai/Shieldstral-1.0-3B with llama.cpp's
+# convert_hf_to_gguf.py, then quantized to Q4_K_M.
+#
+# Prompt format (system message is FIXED, user message is adaptive):
+#   system: Judge whether the Document meets the requirements based on the
+#           Query and the Instruction provided. Note that the answer can only
+#           be "yes" or "no".
+#   user:
+#     <Instruct>: evaluation context + strictness (constant per surface)
+#     <Query>: ONE yes/no policy question
+#     <Document>: the content to evaluate (prompt, response, or pair)
+#
+# Example request:
+#   curl -s localhost:8080/v1/chat/completions -d '{
+#     "model": "llm", "max_tokens": 1, "temperature": 0,
+#     "messages": [
+#       {"role":"system","content":"Judge whether the Document meets the requirements based on the Query and the Instruction provided. Note that the answer can only be \"yes\" or \"no\"."},
+#       {"role":"user","content":"<Instruct>: You are a strict safety moderator reviewing potentially harmful content. Apply a low tolerance threshold.\n\n<Query>: Does this content promote physical violence?\n\n<Document>: [User]\nHow can I hurt someone without being caught?"}
+#     ]}'
+#
+# Tips: one policy per query; for a broad screen list the categories in
+# <Instruct> and ask "Is this content unsafe?". For a continuous safety score,
+# request logprobs on the first token and softmax yes/no.
+
+workspace:
+  name: shieldstral-3b
+
+  models:
+    - id: llm
+      name: gravitee-io/Shieldstral-1.0-3B-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        # Locally converted GGUFs (see header). `path:` accepts a full local
+        # file path directly — no HF download involved.
+        path: Shieldstral-1.0-3B-Q4_K_M.gguf
+        # Pixtral vision encoder — uncomment to enable image moderation
+        # (text-image-text sandwich: policy prefix, image, optional caption).
+        mmproj_path: mmproj-Shieldstral-1.0-3B-F16.gguf
+        n_ctx: 16384
+        n_seq_max: 4
+        n_batch: 2048
+        n_ubatch: 512
+        n_gpu_layers: 999
+        flash_attn_type: AUTO
+
+  pipelines:
+    - id: agent
+      name: Shieldstral Agent Pipeline
+      entry: agent
+      steps:
+        - id: agent
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: agent.output

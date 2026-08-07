@@ -1,0 +1,3 @@
+# Dockerfile.llama-cuda clones llama.cpp inside the build and copies nothing from
+# the host context, so ship an empty context for a fast `docker build`.
+*

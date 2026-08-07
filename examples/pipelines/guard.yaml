@@ -1,0 +1,137 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Pipeline — guard: PII redaction + toxicity rejection, then generation
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/pipelines/guard.yaml
+#
+#   toxicity_guard (reject) ──→ pii_guard (redact) ──→ generate
+#
+# Two guard actions, deliberately in this order:
+#   REJECT first  — toxic input never reaches the model at all, so you don't pay
+#                   for generation on a request you were going to refuse.
+#   REDACT second — clean-but-sensitive input is rewritten (spans masked) and the
+#                   REDACTED text, not the original, is what the LLM ever sees.
+#
+# A guard is just a classifier plus a decision, which is why both steps here are
+# ONNX models a fraction of the LLM's size: screening is cheap, generation is not.
+#
+# Try it:
+#   curl localhost:8080/v1/chat/completions -H 'content-type: application/json' \
+#     -d '{"model":"guard","messages":[{"role":"user",
+#          "content":"Summarise this: John Doe, IBAN FR7630006000011234567890189."}]}'
+
+workspace:
+  name: guard
+
+  models:
+    - id: llm
+      name: Qwen/Qwen3-0.6B-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: Qwen3-0.6B-Q8_0.gguf
+        n_ctx: 8192
+        n_seq_max: 4
+        n_gpu_layers: 999
+        flash_attn_type: AUTO
+
+    - id: pii
+      name: gravitee-io/bert-small-pii-detection
+      type: onnx_classifier
+      memory_check: disabled
+      onnx_classifier:
+        model_path: model.onnx
+        tokenizer_path: tokenizer.json
+        config_json_path: config.json
+        max_sequence_length: 512
+        classifier_mode: TOKEN
+
+    - id: toxicity
+      name: gravitee-io/distilbert-multilingual-toxicity-classifier
+      type: onnx_classifier
+      memory_check: disabled
+      onnx_classifier:
+        model_path: model.quant.onnx
+        tokenizer_path: tokenizer.json
+        config_json_path: config.json
+        labels:
+          - non-toxic
+          - toxic
+        max_sequence_length: 512
+        classifier_mode: SEQUENCE
+
+  pipelines:
+    - id: guard
+      name: Guard Pipeline
+      entry: toxicity_guard
+
+      steps:
+        # Reject: a "toxic" score above the trigger ends the request here, and the
+        # caller gets `message` instead of a generation.
+        - id: toxicity_guard
+          type: guard
+          next_step: pii_guard
+          config:
+            model_id: toxicity
+            input_field: prompt
+            action: reject
+            trigger:
+              label: toxic
+              score: 0.75
+            message: "Your request was blocked because toxic content was detected (label: {{toxicity_guard.label}}, confidence: {{toxicity_guard.score}})."
+
+        # Redact: detected spans are masked and the result written to
+        # pii_guard.output — which is what the generate step reads below.
+        # The trigger label is "PII" because the bert-small backend aggregates its
+        # BIO token labels under that single entity. Swapping in the zero-shot
+        # GLiNER backend (examples/classifier/pii-gliner.yaml) means replacing this
+        # single trigger with that model's own entity labels, e.g.
+        #     triggers:
+        #       - { label: person,       score: 0.3 }
+        #       - { label: email,        score: 0.3 }
+        #       - { label: phone_number, score: 0.3 }
+        #       - { label: iban,         score: 0.3 }
+        - id: pii_guard
+          type: guard
+          next_step: generate
+          config:
+            model_id: pii
+            input_field: prompt
+            action: redact
+            output_field: pii_guard.output
+            trigger:
+              label: PII
+              score: 0.5
+
+        - id: generate
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: generate.output
+            prompt:
+              messages:
+                - role: system
+                  content: "Answer the user. Some values may appear masked — treat them as redacted and never try to guess them."
+                - role: user
+                  content: "{{pii_guard.output}}"
+            sampling:
+              max_tokens: 512
+              temperature: 0.8
+            context:
+              enable_thinking: false

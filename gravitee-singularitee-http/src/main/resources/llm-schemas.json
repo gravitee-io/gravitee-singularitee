@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "chatCompletions": {
+      "type": "object",
+      "required": ["model", "messages"],
+      "properties": {
+        "model": { "type": "string" },
+        "messages": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["role"],
+            "properties": { "role": { "type": "string" } }
+          }
+        },
+        "stream": { "type": "boolean" },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "top_p": { "type": "number" },
+        "max_tokens": { "type": "integer" },
+        "max_completion_tokens": { "type": "integer" },
+        "n": { "type": "integer" },
+        "presence_penalty": { "type": "number" },
+        "frequency_penalty": { "type": "number" },
+        "seed": { "type": "integer" },
+        "stop": { "type": ["string", "array"] },
+        "tools": { "type": "array" },
+        "stream_options": { "type": "object" },
+        "logprobs": { "type": "boolean" },
+        "top_logprobs": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "reasoning_effort": { "enum": ["minimal", "low", "medium", "high"] },
+        "reasoning": {
+          "type": "object",
+          "properties": {
+            "effort": { "enum": ["minimal", "low", "medium", "high"] }
+          }
+        }
+      }
+    },
+    "completions": {
+      "type": "object",
+      "required": ["model", "prompt"],
+      "properties": {
+        "model": { "type": "string" },
+        "prompt": { "type": ["string", "array"] },
+        "stream": { "type": "boolean" },
+        "max_tokens": { "type": "integer" },
+        "temperature": { "type": "number" }
+      }
+    },
+    "responses": {
+      "type": "object",
+      "required": ["model", "input"],
+      "properties": {
+        "model": { "type": "string" },
+        "input": { "type": ["string", "array"] },
+        "stream": { "type": "boolean" },
+        "instructions": { "type": "string" },
+        "max_output_tokens": { "type": "integer" },
+        "reasoning_effort": { "enum": ["minimal", "low", "medium", "high"] },
+        "reasoning": {
+          "type": "object",
+          "properties": {
+            "effort": { "enum": ["minimal", "low", "medium", "high"] }
+          }
+        }
+      }
+    },
+    "embeddings": {
+      "type": "object",
+      "required": ["model", "input"],
+      "properties": {
+        "model": { "type": "string" },
+        "input": { "type": ["string", "array"] },
+        "encoding_format": { "type": "string", "enum": ["float", "base64"] },
+        "dimensions": { "type": "integer" }
+      }
+    },
+    "classify": {
+      "type": "object",
+      "required": ["model", "input"],
+      "properties": {
+        "model": { "type": "string" },
+        "input": { "type": ["string", "array"] },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "similarity": {
+      "type": "object",
+      "required": ["model", "input", "candidates"],
+      "properties": {
+        "model": { "type": "string" },
+        "input": { "type": ["string", "array"] },
+        "candidates": { "type": ["string", "array"] },
+        "mode": { "type": "string", "enum": ["cross", "zipped"] }
+      }
+    },
+    "rerank": {
+      "type": "object",
+      "required": ["model", "query", "documents"],
+      "properties": {
+        "model": { "type": "string" },
+        "query": { "type": "string" },
+        "documents": { "type": "array", "minItems": 1 },
+        "top_k": { "type": "integer" },
+        "return_documents": { "type": "boolean" }
+      }
+    }
+  }
+}

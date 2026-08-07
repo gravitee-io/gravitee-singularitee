@@ -1,0 +1,46 @@
+{#-
+  Gemma tool-call dialect:
+    <|tool_call>call:NAME{key:<|"|>value<|"|>,key2:80}<tool_call|>
+  or the bare (marker-less TOOL-channel) form:
+    call:NAME{...}call:NAME2{...}
+
+  <|"|>-delimited values are literal strings (they may contain commas, braces,
+  brackets and newlines) and are emitted verbatim as JSON strings — never
+  coerced. Bare values run to the next top-level comma (arrays/objects nest one
+  level, <|"|> regions inside them are opaque); nested <|"|> delimiters are
+  normalized to JSON quotes and the argument is flagged coercible so the client
+  can apply the tool's JSON-schema types. Keys may optionally be <|"|>-escaped.
+-#}
+{%- if '<|tool_call>' in output -%}
+{%- set bodies = output | regex_findall('(?s)<\\|tool_call>(.*?)<tool_call\\|>') -%}
+{%- else -%}
+{%- set bodies = output | regex_findall('(?s)call:(?:(?!call:).)+') -%}
+{%- endif -%}
+{%- set pair_re = '(?s)\\s*(?:<\\|"\\|>(.*?)<\\|"\\|>|([^:{}\\[\\],\\s][^:{}]*?))\\s*:\\s*(?:<\\|"\\|>(.*?)<\\|"\\|>|((?:<\\|"\\|>.*?<\\|"\\|>|\\[(?:<\\|"\\|>.*?<\\|"\\|>|[^\\]])*\\]|\\{(?:<\\|"\\|>.*?<\\|"\\|>|[^}])*\\}|[^,])+?))\\s*(?:,|$)' -%}
+[
+{%- set joiner = namespace(first=true) -%}
+{%- for body in bodies -%}
+{%- set name = body | regex_first('(?s)^\\s*call:\\s*([^{]+?)\\s*\\{', 1) -%}
+{%- set args_span = body | regex_first('(?s)\\{(.*)\\}', 1) -%}
+{%- if name is not none and args_span is not none -%}
+{%- if not joiner.first %},{% endif -%}
+{%- set joiner.first = false -%}
+{%- set pairs = args_span | regex_findall(pair_re) -%}
+{"name": {{ name | tojson }}, "arguments": {
+{%- for m in pairs -%}
+{%- set key = m[0] if m[0] is not none else m[1] | trim -%}
+{{ key | tojson }}: {% if m[2] is not none %}{{ m[2] | tojson }}{% else %}{{ m[3] | trim | replace('<|"|>', '"') | tojson }}{% endif %}{{ "," if not loop.last }}
+{%- endfor -%}
+}, "coerce": [
+{%- set c = namespace(first=true) -%}
+{%- for m in pairs -%}
+{%- if m[3] is not none -%}
+{%- if not c.first %},{% endif -%}
+{%- set c.first = false -%}
+{{ (m[0] if m[0] is not none else m[1] | trim) | tojson }}
+{%- endif -%}
+{%- endfor -%}
+]}
+{%- endif -%}
+{%- endfor -%}
+]

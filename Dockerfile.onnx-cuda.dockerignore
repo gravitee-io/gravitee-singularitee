@@ -1,0 +1,20 @@
+# BuildKit per-Dockerfile ignore for Dockerfile.onnx-cuda.
+# The runtime stage COPYs the pre-built -Pcuda,dist-onnx distribution from the host
+# (gravitee-singularitee-standalone/.../target/distribution), so that one path must
+# stay in the build context; every other target/ is just bloat.
+.git
+**/target
+# Keep only the assembled standalone distribution (exclude the rest of its target/,
+# notably the ~1.2GB distribution.zip, archive-tmp, site).
+!gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target
+gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/*
+!gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution
+logs
+*.log
+.idea
+*.iml
+.run
+aws
+helm
+docs
+**/*.md

@@ -1,0 +1,168 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "title": "Singularitee — GPU & Reasoning",
+  "uid": "gravitee-ai-gpu",
+  "tags": ["gravitee", "singularitee", "gpu", "reasoning"],
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "row",
+      "title": "GPU (nvidia-smi)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 200,
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "GPU utilization",
+      "id": 20,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "targets": [ { "refId": "A", "expr": "max by (gpu, name) (gpu_utilization_percent)", "legendFormat": "gpu{{gpu}} {{name}}" } ]
+    },
+    {
+      "type": "stat",
+      "title": "VRAM used",
+      "id": 21,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "expr": "max by (gpu, name) (gpu_memory_used_bytes)", "legendFormat": "gpu{{gpu}} {{name}}" } ]
+    },
+    {
+      "type": "stat",
+      "title": "Temperature",
+      "id": 22,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "celsius", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 85 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "targets": [ { "refId": "A", "expr": "max by (gpu, name) (gpu_temperature_celsius)", "legendFormat": "gpu{{gpu}} {{name}}" } ]
+    },
+    {
+      "type": "stat",
+      "title": "Power draw",
+      "id": 23,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "watt" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "expr": "max by (gpu, name) (gpu_power_watts)", "legendFormat": "gpu{{gpu}} {{name}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU utilization (%)",
+      "id": 24,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "max by (gpu, name) (gpu_utilization_percent)", "legendFormat": "gpu{{gpu}} {{name}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "VRAM used / total (bytes)",
+      "id": 25,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [ { "matcher": { "id": "byRegexp", "options": "total.*" }, "properties": [ { "id": "custom.fillOpacity", "value": 0 }, { "id": "custom.lineStyle", "value": { "dash": [8, 4], "fill": "dash" } } ] } ] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "max by (gpu, name) (gpu_memory_used_bytes)", "legendFormat": "used gpu{{gpu}}" },
+        { "refId": "B", "expr": "max by (gpu, name) (gpu_memory_total_bytes)", "legendFormat": "total gpu{{gpu}}" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Reasoning vs Content",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "id": 100,
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Reasoning share (all-time)",
+      "id": 1,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 60 }, { "color": "red", "value": 85 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "expr": "100 * sum(ai_tokens_total{kind=\"reasoning\"}) / clamp_min(sum(ai_tokens_total{kind=~\"reasoning|completion\"}), 1)", "legendFormat": "reasoning %" } ]
+    },
+    {
+      "type": "stat",
+      "title": "Reasoning tokens/s",
+      "id": 2,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "expr": "sum(rate(ai_tokens_total{kind=\"reasoning\"}[$__rate_interval]))", "legendFormat": "reasoning" } ]
+    },
+    {
+      "type": "stat",
+      "title": "Content tokens/s",
+      "id": 3,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "expr": "sum(rate(ai_tokens_total{kind=\"completion\"}[$__rate_interval]))", "legendFormat": "content" } ]
+    },
+    {
+      "type": "stat",
+      "title": "Avg reasoning tokens / request",
+      "id": 4,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "expr": "sum(increase(ai_tokens_total{kind=\"reasoning\"}[$__range])) / clamp_min(sum(increase(ai_pipeline_requests_total[$__range])), 1)", "legendFormat": "tok/req" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Token throughput — reasoning vs content (tok/s)",
+      "id": 5,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "cps", "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "none" } } }, "overrides": [ { "matcher": { "id": "byName", "options": "reasoning" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } } ] }, { "matcher": { "id": "byName", "options": "content" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } } ] } ] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(ai_tokens_total{kind=\"reasoning\"}[$__rate_interval]))", "legendFormat": "reasoning" },
+        { "refId": "B", "expr": "sum(rate(ai_tokens_total{kind=\"completion\"}[$__rate_interval]))", "legendFormat": "content" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Reasoning share over time (%)",
+      "id": 6,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "fillOpacity": 15, "gradientMode": "opacity" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] }, "tooltip": { "mode": "single" } },
+      "targets": [ { "refId": "A", "expr": "100 * sum(rate(ai_tokens_total{kind=\"reasoning\"}[$__rate_interval])) / clamp_min(sum(rate(ai_tokens_total{kind=~\"reasoning|completion\"}[$__rate_interval])), 0.001)", "legendFormat": "reasoning %" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cumulative tokens — reasoning vs content",
+      "id": 7,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 31 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [ { "matcher": { "id": "byName", "options": "reasoning" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } } ] }, { "matcher": { "id": "byName", "options": "content" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } } ] } ] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(ai_tokens_total{kind=\"reasoning\"})", "legendFormat": "reasoning" },
+        { "refId": "B", "expr": "sum(ai_tokens_total{kind=\"completion\"})", "legendFormat": "content" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Client — MULTI-SERVER (safety :9092  +  vLLM GPTQ :9091)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# One client, two servers. The classifiers live on the cross-platform safety
+# server while generation runs on a CUDA vLLM server — the "split by backend"
+# pattern this rework exists to show:
+#   - "pii" / "toxicity" classifiers ──→ safety server (:9092)
+#   - "llm" generation               ──→ vLLM GPTQ server (:9091)
+#
+#   pii-redact:     pii_guard @safety ──→ generate @vllm
+#   toxicity-guard: toxicity_guard @safety ──→ generate @vllm
+#
+# Prerequisites: server-safety.yaml on :9092 AND server-vllm-gptq.yaml on :9091
+# (the vLLM server needs -Dvllm4j.venv). Point the "llm" server at :9093 to use
+# the AWQ server instead.
+#
+# Launch:
+#   java io.gravitee.singularitee.cli.Main \
+#        --workspace examples/modular/client-safety-vllm.yaml \
+#        --pipeline pii-redact-pipeline
+#   (or --pipeline toxicity-guard-pipeline)
+
+workspace:
+  name: client-safety-vllm
+
+  remote:
+    servers:
+      - id: safety
+        host: 127.0.0.1
+        port: 9092
+      - id: vllm
+        host: 127.0.0.1
+        port: 9091
+
+  models:
+    - id: pii
+      type: remote_classifier
+      server: safety
+
+    - id: toxicity
+      type: remote_classifier
+      server: safety
+
+    - id: llm
+      type: remote_llm
+      server: vllm
+
+  includes:
+    pipelines:
+      - pii-redact.yaml
+      - toxicity-guard.yaml

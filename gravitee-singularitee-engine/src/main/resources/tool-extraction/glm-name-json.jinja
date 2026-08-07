@@ -1,0 +1,31 @@
+{#-
+  GLM-4 marker-less tool-call dialect: the ENTIRE message is a single call,
+    function_name
+    {"arg": "value", ...}
+  No wrapper markers exist. To keep false positives near zero the first line
+  (trimmed) must exactly match one of the request's tool names, and the
+  remainder must be a JSON object; anything else renders []. The arguments
+  are emitted verbatim, so a malformed JSON body fails the array parse
+  downstream and the extraction stays fail-open (no calls).
+-#}
+{#- Models with incomplete EOG configs often role-play past the call
+    ("<|observation|>\nEmail sent..."); cut everything from the handoff marker on. -#}
+{%- set out = output | split('<|observation|>') | first | split('<|user|>') | first -%}
+{#- The call may follow an inline <|assistant|> marker, with the model's reasoning in front of
+    it ("Let's run this:<|assistant|>bash\n{...}"). Take the segment AFTER the last one: the
+    text before it is prose, and treating that as the call renders [] — the call is dropped and
+    the turn ends as a plain answer, which is indistinguishable from the model not calling. -#}
+{%- set out = out | split('<|assistant|>') | last | trim -%}
+{%- set name = out | regex_first('^([^\n]+)', 1) -%}
+{%- set name = (name | trim) if name is not none else none -%}
+{%- set rest = out | regex_first('(?s)^[^\n]+\n(.*)$', 1) -%}
+{%- set rest = (rest | trim) if rest is not none else none -%}
+{%- set match = namespace(found=false) -%}
+{%- for t in tools -%}
+{%- if t.name == name -%}{%- set match.found = true -%}{%- endif -%}
+{%- endfor -%}
+{%- if match.found and rest is not none and rest | regex_first('(?s)^\\{.*\\}$') is not none -%}
+[{"name": {{ name | tojson }}, "arguments": {{ rest }}}]
+{%- else -%}
+[]
+{%- endif -%}

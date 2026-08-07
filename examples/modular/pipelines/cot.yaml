@@ -1,0 +1,98 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Pipeline — chain-of-thought with a self-refinement loop.
+#
+#   reason ──→ evaluate ──→ loop_gate ──→ answer
+#     ↑___________________________|
+#     (loops back to refine while the evaluator says "NO", max 3 iterations)
+#     └────────────────────────────────────────→ fallback_answer (loop exhausted)
+#
+# A single generation model under logical id "llm" plays every role: it reasons,
+# judges whether the reasoning is conclusive, refines on loop-back, and writes
+# the final answer. Runs on any LLM backend (llama.cpp or vLLM).
+
+workspace:
+  pipelines:
+    - id: cot-pipeline
+      name: Chain-of-Thought Pipeline
+      entry: reason
+
+      steps:
+        # Think through the problem. Hidden reasoning (role: thinking) is stripped
+        # from the streamed output but kept in context for the steps below.
+        - id: reason
+          type: infer
+          role: thinking
+          next_step: evaluate
+          config:
+            model_id: llm
+            output_field: reason.output
+            strip_thinking: true
+
+        # Self-judge: is the reasoning conclusive? Emits a strict YES / NO.
+        - id: evaluate
+          type: infer
+          role: internal
+          next_step: loop_gate
+          config:
+            model_id: llm
+            output_field: evaluate.output
+            prompt:
+              messages:
+                - role: user
+                  content: "Question: {{prompt}}\nReasoning so far: {{reason.output}}\nDoes the reasoning reach a clear, complete, final answer to the question? Reply with only YES or NO."
+
+        # Gate: exit to `answer` when the evaluator says YES; otherwise loop back
+        # to `reason` to refine. After max_iterations, go to `fallback_answer`.
+        - id: loop_gate
+          type: loop
+          next_step: answer
+          config:
+            loopback_step: reason
+            fallback_step: fallback_answer
+            max_iterations: 3
+            condition:
+              type: contains
+              input_field: evaluate.output
+              match_value: "YES"
+            loopback_message:
+              role: user
+              content: "Your previous reasoning was not yet conclusive (evaluator said '{{evaluate.output}}'). Continue your thinking — refine your analysis and work towards a clearer conclusion."
+
+        # Condition met — produce the validated answer.
+        - id: answer
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: answer.output
+            prompt:
+              messages:
+                - role: user
+                  content: "Based on this reasoning: {{reason.output}}\nGive a clear, concise answer to: {{prompt}}"
+
+        # Max iterations exhausted — best-effort answer.
+        - id: fallback_answer
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: fallback_answer.output
+            prompt:
+              messages:
+                - role: user
+                  content: "Based on the reasoning so far ({{reason.output}}), give your best concise answer to: {{prompt}}. If you are still unsure, say so honestly."

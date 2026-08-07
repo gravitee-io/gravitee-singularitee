@@ -1,0 +1,39 @@
+# Ignore all of .idea/ (local IDE state)
+.idea/*
+.project
+.settings/
+.factorypath
+target/
+**/target/
+.java-version
+.classpath
+dependency-reduced-pom.xml
+
+# Local env overrides (may contain secrets)
+*.env.local
+*.pem
+**/*.env
+.env
+
+# Maven settings written by CI from $MAVEN_SETTINGS — repository credentials.
+# The release job restores it into the working tree; must never be committable.
+.gravitee.settings.xml
+
+# Server logs
+logs/
+
+# Production values (may contain secrets — never commit)
+prod/
+.claude
+**/__pycache__/**
+
+# k6 generated artifacts (corpora + run reports)
+k6/data/
+k6/reports/
+
+# Dev certificates from scripts/gen-dev-certs.sh — never commit key material
+certs/
+
+# macOS finder metadata
+.DS_Store
+**/.DS_Store

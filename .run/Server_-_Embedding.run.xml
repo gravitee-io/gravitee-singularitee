@@ -1,0 +1,23 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Server - Embedding" type="Application" factoryName="Application" folderName="Workspaces">
+    <option name="MAIN_CLASS_NAME" value="io.gravitee.singularitee.standalone.SingulariteeContainer" />
+    <envs>
+      <env name="GRAVITEE_GRPC_PORT" value="9102" />
+      <env name="GRAVITEE_AI_WORKSPACE_PATH" value="$PROJECT_DIR$/examples/embedding/bge-m3.yaml" />
+      <env name="GRAVITEE_HTTP_ENABLED" value="true" />
+      <env name="GRAVITEE_HTTP_PORT" value="8102" />
+      <env name="GRAVITEE_GRPC_AUTH_ENABLED" value="true" />
+      <env name="GRAVITEE_GRPC_AUTH_TYPE" value="basic" />
+      <env name="GRAVITEE_GRPC_AUTH_USERS_EMBEDDING" value="changeme" />
+      <env name="GRAVITEE_SERVICES_CORE_HTTP_PORT" value="18102" />
+      <env name="GRAVITEE_SERVICES_CORE_HTTP_AUTHENTICATION_USERS_ADMIN" value="changeme" />
+    </envs>
+    <option name="VM_PARAMETERS" value="--enable-preview --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -Dgravitee.home=$PROJECT_DIR$/gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution -Dlogback.configurationFile=$PROJECT_DIR$/gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution/config/logback.xml -Dvertx.disableDnsResolver=true" />
+    <option name="PROGRAM_PARAMETERS" value="" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <module name="gravitee-singularitee-standalone-container" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

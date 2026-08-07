@@ -1,0 +1,16 @@
+{#-
+  Harmony (gpt-oss) tool-call dialect. The captured span starts with the function name and
+  carries the arguments after the message marker:
+    NAME <|constrain|>json<|message|>{"arg": "value", ...}
+  Validate the name against the request's tools before emitting anything: an unmatched name
+  means this is not a call, and a bare regex would otherwise turn the first word of ordinary
+  prose into a phantom tool call (which nulls `content` downstream).
+-#}
+{%- set name = output | regex_first('^\\s*([\\w.-]+)', 1) -%}
+{%- set match = namespace(found=false) -%}
+{%- for t in tools -%}
+{%- if t.name == name -%}{%- set match.found = true -%}{%- endif -%}
+{%- endfor -%}
+{%- if match.found -%}
+[{"name": {{ name | tojson }}, "arguments": {{ output | regex_first('(?s)<\\|message\\|>(.*)$', 1) | trim | default('{}', true) }}}]
+{%- else -%}[]{%- endif -%}

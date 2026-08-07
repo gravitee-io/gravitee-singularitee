@@ -1,0 +1,39 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Toxicity classifier — distilbert multilingual toxicity (ONNX)
+#
+# Logical id: "toxicity". Sequence-level classifier returning {non-toxic, toxic};
+# the guard step rejects inputs scoring "toxic" above the trigger threshold.
+# Cross-platform (ONNX Runtime, CPU) — pairs with any LLM backend.
+#
+# Served by: server-safety.yaml (:9092)
+
+workspace:
+  models:
+    - id: toxicity
+      name: gravitee-io/distilbert-multilingual-toxicity-classifier
+      type: onnx_classifier
+      memory_check: disabled
+      onnx_classifier:
+        model_path: model.quant.onnx
+        tokenizer_path: tokenizer.json
+        config_json_path: config.json
+        labels:
+          - non-toxic
+          - toxic
+        max_sequence_length: 512
+        classifier_mode: SEQUENCE

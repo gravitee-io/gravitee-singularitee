@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Copyright © 2015 The Gravitee team (http://gravitee.io)
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.gravitee.singularitee</groupId>
+        <artifactId>gravitee-singularitee</artifactId>
+        <version>0.0.1</version>
+    </parent>
+
+    <artifactId>gravitee-singularitee-http</artifactId>
+
+    <name>Gravitee.io - Singularitee - HTTP API</name>
+    <description>Native OpenAI/Anthropic/Gemini-compatible HTTP/JSON API over Singularitee engines and pipelines</description>
+
+    <dependencies>
+        <!-- Internal protocol (proto messages: InferRequest, InferResponse, ChatMessageList, ...) -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-protocol</artifactId>
+        </dependency>
+
+        <!-- Engine interfaces, registries, records (TextGenEngine, ModelRegistry, ClassifyResponse, ...) -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-engine</artifactId>
+        </dependency>
+
+        <!-- Local gRPC service implementations driven in-process (GraviteeInferenceServiceImpl, ...) -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-grpc</artifactId>
+        </dependency>
+
+        <!-- Vert.x: bare core + web Router for the HTTP API, RxJava3 for the streaming formatter -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-rx-java3</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-web</artifactId>
+        </dependency>
+
+        <!-- JSON (de)serialization -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- JSON Schema validation of inbound payloads -->
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+        </dependency>
+
+        <!-- Logging (override BOM's 'provided' scope, as the other runtime modules do) -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

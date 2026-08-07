@@ -1,0 +1,56 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Mistral-7B-Instruct-v0.3 · general purpose
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/llama/mistral-7b.yaml
+#
+# A larger, higher-quality alternative to the reference Qwen3-0.6B when you have
+# the memory for it (~8 GB at Q8_0). No reasoning channel: Mistral answers
+# directly, so there are no thinking tags to configure.
+
+workspace:
+  name: mistral-7b
+
+  models:
+    - id: llm
+      name: bartowski/Mistral-7B-Instruct-v0.3-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: Mistral-7B-Instruct-v0.3-Q8_0.gguf
+        n_ctx: 4096
+        n_batch: 4096
+        n_ubatch: 4096
+        n_seq_max: 4
+        n_gpu_layers: 999
+        flash_attn_type: AUTO
+
+  pipelines:
+    - id: agent
+      name: Mistral-7B Agent Pipeline
+      entry: agent
+      steps:
+        - id: agent
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: agent.output
+            tags:
+              tool_open: "[TOOL_CALLS]"
+              tool_close: "</s>"

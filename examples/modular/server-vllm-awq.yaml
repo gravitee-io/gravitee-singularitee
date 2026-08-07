@@ -1,0 +1,37 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Server — vLLM AWQ generation backend (:9093)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Hosts ONE generation model under logical id "llm" (Qwen3-0.6B AWQ 4-bit) plus
+# the plain infer pipeline. Linux/CUDA only — requires the vLLM virtualenv.
+# Runs on a different port from the GPTQ server (:9091) so both can run at once.
+#
+# Launch (port via -Dgrpc.port; vLLM venv via -Dvllm4j.venv):
+#   java -Dgrpc.port=9093 -Dvllm4j.venv=~/.venv-gravitee-ai/.venv \
+#        -Dai.workspace.path=examples/modular/server-vllm-awq.yaml \
+#        io.gravitee.singularitee.standalone.SingulariteeContainer
+
+workspace:
+  name: server-vllm-awq
+
+  includes:
+    models:
+      - vllm/llm-qwen3-awq.yaml
+    pipelines:
+      - infer.yaml

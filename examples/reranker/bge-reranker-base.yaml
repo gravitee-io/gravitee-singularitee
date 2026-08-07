@@ -1,0 +1,50 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Reranking · BAAI/bge-reranker-base cross-encoder (ONNX)
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/reranker/bge-reranker-base.yaml
+#
+# A CROSS-ENCODER: it reads (query, document) TOGETHER and scores the pair, which
+# is why it beats embedding cosine similarity for ranking — and why it cannot be
+# precomputed like an embedding index. The standard pattern is two-stage: embed
+# to retrieve the top ~100 candidates cheaply, then rerank those to the final top
+# ~10. Pair it with examples/embedding/bge-m3.yaml for the retrieval half.
+#
+# `scoring` is left unset: it auto-detects (SIGMOID / SOFTMAX / LOGIT) from the
+# model's output shape. Documents longer than the window are split and scored per
+# chunk, taking the MAX — a document is as relevant as its best passage.
+#
+# Rerank over HTTP:
+#   curl localhost:8080/v1/rerank -H 'content-type: application/json' \
+#     -d '{"model":"reranker","query":"how do I cook pasta?",
+#          "documents":["Boil salted water, add pasta.","Git rebase rewrites history.",
+#                       "Al dente means firm to the bite."],"top_n":2}'
+
+workspace:
+  name: bge-reranker-base
+
+  models:
+    - id: reranker
+      name: BAAI/bge-reranker-base
+      type: onnx_reranker
+      memory_check: disabled
+      onnx_reranker:
+        model_path: onnx/model.onnx
+        tokenizer_path: tokenizer.json
+        config_json_path: config.json
+        max_sequence_length: 512

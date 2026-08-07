@@ -1,0 +1,78 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Pipeline — PII redaction then generation.
+#
+#   pii_guard (redact) ──→ generate
+#
+# The "pii" classifier redacts detected spans in the user's prompt; the redacted
+# text is then sent to the "llm" generation model. References two logical model
+# ids: "pii" and "llm". On a multi-server client these live on DIFFERENT servers
+# (pii on the safety server, llm on an LLM server) — the DAG is stitched on the
+# client, each model call routed over gRPC to its server.
+#
+# Triggers below target the DEFAULT pii backend (pii-bert-onnx, which aggregates
+# its BIO token labels under a single "PII" entity). If you swap server-safety
+# to the zero-shot GLiNER backend (classifier/pii-gliner.yaml), replace the single trigger
+# with that model's entity labels, e.g.:
+#     triggers:
+#       - { label: person,             score: 0.3 }
+#       - { label: email,              score: 0.3 }
+#       - { label: phone_number,       score: 0.3 }
+#       - { label: card_number,        score: 0.3 }
+#       - { label: national_id_number, score: 0.3 }
+#       - { label: iban,               score: 0.3 }
+#       - { label: api_key,            score: 0.3 }
+#       - { label: password,           score: 0.3 }
+
+workspace:
+  pipelines:
+    - id: pii-redact-pipeline
+      name: PII Redaction Pipeline
+      entry: pii_guard
+
+      steps:
+        - id: pii_guard
+          type: guard
+          next_step: generate
+          config:
+            model_id: pii
+            input_field: prompt
+            action: redact
+            output_field: pii_guard.output
+            trigger:
+              label: PII
+              score: 0.5
+
+        - id: generate
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: generate.output
+            prompt:
+              messages:
+                - role: system
+                  content: "Rewrite the following text given by the user. Do not add any tags."
+                - role: user
+                  content: "{{pii_guard.output}}"
+            sampling:
+              max_tokens: 512
+              temperature: 0.8
+            # Deterministic thinking bypass: the Qwen3 chat template renders an
+            # empty <think></think> prefill when enable_thinking is false.
+            context:
+              enable_thinking: false

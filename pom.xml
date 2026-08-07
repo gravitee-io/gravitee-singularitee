@@ -1,0 +1,609 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Copyright © 2015 The Gravitee team (http://gravitee.io)
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.gravitee</groupId>
+        <artifactId>gravitee-parent</artifactId>
+        <version>25.0.0</version>
+    </parent>
+
+    <groupId>io.gravitee.singularitee</groupId>
+    <artifactId>gravitee-singularitee</artifactId>
+    <version>0.0.1</version>
+    <packaging>pom</packaging>
+
+    <name>Gravitee.io - Singularitee</name>
+    <description>Singularitee - Gravitee's Inference Server: a standalone gRPC server for running LLM inference outside the Gravitee gateway</description>
+    <url>https://gravitee.io</url>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>25</maven.compiler.release>
+
+        <!-- Gravitee ecosystem -->
+        <gravitee-bom.version>9.0.2</gravitee-bom.version>
+        <gravitee-node.version>9.2.0</gravitee-node.version>
+
+        <!-- Vert.x / gRPC (Vert.x version aligned with gravitee-bom 9.0.0-alpha.2) -->
+        <vertx.version>5.0.9</vertx.version>
+        <grpc.version>1.72.0</grpc.version>
+        <protobuf.version>4.30.2</protobuf.version>
+        <protoc-gen-grpc-java.version>${grpc.version}</protoc-gen-grpc-java.version>
+        <javax-annotation-api.version>1.3.2</javax-annotation-api.version>
+
+        <!-- Build plugins -->
+        <protobuf-maven-plugin.version>0.6.1</protobuf-maven-plugin.version>
+        <os-maven-plugin.version>1.7.1</os-maven-plugin.version>
+        <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
+        <jacoco-maven-plugin.version>0.8.13</jacoco-maven-plugin.version>
+
+        <!-- GLiNER4j -->
+        <gliner4j.version>1.0.0</gliner4j.version>
+
+        <!-- ONNX Runtime native backend, shared by gravitee-singularitee-inference-onnx and
+             gliner4j-core. Defaults to the CPU build ("onnxruntime", which also
+             carries CoreML on macOS). The "cuda" profile flips the artifact to
+             "onnxruntime_gpu" (CUDA/TensorRT).
+             Version is pinned to the one gravitee-singularitee-inference-onnx is built against. -->
+        <onnxruntime.version>1.27.0</onnxruntime.version>
+        <onnxruntime.artifactId>onnxruntime</onnxruntime.artifactId>
+
+        <!-- jinja4j -->
+        <jinja4j.version>1.0.0</jinja4j.version>
+
+        <!-- Python / vLLM integration -->
+        <python.version>3.12</python.version>
+
+        <!-- vLLM venv bootstrap (scripts/setup-venv.sh) gate. Skipped by default so
+             a backend profile (cuda/metal/cpu) can be used purely to select native
+             libs at package time without requiring uv/Python. The vllm-integration
+             profile flips this to false so the venv is created before those tests. -->
+        <vllm.setupVenv.skip>true</vllm.setupVenv.skip>
+
+        <!-- Skip gravitee arch-rules check — Singularitee uses SLF4J directly, not NodeLoggerFactory -->
+        <gravitee.archrules.skip>true</gravitee.archrules.skip>
+        <gravitee-kubernetes-client.version>4.0.0-alpha.1</gravitee-kubernetes-client.version>
+
+        <!-- Micrometer — inference metrics (token counters, model-call timers). Not managed by
+             gravitee-bom; pinned to the version gravitee-node/Vert.x resolve (bundled in the
+             distribution lib) so the engine/grpc modules converge on the same micrometer-core
+             that feeds the Prometheus registry. -->
+        <micrometer.version>1.15.10</micrometer.version>
+
+        <!-- JSON Schema validation for HTTP API request payloads (OpenAI/Anthropic/Gemini) -->
+        <json-schema-validator.version>1.5.9</json-schema-validator.version>
+    </properties>
+
+    <modules>
+        <module>gravitee-singularitee-inference</module>
+        <module>gravitee-singularitee-protocol</module>
+        <module>gravitee-singularitee-engine</module>
+        <module>gravitee-singularitee-workspace</module>
+        <module>gravitee-singularitee-client</module>
+        <module>gravitee-singularitee-engine-remote</module>
+        <module>gravitee-singularitee-grpc</module>
+        <module>gravitee-singularitee-http</module>
+        <module>gravitee-singularitee-standalone</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.gravitee</groupId>
+                <artifactId>gravitee-bom</artifactId>
+                <version>${gravitee-bom.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+
+            <!-- Vert.x BOM (version inherited from gravitee-bom) -->
+            <dependency>
+                <groupId>io.vertx</groupId>
+                <artifactId>vertx-stack-depchain</artifactId>
+                <version>${vertx.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- gRPC -->
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-bom</artifactId>
+                <version>${grpc.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Micrometer BOM — aligns micrometer-core (engine/grpc) with the
+                 micrometer-registry-prometheus wired by gravitee-node. -->
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-bom</artifactId>
+                <version>${micrometer.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Protobuf -->
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>${protobuf.version}</version>
+            </dependency>
+
+            <!-- Gravitee Node -->
+            <dependency>
+                <groupId>io.gravitee.node</groupId>
+                <artifactId>gravitee-node-api</artifactId>
+                <version>${gravitee-node.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.node</groupId>
+                <artifactId>gravitee-node-container</artifactId>
+                <version>${gravitee-node.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.node</groupId>
+                <artifactId>gravitee-node-vertx</artifactId>
+                <version>${gravitee-node.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.node</groupId>
+                <artifactId>gravitee-node-license</artifactId>
+                <version>${gravitee-node.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.node</groupId>
+                <artifactId>gravitee-node-logging</artifactId>
+                <version>${gravitee-node.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.node</groupId>
+                <artifactId>gravitee-node-cache-plugin-standalone</artifactId>
+                <version>${gravitee-node.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.node</groupId>
+                <artifactId>gravitee-node-cluster-plugin-standalone</artifactId>
+                <version>${gravitee-node.version}</version>
+            </dependency>
+
+            <!-- Internal modules -->
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-protocol</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-engine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-workspace</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-client</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-engine-remote</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-grpc</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-http</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-standalone-container</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-standalone-bootstrap</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Vendored inference modules (formerly io.gravitee.inference) -->
+            <dependency>
+                <groupId>io.gravitee.singularitee.inference</groupId>
+                <artifactId>gravitee-singularitee-inference-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee.inference</groupId>
+                <artifactId>gravitee-singularitee-inference-onnx</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee.inference</groupId>
+                <artifactId>gravitee-singularitee-inference-llama-cpp</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee.inference</groupId>
+                <artifactId>gravitee-singularitee-inference-vllm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee.inference</groupId>
+                <artifactId>gravitee-singularitee-inference-math-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee.inference</groupId>
+                <artifactId>gravitee-singularitee-inference-math-native</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee.inference</groupId>
+                <artifactId>gravitee-singularitee-inference-math-simd</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Kubernetes -->
+            <dependency>
+                <groupId>io.gravitee.kubernetes</groupId>
+                <artifactId>gravitee-kubernetes-client</artifactId>
+                <version>${gravitee-kubernetes-client.version}</version>
+            </dependency>
+
+            <!-- GLiNER4j -->
+            <dependency>
+                <groupId>io.gravitee.ai.gliner4j</groupId>
+                <artifactId>gliner4j-core</artifactId>
+                <version>${gliner4j.version}</version>
+            </dependency>
+
+            <!-- jinja4j -->
+            <dependency>
+                <groupId>io.gravitee.jinja4j</groupId>
+                <artifactId>jinja4j</artifactId>
+                <version>${jinja4j.version}</version>
+            </dependency>
+
+            <!-- JSON Schema validation (HTTP API request payloads) -->
+            <dependency>
+                <groupId>com.networknt</groupId>
+                <artifactId>json-schema-validator</artifactId>
+                <version>${json-schema-validator.version}</version>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Test dependencies shared across all modules -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <extensions>
+            <extension>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>${os-maven-plugin.version}</version>
+            </extension>
+        </extensions>
+
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <source>25</source>
+                        <target>25</target>
+                        <compilerArgs>
+                            <arg>--enable-preview</arg>
+                        </compilerArgs>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>${maven-jar-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                    <configuration>
+                        <argLine>--enable-preview</argLine>
+                        <forkCount>1</forkCount>
+                        <reuseForks>true</reuseForks>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>com.hubspot.maven.plugins</groupId>
+                    <artifactId>prettier-maven-plugin</artifactId>
+                    <version>${prettier-maven-plugin.version}</version>
+                    <configuration>
+                        <printWidth>100</printWidth>
+                        <ignoreConfigFile>false</ignoreConfigFile>
+                        <inputGlobs>
+                            <inputGlob>src/**/*.java</inputGlob>
+                        </inputGlobs>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>com.mycila</groupId>
+                    <artifactId>license-maven-plugin</artifactId>
+                    <version>${license-maven-plugin.version}</version>
+                    <configuration>
+                        <!-- gravitee-parent configures this through <licenseSets>, and mycila
+                             ignores the top-level <excludes> as soon as a license set exists.
+                             The whole set therefore has to be restated here: the list below is
+                             the parent's, plus examples/scripts.
+
+                             Why exclude it: those Python files are demo snippets people copy
+                             into their own project, where a 15-line Apache header on a 40-line
+                             script is noise. The repository LICENSE still covers them. -->
+                        <licenseSets>
+                            <licenseSet>
+                                <header>com/mycila/maven/plugin/license/templates/APACHE-2.txt</header>
+                                <excludes>
+                                    <exclude>examples/scripts/**</exclude>
+                                    <exclude>LICENSE.txt</exclude>
+                                    <exclude>NOTICE.txt</exclude>
+                                    <exclude>**/README</exclude>
+                                    <exclude>src/main/packaging/**</exclude>
+                                    <exclude>src/test/resources/**</exclude>
+                                    <exclude>src/main/resources/**</exclude>
+                                    <exclude>src/main/webapp/**</exclude>
+                                    <exclude>node_modules/**</exclude>
+                                    <exclude>dist/**</exclude>
+                                    <exclude>.tmp/**</exclude>
+                                    <exclude>.*</exclude>
+                                    <exclude>.*/**</exclude>
+                                    <exclude>**/*.adoc</exclude>
+                                </excludes>
+                            </licenseSet>
+                        </licenseSets>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>${jacoco-maven-plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <source>25</source>
+                    <additionalOptions>--enable-preview</additionalOptions>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <groups>integration</groups>
+                            <argLine>--enable-preview --enable-native-access=ALL-UNNAMED</argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>vllm-integration</id>
+            <properties>
+                <!--
+                  Default venv location: ~/.venv-gravitee-ai/.venv
+                  Override with -Dvllm.venv.path=/absolute/path/to/.venv
+                  or with VLLM_VENV_PATH env var (same value, no trailing /.venv needed).
+
+                  A backend profile (metal | cuda | cpu) must be activated alongside
+                  this profile so that setup-venv.sh runs during 'initialize' and
+                  creates the venv before the tests start.
+
+                  Example (Apple Silicon):
+                    mvn verify -Pvllm-integration,metal
+
+                  Example (existing venv, skip setup):
+                    mvn verify -Pvllm-integration -Dvllm.venv.path=/path/to/.venv
+                -->
+                <vllm.venv.path>${user.home}/.venv-gravitee-ai/.venv</vllm.venv.path>
+                <!-- Enable the setup-venv.sh bootstrap that the backend profiles gate. -->
+                <vllm.setupVenv.skip>false</vllm.setupVenv.skip>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <groups>vllm-integration</groups>
+                            <argLine>--enable-preview --enable-native-access=ALL-UNNAMED</argLine>
+                            <!--
+                              CPython's atexit handlers (PyTorch/CUDA cleanup) can segfault
+                              after all tests complete and VllmEngine.close() succeeds.
+                              The last test calls Runtime.halt(0) immediately after retire
+                              to exit cleanly before background threads can crash.
+                            -->
+                            <forkCount>1</forkCount>
+                            <reuseForks>false</reuseForks>
+                            <!--
+                              VllmEngineBuilder.resolveVenv() reads the system property
+                              'vllm4j.venv'. We set it from:
+                                1. ${vllm.venv.path}  — set by backend profiles via setup-venv.sh
+                                2. ${env.VLLM_VENV_PATH} — manual env-var override (escape hatch)
+                              When the env var is unset Maven expands it to the literal string
+                              "${env.VLLM_VENV_PATH}" which is not a valid path — resolveVenv()
+                              then falls through to check user.dir/.venv and user.home/.venv.
+                              The backend profile value always wins when a backend is activated.
+                            -->
+                            <systemPropertyVariables>
+                                <vllm4j.venv>${vllm.venv.path}</vllm4j.venv>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- ═══════════════════════════════════════════════════════════════════
+             vLLM backend profiles — install vLLM into the shared venv.
+             Activate alongside vllm-integration:  -Pvllm-integration,metal
+             ═══════════════════════════════════════════════════════════════════ -->
+
+        <!-- Apple Silicon Metal/MLX GPU -->
+        <profile>
+            <id>metal</id>
+            <properties>
+                <vllm.backend>metal</vllm.backend>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.6.3</version>
+                        <executions>
+                            <execution>
+                                <id>setup-venv</id>
+                                <phase>initialize</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <skip>${vllm.setupVenv.skip}</skip>
+                                    <executable>${maven.multiModuleProjectDirectory}/scripts/setup-venv.sh</executable>
+                                    <arguments>
+                                        <argument>-d</argument><argument>${user.home}/.venv-gravitee-ai</argument>
+                                        <argument>-v</argument><argument>${python.version}</argument>
+                                        <argument>-b</argument><argument>${vllm.backend}</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- NVIDIA CUDA GPU -->
+        <profile>
+            <id>cuda</id>
+            <properties>
+                <vllm.backend>cuda</vllm.backend>
+                <!-- NVIDIA build: swap the ONNX Runtime native lib to the CUDA/TensorRT
+                     artifact. Requires a CUDA-capable GPU with matching CUDA/cuDNN at runtime. -->
+                <onnxruntime.artifactId>onnxruntime_gpu</onnxruntime.artifactId>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.6.3</version>
+                        <executions>
+                            <execution>
+                                <id>setup-venv</id>
+                                <phase>initialize</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <skip>${vllm.setupVenv.skip}</skip>
+                                    <executable>${maven.multiModuleProjectDirectory}/scripts/setup-venv.sh</executable>
+                                    <arguments>
+                                        <argument>-d</argument><argument>${user.home}/.venv-gravitee-ai</argument>
+                                        <argument>-v</argument><argument>${python.version}</argument>
+                                        <argument>-b</argument><argument>${vllm.backend}</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- CPU-only -->
+        <profile>
+            <id>cpu</id>
+            <properties>
+                <vllm.backend>cpu</vllm.backend>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.6.3</version>
+                        <executions>
+                            <execution>
+                                <id>setup-venv</id>
+                                <phase>initialize</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <skip>${vllm.setupVenv.skip}</skip>
+                                    <executable>${maven.multiModuleProjectDirectory}/scripts/setup-venv.sh</executable>
+                                    <arguments>
+                                        <argument>-d</argument><argument>${user.home}/.venv-gravitee-ai</argument>
+                                        <argument>-v</argument><argument>${python.version}</argument>
+                                        <argument>-b</argument><argument>${vllm.backend}</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

@@ -1,0 +1,328 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Run the examples. Requires go-task (https://taskfile.dev): brew install go-task
+#
+#   task                  list every task
+#   task build            build the distribution
+#   task run:qwen         start the reference model
+#   task run:qwen VLLM=1  the same model on vLLM instead of llama.cpp
+#   task vision           (in another shell) drive the vision demo
+#
+# VLLM=1 swaps examples/llama/<model>.yaml for its examples/vllm/ twin — same
+# model, same 'agent' pipeline, so every demo task works unchanged. Linux/CUDA
+# only, and it needs the venv from scripts/setup-venv.sh (run-server.sh finds it
+# at ~/.venv-gravitee-ai/.venv, or set VLLM_VENV to point elsewhere).
+#
+# Server tasks are FOREGROUND and block until Ctrl-C — that is deliberate, you
+# want the logs. Demo tasks talk to an already-running server, so they go in a
+# second shell.
+
+version: '3'
+
+vars:
+  PORT: '{{.PORT | default "8080"}}'
+  BASE_URL: 'http://localhost:{{.PORT}}/v1'
+  # uv runs the demo scripts without a venv to manage. https://docs.astral.sh/uv/
+  UV: 'uv run --quiet'
+
+tasks:
+  default:
+    desc: List every task
+    silent: true
+    cmds:
+      - task --list
+
+  # ── build ──────────────────────────────────────────────────────────────────
+  build:
+    desc: Build the distribution (skips tests)
+    cmds:
+      - mvn -T1C clean install -DskipTests
+
+  test:
+    desc: Run the full test suite
+    cmds:
+      - mvn -T1C clean install
+
+  test:examples:
+    desc: Load every examples/**.yaml through the workspace loader
+    cmds:
+      - mvn -o -pl gravitee-singularitee-workspace test -Dtest=ExamplesWorkspaceTest
+
+  install:
+    desc: First-time setup — natives, build, then run (wraps ./install.sh)
+    cmds:
+      - ./install.sh --port {{.PORT}}
+
+  list:
+    desc: List every runnable example workspace
+    silent: true
+    cmds:
+      - ./run-server.sh --list
+
+  # ── generation models (examples/llama) ─────────────────────────────────────
+  run:
+    desc: 'Run any workspace: task run -- examples/llama/glm-4-9b.yaml'
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace {{.CLI_ARGS}}
+
+  run:qwen:
+    desc: 'Qwen3-0.6B — the reference model, small and fast. VLLM=1 for the vLLM twin'
+    vars:
+      # Per-task, not global: a global var is resolved before CLI variables are
+      # merged, so `task run:qwen VLLM=1` would silently stay on llama.cpp.
+      ENGINE: '{{if .VLLM}}vllm{{else}}llama{{end}}'
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/{{.ENGINE}}/qwen3-0.6b.yaml
+
+  run:gpt-oss:
+    desc: 'gpt-oss-20b — MoE, Harmony dialect (~12 GB download). VLLM=1 for the vLLM twin'
+    vars:
+      # Per-task, not global: a global var is resolved before CLI variables are
+      # merged, so `task run:qwen VLLM=1` would silently stay on llama.cpp.
+      ENGINE: '{{if .VLLM}}vllm{{else}}llama{{end}}'
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/{{.ENGINE}}/gpt-oss-20b.yaml
+
+  run:gpt-oss-mac:
+    desc: 'gpt-oss-20b on vLLM + Metal — smaller window and KV so it fits unified memory'
+    cmds:
+      # The vLLM defaults in the shared file are sized for an 80 GB CUDA card:
+      # 131072 tokens of context is 6 GiB of KV per sequence, and 0.85 of a Mac's
+      # TOTAL unified memory is more than Metal will ever wire, so the profiling
+      # pass aborts with kIOGPUCommandBufferCallbackErrorOutOfMemory before the
+      # server ever listens.
+      - ./run-server.sh --port {{.PORT}} --workspace examples/vllm/gpt-oss-20b-mac.yaml
+
+  run:vision:
+    desc: 'Qwen3-VL-2B — vision model, serves the `task vision` demo. VLLM=1 for the vLLM twin'
+    vars:
+      # Per-task, not global: a global var is resolved before CLI variables are
+      # merged, so `task run:qwen VLLM=1` would silently stay on llama.cpp.
+      ENGINE: '{{if .VLLM}}vllm{{else}}llama{{end}}'
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/{{.ENGINE}}/qwen3-vl-2b.yaml
+
+  run:audio:
+    desc: Voxtral-3B — audio model, serves the `task audio` demo (llama.cpp only)
+    cmds:
+      # No vLLM twin: audio was explicitly out of scope for the vLLM backend.
+      - |
+        if [ -n "{{.VLLM}}" ]; then
+          echo "run:audio has no vLLM equivalent — Voxtral is served by llama.cpp only." >&2
+          exit 1
+        fi
+      - ./run-server.sh --port {{.PORT}} --workspace examples/llama/voxtral-3b.yaml
+
+  # ── classifiers / embeddings / rerankers ───────────────────────────────────
+  run:pii:
+    desc: PII detection (bert-small, fine-tuned)
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/classifier/pii-bert.yaml
+
+  run:guardrails:
+    desc: LLM safety guardrails (GLiGuard, zero-shot)
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/classifier/guardrails-gliner.yaml
+
+  run:intent:
+    desc: Intent classification (GLiNER, zero-shot)
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/classifier/intent-gliner.yaml
+
+  run:embedding:
+    desc: Embeddings (BGE-M3, multilingual)
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/embedding/bge-m3.yaml
+
+  run:reranker:
+    desc: Reranking (BGE cross-encoder)
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/reranker/bge-reranker-base.yaml
+
+  # ── mTLS (two servers, mutual TLS between them) ────────────────────────────
+  # Server-to-server composition over mutual TLS. TLS is node configuration, so the
+  # certificates are passed as GRAVITEE_* variables here rather than in the workspace.
+  #
+  #   task certs                 # once — mints a throwaway CA + server/client certs
+  #   task run:mtls-safety       # shell 1 — the callee, demands a client certificate
+  #   task run:mtls-llm          # shell 2 — the caller, presents one
+  #   task mtls-check            # shell 3 — proves the callee refuses an anonymous caller
+  certs:
+    desc: Mint throwaway dev certificates for the mTLS example (certs/, gitignored)
+    cmds:
+      - ./scripts/gen-dev-certs.sh
+
+  run:mtls-safety:
+    desc: 'mTLS callee: safety classifiers on gRPC 9092, clientAuth REQUIRED'
+    preconditions:
+      - sh: test -f certs/server.p12
+        msg: "No certificates — run 'task certs' first"
+    env:
+      GRAVITEE_GRPC_SECURED: true
+      GRAVITEE_GRPC_SSL_CLIENTAUTH: REQUIRED
+      GRAVITEE_GRPC_SSL_KEYSTORE_TYPE: pkcs12
+      GRAVITEE_GRPC_SSL_KEYSTORE_PATH: '{{.ROOT_DIR}}/certs/server.p12'
+      GRAVITEE_GRPC_SSL_KEYSTORE_PASSWORD: changeit
+      GRAVITEE_GRPC_SSL_TRUSTSTORE_TYPE: pkcs12
+      GRAVITEE_GRPC_SSL_TRUSTSTORE_PATH: '{{.ROOT_DIR}}/certs/ca.p12'
+      GRAVITEE_GRPC_SSL_TRUSTSTORE_PASSWORD: changeit
+      GRAVITEE_GRPC_PORT: 9092
+    cmds:
+      - ./run-server.sh --port 8092 --workspace examples/modular/server-safety-mtls.yaml
+
+  run:mtls-llm:
+    desc: 'mTLS caller: LLM locally, classifiers over mutual TLS (needs run:mtls-safety)'
+    preconditions:
+      - sh: test -f certs/client.p12
+        msg: "No certificates — run 'task certs' first"
+    env:
+      GRAVITEE_GRPC_CLIENT_SSL_TRUSTSTORE_TYPE: PKCS12
+      GRAVITEE_GRPC_CLIENT_SSL_TRUSTSTORE_PATH: '{{.ROOT_DIR}}/certs/ca.p12'
+      GRAVITEE_GRPC_CLIENT_SSL_TRUSTSTORE_PASSWORD: changeit
+      GRAVITEE_GRPC_CLIENT_SSL_KEYSTORE_TYPE: PKCS12
+      GRAVITEE_GRPC_CLIENT_SSL_KEYSTORE_PATH: '{{.ROOT_DIR}}/certs/client.p12'
+      GRAVITEE_GRPC_CLIENT_SSL_KEYSTORE_PASSWORD: changeit
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/modular/server-llm-mtls.yaml
+
+  mtls-check:
+    desc: 'Prove the mTLS pair: classify through the caller, then show an anonymous caller refused'
+    silent: true
+    cmds:
+      - |
+        echo "1. classify through the caller (proxied over mutual TLS — expect PII entities):"
+        curl -s -m 20 http://localhost:8080/v1/classify -H 'content-type: application/json' \
+          -d '{"model":"pii","input":"My email is john@example.com"}' | head -c 300
+        echo; echo
+        echo "2. anonymous TLS caller against the callee (expect: alert handshake failure):"
+        printf 'x' | openssl s_client -connect localhost:9092 -tls1_2 \
+          -CAfile certs/ca.crt -alpn h2 2>&1 | grep -E "alert|Cipher is" | head -2
+
+  # ── pipelines ──────────────────────────────────────────────────────────────
+  run:guard:
+    desc: 'Pipeline: toxicity reject → PII redact → generate'
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/pipelines/guard.yaml
+
+  run:tool-router:
+    desc: 'Pipeline: shortlist the caller''s tools before injecting them'
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/pipelines/tool-router.yaml
+
+  run:gliner-router:
+    desc: 'Pipeline: zero-shot intent routing to persona branches'
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/pipelines/gliner-router.yaml
+
+  run:embedding-router:
+    desc: 'Pipeline: nearest-neighbour routing on sentence similarity'
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/pipelines/embedding-router.yaml
+
+  run:cot:
+    desc: 'Pipeline: chain-of-thought with a self-refinement loop'
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --workspace examples/pipelines/cot.yaml
+
+  run:debug:
+    desc: 'Re-run a workspace with TRACE-logged prompts: task run:debug -- <file>'
+    cmds:
+      - ./run-server.sh --port {{.PORT}} --debug --workspace {{.CLI_ARGS}}
+
+  # ── demos (need a server already running) ──────────────────────────────────
+  vision:
+    desc: Webcam → vision model at ~600ms/frame, overlaid on the feed (needs run:vision)
+    summary: |
+      Live vision demo. Start the server first, in another shell:
+
+          task run:vision
+
+      then:
+
+          task vision
+
+      SPACE asks now, q/ESC quits. macOS will prompt for Camera permission for
+      your terminal the first time.
+
+      Sends ONE frame every 600ms by default, and only ever keeps one request in
+      flight — if the model is slower than that, ticks are dropped rather than
+      queued, and the HUD shows the achieved rate plus the dropped count.
+
+      Tunables: INTERVAL=0.6 (0 = manual SPACE only), MAX_TOKENS=48, IMG_WIDTH=448,
+      CAMERA=1, PROMPT="...", FONT_SCALE=1.5.
+    deps: [_check-server]
+    cmds:
+      - '{{.UV}} --with openai --with opencv-python examples/scripts/vision_live.py'
+    env:
+      BASE_URL: '{{.BASE_URL}}'
+
+  audio:
+    desc: Push-to-talk mic → audio model (needs run:audio)
+    summary: |
+      Push-to-talk demo. Start the server first, in another shell:
+
+          task run:audio
+
+      then:
+
+          task audio
+
+      ENTER starts recording, ENTER again stops and sends. macOS will prompt for
+      Microphone permission the first time.
+    deps: [_check-server]
+    cmds:
+      - '{{.UV}} --with openai --with sounddevice examples/scripts/audio_ptt.py'
+    env:
+      BASE_URL: '{{.BASE_URL}}'
+
+  chat:
+    desc: Smoke-test chat completions + the Responses API (needs any generation model)
+    deps: [_check-server]
+    cmds:
+      - '{{.UV}} --with openai examples/scripts/openai_test.py'
+    env:
+      BASE_URL: '{{.BASE_URL}}'
+
+  classify:
+    desc: Smoke-test /v1/classify (skips models the running server doesn't publish)
+    deps: [_check-server]
+    cmds:
+      - '{{.UV}} --with requests examples/scripts/classify_test.py'
+    env:
+      BASE_URL: '{{.BASE_URL}}'
+
+  models:
+    desc: List the models and pipelines the running server publishes
+    deps: [_check-server]
+    silent: true
+    cmds:
+      - curl -s {{.BASE_URL}}/models
+
+  # ── internal ───────────────────────────────────────────────────────────────
+  _check-server:
+    internal: true
+    silent: true
+    # A demo failing with a raw connection-refused traceback sends people hunting
+    # for a bug in the script. Say what is actually wrong instead.
+    cmds:
+      - |
+        if ! curl -sf -o /dev/null {{.BASE_URL}}/models; then
+          echo "No server answering on {{.BASE_URL}}." >&2
+          echo "Start one in another shell first — e.g. 'task run:qwen', or" >&2
+          echo "'task run:vision' / 'task run:audio' for the multimodal demos." >&2
+          exit 1
+        fi

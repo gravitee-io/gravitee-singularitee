@@ -1,0 +1,75 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Qwen3.6-35B-A3B · runs fast, NOT supported for agent serving
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/llama/qwen3.6-35b.yaml
+#
+# One model (id: llm) and one pipeline (id: agent), so the same client config and
+# curls work across every example file. Prose, measurements and caveats for this
+# model live in docs/models/README.md.
+#
+# n_ctx is PER SEQUENCE: total KV allocated is n_ctx * n_seq_max.
+# Listed because it runs and is fast, not because it is recommended.
+# Hybrid/linear attention: it CANNOT rewind state, so cross-request prefix caching
+# reports reuse while every warm turn silently re-prefills. Fine for one-shot
+# completions, unsuitable for agent loops. Verify on the log that a warm turn's
+# ttft agrees with its reused_prefix — here it will not.
+# Same caveat: Qwen3-Next, Kimi-Linear, Granite-4.0-H, Falcon-H1, LFM2
+# (also non-permissive), Nemotron-Nano-v2.
+# It DOES have a NextN head (nextn_predict_layers=1), so mtp: true enables
+# self-speculative decoding (~1.34x measured on M4 Max).
+
+workspace:
+  name: qwen3.6-35b
+
+  models:
+    - id: llm
+      name: unsloth/Qwen3.6-35B-A3B-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: Qwen3.6-35B-A3B-UD-Q4_K_S.gguf
+        n_ctx: 131072
+        n_seq_max: 1
+        n_gpu_layers: 999
+        flash_attn_type: ENABLED
+        cache_type_k: q8_0
+        cache_type_v: q8_0
+        mtp: false
+
+  pipelines:
+    - id: agent
+      name: Qwen3.6 35B-A3B Agent Pipeline (no thinking)
+      entry: agent
+      steps:
+        - id: agent
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: agent.output
+            context:
+              enable_thinking: false
+            # Thinking is off, but the tags stay: enable_thinking is a request to the
+            # chat template, not a guarantee. If the model emits a thought span anyway
+            # these route it to reasoning_content instead of leaking into the answer.
+            tags:
+              reasoning_open: "<think>"
+              reasoning_close: "</think>"
+              tool_open: "<tool_call>"
+              tool_close: "</tool_call>"

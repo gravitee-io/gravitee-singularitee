@@ -1,0 +1,73 @@
+# syntax=docker/dockerfile:1.7
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Prebuilt llama.cpp CUDA libraries.
+#
+# This is the (slow) from-source CUDA compile of llama.cpp, extracted from
+# Dockerfile.cuda so it can be built once and cached in the registry. The result
+# is a thin image whose only payload is /llama-libs (libllama.so, libggml*.so,
+# libggml-cuda.so, ...). Dockerfile.cuda consumes it via the LLAMA_LIBS_IMAGE
+# build-arg, so the per-commit server image no longer pays the compile cost.
+#
+# Single source of truth for the prebuilt llama.cpp CUDA libraries: CI reads these ARG defaults
+# (see .circleci/config.yml -> compute-llama-image) to key the prebuilt image tag and pass them as
+# --build-arg. LLAMACPP_VERSION MUST match the ABI the bundled llamaj.cpp JNI binding targets
+# (see docker/cuda/README.md -> "Version pinning"); bump it together with the llamaj.cpp dependency.
+
+ARG CUDA_VERSION=12.9.2
+ARG UBUNTU_VERSION=24.04
+
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS llama-build
+LABEL maintainer="contact@graviteesource.com"
+LABEL org.opencontainers.image.source="https://github.com/gravitee-io/gravitee-singularitee"
+LABEL org.opencontainers.image.description="Prebuilt llama.cpp CUDA shared libraries for Singularitee CUDA image"
+
+ARG LLAMACPP_VERSION=b9873
+# Volta→Blackwell + a PTX fallback (90-virtual) for forward JIT. CUDA 12.9 nvcc targets the
+# full sm_70…sm_121 range. nvcc does one pass per arch, so for faster builds you can trim this
+# to just the GPU(s) you deploy (e.g. "89-real;90-virtual" for Ada / RTX 4000 Ada).
+ARG CUDA_ARCHITECTURES="70-real;75-real;80-real;86-real;89-real;90-real;100-real;103-real;120-real;121-real;90-virtual"
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      git cmake build-essential gcc-14 g++-14 libgomp1 ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
+ENV CC=gcc-14 CXX=g++-14 CUDAHOSTCXX=g++-14
+
+WORKDIR /llama
+RUN git clone --depth 1 --branch "${LLAMACPP_VERSION}" https://github.com/ggml-org/llama.cpp .
+
+RUN cmake -B build \
+      -DGGML_NATIVE=OFF \
+      -DGGML_CUDA=ON \
+      -DGGML_BACKEND_DL=ON \
+      -DGGML_CPU_ALL_VARIANTS=OFF \
+      -DBUILD_SHARED_LIBS=ON \
+      -DLLAMA_BUILD_TESTS=OFF \
+      -DLLAMA_BUILD_EXAMPLES=OFF \
+      -DLLAMA_BUILD_TOOLS=OFF \
+      -DLLAMA_BUILD_APP=OFF \
+      -DLLAMA_BUILD_SERVER=OFF \
+      -DLLAMA_CURL=OFF \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" \
+      -DCMAKE_EXE_LINKER_FLAGS=-Wl,--allow-shlib-undefined \
+    && cmake --build build --config Release -j"$(nproc)"
+
+RUN mkdir -p /llama-libs \
+    && find build -name '*.so*' -exec cp -P {} /llama-libs/ \; \
+    && ls -la /llama-libs/

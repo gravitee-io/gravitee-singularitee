@@ -1,0 +1,559 @@
+//
+// Copyright © 2015 The Gravitee team (http://gravitee.io)
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+/*
+ * Copyright © 2015 The Gravitee team (http://gravitee.io)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// Singularitee — inference protocol.
+//
+// Defines:
+//   - Infer: direct, single-model server-streaming text generation
+//   - InferPipeline: pipeline DAG execution with per-step token tagging
+//
+// The response stream follows the OpenAI Responses API event model:
+//   CREATED → OUTPUT_TEXT_DELTA* → COMPLETED | FAILED
+//
+// Shared types (SamplingParams, ChatMessage, TagConfig, etc.) live here
+// and are imported by pipeline.proto.
+
+syntax = "proto3";
+
+package io.gravitee.singularitee.protocol;
+
+import "google/protobuf/struct.proto";
+
+option java_package = "io.gravitee.singularitee.protocol";
+option java_outer_classname = "InferenceProto";
+option java_multiple_files = true;
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service GraviteeInferenceService {
+  // Runs text generation against a single published model.
+  // Events are streamed following the Responses API event model.
+  rpc Infer         (InferRequest)         returns (stream InferResponse);
+
+  // Executes a published pipeline DAG and streams token output.
+  // Events from each step are tagged with step_role so callers can
+  // distinguish intermediate reasoning from the terminal output.
+  rpc InferPipeline (InferPipelineRequest) returns (stream InferResponse);
+
+  // Runs classification against a single published ONNX classifier model.
+  // Returns structured label + score results (sequence-level and/or token-level).
+  rpc Classify      (ClassifyRequest)      returns (ClassifyResponse);
+
+  // Runs batch classification against a single published classifier model.
+  // Each text is classified independently; results are returned in order.
+  rpc ClassifyBatch (ClassifyBatchRequest)  returns (ClassifyBatchResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Classification
+// ---------------------------------------------------------------------------
+
+message ClassifyRequest {
+  // model_id of a published ONNX classifier model.
+  string model_id = 1;
+  // The text to classify.
+  string text     = 2;
+  // Optional per-request label/entity override (GLiNER only).
+  // When provided, these replace the model's default labels for this request.
+  repeated ClassifyLabel labels = 3;
+}
+
+message ClassifyResponse {
+  string top_label = 1;
+  float  top_score = 2;
+  // Per-label scores, in descending score order.
+  map<string, float>    all_scores = 3;
+  // Detailed results (token-level NER spans when available).
+  repeated ClassifyResult results  = 4;
+}
+
+message ClassifyResult {
+  string         label = 1;
+  float          score = 2;
+  optional string token = 3;
+  optional int32  start = 4;
+  optional int32  end   = 5;
+}
+
+// Label definition for per-request classification override (GLiNER).
+message ClassifyLabel {
+  string name        = 1;
+  string description = 2;
+}
+
+message ClassifyBatchRequest {
+  // model_id of a published classifier model.
+  string model_id           = 1;
+  // The texts to classify (each classified independently).
+  repeated string texts     = 2;
+  // Optional per-request label/entity override (GLiNER only).
+  // When provided, these replace the model's default labels for this request.
+  repeated ClassifyLabel labels = 3;
+}
+
+message ClassifyBatchResponse {
+  // One response per input text, in the same order.
+  repeated ClassifyResponse results = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Direct inference
+// ---------------------------------------------------------------------------
+
+message InferRequest {
+  // model_id returned by PublishModel.
+  string model_id    = 1;
+  // sequence_id is intentionally absent — sequence tracking is server-internal.
+  reserved 2; reserved "sequence_id";
+
+  oneof input {
+    string          prompt   = 10;
+    ChatMessageList messages = 11;
+  }
+
+  SamplingParams  sampling_params = 20;
+  TagConfig       reasoning_tags  = 30;
+  TagConfig       tool_call_tags  = 31;
+  repeated string stop            = 40;
+  LoraConfig      lora            = 50;
+  // Tool definitions in function-calling JSON format (vLLM only).
+  repeated string tools_json      = 51;
+  // Extra chat-template variables (e.g. enable_thinking, reasoning_effort)
+  // applied when the server renders `messages` with the model's chat
+  // template. Mirrors the per-step `context:` block in pipeline YAML.
+  // Ignored when `prompt` is set, since a pre-rendered prompt is never
+  // re-templated. The HTTP gateway maps OpenAI `reasoning_effort` here.
+  google.protobuf.Struct template_context = 52;
+
+  // Client-provided request ID, echoed in ResponseCreated so the gateway
+  // can correlate the gRPC stream with the HTTP response it is building.
+  string request_id = 60;
+
+  // Opaque client cache-affinity key (OpenAI `prompt_cache_key`, falling back
+  // to `user`). Requests sharing a key are routed to the same KV slot so their
+  // common prompt prefix is reused across requests. Empty = no affinity.
+  string cache_key = 61;
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline inference
+// ---------------------------------------------------------------------------
+
+message InferPipelineRequest {
+  // pipeline_id returned by PublishPipeline.
+  string pipeline_id = 1;
+  // sequence_id is intentionally absent — sequence tracking is server-internal.
+  reserved 2; reserved "sequence_id";
+
+  oneof input {
+    string          prompt   = 10;
+    ChatMessageList messages = 11;
+  }
+
+  // Sampling overrides applied to the first InferStep in the pipeline.
+  SamplingParams sampling_params = 20;
+
+  // Seed values for the pipeline execution context (e.g. custom variables
+  // that prompt_template expressions can reference via {{key}}).
+  // A `reasoning_effort` entry (OpenAI `reasoning_effort`, set by the HTTP
+  // gateway or a gRPC caller) is surfaced to step chat templates and
+  // overrides any step-config `context:` default.
+  map<string, string> context    = 30;
+
+  // Tool definitions for prompt-based injection via {{tools}}.
+  // Provided at runtime by the caller. Each tool is rendered to text
+  // (using its custom template or a default JSON-schema rendering) and
+  // the concatenated result is available as {{tools}} in prompt templates.
+  repeated ToolDefinition tools  = 40;
+
+  // Client-provided request ID, echoed in ResponseCreated so the gateway
+  // can correlate the gRPC stream with the HTTP response it is building.
+  string request_id = 60;
+
+  // Opaque client cache-affinity key (OpenAI `prompt_cache_key`, falling back
+  // to `user`). Threaded to text-gen steps so their KV prefix cache can route
+  // requests sharing a key to the same slot. Empty = no affinity.
+  string cache_key = 61;
+}
+
+// ---------------------------------------------------------------------------
+// Response (shared by Infer and InferPipeline)
+//
+// Follows the OpenAI Responses API event model. Each message in the gRPC
+// stream maps 1:1 to an SSE event that the gateway connector can emit
+// directly. The lifecycle is:
+//
+//   CREATED → OUTPUT_TEXT_DELTA* → COMPLETED
+//                                 or
+//   CREATED → OUTPUT_TEXT_DELTA* → FAILED
+//
+// For pipelines with THINKING steps, deltas carry step_role = THINKING
+// before the OUTPUT deltas begin.
+// ---------------------------------------------------------------------------
+
+message InferResponse {
+  // The event type — maps 1:1 to an SSE event type string on the wire.
+  ResponseEventType event_type = 1;
+
+  // Exactly one payload per event type.
+  oneof event {
+    ResponseCreated          response_created           = 10;
+    ResponseOutputTextDelta  response_output_text_delta = 11;
+    ResponseCompleted        response_completed         = 12;
+    ResponseFailed           response_failed            = 13;
+  }
+
+  // Semantic role of this event's content in a pipeline.
+  // For direct Infer calls: always STEP_ROLE_UNSPECIFIED or STEP_ROLE_OUTPUT.
+  // For InferPipeline calls: THINKING for intermediate reasoning, OUTPUT for
+  // the final answer. INTERNAL steps are never streamed to the client.
+  StepRole step_role = 20;
+}
+
+// ---------------------------------------------------------------------------
+// Response event types
+// ---------------------------------------------------------------------------
+
+enum ResponseEventType {
+  RESPONSE_EVENT_TYPE_UNSPECIFIED       = 0;
+  // The inference run has been created and is in progress.
+  RESPONSE_EVENT_TYPE_CREATED           = 1;
+  // An incremental text delta for the output content.
+  RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA  = 2;
+  // The inference run completed successfully.
+  RESPONSE_EVENT_TYPE_COMPLETED         = 3;
+  // The inference run failed (guard block, error, etc.).
+  RESPONSE_EVENT_TYPE_FAILED            = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Response event payloads
+// ---------------------------------------------------------------------------
+
+// Emitted once at the start of the stream.
+message ResponseCreated {
+  // Client-provided request ID echoed back for correlation.
+  string response_id = 1;
+  // The model that is generating the response.
+  string model       = 2;
+}
+
+// Emitted for each generated token / text chunk.
+message ResponseOutputTextDelta {
+  // The incremental text content.
+  string delta      = 1;
+  // Output item index (usually 0 for single-output responses).
+  int32  item_index = 2;
+  // Content part index (usually 0 for text-only responses).
+  int32  part_index = 3;
+  // Per-token log-probabilities, one entry per generated token position this
+  // delta covers. Empty unless SamplingParams.top_logprobs was requested.
+  // A delta that resolves a buffered multi-token marker carries only the
+  // final position's entry.
+  repeated PositionLogprobs logprobs = 4;
+}
+
+// Log-probability data for one generated token position.
+message PositionLogprobs {
+  // The token that was actually sampled at this position.
+  TokenLogprob chosen           = 1;
+  // The top-N most likely candidates, descending; always includes the chosen token.
+  repeated TokenLogprob top     = 2;
+}
+
+message TokenLogprob {
+  // Decoded token text (may be an invalid UTF-8 fragment on its own).
+  string token    = 1;
+  int32  token_id = 2;
+  // Natural-log probability.
+  float  logprob  = 3;
+  // Raw token bytes, for clients that need exact byte-level reconstruction.
+  // (Not "token_bytes": protobuf already generates getTokenBytes() for the
+  // string field `token`, and the names would collide.)
+  bytes  raw_bytes = 4;
+}
+
+// Emitted once when the inference run completes successfully.
+message ResponseCompleted {
+  TokenUsage           usage         = 1;
+  InferencePerformance performance   = 2;
+  FinishReason         finish_reason = 3;
+  // Structured tool calls extracted server-side from the generated tool span
+  // via the step's Jinja extraction template (tool_extraction_template, or the
+  // built-in dialect templates in order). Empty when the model emitted no tool
+  // call or when extraction failed (clients fail open on the raw text).
+  repeated ToolCall    tool_calls    = 4;
+}
+
+// A tool call extracted from generated text by a Jinja extraction template.
+message ToolCall {
+  // Function name as emitted by the model.
+  string name           = 1;
+  // Arguments as a JSON object string. Values recovered from untyped dialect
+  // text (XML/Gemma flavors) are JSON strings; see coercible_args.
+  string arguments_json = 2;
+  // Names of arguments whose string values came from untyped dialect text and
+  // may be coerced to their declared JSON-schema types by the client that
+  // holds the request's tool schemas (the HTTP layer).
+  repeated string coercible_args = 3;
+  // Call id, when the transcript carries one (OpenAI "tool_call_id"). Templates use it to pair a
+  // following tool message to the call it answers. Empty for freshly extracted calls.
+  string id = 4;
+}
+
+// Emitted when the inference run fails (guard block, server error, etc.).
+message ResponseFailed {
+  // Machine-readable error code (e.g. "content_filter", "server_error").
+  string error_code    = 1;
+  // Human-readable explanation.
+  string error_message = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Finish reasons
+// ---------------------------------------------------------------------------
+
+enum FinishReason {
+  FINISH_REASON_UNSPECIFIED     = 0;
+  // Natural stop: EOS token or a stop sequence matched.
+  FINISH_REASON_STOP            = 1;
+  // Maximum token limit reached.
+  FINISH_REASON_LENGTH          = 2;
+  // The model emitted a tool call.
+  FINISH_REASON_TOOL_CALLS      = 3;
+  // Tags 4 and 5 were dead OpenAI-compatibility values (CONTENT_FILTER, FUNCTION_CALL)
+  // never emitted by any engine. Guard blocking uses FINISH_REASON_GUARD_BLOCKED.
+  reserved 4, 5;
+  reserved "FINISH_REASON_CONTENT_FILTER", "FINISH_REASON_FUNCTION_CALL";
+  // A guard step triggered and the pipeline was blocked.
+  FINISH_REASON_GUARD_BLOCKED   = 6;
+  // A break step condition was met; the pipeline halted and returned output.
+  FINISH_REASON_BREAK_CONDITION = 7;
+  // A loop step reached its max_iterations ceiling.
+  FINISH_REASON_MAX_ITERATIONS  = 8;
+}
+
+// Semantic role of an infer step's output in a pipeline.
+// Controls whether tokens are streamed to the client and how they are tagged.
+// Only meaningful for STEP_TYPE_INFER steps — all other step types are silent.
+enum StepRole {
+  // Default: treated as OUTPUT at runtime.
+  STEP_ROLE_UNSPECIFIED = 0;
+  // Intermediate reasoning — streamed to client tagged as THINKING.
+  STEP_ROLE_THINKING    = 1;
+  // Final answer — streamed to client tagged as OUTPUT.
+  STEP_ROLE_OUTPUT      = 2;
+  // Server-internal — never streamed to client.
+  STEP_ROLE_INTERNAL    = 3;
+  // Tool-call payload — the engine classified these tokens as belonging to a
+  // tool-call span (tag markers suppressed engine-side; the delta text is the
+  // BARE payload, e.g. {"name":...,"arguments":{...}} or call:name{...}).
+  STEP_ROLE_TOOL        = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Chat messages
+// ---------------------------------------------------------------------------
+
+message ChatMessageList { repeated ChatMessage messages = 1; }
+
+message ChatMessage {
+  Role   role    = 1;
+  string content = 2;
+  repeated MediaContent media = 3;
+  // Calls this assistant turn made. Without them the transcript records the model's answers but
+  // not its actions: replaying it, the model sees a question it has not acted on and calls the
+  // same tool again, forever. Chat templates that support tool use read this to render the call
+  // and to pair the following ROLE_TOOL messages to it by id.
+  repeated ToolCall tool_calls = 4;
+  // ROLE_TOOL only: the id of the call this message answers.
+  string tool_call_id = 5;
+  // ROLE_TOOL only: the tool's name, when the caller supplies it.
+  string name = 6;
+}
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_SYSTEM      = 1;
+  ROLE_USER        = 2;
+  ROLE_ASSISTANT   = 3;
+  ROLE_TOOL        = 4;
+}
+
+message MediaContent {
+  MediaType media_type = 1;
+  // Base64-encoded payload.
+  bytes data = 2;
+}
+
+// Only formats the engines can actually decode are listed. Images go to
+// llama.cpp's stb_image (JPEG, PNG, GIF, BMP — no WebP, no TIFF); audio is
+// decoded by javax.sound.sampled, which handles WAV and nothing else here.
+// Declaring more than this produced requests that failed silently: the media
+// was dropped and the model answered from the text alone.
+enum MediaType {
+  MEDIA_TYPE_UNSPECIFIED       = 0;
+  MEDIA_TYPE_IMAGE_JPEG        = 1;
+  MEDIA_TYPE_IMAGE_PNG         = 2;
+  MEDIA_TYPE_IMAGE_GIF         = 3;
+  MEDIA_TYPE_IMAGE_BMP         = 5;
+  MEDIA_TYPE_AUDIO_WAV         = 7;
+  MEDIA_TYPE_APPLICATION_OCTET = 13;
+
+  // Removed — declared but never decodable. Reserved so the numbers and names
+  // are not recycled for something with different semantics.
+  reserved 4, 6, 8, 9, 10, 11, 12;
+  reserved "MEDIA_TYPE_IMAGE_WEBP", "MEDIA_TYPE_IMAGE_TIFF", "MEDIA_TYPE_AUDIO_MP3",
+           "MEDIA_TYPE_AUDIO_OGG", "MEDIA_TYPE_AUDIO_FLAC", "MEDIA_TYPE_AUDIO_AAC",
+           "MEDIA_TYPE_AUDIO_M4A";
+}
+
+// ---------------------------------------------------------------------------
+// Sampling parameters
+// ---------------------------------------------------------------------------
+
+message SamplingParams {
+  // Maximum tokens to generate. 0 = engine default.
+  int32 max_tokens        = 1;
+  // Temperature. Negative = engine default.
+  float temperature       = 2;
+  // Nucleus sampling threshold. 0 = engine default.
+  float top_p             = 3;
+  float presence_penalty  = 4;
+  float frequency_penalty = 5;
+  // Random seed. 0 = random.
+  int32 seed              = 6;
+  // Number of top log-probabilities to collect per generated token.
+  // 0 = disabled (the default; collection has a per-token cost).
+  int32 top_logprobs      = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Token usage
+// ---------------------------------------------------------------------------
+
+message TokenUsage {
+  int32 prompt_tokens     = 1;
+  int32 completion_tokens = 2;
+  int32 reasoning_tokens  = 3;
+  int32 tool_tokens       = 4;
+  // Tag 5 was a dead 'total_tokens' OpenAI-compatibility field (never populated).
+  reserved 5;
+  reserved "total_tokens";
+}
+
+// ---------------------------------------------------------------------------
+// Performance metrics
+// ---------------------------------------------------------------------------
+
+message InferencePerformance {
+  int64 start_time_ms           = 1;
+  int64 load_time_ms            = 2;
+  int64 prompt_eval_time_ms     = 3;
+  int64 eval_time_ms            = 4;
+  int32 prompt_tokens_evaluated = 5;
+  int32 tokens_generated        = 6;
+  int32 tokens_reused           = 7;
+  int64 sampling_time_ms        = 8;
+  int32 sample_count            = 9;
+}
+
+// ---------------------------------------------------------------------------
+// Tag config (reasoning / tool-call detection)
+// ---------------------------------------------------------------------------
+
+message TagConfig {
+  string open_tag  = 1;
+  string close_tag = 2;
+  // Additional opening markers, when a dialect opens the same channel more than one way
+  // (Harmony emits tool calls on both the commentary and analysis channels). open_tag stays
+  // the primary; alternatives are matched alongside it, longest match wins.
+  repeated string open_tag_alternatives = 3;
+  // Additional closing markers, when a channel can be left more than one way. Harmony needs
+  // this: reasoning ends into the final channel via <|end|><|start|>assistant<|channel|>final
+  // <|message|> when the model answers directly, but the run before the final channel is
+  // terminated by <|call|> when a tool call intervenes — and a tool call either ends generation
+  // or is followed straight by the final header. close_tag stays the primary; longest match
+  // wins, and a shorter match that is the prefix of a longer one settles only when the longer
+  // one is refuted or generation ends.
+  repeated string close_tag_alternatives = 4;
+  // Whether the channel may be entered AGAIN after it closes, within one generation.
+  // One <think>…</think> block per generation is a ChatML property, not a property of
+  // reasoning: Harmony chains channels, so a generation can run analysis, return to the
+  // final channel, and then open commentary — and a channel that cannot re-open stops
+  // matching, leaving its header in the answer as raw text with its tokens billed there.
+  // Optional so that unset means "the engine's own default" (tool channels repeat,
+  // everything else occurs once) rather than an explicit false, which for the tool
+  // channel would forbid a second call.
+  optional bool repeatable = 5;
+}
+
+// ---------------------------------------------------------------------------
+// LoRA config (per-request adapter selection)
+// ---------------------------------------------------------------------------
+
+message LoraConfig {
+  string lora_name = 1;
+  string lora_path = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Tool definitions (prompt-based tool injection)
+// ---------------------------------------------------------------------------
+
+// A single parameter of a tool, described as a JSON-schema-style field.
+message ToolParameterDef {
+  string name        = 1;
+  string type        = 2;
+  string description = 3;
+  bool   required    = 4;
+}
+
+// Tool definition for prompt-based injection into the system prompt.
+//
+// When the model does not support native function-calling, tool definitions
+// are rendered to text and injected into prompt templates via the {{tools}}
+// expression.  Each tool can carry its own custom text template; when absent
+// a default JSON-schema rendering is generated at runtime from the
+// structured fields.
+message ToolDefinition {
+  string name                          = 1;
+  string description                   = 2;
+  repeated ToolParameterDef parameters = 3;
+  // Optional custom text template for this tool.
+  // When set, this exact string is used as the tool's text representation
+  // in the prompt.  When empty, a default JSON-schema rendering is
+  // generated from name / description / parameters.
+  string template                      = 4;
+}

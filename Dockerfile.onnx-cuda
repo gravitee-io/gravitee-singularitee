@@ -1,0 +1,81 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+#
+# ONNX Runtime + GLiNER image (CUDA).
+#
+# Serves onnx_classifier / onnx_embedding / onnx_reranker / gliner_classifier /
+# gliner_ner. Carries neither llama.cpp nor vLLM: the distribution is built with
+# -Pdist-onnx, and SingulariteeConfiguration probes the classpath at startup, so
+# the absent engines are simply never registered.
+#
+# Build (the distribution must be assembled first, with the GPU ONNX Runtime):
+#   mvn clean install -DskipTests -Pcuda,dist-onnx
+#   DOCKER_BUILDKIT=1 docker build -f Dockerfile.onnx-cuda -t singularitee-onnx-cuda .
+#
+# Run:
+#   docker run --gpus all -p 9090:9090 -v $PWD/examples:/workspaces singularitee-onnx-cuda
+#
+# -Pcuda selects onnxruntime_gpu over the CPU build. Without it this image runs,
+# but every model falls back to the CPU execution provider.
+#
+
+ARG CUDA_VERSION=12.9.2
+ARG UBUNTU_VERSION=24.04
+
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu${UBUNTU_VERSION} AS runtime
+
+LABEL maintainer="contact@graviteesource.com"
+LABEL org.opencontainers.image.source="https://github.com/gravitee-io/gravitee-singularitee"
+LABEL org.opencontainers.image.description="Singularitee Gateway - gRPC inference server (CUDA / ONNX Runtime + GLiNER)"
+
+ENV GRAVITEEIO_HOME=/opt/graviteeio-singularitee
+
+ARG TEMURIN_APT_CODENAME=noble
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      curl ca-certificates gnupg libjemalloc2 libgomp1 tini; \
+    install -m 0755 -d /etc/apt/keyrings; \
+    curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
+      | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb ${TEMURIN_APT_CODENAME} main" \
+      > /etc/apt/sources.list.d/adoptium.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends temurin-25-jdk; \
+    apt-get purge -y --auto-remove gnupg; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r -f graviteeio \
+    && useradd -r -g root -d ${GRAVITEEIO_HOME} -s /usr/sbin/nologin graviteeio
+
+COPY --chown=graviteeio:root \
+     ./gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution/ \
+     ${GRAVITEEIO_HOME}/
+
+COPY --chown=graviteeio:root docker/cuda/cuda-env.sh    ${GRAVITEEIO_HOME}/bin/cuda-env.sh
+COPY --chown=graviteeio:root docker/cuda/entrypoint.sh  ${GRAVITEEIO_HOME}/bin/cuda-entrypoint.sh
+RUN chmod 0755 ${GRAVITEEIO_HOME}/bin/cuda-env.sh ${GRAVITEEIO_HOME}/bin/cuda-entrypoint.sh
+
+# No LLAMA_CPP_LIB_PATH and no VLLM4J_VENV: cuda-env.sh skips both blocks.
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}
+
+WORKDIR ${GRAVITEEIO_HOME}
+EXPOSE 9090
+USER graviteeio
+
+ENTRYPOINT ["/usr/bin/tini", "--", "./bin/cuda-entrypoint.sh"]

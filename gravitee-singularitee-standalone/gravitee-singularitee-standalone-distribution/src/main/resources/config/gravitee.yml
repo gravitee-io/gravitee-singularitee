@@ -1,0 +1,196 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+#
+# Gravitee.io - Singularitee Configuration
+#
+# This file is loaded at startup from ${gravitee.home}/config/gravitee.yml
+# All values can be overridden with environment variables using the GRAVITEE_ prefix.
+# Example: grpc.port -> GRAVITEE_GRPC_PORT=9090
+#
+
+# ── gRPC Server ──────────────────────────────────────────────────────────
+# All options under "grpc.*" are read by gravitee-node's VertxHttpServerOptions
+# and applied to the Vert.x HTTP/2 server that carries gRPC traffic.
+grpc:
+  port: 9090
+  host: 0.0.0.0
+  alpn: true # HTTP/2 ALPN negotiation (required for gRPC over TLS)
+  compressionSupported: false # gRPC message compression
+  idleTimeout: 0 # Connection idle timeout in seconds (0 = no timeout)
+  tcpKeepAlive: true # TCP keep-alive
+  # ── Outbound TLS (workspace remote: endpoints with `ssl: true`) ─────────
+  # The workspace decides WHICH endpoints are reached over TLS; this block
+  # decides WHAT to present. Unset = JVM default trust store, no client cert.
+  # client:
+  #   ssl:
+  #     truststore:            # verify the peer (a private CA)
+  #       type: PKCS12         # PEM | JKS | PKCS12
+  #       path: /certs/ca.p12
+  #       password: changeit
+  #     keystore:              # our identity — presented to servers demanding
+  #       type: PKCS12         # clientAuth (this is what makes it mutual TLS)
+  #       path: /certs/client.p12
+  #       password: changeit   # PEM type needs keyPath instead of password
+
+# ── TLS ──────────────────────────────────────────────────────────────
+# Uncomment to enable TLS on the gRPC server.
+# Certificates are hot-reloadable — changes are picked up without restart.
+#  secured: true
+#  ssl:
+#    sni: false                       # Server Name Indication
+#    openssl: false                   # Use OpenSSL native engine (requires netty-tcnative)
+#    tlsProtocols: TLSv1.2,TLSv1.3   # Allowed TLS versions
+#    clientAuth: NONE                 # NONE, REQUEST, REQUIRED (for mTLS)
+#    keystore:
+#      type: JKS                      # JKS, PEM, PKCS12, SELF-SIGNED
+#      path: ${gravitee.home}/config/keystore.jks
+#      password: changeit
+#      watch: true                    # Hot-reload on file change
+#    truststore:
+#      type: JKS                      # JKS, PEM, PKCS12, PEM-FOLDER
+#      path: ${gravitee.home}/config/truststore.jks
+#      password: changeit
+
+# ── HAProxy PROXY protocol ──────────────────────────────────────────
+#  haproxy:
+#    proxyProtocol: false             # Enable HAProxy PROXY protocol v1/v2
+#    proxyProtocolTimeout: 10000      # PROXY protocol header timeout in ms
+
+# ── Authentication ───────────────────────────────────────────────────
+# Optional HTTP Basic auth on gRPC calls. When enabled, callers must send an
+# "authorization: Basic base64(username:password)" entry in their gRPC metadata.
+# Requests without valid credentials are rejected with gRPC UNAUTHENTICATED.
+#  auth:
+#    enabled: true
+#    type: basic                      # Only "basic" is supported
+#    users:                           # username -> password
+#      admin: adminadmin
+
+# ── Native OpenAI-compatible HTTP API ────────────────────────────────────
+# Opt-in JSON/REST API (OpenAI-compatible + Gravitee classify/rerank/similarity)
+# exposing the same models & pipelines as gRPC. Disabled by default.
+http:
+  enabled: false
+  port: 8080
+  host: 0.0.0.0
+  idleTimeout: 0
+  tcpKeepAlive: true
+  expose-pipelines: true             # list pipelines on /v1/models and accept pipeline ids
+#  secured: true                     # TLS — same ssl/haproxy structure as the grpc block above
+#  ssl:
+#    keystore:
+#      type: PKCS12
+#      path: ${gravitee.home}/config/keystore.p12
+#      password: changeit
+#  auth:
+#    enabled: true
+#    type: bearer                     # Only "bearer" is supported
+#    tokens:                          # accepted API keys (Authorization: Bearer <token>)
+#      - sk-local-changeme
+
+# ── AI Workspace ─────────────────────────────────────────────────────────
+ai:
+  # Workspace YAML to load at startup (models + pipelines).
+  # No default: mount or point this at your own workspace file, e.g. one of the
+  # ready-made examples/ files in the repository. Empty = start with no workspace.
+  # Override at run time with GRAVITEE_AI_WORKSPACE_PATH.
+  workspace:
+    path:
+
+  # Directory where model files (GGUF, ONNX, GLiNER) are stored / downloaded.
+  # Models referenced by filename in workspace definitions resolve relative to this path.
+  models:
+    path: ${gravitee.home}/models
+
+  # HuggingFace token for gated model downloads
+  # Can also be set via the HF_TOKEN environment variable.
+  huggingface:
+    token:
+
+  # Streaming response back-pressure.
+  # buffer-capacity is the number of generated tokens a single (slow) client may fall
+  # behind before its stream is cancelled — instead of buffering without bound. Larger
+  # tolerates slower clients at higher memory per stream; smaller cancels them sooner.
+  streaming:
+    buffer-capacity: 256
+
+# ── Management API ───────────────────────────────────────────────────────
+# Internal HTTP API for health checks, metrics, configuration introspection.
+services:
+  core:
+    http:
+      enabled: true
+      port: 18092
+      host: localhost
+      authentication:
+        type: basic
+        users:
+          admin: adminadmin
+
+  # ── Metrics (Micrometer → Prometheus) ──────────────────────────────────
+  # Set BOTH flags to true to expose inference metrics
+  # (ai_infer_requests_total, ai_infer_latency_seconds, ai_model_call_seconds,
+  # ai_tokens_total), JVM/Vert.x metrics, and — when GPU monitoring is on below —
+  # the gpu_* gauges, scraped at
+  # http://<core.host>:18092/_node/metrics/prometheus (basic-auth protected).
+  metrics:
+    enabled: true
+    prometheus:
+      enabled: true
+
+  # ── Node monitoring (CPU/JVM + GPU) ─────────────────────────────────────
+  # GPU monitoring shells out to `nvidia-smi` on a fixed delay and publishes a
+  # snapshot on the event bus; when metrics are enabled (above) the snapshot is
+  # bound to Micrometer gauges exposed on the Prometheus endpoint:
+  #   gpu_utilization_percent, gpu_memory_utilization_percent,
+  #   gpu_memory_total_bytes, gpu_memory_used_bytes,
+  #   gpu_temperature_celsius, gpu_power_watts   (tags: gpu, name, uuid)
+  # Requires the NVIDIA driver / `nvidia-smi` on PATH (CUDA image). No-op otherwise.
+  monitoring:
+    gpu:
+      enabled: true
+      delay: 5000
+      unit: MILLISECONDS
+
+  # ── OpenTelemetry tracing (server-side spans) ───────────────────────────
+  # Disabled by default. When enabled, the gRPC server emits a SERVER span per RPC
+  # (continuing any inbound W3C traceparent) with nested ai.pipeline → ai.step →
+  # ai.model.<op> spans, exported via OTLP to a collector (Jaeger, Tempo, …).
+  # Legacy aliases under services.tracing.otel.* are also accepted.
+  opentelemetry:
+    enabled: false
+    verbose: false # add request/response attributes to spans
+    exporter:
+      endpoint: http://localhost:4317 # OTLP collector endpoint
+      protocol: grpc # grpc (4317) | http/protobuf (4318)
+#      compression: gzip
+#      timeout: 10000                  # export timeout in ms
+#      headers:                        # extra OTLP headers (e.g. auth)
+#        - "authorization=Bearer <token>"
+#      ssl:
+#        trustAll: false
+#        verifyHost: true
+
+# ── Graceful shutdown ────────────────────────────────────────────────────
+gracefulShutdown:
+  delay: 0
+  unit: MILLISECONDS
+
+# ── Kubernetes ───────────────────────────────────────────────────────────
+# Disable Kubernetes integration (not needed for standalone Singularitee)
+kubernetes:
+  enabled: false

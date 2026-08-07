@@ -1,0 +1,155 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Pipeline — GLiNER router: zero-shot intent classification, then a persona branch
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/pipelines/gliner-router.yaml
+#
+#   route ──→ [ respond_code | respond_cooking | respond_finance | respond_general ]
+#
+# `strategy: classifier` — the classifier's TOP LABEL selects the branch. Matching
+# is exact string equality, so every rules[].label below MUST appear verbatim in
+# the model's labels[].name. That is the most common way to get a router that
+# silently always takes the default branch.
+#
+# Compare with embedding-router.yaml, which routes on vector similarity instead:
+# a classifier is the right tool when your routes are a small, named, stable set.
+#
+# Try:
+#   "How do I implement a binary search tree?"  → respond_code
+#   "What's a good pasta carbonara recipe?"     → respond_cooking
+#   "Should I invest in index funds?"           → respond_finance
+#   "Tell me a joke"                            → respond_general
+
+workspace:
+  name: gliner-router
+
+  models:
+    - id: llm
+      name: Qwen/Qwen3-0.6B-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: Qwen3-0.6B-Q8_0.gguf
+        n_ctx: 8192
+        n_seq_max: 4
+        n_gpu_layers: 999
+        flash_attn_type: AUTO
+
+    - id: router
+      name: gravitee-io/gliner4j-gliner2-base-v1
+      type: gliner_classifier
+      memory_check: disabled
+      gliner_classifier:
+        variant: onnx_fp16
+        threshold: 0.3
+        labels:
+          - name: software development question
+            description: >
+              User asks about writing, fixing, or understanding code; debugging; algorithms;
+              data structures; system design; APIs; programming languages, tools, or frameworks.
+          - name: cooking and food recipe
+            description: >
+              User asks how to prepare food or drinks; requests recipes, cooking steps,
+              ingredient lists, substitutions, measurements, or kitchen techniques.
+          - name: financial advice
+            description: >
+              User asks how to manage or grow money; investing, budgeting, saving, debt,
+              taxes, retirement, or choosing financial products.
+          - name: general conversation
+            description: >
+              User engages in casual or non-specialized interaction; small talk, opinions,
+              jokes, brainstorming, or queries without a clear technical, culinary, or financial intent.
+
+  pipelines:
+    - id: gliner-router
+      name: GLiNER Zero-Shot Routing Pipeline
+      entry: route
+
+      steps:
+        - id: route
+          type: route
+          config:
+            model_id: router
+            strategy: classifier
+            input_field: prompt
+            default_step: respond_general
+            rules:
+              - label: software development question
+                next_step: respond_code
+              - label: cooking and food recipe
+                next_step: respond_cooking
+              - label: financial advice
+                next_step: respond_finance
+              - label: general conversation
+                next_step: respond_general
+
+        - id: respond_code
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: respond_code.output
+            context: { enable_thinking: false }
+            prompt:
+              messages:
+                - role: system
+                  content: "You are an expert software engineer. Provide clear, concise technical answers with code examples when appropriate."
+                - role: user
+                  content: "{{prompt}}"
+
+        - id: respond_cooking
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: respond_cooking.output
+            context: { enable_thinking: false }
+            prompt:
+              messages:
+                - role: system
+                  content: "You are a passionate chef. Provide detailed recipes and cooking tips with enthusiasm."
+                - role: user
+                  content: "{{prompt}}"
+
+        - id: respond_finance
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: respond_finance.output
+            context: { enable_thinking: false }
+            prompt:
+              messages:
+                - role: system
+                  content: "You are a knowledgeable financial advisor. Provide balanced, educational financial guidance. Always remind users to consult a professional."
+                - role: user
+                  content: "{{prompt}}"
+
+        - id: respond_general
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: respond_general.output
+            context: { enable_thinking: false }
+            prompt:
+              messages:
+                - role: system
+                  content: "You are a helpful, friendly assistant. Respond naturally."
+                - role: user
+                  content: "{{prompt}}"

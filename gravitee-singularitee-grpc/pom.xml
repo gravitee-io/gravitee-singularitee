@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Copyright © 2015 The Gravitee team (http://gravitee.io)
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.gravitee.singularitee</groupId>
+        <artifactId>gravitee-singularitee</artifactId>
+        <version>0.0.1</version>
+    </parent>
+
+    <artifactId>gravitee-singularitee-grpc</artifactId>
+
+    <name>Gravitee.io - Singularitee - gRPC Server</name>
+    <description>Vert.x gRPC server that manages LLM model lifecycle and serves streaming inference</description>
+
+    <dependencies>
+        <!-- Internal protocol (includes Vert.x gRPC generated stubs) -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-protocol</artifactId>
+        </dependency>
+
+        <!-- Internal engine API (records, interfaces, enums, InferenceMetrics) -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-engine</artifactId>
+        </dependency>
+
+        <!-- Gravitee Node API — OpenTelemetry Tracer / Span / InternalRequest used to
+             open per-RPC child spans in the service layer. -->
+        <dependency>
+            <groupId>io.gravitee.node</groupId>
+            <artifactId>gravitee-node-api</artifactId>
+        </dependency>
+
+        <!-- Workspace YAML parsing -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-workspace</artifactId>
+        </dependency>
+
+        <!-- Remote engine implementations (for remote models in workspace) -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-engine-remote</artifactId>
+        </dependency>
+
+        <!-- Inference engines (vendored, formerly io.gravitee.inference) -->
+        <dependency>
+            <groupId>io.gravitee.singularitee.inference</groupId>
+            <artifactId>gravitee-singularitee-inference-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.singularitee.inference</groupId>
+            <artifactId>gravitee-singularitee-inference-llama-cpp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.singularitee.inference</groupId>
+            <artifactId>gravitee-singularitee-inference-vllm</artifactId>
+        </dependency>
+        <!-- ONNX inference (classifier + embedding). The bundled CPU onnxruntime
+             is excluded so the native backend can be swapped via -Pcuda. -->
+        <dependency>
+            <groupId>io.gravitee.singularitee.inference</groupId>
+            <artifactId>gravitee-singularitee-inference-onnx</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.microsoft.onnxruntime</groupId>
+                    <artifactId>onnxruntime</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- ONNX Runtime native backend. Defaults to CPU ("onnxruntime"); -Pcuda
+             selects "onnxruntime_gpu". Shared by gravitee-singularitee-inference-onnx (above) and
+             gliner4j-core (which declares ORT as provided), so a single swap covers
+             ONNX classifiers/embeddings and GLiNER. -->
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>${onnxruntime.artifactId}</artifactId>
+            <version>${onnxruntime.version}</version>
+        </dependency>
+        <!-- GLiNER4j (zero-shot NER + classifier) -->
+        <dependency>
+            <groupId>io.gravitee.ai.gliner4j</groupId>
+            <artifactId>gliner4j-core</artifactId>
+        </dependency>
+        <!-- Vector math API (GioMaths interface) + vanilla impl -->
+        <dependency>
+            <groupId>io.gravitee.singularitee.inference</groupId>
+            <artifactId>gravitee-singularitee-inference-math-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.singularitee.inference</groupId>
+            <artifactId>gravitee-singularitee-inference-math-native</artifactId>
+        </dependency>
+        <!-- Vert.x -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-rx-java3</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-grpc-server</artifactId>
+        </dependency>
+
+        <!-- Vert.x WebClient (for HuggingFace model downloads) -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-web-client</artifactId>
+        </dependency>
+
+        <!-- Logging (override BOM's 'provided' scope for fat JAR) -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-client</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>io.gravitee.singularitee.grpc.Singularitee</mainClass>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,0 +1,74 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# GLM-4-9B · vLLM backend
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/vllm/glm-4-9b.yaml
+#
+# Dense 9.4B, bf16, 32k context. GLM ships its own chat template; trust_remote_code
+# is not needed for this checkpoint on vLLM 0.23 (Glm4ForCausalLM is built in).
+#
+# ⚠ Linux + CUDA only. vLLM runs from a host venv (scripts/setup-venv.sh) unless
+#   you use the -vllm-cuda image, which bundles it:
+#     ./run-server.sh --workspace examples/vllm/glm-4-9b.yaml   -Dvllm4j.venv=/path/to/.venv
+#
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each loads its own
+# native CUDA bindings. One backend per server, composed over gRPC.
+
+workspace:
+  name: glm-4-9b
+
+  models:
+    - id: llm
+      name: THUDM/GLM-4-9B-0414
+      type: vllm
+      memory_check: warn
+      vllm:
+        dtype: auto
+        max_model_len: 32768
+        max_num_seqs: 8
+        gpu_memory_utilization: 0.85
+        enforce_eager: false
+        enable_prefix_caching: true
+
+  pipelines:
+    - id: agent
+      name: GLM-4-9B Agent Pipeline
+      entry: agent
+      steps:
+        - id: agent
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: agent.output
+            # no tags: the whole message is the call
+            tool_extraction_template: glm-name-json
+            sampling:
+              temperature: 0.6
+              top_p: 0.85
+              # GLM ends a tool call by emitting <|observation|> and expects the runtime to
+              # supply the result. The GGUF does not flag it end-of-generation, so without a
+              # stop string the model runs straight past it and writes the observation itself
+              # — a fabricated tool result, indistinguishable from a real one downstream.
+              # <|user|> is the same hazard for the next turn.
+              stop:
+                - "<|observation|>"
+                - "<|user|>"
+            # optional: compact tool schemas (~half the tool-block tokens) via a
+            # workspace template override of the official chat template:
+            # chat_template: glm-compact

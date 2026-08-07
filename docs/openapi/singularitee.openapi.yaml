@@ -1,0 +1,882 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+openapi: 3.1.0
+info:
+  title: Singularitee API
+  version: "1.0"
+  description: |
+    OpenAI-compatible HTTP/JSON API served by the `gravitee-singularitee-http` module,
+    plus Gravitee extensions (`/v1/classify`, `/v1/rerank`, `/v1/similarity`).
+
+    - Every path is served both under `/v1` (documented here) and bare (e.g. `/chat/completions`).
+    - The `model` field accepts a model id, `pipeline:<id>`, or a bare pipeline id
+      (pipelines are separate namespaces; a registered text-gen model wins over a bare pipeline id).
+      Unresolved models return `400` with `code: model_not_found`.
+    - The server is opt-in (`http.enabled: false` by default), listens on port `8080`,
+      and is independent of the gRPC server (port 9090) and the management/Prometheus
+      server (port 18092), which are out of scope for this document.
+    - Request validation is lenient by design: unknown fields are accepted; required
+      fields, types and enums are enforced, with all violations joined into one `400`.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+tags:
+  - name: OpenAI-compatible
+    description: Endpoints matching the OpenAI API surface (with documented divergences).
+  - name: Gravitee extensions
+    description: Capabilities beyond the OpenAI API — classification, reranking, similarity.
+  - name: Models
+    description: Model and pipeline discovery.
+  - name: Health
+    description: Liveness probe.
+
+paths:
+  /v1/chat/completions:
+    post:
+      tags: [OpenAI-compatible]
+      operationId: createChatCompletion
+      summary: Create a chat completion
+      description: |
+        Streaming and non-streaming chat completions, tool calls, and multimodal
+        content parts (text, `image_url`, `input_audio`).
+
+        Divergences from OpenAI:
+        - `reasoning_content` (non-standard) carries the model's `<think>…</think>` output
+          in both streamed deltas and buffered messages.
+        - `n > 1` is not honored — exactly one choice is returned.
+        - `logprobs` in choices is always `null`.
+        - When `tools` are present the stream is buffered: tool calls arrive as whole
+          chunks with `finish_reason: "tool_calls"`.
+        - `prompt_cache_key` (falling back to `user`) is honored as a cache-affinity key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+      responses:
+        "200":
+          description: |
+            Non-streaming: a `chat.completion` object.
+            Streaming (`stream: true`): `text/event-stream` of `data: {chunk}` frames
+            (`chat.completion.chunk` objects), terminated by `data: [DONE]`. With
+            `stream_options.include_usage`, a final choices-empty chunk carrying
+            `usage` is emitted before `[DONE]`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionChunk"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/completions:
+    post:
+      tags: [OpenAI-compatible]
+      operationId: createCompletion
+      summary: Create a text completion (legacy)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompletionRequest"
+      responses:
+        "200":
+          description: |
+            Non-streaming: a `text_completion` object. Streaming: SSE frames of
+            `text_completion` chunks terminated by `data: [DONE]`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletionResponse"
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/CompletionResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/responses:
+    post:
+      tags: [OpenAI-compatible]
+      operationId: createResponse
+      summary: Create a model response (OpenAI Responses API)
+      description: |
+        Streaming uses typed SSE events (`response.created`, `response.in_progress`,
+        `response.output_item.added/done`, `response.reasoning_summary_part.added`,
+        `response.reasoning_summary_text.*`, `response.content_part.added/done`,
+        `response.output_text.delta/done`, `response.function_call_arguments.done`,
+        `response.completed`), each carrying a `sequence_number`. **No `[DONE]`
+        sentinel is emitted** on this endpoint (matching OpenAI's Responses API).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResponsesRequest"
+      responses:
+        "200":
+          description: |
+            Non-streaming: a `response` object. Streaming: typed `response.*` SSE
+            events; `response.completed` embeds the full response object.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponsesResponse"
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ResponsesStreamEvent"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/embeddings:
+    post:
+      tags: [OpenAI-compatible]
+      operationId: createEmbedding
+      summary: Create embeddings
+      description: |
+        `encoding_format: base64` returns each vector as a base64 string of
+        little-endian float32 values. `dimensions` is accepted by validation but
+        **ignored** by the server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingsRequest"
+      responses:
+        "200":
+          description: Embedding list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingsResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/classify:
+    post:
+      tags: [Gravitee extensions]
+      operationId: classify
+      summary: Classify text (Gravitee extension)
+      description: |
+        Covers fixed-label classification, token-level NER/PII (span results),
+        and zero-shot classification via per-request `labels` (GLiNER models).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClassifyRequest"
+      responses:
+        "200":
+          description: One result per input.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClassifyResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/rerank:
+    post:
+      tags: [Gravitee extensions]
+      operationId: rerank
+      summary: Rerank documents (Gravitee extension)
+      description: Cohere-style reranking of documents against a query.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RerankRequest"
+      responses:
+        "200":
+          description: Documents ranked by relevance score, descending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RerankResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/similarity:
+    post:
+      tags: [Gravitee extensions]
+      operationId: similarity
+      summary: Compute text similarity (Gravitee extension)
+      description: |
+        `mode: cross` scores every input against every candidate (matrix result,
+        rows = inputs). `mode: zipped` pairs inputs and candidates element-wise
+        and requires equal lengths (otherwise `400`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimilarityRequest"
+      responses:
+        "200":
+          description: Similarity scores.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimilarityResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/models:
+    get:
+      tags: [Models]
+      operationId: listModels
+      summary: List models
+      description: |
+        Lists registered models, and pipelines when `http.expose-pipelines: true`
+        (pipelines have `type: "pipeline"`).
+      responses:
+        "200":
+          description: Model list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelList"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/models/{model}:
+    get:
+      tags: [Models]
+      operationId: getModel
+      summary: Retrieve a model
+      parameters:
+        - name: model
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The model (falls back to the pipeline registry).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Model"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Unknown model (`code: model_not_found`, `param: model`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /health:
+    get:
+      tags: [Health]
+      operationId: health
+      summary: Liveness check
+      description: Always returns 200, unauthenticated, before the readiness gate.
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: OK
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Opt-in API-key auth (`http.auth.enabled: true`, `http.auth.type: bearer`,
+        keys in `http.auth.tokens`). When disabled, requests need no credentials.
+        Failures return 401 with `WWW-Authenticate: Bearer` and `code: invalid_api_key`.
+
+  responses:
+    BadRequest:
+      description: |
+        Invalid payload (all schema violations joined into one message), missing
+        required field, unresolved model (`code: model_not_found`, `param: model`),
+        or wrong model task (`code: unsupported_model`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: "Missing or invalid bearer token (`code: invalid_api_key`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: "Unexpected server error (`code: internal_error`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotReady:
+      description: "Workspace still loading (`code: model_not_ready`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, type, param, code]
+          properties:
+            message: { type: string }
+            type:
+              type: string
+              description: e.g. `invalid_request_error`, `invalid_api_key`, `not_found`, `internal_error`, `server_error`.
+            param:
+              type: [string, "null"]
+              description: Always present; `null` when not applicable.
+            code:
+              type: [string, "null"]
+              description: e.g. `model_not_found`, `unsupported_model`, `invalid_api_key`, `model_not_ready`. Always present; `null` when not applicable.
+
+    ModelField:
+      type: string
+      description: |
+        Model id, `pipeline:<id>`, or a bare pipeline id. Resolution order:
+        `pipeline:` prefix → registered text-gen model → bare pipeline id →
+        `400 model_not_found`.
+
+    Usage:
+      type: object
+      properties:
+        prompt_tokens: { type: integer }
+        completion_tokens: { type: integer }
+        total_tokens: { type: integer }
+        completion_tokens_details: { type: object }
+
+    # ---- chat/completions ----
+
+    ChatCompletionRequest:
+      type: object
+      required: [model, messages]
+      additionalProperties: true
+      properties:
+        model: { $ref: "#/components/schemas/ModelField" }
+        messages:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/ChatMessage" }
+        stream: { type: boolean, default: false }
+        temperature: { type: number, minimum: 0, maximum: 2 }
+        top_p: { type: number }
+        max_tokens: { type: integer }
+        max_completion_tokens: { type: integer }
+        n:
+          type: integer
+          description: Accepted but not honored — exactly one choice is returned.
+        presence_penalty: { type: number }
+        frequency_penalty: { type: number }
+        seed: { type: integer }
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        tools:
+          type: array
+          items: { $ref: "#/components/schemas/Tool" }
+        stream_options:
+          type: object
+          properties:
+            include_usage:
+              type: boolean
+              default: false
+              description: Emit a final choices-empty chunk carrying `usage` before `[DONE]`.
+        logprobs:
+          type: boolean
+          description: Accepted but not honored — choice `logprobs` is always `null`.
+        top_logprobs: { type: integer, minimum: 0, maximum: 20 }
+        prompt_cache_key:
+          type: string
+          description: Non-standard — cache-affinity key; falls back to `user` when absent.
+        user: { type: string }
+
+    ChatMessage:
+      type: object
+      required: [role]
+      additionalProperties: true
+      properties:
+        role: { type: string }
+        content:
+          oneOf:
+            - type: string
+            - type: "null"
+            - type: array
+              items: { $ref: "#/components/schemas/ContentPart" }
+        name: { type: string }
+        tool_call_id: { type: string }
+        tool_calls:
+          type: array
+          items: { $ref: "#/components/schemas/ToolCall" }
+
+    ContentPart:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text, image_url, input_audio]
+        text: { type: string }
+        image_url:
+          type: object
+          properties:
+            url: { type: string }
+        input_audio:
+          type: object
+          properties:
+            data: { type: string, description: Base64-encoded audio. }
+            format: { type: string }
+
+    Tool:
+      type: object
+      properties:
+        type: { type: string, const: function }
+        function:
+          type: object
+          properties:
+            name: { type: string }
+            description: { type: string }
+            parameters: { type: object }
+
+    ToolCall:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, const: function }
+        function:
+          type: object
+          properties:
+            name: { type: string }
+            arguments: { type: string, description: JSON-encoded arguments. }
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id: { type: string, description: "`chatcmpl-…`" }
+        object: { type: string, const: chat.completion }
+        created: { type: integer }
+        model: { type: string }
+        system_fingerprint: { type: "null" }
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              message:
+                type: object
+                properties:
+                  role: { type: string, const: assistant }
+                  content: { type: [string, "null"] }
+                  reasoning_content:
+                    type: string
+                    description: Non-standard — model `<think>` output.
+                  tool_calls:
+                    type: array
+                    items: { $ref: "#/components/schemas/ToolCall" }
+              logprobs: { type: "null" }
+              finish_reason:
+                type: string
+                enum: [stop, length, tool_calls]
+        usage: { $ref: "#/components/schemas/Usage" }
+
+    ChatCompletionChunk:
+      type: object
+      description: "One SSE `data:` frame; the stream ends with `data: [DONE]`."
+      properties:
+        id: { type: string }
+        object: { type: string, const: chat.completion.chunk }
+        created: { type: integer }
+        model: { type: string }
+        system_fingerprint: { type: "null" }
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              delta:
+                type: object
+                properties:
+                  role: { type: string }
+                  content: { type: string }
+                  reasoning_content: { type: string }
+                  tool_calls:
+                    type: array
+                    items: { $ref: "#/components/schemas/ToolCall" }
+              logprobs: { type: "null" }
+              finish_reason: { type: [string, "null"] }
+        usage:
+          $ref: "#/components/schemas/Usage"
+          description: Only on the final chunk when `stream_options.include_usage` is set.
+
+    # ---- completions ----
+
+    CompletionRequest:
+      type: object
+      required: [model, prompt]
+      additionalProperties: true
+      properties:
+        model: { $ref: "#/components/schemas/ModelField" }
+        prompt:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        stream: { type: boolean, default: false }
+        max_tokens: { type: integer }
+        temperature: { type: number }
+
+    CompletionResponse:
+      type: object
+      properties:
+        id: { type: string, description: "`cmpl-…`" }
+        object: { type: string, const: text_completion }
+        created: { type: integer }
+        model: { type: string }
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              text: { type: string }
+              logprobs: { type: "null" }
+              finish_reason: { type: [string, "null"] }
+        usage: { $ref: "#/components/schemas/Usage" }
+
+    # ---- responses ----
+
+    ResponsesRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: true
+      properties:
+        model: { $ref: "#/components/schemas/ModelField" }
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                properties:
+                  role: { type: string }
+                  content: {}
+        instructions: { type: string }
+        stream: { type: boolean, default: false }
+        max_output_tokens: { type: integer }
+
+    ResponsesResponse:
+      type: object
+      properties:
+        id: { type: string, description: "`resp-…`" }
+        object: { type: string, const: response }
+        status: { type: string, const: completed }
+        created_at: { type: integer }
+        model: { type: string }
+        output:
+          type: array
+          items:
+            oneOf:
+              - title: ReasoningItem
+                type: object
+                properties:
+                  type: { type: string, const: reasoning }
+                  id: { type: string }
+                  summary:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string, const: summary_text }
+                        text: { type: string }
+              - title: MessageItem
+                type: object
+                properties:
+                  type: { type: string, const: message }
+                  role: { type: string, const: assistant }
+                  status: { type: string, const: completed }
+                  content:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string, const: output_text }
+                        text: { type: string }
+              - title: FunctionCallItem
+                type: object
+                properties:
+                  type: { type: string, const: function_call }
+                  id: { type: string }
+                  call_id: { type: string }
+                  name: { type: string }
+                  arguments: { type: string }
+        usage:
+          type: object
+          properties:
+            input_tokens: { type: integer }
+            output_tokens: { type: integer }
+            total_tokens: { type: integer }
+
+    ResponsesStreamEvent:
+      type: object
+      description: |
+        Typed SSE event. `type` is one of `response.created`, `response.in_progress`,
+        `response.output_item.added`, `response.output_item.done`,
+        `response.reasoning_summary_part.added`, `response.reasoning_summary_text.delta`,
+        `response.reasoning_summary_text.done`, `response.content_part.added`,
+        `response.content_part.done`, `response.output_text.delta`,
+        `response.output_text.done`, `response.function_call_arguments.done`,
+        `response.completed` (embeds the full response object). No `[DONE]` sentinel.
+      required: [type, sequence_number]
+      properties:
+        type: { type: string }
+        sequence_number: { type: integer }
+      additionalProperties: true
+
+    # ---- embeddings ----
+
+    EmbeddingsRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: true
+      properties:
+        model: { $ref: "#/components/schemas/ModelField" }
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        encoding_format:
+          type: string
+          enum: [float, base64]
+          default: float
+        dimensions:
+          type: integer
+          description: Accepted by validation but ignored by the server.
+
+    EmbeddingsResponse:
+      type: object
+      properties:
+        object: { type: string, const: list }
+        model: { type: string }
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              object: { type: string, const: embedding }
+              index: { type: integer }
+              embedding:
+                oneOf:
+                  - type: array
+                    items: { type: number }
+                  - type: string
+                    description: "`encoding_format: base64` — base64 of little-endian float32."
+        usage:
+          type: object
+          properties:
+            prompt_tokens: { type: integer }
+            total_tokens: { type: integer }
+
+    # ---- classify ----
+
+    ClassifyRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: true
+      properties:
+        model: { $ref: "#/components/schemas/ModelField" }
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        labels:
+          type: array
+          description: Zero-shot labels (GLiNER models); omit for fixed-label models.
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
+              description: { type: string }
+
+    ClassifyResponse:
+      type: object
+      properties:
+        id: { type: string, description: "`cls-<epoch>`" }
+        object: { type: string, const: classification }
+        model: { type: string }
+        results:
+          type: array
+          description: One result per input, in order.
+          items:
+            type: object
+            properties:
+              top_label: { type: string }
+              top_score: { type: number }
+              scores:
+                type: object
+                additionalProperties: { type: number }
+              spans:
+                type: array
+                description: Only for token-classification / NER results.
+                items:
+                  type: object
+                  properties:
+                    label: { type: string }
+                    score: { type: number }
+                    token: { type: string }
+                    start: { type: integer }
+                    end: { type: integer }
+
+    # ---- rerank ----
+
+    RerankRequest:
+      type: object
+      required: [model, query, documents]
+      additionalProperties: true
+      properties:
+        model: { $ref: "#/components/schemas/ModelField" }
+        query: { type: string }
+        documents:
+          type: array
+          minItems: 1
+          items: { type: string }
+        top_k: { type: integer }
+        return_documents: { type: boolean, default: true }
+
+    RerankResponse:
+      type: object
+      properties:
+        object: { type: string, const: rerank }
+        model: { type: string }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+                description: Index into the request `documents` array.
+              score: { type: number }
+              document:
+                type: string
+                description: "Present unless `return_documents: false`."
+        usage:
+          type: object
+          properties:
+            total_tokens: { type: integer }
+
+    # ---- similarity ----
+
+    SimilarityRequest:
+      type: object
+      required: [model, input, candidates]
+      additionalProperties: true
+      properties:
+        model: { $ref: "#/components/schemas/ModelField" }
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        candidates:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        mode:
+          type: string
+          enum: [cross, zipped]
+          description: "`zipped` requires equal input/candidate lengths (else 400)."
+
+    SimilarityResponse:
+      type: object
+      properties:
+        object: { type: string, const: similarity }
+        model: { type: string }
+        mode: { type: string, enum: [cross, zipped] }
+        results:
+          oneOf:
+            - type: array
+              items: { type: number }
+              description: "`zipped` — one score per pair."
+            - type: array
+              items:
+                type: array
+                items: { type: number }
+              description: "`cross` — matrix, rows = inputs, columns = candidates."
+        usage:
+          type: object
+          properties:
+            total_tokens: { type: integer }
+
+    # ---- models ----
+
+    Model:
+      type: object
+      properties:
+        id: { type: string }
+        object: { type: string, const: model }
+        created: { type: integer }
+        owned_by: { type: string, const: gravitee }
+        type:
+          type: string
+          description: Non-standard — the model task, or `pipeline`.
+
+    ModelList:
+      type: object
+      properties:
+        object: { type: string, const: list }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Model" }

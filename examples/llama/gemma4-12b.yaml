@@ -1,0 +1,71 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Gemma 4 12B (QAT) · channel markers · long context
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/llama/gemma4-12b.yaml
+#
+# One model (id: llm) and one pipeline (id: agent), so the same client config and
+# curls work across every example file. Prose, measurements and caveats for this
+# model live in docs/models/README.md.
+#
+# n_ctx is PER SEQUENCE: total KV allocated is n_ctx * n_seq_max.
+# Dense 12B, sliding-window attention, Gemma license. Same architecture and same
+# chat template as the 26B-A4B example — this file exists for CONTEXT: ~8 GB of
+# weights instead of ~13 GB leaves the headroom the full-size SWA cache needs.
+# The model itself supports 262144; the ceiling is memory, not the model. 48
+# layers (vs the 26B's 30) means MORE cache per token, so do not assume the win
+# scales with the weight saving — raise n_ctx and watch RSS before committing to
+# a value. Being dense, it decodes slower than the 4B-active MoE.
+
+workspace:
+  name: gemma4-12b
+
+  models:
+    - id: llm
+      name: google/gemma-4-12B-it-qat-q4_0-gguf
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: gemma-4-12b-it-qat-q4_0.gguf
+        n_ctx: 65536 # push higher if RSS allows; the model itself goes to 262144
+        n_seq_max: 1
+        n_gpu_layers: 999
+        flash_attn_type: ENABLED
+        cache_type_k: q8_0
+        cache_type_v: q8_0
+        mtp: false # Gemma 4 MTP uses separate draft GGUFs, not an embedded head
+
+  pipelines:
+    - id: agent
+      name: Gemma 4 12B Agent Pipeline
+      entry: agent
+      steps:
+        - id: agent
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: agent.output
+            context:
+              enable_thinking: true
+            tags:
+              reasoning_open: "<|channel>thought"
+              reasoning_close: "<channel|>"
+              tool_open: "<|tool_call>"
+              tool_close: "<tool_call|>"
+            tool_extraction_template: gemma-call # built-in

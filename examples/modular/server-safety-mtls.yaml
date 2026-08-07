@@ -1,0 +1,38 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# mTLS example, part 1 of 2 — the CALLEE.
+#
+# Publishes the safety classifiers and demands a client certificate. Its peer is
+# examples/modular/server-llm-mtls.yaml, which reaches it over mutual TLS.
+#
+#   task certs             # once — mints a throwaway CA + server/client certificates
+#   task run:mtls-safety   # this file, gRPC 9092 / HTTP 8092
+#   task run:mtls-llm      # the caller, in a second shell
+#   task mtls-check        # confirms an anonymous caller is refused
+#
+# TLS is node configuration, not workspace content: this file declares only what to
+# publish, while `task run:mtls-safety` supplies the certificates as GRAVITEE_GRPC_SSL_*
+# variables. clientAuth REQUIRED is what makes the connection MUTUAL — with it unset
+# this would be ordinary one-way TLS, and any caller could connect.
+
+workspace:
+  name: server-safety-mtls
+
+  includes:
+    models:
+      - classifier/pii-bert.yaml
+      - classifier/toxicity-bert.yaml

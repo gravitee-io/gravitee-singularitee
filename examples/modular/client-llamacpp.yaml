@@ -1,0 +1,48 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Client — single server (llama.cpp, :9090)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Runs the pipelines locally and proxies the "llm" model to the llama.cpp server.
+# Loads the tool-system template so the tool-calling pipeline can render it.
+#
+# Prerequisite: server-llamacpp.yaml running on :9090.
+#
+# Launch:
+#   java io.gravitee.singularitee.cli.Main \
+#        --workspace examples/modular/client-llamacpp.yaml --pipeline-id infer-pipeline
+#   (or --pipeline-id tool-calling)
+
+workspace:
+  name: client-llamacpp
+
+  remote:
+    default:
+      host: 127.0.0.1
+      port: 9090
+
+  models:
+    - id: llm
+      type: remote_llm
+
+  includes:
+    templates:
+      - tool-system.yaml
+    pipelines:
+      - infer.yaml
+      - tool-calling.yaml

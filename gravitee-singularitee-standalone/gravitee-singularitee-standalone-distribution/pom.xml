@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Copyright © 2015 The Gravitee team (http://gravitee.io)
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.gravitee.singularitee</groupId>
+        <artifactId>gravitee-singularitee-standalone</artifactId>
+        <version>0.0.1</version>
+    </parent>
+
+    <artifactId>gravitee-singularitee-standalone-distribution</artifactId>
+    <packaging>pom</packaging>
+
+    <name>Gravitee.io - Singularitee - Standalone - Distribution</name>
+    <description>Assembles the distribution folder layout: bin/, config/, lib/, lib/ext/, examples/</description>
+
+    <dependencies>
+        <!-- Bootstrap (goes into lib/) -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-standalone-bootstrap</artifactId>
+        </dependency>
+
+        <!-- Container (goes into lib/ alongside all gravitee-node + gravitee-singularitee jars) -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-standalone-container</artifactId>
+        </dependency>
+
+        <!-- Standalone cache + cluster plugins (no external services needed) -->
+        <dependency>
+            <groupId>io.gravitee.node</groupId>
+            <artifactId>gravitee-node-cache-plugin-standalone</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.node</groupId>
+            <artifactId>gravitee-node-cluster-plugin-standalone</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Logging — BOM marks these as 'provided', override to 'runtime' for distribution -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-core</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
+
+    <!--
+        Distribution flavour. The default carries every engine, which is what
+        local development and ./run-server.sh expect. CI overrides it per image
+        so each one ships only the engine it runs — see the dist-* profiles.
+    -->
+    <properties>
+        <distribution.descriptor>src/main/assembly/distribution.xml</distribution.descriptor>
+    </properties>
+
+    <profiles>
+        <!--
+            Per-engine flavours. Each keeps the same finalName so the Dockerfiles
+            can all copy target/distribution/ without knowing which flavour ran:
+                mvn package -Pdist-onnx     → ONNX Runtime + GLiNER only
+                mvn package -Pdist-llama    → llama.cpp only
+                mvn package -Pdist-vllm     → vLLM only
+        -->
+        <profile>
+            <id>dist-onnx</id>
+            <properties>
+                <distribution.descriptor>src/main/assembly/distribution-onnx.xml</distribution.descriptor>
+            </properties>
+        </profile>
+        <profile>
+            <id>dist-llama</id>
+            <properties>
+                <distribution.descriptor>src/main/assembly/distribution-llama.xml</distribution.descriptor>
+            </properties>
+        </profile>
+        <profile>
+            <id>dist-vllm</id>
+            <properties>
+                <distribution.descriptor>src/main/assembly/distribution-vllm.xml</distribution.descriptor>
+            </properties>
+        </profile>
+    </profiles>
+
+    <build>
+        <finalName>distribution</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>create-distribution</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <descriptors>
+                                <descriptor>${distribution.descriptor}</descriptor>
+                            </descriptors>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
