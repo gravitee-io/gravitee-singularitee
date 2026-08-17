@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Loads a workspace YAML file and converts it into lists of
- * {@code ModelLoadRequest} and {@link PublishPipelineRequest} messages
+ * {@code ModelLoadRequest} messages
  * ready to be dispatched to the server's service layer.
  *
  * <p>Models are translated first (in declaration order) so that pipeline
@@ -197,8 +197,14 @@ public final class YamlWorkspaceLoader {
     // Templates declared in the root (or merged from includes) are resolved here
     // once, before pipelines are parsed, so template_id references resolve correctly.
     Map<String, String> templateRegistry = buildTemplateRegistry(root, basePath, templatesBasePath);
+    Map<String, WorkspaceDefinition.TagsDef> tagRegistry = buildTagRegistry(root);
 
-    List<Pipeline> pipelines = parsePipelines(root, templatesBasePath, templateRegistry);
+    List<Pipeline> pipelines = parsePipelines(
+      root,
+      templatesBasePath,
+      templateRegistry,
+      tagRegistry
+    );
     var remotes = parseRemotes(root);
 
     LOGGER.info(
@@ -350,7 +356,8 @@ public final class YamlWorkspaceLoader {
   private static List<Pipeline> parsePipelines(
     WorkspaceDefinition.WorkspaceRoot root,
     Path templatesBasePath,
-    Map<String, String> templateRegistry
+    Map<String, String> templateRegistry,
+    Map<String, WorkspaceDefinition.TagsDef> tagRegistry
   ) {
     if (root.pipelines() == null) return List.of();
     List<Pipeline> result = new ArrayList<>();
@@ -360,7 +367,7 @@ public final class YamlWorkspaceLoader {
           result.add(toRemotePipelineProxy(p));
           LOGGER.info("Remote pipeline declared: id='{}', server='{}'", p.id(), p.server());
         } else {
-          result.add(toPipeline(p, templatesBasePath, templateRegistry));
+          result.add(toPipeline(p, templatesBasePath, templateRegistry, tagRegistry));
         }
       } catch (IllegalArgumentException e) {
         throw e;
@@ -402,7 +409,8 @@ public final class YamlWorkspaceLoader {
   private static Pipeline toPipeline(
     PipelineDefinition p,
     Path templatesBasePath,
-    Map<String, String> templateRegistry
+    Map<String, String> templateRegistry,
+    Map<String, WorkspaceDefinition.TagsDef> tagRegistry
   ) {
     var pipelineBuilder = Pipeline.newBuilder();
 
@@ -412,7 +420,7 @@ public final class YamlWorkspaceLoader {
 
     if (p.steps() != null) {
       for (StepDefinition s : p.steps()) {
-        pipelineBuilder.addSteps(toStep(s, templatesBasePath, templateRegistry));
+        pipelineBuilder.addSteps(toStep(s, templatesBasePath, templateRegistry, tagRegistry));
         if (s.nextStep() != null && !s.nextStep().isBlank()) {
           pipelineBuilder.putEdges(s.id(), s.nextStep());
         }
@@ -425,7 +433,8 @@ public final class YamlWorkspaceLoader {
   private static PipelineStep toStep(
     StepDefinition s,
     Path templatesBasePath,
-    Map<String, String> templateRegistry
+    Map<String, String> templateRegistry,
+    Map<String, WorkspaceDefinition.TagsDef> tagRegistry
   ) {
     var b = PipelineStep.newBuilder();
     if (s.id() != null) {
@@ -442,7 +451,9 @@ public final class YamlWorkspaceLoader {
 
     if (s.config() != null) {
       switch (s.config()) {
-        case InferConfig d -> b.setInferConfig(toInferStep(d, templatesBasePath, templateRegistry));
+        case InferConfig d -> b.setInferConfig(
+          toInferStep(d, templatesBasePath, templateRegistry, tagRegistry)
+        );
         case ClassifyConfig d -> b.setClassifyConfig(toClassifyStep(d));
         case EmbedConfig d -> b.setEmbedConfig(toEmbedStep(d));
         case RouteConfig d -> b.setRouteConfig(toRouteStep(d));
@@ -455,6 +466,7 @@ public final class YamlWorkspaceLoader {
         case SubPipelineConfig d -> b.setSubPipeline(toSubPipelineStep(d));
         case RegexGuardConfig d -> b.setRegexGuardConfig(toRegexGuardStep(d));
         case ToolSelectConfig d -> b.setToolSelectConfig(toToolSelectStep(d));
+        case WorkspaceDefinition.TodoConfig d -> b.setTodoConfig(toTodoStep(d));
       }
     }
     return b.build();
@@ -463,7 +475,8 @@ public final class YamlWorkspaceLoader {
   private static InferStepConfig toInferStep(
     InferConfig d,
     Path basePath,
-    Map<String, String> templateRegistry
+    Map<String, String> templateRegistry,
+    Map<String, WorkspaceDefinition.TagsDef> tagRegistry
   ) {
     var b = InferStepConfig.newBuilder();
     if (d.modelId() != null) b.setModelId(d.modelId());
@@ -496,40 +509,42 @@ public final class YamlWorkspaceLoader {
       b.addAllStop(sampling.stop());
     }
 
-    // Tags section
-    if (d.tags() != null) {
-      var reasoningOpens = nonBlank(d.tags().reasoningOpen());
+    // Tags section — a bare string value is a reference into the workspace's
+    // named `tags:` entries, resolved here so the proto always carries the
+    // expanded TagConfig.
+    var tags = resolveTags(d.tags(), tagRegistry);
+    if (tags != null) {
+      var reasoningOpens = nonBlank(tags.reasoningOpen());
       if (!reasoningOpens.isEmpty()) {
         // First entry is the primary open_tag; any others ride along as alternatives.
-        var closes = nonBlank(d.tags().reasoningClose());
+        var closes = nonBlank(tags.reasoningClose());
         var reasoning = TagConfig.newBuilder()
           .setOpenTag(reasoningOpens.getFirst())
           .setCloseTag(closes.isEmpty() ? "" : closes.getFirst());
         reasoningOpens.stream().skip(1).forEach(reasoning::addOpenTagAlternatives);
         closes.stream().skip(1).forEach(reasoning::addCloseTagAlternatives);
         // Left unset when the workspace is silent, so the engine's own rule applies.
-        if (d.tags().reasoningRepeatable() != null) {
-          reasoning.setRepeatable(d.tags().reasoningRepeatable());
+        if (tags.reasoningRepeatable() != null) {
+          reasoning.setRepeatable(tags.reasoningRepeatable());
         }
         b.setReasoningTags(reasoning.build());
       }
-      var toolOpens = d.tags().toolOpen() == null
+      var toolOpens = tags.toolOpen() == null
         ? java.util.List.<String>of()
-        : d
-          .tags()
+        : tags
           .toolOpen()
           .stream()
           .filter(t -> t != null && !t.isBlank())
           .toList();
       if (!toolOpens.isEmpty()) {
         // First entry is the primary open_tag; any others ride along as alternatives.
-        var toolCloses = nonBlank(d.tags().toolClose());
-        var tags = TagConfig.newBuilder()
+        var toolCloses = nonBlank(tags.toolClose());
+        var toolTags = TagConfig.newBuilder()
           .setOpenTag(toolOpens.getFirst())
           .setCloseTag(toolCloses.isEmpty() ? "" : toolCloses.getFirst());
-        toolOpens.stream().skip(1).forEach(tags::addOpenTagAlternatives);
-        toolCloses.stream().skip(1).forEach(tags::addCloseTagAlternatives);
-        b.setToolCallTags(tags.build());
+        toolOpens.stream().skip(1).forEach(toolTags::addOpenTagAlternatives);
+        toolCloses.stream().skip(1).forEach(toolTags::addCloseTagAlternatives);
+        b.setToolCallTags(toolTags.build());
       }
     }
 
@@ -545,12 +560,21 @@ public final class YamlWorkspaceLoader {
       b.setInjectTools(d.injectTools());
     }
 
+    if (d.serverTools() != null) {
+      b.setExposeServerTools(d.serverTools());
+    }
+
     // Per-step thinking suppression. When true, tokens emitted between the
     // reasoning open/close tags are neither streamed to the client nor stored
     // in the pipeline context. The tag pair is taken from reasoning_tags;
     // when unset the executor defaults to <think>…</think>.
     if (d.stripThinking() != null) {
       b.setStripThinking(d.stripThinking());
+    }
+
+    // Live deliberation for internal steps: forward ONLY the thinking channel.
+    if (d.streamThinking() != null) {
+      b.setStreamThinking(d.streamThinking());
     }
 
     // One-liner default system prompt — the executor prepends it only when the
@@ -580,6 +604,41 @@ public final class YamlWorkspaceLoader {
   }
 
   /** Converts a SamplingDef to a proto SamplingParams (stop tokens excluded — handled separately). */
+
+  /** Named tag sets declared at workspace level, keyed by id. */
+  private static Map<String, WorkspaceDefinition.TagsDef> buildTagRegistry(
+    WorkspaceDefinition.WorkspaceRoot root
+  ) {
+    Map<String, WorkspaceDefinition.TagsDef> registry = new java.util.LinkedHashMap<>();
+    if (root.tags() == null) return registry;
+    for (var t : root.tags()) {
+      if (t == null || t.id() == null || t.id().isBlank()) {
+        throw new IllegalArgumentException("workspace tags entries require an id");
+      }
+      if (registry.put(t.id(), t) != null) {
+        throw new IllegalArgumentException("duplicate workspace tags id: " + t.id());
+      }
+    }
+    return registry;
+  }
+
+  /** Resolves a reference-only TagsDef (bare string in YAML) against the registry. */
+  private static WorkspaceDefinition.TagsDef resolveTags(
+    WorkspaceDefinition.TagsDef tags,
+    Map<String, WorkspaceDefinition.TagsDef> tagRegistry
+  ) {
+    if (tags == null || !tags.isReference()) {
+      return tags;
+    }
+    var named = tagRegistry.get(tags.id());
+    if (named == null) {
+      throw new IllegalArgumentException(
+        "unknown tags id '" + tags.id() + "' — declare it under workspace tags:"
+      );
+    }
+    return named;
+  }
+
   private static SamplingParams toSamplingParams(SamplingDef sampling) {
     var sp = SamplingParams.newBuilder();
     if (sampling != null) {
@@ -602,6 +661,16 @@ public final class YamlWorkspaceLoader {
     if (d.inputField() != null) b.setInputField(d.inputField());
     if (d.outputField() != null) b.setOutputField(d.outputField());
     if (d.threshold() > 0) b.setThreshold(d.threshold());
+    return b.build();
+  }
+
+  private static io.gravitee.singularitee.protocol.TodoStepConfig toTodoStep(
+    WorkspaceDefinition.TodoConfig d
+  ) {
+    var b = io.gravitee.singularitee.protocol.TodoStepConfig.newBuilder();
+    if (d.handledStep() != null && !d.handledStep().isBlank()) {
+      b.setHandledStepId(d.handledStep());
+    }
     return b.build();
   }
 
@@ -766,6 +835,12 @@ public final class YamlWorkspaceLoader {
           .setContent(m.content() != null ? m.content() : "")
           .build()
       );
+    }
+
+    // Retry-edge sampling override: applied by LoopStepExecutor only when
+    // branching back to loopback_step (request override still wins).
+    if (d.retrySamplingParams() != null) {
+      b.setRetrySamplingParams(toSamplingParams(d.retrySamplingParams()));
     }
 
     return b.build();
@@ -1161,6 +1236,7 @@ public final class YamlWorkspaceLoader {
       models.isEmpty() ? null : models,
       pipelines.isEmpty() ? null : pipelines,
       templates.isEmpty() ? null : templates,
+      mainRoot.tags(), // named tag sets come from the base file only (not merged from includes)
       null // clear includes — no recursive processing
     );
   }

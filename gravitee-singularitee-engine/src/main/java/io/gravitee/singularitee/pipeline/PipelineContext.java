@@ -83,11 +83,34 @@ public final class PipelineContext {
    */
   public record VerdictMessage(String stepId, String verdict, String details) {}
 
+  /**
+   * One item of the engine-managed todo plan (see {@code STEP_TYPE_TODO}).
+   * {@code status} is {@code pending} | {@code in_progress} | {@code done}.
+   */
+  public record TodoItem(String id, String title, String status, String proof) {
+    /** Proof-less constructor (older plans, tests). */
+    public TodoItem(String id, String title, String status) {
+      this(id, title, status, null);
+    }
+  }
+
   // Use a LinkedHashMap so snapshot() iterates in insertion (execution) order.
   private final Map<String, String> fields;
   private final Map<String, Integer> iterationCounters = new HashMap<>();
   private final List<GeneratedMessage> generatedMessages = new ArrayList<>();
   private final List<VerdictMessage> verdicts = new ArrayList<>();
+  private final List<TodoItem> todos = new ArrayList<>();
+  // See setTodos/setPlanLocked: install locks, restore-time policy unlocks.
+  private volatile boolean planLocked;
+
+  /**
+   * Tool definitions owned and executed by the SERVER (e.g. the todo tools),
+   * injected into every infer step's tool list in addition to the caller's
+   * tools. Never subject to tool_select filtering, never returned to the
+   * client as pending calls.
+   */
+  private final List<io.gravitee.singularitee.protocol.ToolDefinition> serverTools =
+    new ArrayList<>();
 
   /**
    * The chat messages from the caller. Mutable — may be updated by a guard
@@ -102,6 +125,14 @@ public final class PipelineContext {
    * May be {@code null} if the caller didn't provide any.
    */
   private final io.gravitee.singularitee.protocol.SamplingParams requestSamplingParams;
+
+  /**
+   * Sampling override installed by a loop step on its RETRY edge (see
+   * {@code LoopStepConfig.retry_sampling_params}) and cleared when the loop exits — happy
+   * path or fallback — so it never leaks past the loop. Precedence in infer steps:
+   * request override > this > step params. {@code null} = no active retry override.
+   */
+  private volatile io.gravitee.singularitee.protocol.SamplingParams retrySamplingParams;
 
   /**
    * Tool definitions provided at runtime by the caller.
@@ -312,6 +343,16 @@ public final class PipelineContext {
    */
   public io.gravitee.singularitee.protocol.SamplingParams requestSamplingParams() {
     return requestSamplingParams;
+  }
+
+  /** Returns the active loop-retry sampling override, or {@code null} when none is active. */
+  public io.gravitee.singularitee.protocol.SamplingParams retrySamplingParams() {
+    return retrySamplingParams;
+  }
+
+  /** Installs ({@code null} clears) the loop-retry sampling override. */
+  public void setRetrySamplingParams(io.gravitee.singularitee.protocol.SamplingParams params) {
+    this.retrySamplingParams = params;
   }
 
   /**
@@ -592,6 +633,167 @@ public final class PipelineContext {
   }
 
   // ---------------------------------------------------------------------------
+  // Todo plan (STEP_TYPE_TODO)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Replaces the engine-managed todo plan. The first item is promoted to
+   * {@code in_progress} if every incoming item is {@code pending}. Mirrors
+   * {@code todos.total} / {@code todos.completed} / {@code todos.remaining}
+   * into the fields map — conditions only read the flat String map.
+   */
+  public synchronized void setTodos(List<TodoItem> items) {
+    todos.clear();
+    if (items != null) {
+      todos.addAll(items);
+    }
+    // Installing a plan locks it: set_todos is refused until the lock is
+    // lifted, which only happens at request restore when the plan is
+    // finished and a fresh user message arrived. Plans are authored on
+    // human input, never chained mid-run.
+    planLocked = !todos.isEmpty();
+    // Keep exactly one item active: when nothing is in_progress, promote the
+    // first pending item (done items never regress).
+    boolean anyInProgress = todos.stream().anyMatch(t -> "in_progress".equals(t.status()));
+    if (!anyInProgress) {
+      for (int i = 0; i < todos.size(); i++) {
+        TodoItem t = todos.get(i);
+        if ("pending".equals(t.status())) {
+          todos.set(i, new TodoItem(t.id(), t.title(), "in_progress", t.proof()));
+          break;
+        }
+      }
+    }
+    mirrorTodoFields();
+  }
+
+  /**
+   * Marks the item with the given id {@code done} and promotes the next
+   * {@code pending} item to {@code in_progress}. Returns {@code false} when
+   * no item carries that id (the caller reports the miss to the model).
+   */
+  public synchronized boolean completeTodo(String id) {
+    boolean found = false;
+    for (int i = 0; i < todos.size(); i++) {
+      TodoItem t = todos.get(i);
+      if (t.id().equals(id)) {
+        todos.set(i, new TodoItem(t.id(), t.title(), "done", t.proof()));
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      // A model resuming a long session may have lost the plan install to
+      // context trimming and guess an id. When exactly one item is
+      // in_progress there is no ambiguity about which item it means.
+      List<Integer> active = new ArrayList<>();
+      for (int i = 0; i < todos.size(); i++) {
+        if ("in_progress".equals(todos.get(i).status())) active.add(i);
+      }
+      if (active.size() == 1) {
+        int i = active.get(0);
+        TodoItem t = todos.get(i);
+        todos.set(i, new TodoItem(t.id(), t.title(), "done", t.proof()));
+        found = true;
+      }
+    }
+    if (found) {
+      boolean anyActive = todos.stream().anyMatch(t -> "in_progress".equals(t.status()));
+      if (!anyActive) {
+        for (int i = 0; i < todos.size(); i++) {
+          TodoItem t = todos.get(i);
+          if ("pending".equals(t.status())) {
+            todos.set(i, new TodoItem(t.id(), t.title(), "in_progress", t.proof()));
+            break;
+          }
+        }
+      }
+      mirrorTodoFields();
+    }
+    return found;
+  }
+
+  /** Returns an immutable snapshot of the todo plan. */
+  public synchronized List<TodoItem> todos() {
+    return List.copyOf(todos);
+  }
+
+  /** Whether set_todos is currently refused (see setTodos for the policy). */
+  public boolean isPlanLocked() {
+    return planLocked;
+  }
+
+  public void setPlanLocked(boolean locked) {
+    this.planLocked = locked;
+  }
+
+  /**
+   * Plan-level constraints: the locked user decisions (tools, language,
+   * frameworks) recorded by {@code set_todos} and re-injected into every step
+   * prompt via the {@code constraints} Jinja variable. Deliberately NOT
+   * mirrored into the flat field map — a {@code todos.}-prefixed scalar would
+   * be nested under the {@code todos} template key and clobbered by the item
+   * list (see {@code JinjaContextHelper}).
+   */
+  private volatile String todoConstraints;
+
+  /** The plan-level constraints paragraph, or {@code null} when none recorded. */
+  public String todoConstraints() {
+    return todoConstraints;
+  }
+
+  /** Records the plan-level constraints; blank normalizes to {@code null}. */
+  public void setTodoConstraints(String constraints) {
+    this.todoConstraints = (constraints == null || constraints.isBlank())
+      ? null
+      : constraints.trim();
+  }
+
+  /**
+   * Restores a previously persisted plan verbatim — statuses are kept exactly
+   * (no first-item promotion) so a session resumes where it paused. Mirrors
+   * the {@code todos.*} scalar fields like every other mutation.
+   */
+  public synchronized void restoreTodos(List<TodoItem> items) {
+    // An empty restore must leave the context untouched: mirroring
+    // todos.total = "0" would make a plan-presence gate (condition type
+    // `empty` on todos.total) believe a plan exists and skip planning.
+    if (items == null || items.isEmpty()) {
+      return;
+    }
+    todos.clear();
+    todos.addAll(items);
+    mirrorTodoFields();
+  }
+
+  private void mirrorTodoFields() {
+    long completed = todos
+      .stream()
+      .filter(t -> "done".equals(t.status()))
+      .count();
+    set("todos.total", Long.toString(todos.size()));
+    set("todos.completed", Long.toString(completed));
+    set("todos.remaining", Long.toString(todos.size() - completed));
+  }
+
+  /** Registers server-owned tool definitions (deduplicated by name). */
+  public synchronized void addServerTools(
+    List<io.gravitee.singularitee.protocol.ToolDefinition> defs
+  ) {
+    if (defs == null) return;
+    for (var def : defs) {
+      if (serverTools.stream().noneMatch(t -> t.getName().equals(def.getName()))) {
+        serverTools.add(def);
+      }
+    }
+  }
+
+  /** Returns an immutable view of the server-owned tool definitions. */
+  public synchronized List<io.gravitee.singularitee.protocol.ToolDefinition> serverTools() {
+    return List.copyOf(serverTools);
+  }
+
+  // ---------------------------------------------------------------------------
   // Loop counters
   // ---------------------------------------------------------------------------
 
@@ -692,6 +894,24 @@ public final class PipelineContext {
   }
 
   // ---------------------------------------------------------------------------
+  // Pending narration — an INTERNAL step's answer-channel text, surfaced when a
+  // client-tool halt ends the turn so the user sees what the agent is doing.
+  // ---------------------------------------------------------------------------
+
+  private String pendingNarration;
+
+  public void setPendingNarration(String narration) {
+    this.pendingNarration = narration;
+  }
+
+  /** Returns and CLEARS the pending narration (one halt consumes it). */
+  public String consumePendingNarration() {
+    String n = pendingNarration;
+    pendingNarration = null;
+    return n;
+  }
+
+  // ---------------------------------------------------------------------------
   // Token usage / performance accumulation
   // ---------------------------------------------------------------------------
 
@@ -703,6 +923,7 @@ public final class PipelineContext {
   private long totalPromptEvalTimeMs;
   private long totalSamplingTimeMs;
   private int totalTokensGenerated;
+  private int totalPromptTokensEvaluated;
 
   /**
    * Adds the usage and performance from a step's final response to the
@@ -720,6 +941,7 @@ public final class PipelineContext {
       totalPromptEvalTimeMs += perf.getPromptEvalTimeMs();
       totalSamplingTimeMs += perf.getSamplingTimeMs();
       totalTokensGenerated += perf.getTokensGenerated();
+      totalPromptTokensEvaluated += perf.getPromptTokensEvaluated();
     }
   }
 
@@ -740,6 +962,7 @@ public final class PipelineContext {
       .setPromptEvalTimeMs(totalPromptEvalTimeMs)
       .setSamplingTimeMs(totalSamplingTimeMs)
       .setTokensGenerated(totalTokensGenerated)
+      .setPromptTokensEvaluated(totalPromptTokensEvaluated)
       .build();
   }
 }

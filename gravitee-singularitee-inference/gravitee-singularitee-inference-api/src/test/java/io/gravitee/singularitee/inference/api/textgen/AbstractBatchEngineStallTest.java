@@ -38,8 +38,9 @@ import org.junit.jupiter.api.Test;
  * out, with the server logging nothing at all.
  *
  * <p>{@link EngineAdapter#hasStalled()} lets an adapter distinguish the two, so the engine
- * fails the stranded callers with a terminal token (finish reason {@code "stop"} — OpenAI
- * defines no error reason — with the failure recorded in the log) and releases their slots.
+ * fails the stranded callers with a terminal token (finish reason {@code "stalled"}; the
+ * OpenAI surface maps it to {@code "stop"} since OpenAI defines no error reason, with the
+ * failure recorded in the log) and releases their slots.
  */
 class AbstractBatchEngineStallTest {
 
@@ -168,7 +169,7 @@ class AbstractBatchEngineStallTest {
       assertThat(received).hasSize(1);
       var token = received.get(0);
       assertThat(token.isFinal()).isTrue();
-      assertThat(token.finishReason()).isEqualTo("stop");
+      assertThat(token.finishReason()).isEqualTo("stalled");
       assertThat(token.seqId()).isEqualTo(1);
       assertThat(adapter.removedInternalIds).contains(0);
     } finally {
@@ -203,7 +204,7 @@ class AbstractBatchEngineStallTest {
         .isTrue();
       assertThat(received).allMatch(InferenceToken::isFinal);
       assertThat(received.stream().map(InferenceToken::finishReason).distinct()).containsExactly(
-        "stop"
+        "stalled"
       );
       assertThat(received.stream().map(InferenceToken::seqId).sorted().toList()).containsExactly(
         1,

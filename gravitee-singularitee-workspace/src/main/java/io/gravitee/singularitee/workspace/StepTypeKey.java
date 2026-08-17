@@ -36,7 +36,8 @@ public enum StepTypeKey {
   LOOP("loop", StepType.STEP_TYPE_LOOP),
   SUB_PIPELINE("sub_pipeline", StepType.STEP_TYPE_SUB_PIPELINE),
   REGEX_GUARD("regex_guard", StepType.STEP_TYPE_REGEX_GUARD),
-  TOOL_SELECT("tool_select", StepType.STEP_TYPE_TOOL_SELECT);
+  TOOL_SELECT("tool_select", StepType.STEP_TYPE_TOOL_SELECT),
+  TODO("todo", StepType.STEP_TYPE_TODO);
 
   private final String yamlKey;
   private final StepType protoType;

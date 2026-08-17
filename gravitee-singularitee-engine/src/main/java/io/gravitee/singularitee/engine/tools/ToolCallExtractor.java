@@ -23,7 +23,9 @@ import io.gravitee.singularitee.engine.template.Jinja4jChatTemplateRenderer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -99,6 +101,17 @@ public final class ToolCallExtractor {
   public record ExtractedToolCall(String name, String argumentsJson, List<String> coercibleArgs) {}
 
   /**
+   * Outcome of an extraction attempt. {@code error} is {@code null} unless the template render
+   * or JSON parse threw — an empty {@code calls} with a {@code null} error means the output
+   * simply contained no recognizable call.
+   */
+  public record ExtractionResult(List<ExtractedToolCall> calls, String error) {
+    static ExtractionResult of(List<ExtractedToolCall> calls) {
+      return new ExtractionResult(calls, null);
+    }
+  }
+
+  /**
    * Extracts tool calls from {@code output} using the given template configuration: {@code null} /
    * blank tries the built-in dialect templates in order; a built-in name uses that template; any
    * other value is treated as inline Jinja source. Returns an empty list when nothing extracts
@@ -109,17 +122,33 @@ public final class ToolCallExtractor {
     List<Map<String, Object>> tools,
     String templateConfig
   ) {
+    return extractResult(output, tools, templateConfig).calls();
+  }
+
+  /**
+   * Like {@link #extract} but surfaces the failure cause, so pipeline steps can expose it as a
+   * context field for repair loops instead of discarding it.
+   */
+  public static ExtractionResult extractResult(
+    String output,
+    List<Map<String, Object>> tools,
+    String templateConfig
+  ) {
     if (output == null || output.isBlank()) {
-      return List.of();
+      return ExtractionResult.of(List.of());
     }
     if (templateConfig == null || templateConfig.isBlank()) {
+      String lastError = null;
       for (String builtin : BUILTIN_ORDER) {
-        List<ExtractedToolCall> calls = extractWithSource(output, tools, builtinSource(builtin));
-        if (!calls.isEmpty()) {
-          return calls;
+        ExtractionResult result = extractWithSource(output, tools, builtinSource(builtin));
+        if (!result.calls().isEmpty()) {
+          return result;
+        }
+        if (result.error() != null) {
+          lastError = result.error();
         }
       }
-      return List.of();
+      return new ExtractionResult(List.of(), lastError);
     }
     String source = BUILTIN_NAMES.contains(templateConfig.trim())
       ? builtinSource(templateConfig.trim())
@@ -127,13 +156,13 @@ public final class ToolCallExtractor {
     return extractWithSource(output, tools, source);
   }
 
-  private static List<ExtractedToolCall> extractWithSource(
+  private static ExtractionResult extractWithSource(
     String output,
     List<Map<String, Object>> tools,
     String source
   ) {
     if (source == null) {
-      return List.of();
+      return ExtractionResult.of(List.of());
     }
     try {
       Template template = TEMPLATE_CACHE.computeIfAbsent(source, s ->
@@ -142,11 +171,78 @@ public final class ToolCallExtractor {
       String rendered = template.render(
         Map.of("output", output, "tools", tools == null ? List.of() : tools)
       );
-      return parseRendered(rendered);
+      try {
+        return ExtractionResult.of(parseRendered(rendered));
+      } catch (IOException first) {
+        // Lenient second pass: small models routinely truncate the last
+        // closing brace(s) of a call. Balancing the SPAN and re-rendering
+        // recovers the call instead of forcing a full repair-loop round trip.
+        String balancedOutput = balanceJson(output);
+        if (balancedOutput.equals(output)) {
+          throw first;
+        }
+        String reRendered = template.render(
+          Map.of("output", balancedOutput, "tools", tools == null ? List.of() : tools)
+        );
+        var calls = parseRendered(reRendered);
+        LOGGER.debug(
+          "[singularitee] Tool-call JSON balanced ({} closer(s) appended to the span)",
+          balancedOutput.length() - output.length()
+        );
+        return ExtractionResult.of(calls);
+      }
     } catch (Exception e) {
       LOGGER.debug("[singularitee] Tool-call extraction template failed (fail-open)", e);
-      return List.of();
+      return new ExtractionResult(List.of(), e.getMessage());
     }
+  }
+
+  /**
+   * Appends the closers for any unclosed {@code {}/{@code [} (outside string
+   * literals) so a truncated call like {@code {"name":"f","arguments":{"a":[1]}
+   * } parses. Returns the input unchanged when it is already balanced.
+   */
+  static String balanceJson(String text) {
+    Deque<Character> open = new ArrayDeque<>();
+    boolean inString = false;
+    boolean escaped = false;
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (c == '\\') {
+        escaped = true;
+        continue;
+      }
+      if (c == '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) {
+        continue;
+      }
+      if (c == '{' || c == '[') {
+        open.push(c);
+      } else if (
+        (c == '}' && !open.isEmpty() && open.peek() == '{') ||
+        (c == ']' && !open.isEmpty() && open.peek() == '[')
+      ) {
+        open.pop();
+      }
+    }
+    if (open.isEmpty() && !inString) {
+      return text;
+    }
+    StringBuilder sb = new StringBuilder(text);
+    if (inString) {
+      sb.append('"');
+    }
+    while (!open.isEmpty()) {
+      sb.append(open.pop() == '{' ? '}' : ']');
+    }
+    return sb.toString();
   }
 
   /** Parses the rendered JSON array into extracted calls; skips nameless entries. */

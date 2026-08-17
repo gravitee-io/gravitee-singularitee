@@ -275,18 +275,33 @@ class ToolSelectStepExecutorTest {
     var pctx = pctx("hi", tools(3));
 
     // No shortlist → all tools (behavior identical when the key is absent)
-    assertThat(InferStepExecutor.injectableTools(pctx)).hasSize(3);
+    assertThat(
+      InferStepExecutor.injectableTools(
+        pctx,
+        io.gravitee.singularitee.protocol.InferStepConfig.getDefaultInstance()
+      )
+    ).hasSize(3);
 
     // Shortlist → only named tools
     pctx.setSelectedTools(List.of("tool1"));
-    assertThat(InferStepExecutor.injectableTools(pctx))
+    assertThat(
+      InferStepExecutor.injectableTools(
+        pctx,
+        io.gravitee.singularitee.protocol.InferStepConfig.getDefaultInstance()
+      )
+    )
       .extracting(ToolDefinition::getName)
       .containsExactly("tool1");
 
     // Empty shortlist → no tools injected
     var pctx2 = pctx("hi", tools(3));
     pctx2.setSelectedTools(List.of());
-    assertThat(InferStepExecutor.injectableTools(pctx2)).isEmpty();
+    assertThat(
+      InferStepExecutor.injectableTools(
+        pctx2,
+        io.gravitee.singularitee.protocol.InferStepConfig.getDefaultInstance()
+      )
+    ).isEmpty();
   }
 
   // ── Description trimming (trim_descriptions) ──────────────────────────────
@@ -429,13 +444,21 @@ class ToolSelectStepExecutorTest {
     // No condensed map → tools pass through unchanged
     var plain = pctx("hi", toolList);
     plain.setSelectedTools(List.of("tool0"));
-    assertThat(InferStepExecutor.injectableTools(plain).get(0)).isSameAs(toolList.get(0));
+    assertThat(
+      InferStepExecutor.injectableTools(
+        plain,
+        io.gravitee.singularitee.protocol.InferStepConfig.getDefaultInstance()
+      ).get(0)
+    ).isSameAs(toolList.get(0));
 
     // Condensed map → selected tool rewritten (description + template)
     var pctx = pctx("hi", toolList);
     pctx.setSelectedTools(List.of("tool0"));
     pctx.setCondensedToolDescriptions(Map.of("tool0", "Zero."));
-    var injected = InferStepExecutor.injectableTools(pctx);
+    var injected = InferStepExecutor.injectableTools(
+      pctx,
+      io.gravitee.singularitee.protocol.InferStepConfig.getDefaultInstance()
+    );
     assertThat(injected).hasSize(1);
     assertThat(injected.get(0).getDescription()).isEqualTo("Zero.");
     assertThat(injected.get(0).getTemplate()).contains("\"description\":\"Zero.\"");

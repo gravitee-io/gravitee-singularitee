@@ -198,6 +198,113 @@ class TokenCaptureStreamTest {
   }
 
   /** Builds a ResponseOutputTextDelta InferResponse event. */
+  @Test
+  void internal_step_with_stream_thinking_forwards_only_the_thinking_flux() {
+    var accumulator = new StringBuilder();
+    var downstream = new CapturingDownstream();
+    var stream = new TokenCaptureStream[1];
+    Completable.create(emitter -> {
+      stream[0] = new TokenCaptureStream(
+        accumulator,
+        emitter,
+        downstream,
+        false, // internal: content and tool suppressed
+        true, // ...but thinking escapes
+        StepRole.STEP_ROLE_OUTPUT,
+        TokenCaptureStream.ThinkingMode.ROUTE,
+        "<think>",
+        "</think>"
+      );
+    }).subscribe();
+
+    stream[0].write(deltaEvent("<think>pondering</think>"));
+    stream[0].write(deltaEvent("the answer"));
+
+    assertThat(downstream.thinkingFlux.toString()).isEqualTo("pondering");
+    assertThat(downstream.outputFlux.toString()).isEmpty();
+    assertThat(downstream.toolFlux.toString()).isEmpty();
+  }
+
+  @Test
+  void internal_step_without_stream_thinking_forwards_nothing() {
+    var accumulator = new StringBuilder();
+    var downstream = new CapturingDownstream();
+    var stream = new TokenCaptureStream[1];
+    Completable.create(emitter -> {
+      stream[0] = new TokenCaptureStream(
+        accumulator,
+        emitter,
+        downstream,
+        false,
+        false,
+        StepRole.STEP_ROLE_OUTPUT,
+        TokenCaptureStream.ThinkingMode.ROUTE,
+        "<think>",
+        "</think>"
+      );
+    }).subscribe();
+
+    stream[0].write(deltaEvent("<think>pondering</think>"));
+    stream[0].write(deltaEvent("the answer"));
+
+    assertThat(downstream.received).isEmpty();
+  }
+
+  @Test
+  void thinking_flux_cuts_at_a_configured_tool_marker() {
+    var accumulator = new StringBuilder();
+    var downstream = new CapturingDownstream();
+    var stream = new TokenCaptureStream[1];
+    Completable.create(emitter -> {
+      stream[0] = new TokenCaptureStream(
+        accumulator,
+        emitter,
+        downstream,
+        true,
+        StepRole.STEP_ROLE_OUTPUT,
+        TokenCaptureStream.ThinkingMode.ROUTE,
+        "<think>",
+        "</think>"
+      );
+      stream[0].setThinkingCutMarkers(java.util.List.of("<|channel|>commentary to=functions."));
+    }).subscribe();
+
+    // Marker split across deltas, composed inside the thinking channel.
+    stream[0].write(thinkingDeltaEvent("We must call complete_todo now. <|channel|>comm"));
+    stream[0].write(thinkingDeltaEvent("entary to=functions.complete_todo json {\"id\":\"2\"}"));
+    stream[0].end();
+
+    assertThat(downstream.thinkingFlux.toString()).isEqualTo("We must call complete_todo now. ");
+    assertThat(downstream.thinkingFlux.toString()).doesNotContain("functions.");
+  }
+
+  @Test
+  void thinking_without_markers_flows_fully_including_held_tail() {
+    var accumulator = new StringBuilder();
+    var downstream = new CapturingDownstream();
+    var stream = new TokenCaptureStream[1];
+    Completable.create(emitter -> {
+      stream[0] = new TokenCaptureStream(
+        accumulator,
+        emitter,
+        downstream,
+        true,
+        StepRole.STEP_ROLE_OUTPUT,
+        TokenCaptureStream.ThinkingMode.ROUTE,
+        "<think>",
+        "</think>"
+      );
+      stream[0].setThinkingCutMarkers(java.util.List.of("<|channel|>commentary to=functions."));
+    }).subscribe();
+
+    stream[0].write(thinkingDeltaEvent("Plain reasoning ending with a lone <"));
+    stream[0].end();
+
+    assertThat(downstream.thinkingFlux.toString()).isEqualTo(
+      "Plain reasoning ending with a lone <"
+    );
+  }
+
   private static InferResponse deltaEvent(String text) {
     return InferResponse.newBuilder()
       .setEventType(ResponseEventType.RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA)
@@ -850,5 +957,97 @@ class TokenCaptureStreamTest {
     var r = runRouting("<think>", "pense", "</think>", "réponse");
     assertThat(r.thinkingFlux).isEqualTo("pense");
     assertThat(r.outputFlux).isEqualTo("réponse");
+  }
+
+  @Test
+  void unclosed_thinking_block_sets_thinking_unclosed() {
+    var stream = newStream(
+      new StringBuilder(),
+      new CapturingDownstream(),
+      TokenCaptureStream.ThinkingMode.STRIP
+    );
+
+    stream.write(deltaEvent("<think>"));
+    stream.write(deltaEvent("stuck reasoning forever"));
+    stream.end();
+
+    assertThat(stream.thinkingUnclosed()).isTrue();
+  }
+
+  @Test
+  void closed_thinking_block_does_not_set_thinking_unclosed() {
+    var stream = newStream(
+      new StringBuilder(),
+      new CapturingDownstream(),
+      TokenCaptureStream.ThinkingMode.STRIP
+    );
+
+    stream.write(deltaEvent("<think>brief</think>"));
+    stream.end(deltaEvent("answer"));
+
+    assertThat(stream.thinkingUnclosed()).isFalse();
+  }
+
+  @Test
+  void no_thinking_at_all_does_not_set_thinking_unclosed() {
+    var stream = newStream(
+      new StringBuilder(),
+      new CapturingDownstream(),
+      TokenCaptureStream.ThinkingMode.STRIP
+    );
+
+    stream.end(deltaEvent("plain answer"));
+
+    assertThat(stream.thinkingUnclosed()).isFalse();
+  }
+
+  @Test
+  void classified_thinking_without_answer_sets_thinking_unclosed() {
+    // Harmony-style: reasoning arrives pre-stamped, the tag machine never runs,
+    // and the generation dies inside the analysis channel.
+    var stream = newStream(
+      new StringBuilder(),
+      new CapturingDownstream(),
+      TokenCaptureStream.ThinkingMode.ROUTE
+    );
+
+    stream.write(thinkingDeltaEvent("thinking about it "));
+    stream.write(thinkingDeltaEvent("forever"));
+    stream.end();
+
+    assertThat(stream.thinkingUnclosed()).isTrue();
+  }
+
+  @Test
+  void classified_thinking_followed_by_answer_is_not_unclosed() {
+    var stream = newStream(
+      new StringBuilder(),
+      new CapturingDownstream(),
+      TokenCaptureStream.ThinkingMode.ROUTE
+    );
+
+    stream.write(thinkingDeltaEvent("brief thought"));
+    stream.write(deltaEvent("the answer"));
+    stream.end();
+
+    assertThat(stream.thinkingUnclosed()).isFalse();
+  }
+
+  @Test
+  void classified_thinking_followed_by_tool_span_is_not_unclosed() {
+    // A tool call is a productive outcome — reasoning that ends in a call is fine.
+    var stream = newStream(
+      new StringBuilder(),
+      new CapturingDownstream(),
+      TokenCaptureStream.ThinkingMode.ROUTE
+    );
+
+    stream.write(thinkingDeltaEvent("planning the call"));
+    stream.write(
+      deltaEvent("{\"name\":\"f\"}").toBuilder().setStepRole(StepRole.STEP_ROLE_TOOL).build()
+    );
+    stream.end();
+
+    assertThat(stream.thinkingUnclosed()).isFalse();
   }
 }

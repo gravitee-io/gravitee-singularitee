@@ -51,13 +51,45 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
 
   private final StepExecutionContext execContext;
 
-  private final ConcurrentHashMap<String, List<RuleEmbedding>> embeddingCache =
+  /**
+   * KNN reference embeddings, keyed {@code pipelineId:stepId}. Backed by the node
+   * {@link io.gravitee.node.api.cache.Cache} when a manager is wired (pluggable —
+   * distributed backends avoid re-embedding per node); a plain map otherwise
+   * (client-side executor, tests).
+   */
+  private final io.gravitee.node.api.cache.Cache<String, List<RuleEmbedding>> sharedCache;
+  private final ConcurrentHashMap<String, List<RuleEmbedding>> localCache =
     new ConcurrentHashMap<>();
 
-  record RuleEmbedding(String label, float[] embedding) {}
+  record RuleEmbedding(String label, float[] embedding) implements java.io.Serializable {}
 
   public RouteStepExecutor(StepExecutionContext execContext) {
+    this(execContext, null);
+  }
+
+  public RouteStepExecutor(
+    StepExecutionContext execContext,
+    io.gravitee.node.api.cache.CacheManager cacheManager
+  ) {
     this.execContext = execContext;
+    this.sharedCache = cacheManager == null
+      ? null
+      : cacheManager.getOrCreateCache(
+        "ai-route-embeddings",
+        io.gravitee.node.api.cache.CacheConfiguration.builder().maxSize(10_000).build()
+      );
+  }
+
+  private List<RuleEmbedding> cachedEmbeddings(String key) {
+    return sharedCache != null ? sharedCache.get(key) : localCache.get(key);
+  }
+
+  private void cacheEmbeddings(String key, List<RuleEmbedding> embeddings) {
+    if (sharedCache != null) {
+      sharedCache.put(key, embeddings);
+    } else {
+      localCache.put(key, embeddings);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -97,7 +129,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
       warmups.add(
         rxComputeRuleEmbeddings(cfg, ee)
           .doOnSuccess(embeddings -> {
-            embeddingCache.put(cacheKey, embeddings);
+            cacheEmbeddings(cacheKey, embeddings);
             LOGGER.info(
               "Pre-computed {} reference embedding(s) for KNN route step '{}'",
               embeddings.size(),
@@ -126,8 +158,13 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
       .get(cfg.getInputField().isBlank() ? PipelineContext.KEY_PROMPT : cfg.getInputField());
 
     return rxResolveRouteLabel(cfg, text, stepId, ctx).flatMapMaybe(resolvedLabel -> {
+      var pctx = ctx.pipelineContext();
+      // Expose the routing outcome so conditions can tell "matched a rule" apart from
+      // "judge output was unusable and we fell through to the default".
+      pctx.set(stepId + ".label", resolvedLabel);
       for (RouteRule rule : cfg.getRulesList()) {
         if (rule.getLabel().equals(resolvedLabel)) {
+          pctx.set(stepId + ".matched", "true");
           LOGGER.debug(
             "RouteStep '{}': label='{}' → step '{}'",
             stepId,
@@ -137,6 +174,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
           return Maybe.just(rule.getNextStepId());
         }
       }
+      pctx.set(stepId + ".matched", "false");
       String defaultStep = cfg.getDefaultStepId();
       LOGGER.debug(
         "RouteStep '{}': no rule matched label='{}' → default step '{}'",
@@ -259,7 +297,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
       : stepId;
 
     // Check cache first — if populated (by warmup), no async embedding needed
-    List<RuleEmbedding> cached = embeddingCache.get(cacheKey);
+    List<RuleEmbedding> cached = cachedEmbeddings(cacheKey);
     if (cached != null) {
       return ee
         .rxEmbed(new EmbedRequest(text))
@@ -268,7 +306,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
 
     // Cache miss — compute reference embeddings reactively, then embed the query
     return rxComputeRuleEmbeddings(cfg, ee)
-      .doOnSuccess(embeddings -> embeddingCache.put(cacheKey, embeddings))
+      .doOnSuccess(embeddings -> cacheEmbeddings(cacheKey, embeddings))
       .flatMap(references ->
         ee
           .rxEmbed(new EmbedRequest(text))

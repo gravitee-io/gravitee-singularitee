@@ -40,6 +40,9 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
     @JsonProperty("models") List<ModelDefinition> models,
     @JsonProperty("pipelines") List<PipelineDefinition> pipelines,
     @JsonProperty("templates") List<TemplateDefinition> templates,
+    // Named, reusable tag sets: steps reference an entry by writing the id as
+    // the whole tags value (tags: harmony) instead of repeating the block.
+    @JsonProperty("tags") List<TagsDef> tags,
     @JsonProperty("includes") IncludesDef includes
   ) {}
 
@@ -461,6 +464,7 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
         @JsonSubTypes.Type(value = SubPipelineConfig.class, name = "sub_pipeline"),
         @JsonSubTypes.Type(value = RegexGuardConfig.class, name = "regex_guard"),
         @JsonSubTypes.Type(value = ToolSelectConfig.class, name = "tool_select"),
+        @JsonSubTypes.Type(value = TodoConfig.class, name = "todo"),
       }
     ) @JsonProperty("config") StepConfig config
   ) {}
@@ -479,7 +483,8 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
       LoopConfig,
       SubPipelineConfig,
       RegexGuardConfig,
-      ToolSelectConfig {}
+      ToolSelectConfig,
+      TodoConfig {}
 
   // ── Infer ─────────────────────────────────────────────────────────────────
 
@@ -492,7 +497,14 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
     @JsonProperty("tags") TagsDef tags,
     @JsonProperty("context") java.util.Map<String, Object> context,
     @JsonProperty("inject_tools") Boolean injectTools,
+    // Whether server-owned tools (todo tools) are injected into this step's
+    // tool list. Omitted/true = injected; false for prose-only steps.
+    @JsonProperty("server_tools") Boolean serverTools,
     @JsonProperty("strip_thinking") Boolean stripThinking,
+    // Forward THINKING deltas to the client even for role: internal steps
+    // (content/tool deltas stay suppressed). Omitted/false = internal steps
+    // stream nothing.
+    @JsonProperty("stream_thinking") Boolean streamThinking,
     @JsonProperty("system") String system,
     // Context-window history trimming toggle. Omitted/true = enabled (older
     // turns are dropped to fit the model window); false disables trimming.
@@ -541,28 +553,52 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record TagsDef(
+    // Names this tag set (workspace-level `tags:` entries) or references one
+    // (a step whose whole tags value is a string parses as an id-only TagsDef
+    // via the delegating creator below; the loader resolves it).
+    @JsonProperty("id") String id,
     // Accepts a single string or a list, like tool_open: Harmony enters its non-answer
     // channels as both analysis and commentary.
-    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) @JsonProperty(
-      "reasoning_open"
-    ) List<String> reasoningOpen,
+    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    @JsonProperty("reasoning_open")
+    List<String> reasoningOpen,
     // Boxed: unset must stay distinguishable from false so the engine default applies.
     @JsonProperty("reasoning_repeatable") Boolean reasoningRepeatable,
     // Accepts a single string or a list, like tool_open: a channel may be left more than one
     // way (Harmony reaches the final channel after <|end|> when answering directly and after
     // <|call|> when a tool call intervened).
-    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) @JsonProperty(
-      "reasoning_close"
-    ) List<String> reasoningClose,
+    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    @JsonProperty("reasoning_close")
+    List<String> reasoningClose,
     // Accepts a single string or a list: a dialect may open the tool channel more than one way
     // (Harmony uses both the commentary and analysis channels).
-    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) @JsonProperty(
-      "tool_open"
-    ) List<String> toolOpen,
-    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) @JsonProperty(
-      "tool_close"
-    ) List<String> toolClose
-  ) {}
+    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    @JsonProperty("tool_open")
+    List<String> toolOpen,
+    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    @JsonProperty("tool_close")
+    List<String> toolClose
+  ) {
+    /** A bare string as the whole {@code tags:} value is a reference by id. */
+    @com.fasterxml.jackson.annotation.JsonCreator(
+      mode = com.fasterxml.jackson.annotation.JsonCreator.Mode.DELEGATING
+    )
+    public static TagsDef ref(String id) {
+      return new TagsDef(id, null, null, null, null, null);
+    }
+
+    /** True when this instance is only a reference to a named workspace tag set. */
+    public boolean isReference() {
+      return (
+        id != null &&
+        reasoningOpen == null &&
+        reasoningClose == null &&
+        toolOpen == null &&
+        toolClose == null &&
+        reasoningRepeatable == null
+      );
+    }
+  }
 
   // ── Classify ──────────────────────────────────────────────────────────────
 
@@ -575,6 +611,13 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
   ) implements StepConfig {}
 
   // ── Tool select ───────────────────────────────────────────────────────────
+
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record TodoConfig(
+    // Step to branch to after consuming a todo tool call (usually the infer
+    // step that produced it); falls through to next_step when unset.
+    @JsonProperty("handled_step") String handledStep
+  ) implements StepConfig {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record ToolSelectConfig(
@@ -687,7 +730,9 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
     @JsonProperty("max_iterations") int maxIterations,
     @JsonProperty("fallback_step") String fallbackStep,
     @JsonProperty("condition") ConditionDef condition,
-    @JsonProperty("loopback_message") MessageEntry loopbackMessage
+    @JsonProperty("loopback_message") MessageEntry loopbackMessage,
+    // Sampling override for retry-edge generations only (see LoopStepConfig proto).
+    @JsonProperty("retry_sampling_params") SamplingDef retrySamplingParams
   ) implements StepConfig {}
 
   // ── Shared condition (break + loop) ───────────────────────────────────────

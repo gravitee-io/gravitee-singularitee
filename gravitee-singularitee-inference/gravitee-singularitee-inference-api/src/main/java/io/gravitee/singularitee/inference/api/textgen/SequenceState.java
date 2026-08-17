@@ -49,10 +49,25 @@ public class SequenceState<STATE> {
    */
   boolean stopMatched;
 
+  /**
+   * Degenerate-run tracking: the text of the last emitted token and how many
+   * times it has repeated back-to-back. A model stuck emitting one token
+   * forever otherwise burns until the token cap.
+   */
+  String lastEmittedText;
+  int identicalRun;
+
   /** Guards against double slot-cache release (stop-match + finalize paths). */
   boolean slotReleased = false;
   /** Whether this slot's prefix has been offered to other requests (once, after prefill). */
   boolean prefixPublished = false;
+
+  /**
+   * Perf-counter snapshot taken at sequence start: the backend's counters are
+   * context-lifetime cumulative, and per-request performance is the delta
+   * against this baseline.
+   */
+  InferencePerformance perfBaseline;
 
   /** Wall-clock instrumentation: sequence start and first emitted token (nanos, 0 = unset). */
   long startedNanos = System.nanoTime();

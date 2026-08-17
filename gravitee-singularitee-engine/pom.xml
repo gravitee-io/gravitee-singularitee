@@ -68,6 +68,24 @@
             <groupId>io.gravitee.node</groupId>
             <artifactId>gravitee-node-api</artifactId>
         </dependency>
+        <!-- Standalone in-memory cache impl, tests only: TodoSessionStore tests run
+             against the real thing instead of a mock. Production wiring lives in the
+             container (pluggable CacheManager bean). -->
+        <dependency>
+            <groupId>io.gravitee.node</groupId>
+            <artifactId>gravitee-node-cache-plugin-standalone</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.node</groupId>
+            <artifactId>gravitee-node-cache-common</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.node</groupId>
+            <artifactId>gravitee-node-logging</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Micrometer — inference metrics API (MeterRegistry / Counter / Timer). The
              Prometheus backend stays in the container; the engine only references the API. -->

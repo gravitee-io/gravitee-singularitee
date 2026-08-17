@@ -31,6 +31,7 @@ import io.gravitee.singularitee.engine.TextGenRequest;
 import io.gravitee.singularitee.pipeline.PipelineContext;
 import io.gravitee.singularitee.protocol.InferStepConfig;
 import io.gravitee.singularitee.protocol.MessageDef;
+import io.gravitee.singularitee.protocol.TagConfig;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import java.io.IOException;
@@ -180,6 +181,151 @@ class InferStepExecutorTest {
       TextGenRequest req = execute(configWithThinkingDisabled(), engine);
 
       assertThat(req.templateContext()).isNotNull().containsEntry("enable_thinking", Boolean.FALSE);
+    }
+  }
+
+  // ── Hallucinated tool-syntax residue detection ─────────────────────────────
+
+  @Test
+  void hallucinated_marker_residue_is_flagged_only_for_marker_dialects() {
+    var harmony = InferStepConfig.newBuilder()
+      .setModelId("llm")
+      .setToolExtractionTemplate("harmony")
+      .setToolCallTags(
+        TagConfig.newBuilder()
+          .setOpenTag("<|end|><|start|>assistant<|channel|>commentary to=functions.")
+          .setCloseTag("<|call|>")
+      )
+      .build();
+    var plain = InferStepConfig.newBuilder().setModelId("llm").build();
+
+    // The live leak: invented channel form containing dialect special tokens.
+    String leak =
+      "<|channel|>functions.set_todos<|channel|>commentary json<|message|>{\"todos\":[]}";
+    assertThat(InferStepExecutor.hasToolMarkerResidue(leak, harmony)).isTrue();
+    // A stray to=functions. routing prefix (derived from the configured tag) is residue too.
+    assertThat(
+      InferStepExecutor.hasToolMarkerResidue("x to=functions.bash {\"c\":1}", harmony)
+    ).isTrue();
+    // Plain prose never trips it; markerless dialects never trip it.
+    assertThat(InferStepExecutor.hasToolMarkerResidue("The capital is Paris.", harmony)).isFalse();
+    assertThat(InferStepExecutor.hasToolMarkerResidue(leak, plain)).isFalse();
+
+    // Dialect-agnostic: a chatml-tagged step flags ITS leaked tag, not Harmony's.
+    var chatml = InferStepConfig.newBuilder()
+      .setModelId("llm")
+      .setToolCallTags(TagConfig.newBuilder().setOpenTag("<tool_call>").setCloseTag("</tool_call>"))
+      .build();
+    assertThat(
+      InferStepExecutor.hasToolMarkerResidue("oops <tool_call>{\"n\":1}", chatml)
+    ).isTrue();
+    assertThat(InferStepExecutor.hasToolMarkerResidue(leak, chatml)).isFalse();
+  }
+
+  // ── Step system prompt combines with the caller's ─────────────────────────
+
+  @Nested
+  class SystemPromptCombination {
+
+    @Test
+    void step_system_merges_after_caller_system() {
+      var engine = new CapturingEngine(qwen3Template());
+      var pctx = new PipelineContext(
+        null,
+        List.of(
+          new ChatTurn(ChatRole.SYSTEM, "You are pi, a coding agent."),
+          new ChatTurn(ChatRole.USER, "hello")
+        ),
+        null,
+        List.of(),
+        null
+      );
+      var cfg = InferStepConfig.newBuilder()
+        .setModelId("qwen3")
+        .setSystemPrompt("Call the set_todos tool with the plan.")
+        .build();
+
+      executor.rxExecuteWithEngine("plan", cfg, engine, stepContext(pctx)).test();
+
+      String prompt = ((CapturingEngine) engine).captured.get().prompt();
+      // Caller identity first, step steering appended — neither is dropped.
+      assertThat(prompt).contains("You are pi, a coding agent.");
+      assertThat(prompt).contains("Call the set_todos tool with the plan.");
+      assertThat(prompt.indexOf("You are pi")).isLessThan(prompt.indexOf("Call the set_todos"));
+    }
+
+    @Test
+    void step_system_prepended_when_caller_has_none() {
+      var engine = new CapturingEngine(qwen3Template());
+      var pctx = new PipelineContext(
+        "hello",
+        List.of(new ChatTurn(ChatRole.USER, "hello")),
+        null,
+        List.of(),
+        null
+      );
+      var cfg = InferStepConfig.newBuilder()
+        .setModelId("qwen3")
+        .setSystemPrompt("Call the set_todos tool with the plan.")
+        .build();
+
+      executor.rxExecuteWithEngine("plan", cfg, engine, stepContext(pctx)).test();
+
+      assertThat(((CapturingEngine) engine).captured.get().prompt()).contains(
+        "Call the set_todos tool with the plan."
+      );
+    }
+  }
+
+  // ── Sampling precedence: request > loop-retry > step ──────────────────────
+
+  @Nested
+  class RetrySamplingPrecedence {
+
+    private TextGenRequest run(
+      io.gravitee.singularitee.protocol.SamplingParams requestSp,
+      io.gravitee.singularitee.protocol.SamplingParams retrySp
+    ) {
+      var engine = new CapturingEngine(qwen3Template());
+      var pctx = new PipelineContext(
+        "hello",
+        List.of(new ChatTurn(ChatRole.USER, "hello")),
+        requestSp,
+        List.of(),
+        null
+      );
+      if (retrySp != null) {
+        pctx.setRetrySamplingParams(retrySp);
+      }
+      var cfg = InferStepConfig.newBuilder()
+        .setModelId("qwen3")
+        .setSamplingParams(
+          io.gravitee.singularitee.protocol.SamplingParams.newBuilder().setTemperature(0.9f)
+        )
+        .build();
+      executor.rxExecuteWithEngine("generate", cfg, engine, stepContext(pctx)).test();
+      return engine.captured.get();
+    }
+
+    private static io.gravitee.singularitee.protocol.SamplingParams temp(float t) {
+      return io.gravitee.singularitee.protocol.SamplingParams.newBuilder()
+        .setTemperature(t)
+        .build();
+    }
+
+    @Test
+    void step_params_apply_when_no_overrides() {
+      assertThat(run(null, null).temperature()).isEqualTo(0.9f);
+    }
+
+    @Test
+    void retry_override_beats_step_params() {
+      assertThat(run(null, temp(0.2f)).temperature()).isEqualTo(0.2f);
+    }
+
+    @Test
+    void request_override_beats_retry_override() {
+      assertThat(run(temp(0.5f), temp(0.2f)).temperature()).isEqualTo(0.5f);
     }
   }
 
@@ -406,9 +552,7 @@ class InferStepExecutorTest {
     void bare_payload_uses_configured_tool_tags() {
       var cfg = InferStepConfig.newBuilder()
         .setToolCallTags(
-          io.gravitee.singularitee.protocol.TagConfig.newBuilder()
-            .setOpenTag("<|tool_call>")
-            .setCloseTag("<tool_call|>")
+          TagConfig.newBuilder().setOpenTag("<|tool_call>").setCloseTag("<tool_call|>")
         )
         .build();
       assertThat(InferStepExecutor.withReWrappedToolCalls("", "call:f{x:1}", cfg)).isEqualTo(
@@ -457,6 +601,7 @@ class InferStepExecutorTest {
 
       InferStepExecutor.maybeExtractMarkerlessToolCalls(
         pctx,
+        "generate",
         configWithTemplate("glm-name-json"),
         GLM_CALL
       );
@@ -469,13 +614,21 @@ class InferStepExecutorTest {
       assertThat(pctx.lastEngineFinishReason()).isEqualTo(
         io.gravitee.singularitee.protocol.FinishReason.FINISH_REASON_TOOL_CALLS
       );
+      assertThat(pctx.get("generate.tool_parse_ok")).isEqualTo("true");
+      assertThat(pctx.get("generate.tool_call_count")).isEqualTo("1");
+      assertThat(pctx.get("generate.finish_reason")).isEqualTo("tool_calls");
     }
 
     @Test
     void no_template_configured_leaves_response_untouched() {
       var pctx = contextWithTools();
 
-      InferStepExecutor.maybeExtractMarkerlessToolCalls(pctx, configWithTemplate(null), GLM_CALL);
+      InferStepExecutor.maybeExtractMarkerlessToolCalls(
+        pctx,
+        "generate",
+        configWithTemplate(null),
+        GLM_CALL
+      );
 
       assertThat(pctx.extractedToolCalls()).isEmpty();
       assertThat(pctx.lastEngineFinishReason()).isEqualTo(
@@ -489,11 +642,14 @@ class InferStepExecutorTest {
 
       InferStepExecutor.maybeExtractMarkerlessToolCalls(
         pctx,
+        "generate",
         configWithTemplate("glm-name-json"),
         "Sure, I emailed bob for you.\nAnything else?"
       );
 
       assertThat(pctx.extractedToolCalls()).isEmpty();
+      assertThat(pctx.get("generate.tool_parse_ok")).isEqualTo("false");
+      assertThat(pctx.get("generate.tool_call_count")).isEqualTo("0");
       assertThat(pctx.lastEngineFinishReason()).isEqualTo(
         io.gravitee.singularitee.protocol.FinishReason.FINISH_REASON_STOP
       );
@@ -514,11 +670,27 @@ class InferStepExecutorTest {
 
       InferStepExecutor.maybeExtractMarkerlessToolCalls(
         pctx,
+        "generate",
         configWithTemplate("glm-name-json"),
         GLM_CALL
       );
 
       assertThat(pctx.extractedToolCalls()).isEmpty();
+    }
+
+    @Test
+    void attempted_tool_name_strips_namespace_and_handles_junk() {
+      assertThat(
+        InferStepExecutor.attemptedToolName("apply_patch code<|message|>{\"patch\":\"x\"}")
+      ).isEqualTo("apply_patch");
+      assertThat(
+        InferStepExecutor.attemptedToolName("functions.apply_patch code<|message|>{}")
+      ).isEqualTo("apply_patch");
+      assertThat(InferStepExecutor.attemptedToolName("  send_email {\"to\":\"a\"}")).isEqualTo(
+        "send_email"
+      );
+      assertThat(InferStepExecutor.attemptedToolName("<|weird|>")).isEmpty();
+      assertThat(InferStepExecutor.attemptedToolName(null)).isEmpty();
     }
 
     @Test
@@ -530,6 +702,7 @@ class InferStepExecutorTest {
 
       InferStepExecutor.maybeExtractMarkerlessToolCalls(
         pctx,
+        "generate",
         configWithTemplate("glm-name-json"),
         GLM_CALL
       );

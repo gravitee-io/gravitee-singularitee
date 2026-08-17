@@ -108,6 +108,8 @@ public final class ChatWindowTrimmer {
   private interface Adapter<M> {
     String role(M m);
     String content(M m);
+    /** Whether the message carries STRUCTURED tool calls (OpenAI {@code tool_calls}). */
+    boolean hasToolCalls(M m);
     /** {@code false} when the message must never be content-truncated (e.g. carries media). */
     boolean truncatable(M m);
     M withContent(M m, String content);
@@ -124,6 +126,12 @@ public final class ChatWindowTrimmer {
     public String content(Map<String, Object> m) {
       Object c = m.get("content");
       return c != null ? c.toString() : "";
+    }
+
+    @Override
+    public boolean hasToolCalls(Map<String, Object> m) {
+      Object calls = m.get("tool_calls");
+      return calls instanceof List<?> l && !l.isEmpty();
     }
 
     @Override
@@ -151,13 +159,20 @@ public final class ChatWindowTrimmer {
     }
 
     @Override
+    public boolean hasToolCalls(ChatTurn m) {
+      return m.toolCalls() != null && !m.toolCalls().isEmpty();
+    }
+
+    @Override
     public boolean truncatable(ChatTurn m) {
       return m.media() == null || m.media().isEmpty();
     }
 
     @Override
     public ChatTurn withContent(ChatTurn m, String content) {
-      return new ChatTurn(m.role(), content, m.media());
+      // Preserve tool metadata: head-truncating a giant tool RESULT must not
+      // strip its tool_call_id, or the pair breaks in the chat template.
+      return new ChatTurn(m.role(), content, m.media(), m.toolCalls(), m.toolCallId(), m.name());
     }
   };
 
@@ -208,21 +223,27 @@ public final class ChatWindowTrimmer {
     }
     long target = Math.max(0L, (long) (budget * TARGET_RATIO) - pinnedTokens);
 
-    // Atomic units: an assistant message containing the tool-call open tag
-    // plus the immediately following message (the tool result) trim together.
+    // Atomic units: an assistant message that makes tool calls — STRUCTURED
+    // (OpenAI tool_calls, content typically null) or legacy tagged text —
+    // plus ALL immediately following tool-result messages (parallel calls
+    // yield several) trim together. Splitting the pair orphans the tool
+    // message, which chat templates reject outright ("tool role without a
+    // previous assistant tool call").
     int[] unitStart = new int[n];
     for (int j = pinnedEnd; j < n; ) {
       unitStart[j] = j;
-      boolean toolPair =
-        j + 1 < n &&
-        "assistant".equalsIgnoreCase(a.role(messages.get(j))) &&
-        a.content(messages.get(j)).contains(openTag);
-      if (toolPair) {
-        unitStart[j + 1] = j;
-        j += 2;
-      } else {
-        j++;
+      M msg = messages.get(j);
+      boolean callCarrier =
+        "assistant".equalsIgnoreCase(a.role(msg)) &&
+        (a.hasToolCalls(msg) || a.content(msg).contains(openTag));
+      int end = j;
+      if (callCarrier) {
+        while (end + 1 < n && "tool".equalsIgnoreCase(a.role(messages.get(end + 1)))) {
+          end++;
+          unitStart[end] = j;
+        }
       }
+      j = end + 1;
     }
 
     // Walk newest → oldest, keeping whole units while they fit the target.
@@ -244,6 +265,13 @@ public final class ChatWindowTrimmer {
       } else {
         break; // keep the retained window contiguous — stop at the first non-fit
       }
+    }
+
+    // Safety net: the retained window must never START with tool results —
+    // even if unit bookkeeping missed a shape, an orphaned tool message is a
+    // guaranteed template error, while dropping it merely loses old context.
+    while (keepFrom < n - 1 && "tool".equalsIgnoreCase(a.role(messages.get(keepFrom)))) {
+      keepFrom++;
     }
 
     // Oversized newest turn: truncate the last message's content from the

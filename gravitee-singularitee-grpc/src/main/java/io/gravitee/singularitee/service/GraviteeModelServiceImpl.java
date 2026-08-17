@@ -434,8 +434,10 @@ public class GraviteeModelServiceImpl
     if (reason == null) return FinishReason.FINISH_REASON_UNSPECIFIED;
     return switch (reason) {
       case "stop" -> FinishReason.FINISH_REASON_STOP;
-      case "length" -> FinishReason.FINISH_REASON_LENGTH;
+      case "length", "length_prompt", "length_runaway" -> FinishReason.FINISH_REASON_LENGTH;
       case "tool_calls" -> FinishReason.FINISH_REASON_TOOL_CALLS;
+      case "cancelled" -> FinishReason.FINISH_REASON_CANCELLED;
+      case "stalled" -> FinishReason.FINISH_REASON_STALLED;
       default -> FinishReason.FINISH_REASON_UNSPECIFIED;
     };
   }

@@ -205,6 +205,18 @@ message InferPipelineRequest {
   // to `user`). Threaded to text-gen steps so their KV prefix cache can route
   // requests sharing a key to the same slot. Empty = no affinity.
   string cache_key = 61;
+
+  // Stored-conversation continuation (OpenAI Responses `previous_response_id`).
+  // When set, the server prepends the transcript stored under that id — the
+  // curated history the SERVER built, internal tool turns included — and the
+  // request's own input becomes the new user turn(s). Unknown id = the request
+  // fails; the client must not silently lose its history.
+  string previous_response_id = 62;
+
+  // Whether to persist this request's resulting transcript under request_id
+  // for later continuation via previous_response_id. Unset = true when a
+  // request_id is present (OpenAI `store` defaults to true).
+  optional bool store = 63;
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +244,7 @@ message InferResponse {
     ResponseOutputTextDelta  response_output_text_delta = 11;
     ResponseCompleted        response_completed         = 12;
     ResponseFailed           response_failed            = 13;
+    ResponseProgress         response_progress          = 14;
   }
 
   // Semantic role of this event's content in a pipeline.
@@ -255,6 +268,11 @@ enum ResponseEventType {
   RESPONSE_EVENT_TYPE_COMPLETED         = 3;
   // The inference run failed (guard block, error, etc.).
   RESPONSE_EVENT_TYPE_FAILED            = 4;
+  // Auxiliary progress update (e.g. the pipeline's todo plan changed).
+  // Additive and ignorable: clients that don't know it skip it — the OpenAI
+  // Chat Completions surface drops it, the Responses API surfaces it as a
+  // "gravitee.progress" object.
+  RESPONSE_EVENT_TYPE_PROGRESS          = 5;
 }
 
 // ---------------------------------------------------------------------------
@@ -332,6 +350,29 @@ message ToolCall {
   string id = 4;
 }
 
+// Auxiliary progress update emitted mid-stream by pipeline steps that manage
+// engine-side state (currently: the todo step). Never carries answer text.
+message ResponseProgress {
+  // The pipeline step that produced the update.
+  string step_id            = 1;
+  // Full snapshot of the todo plan after the update.
+  repeated TodoItem todos   = 2;
+  // Convenience counters (derivable from todos, duplicated for cheap display).
+  int32 completed           = 3;
+  int32 total               = 4;
+}
+
+// One item of an engine-managed todo plan.
+message TodoItem {
+  string id     = 1;
+  string title  = 2;
+  // pending | in_progress | done
+  string status = 3;
+  // The observable evidence that this item is done (a command and its
+  // expected outcome). Empty for plans authored without proofs.
+  string proof  = 4;
+}
+
 // Emitted when the inference run fails (guard block, server error, etc.).
 message ResponseFailed {
   // Machine-readable error code (e.g. "content_filter", "server_error").
@@ -362,6 +403,14 @@ enum FinishReason {
   FINISH_REASON_BREAK_CONDITION = 7;
   // A loop step reached its max_iterations ceiling.
   FINISH_REASON_MAX_ITERATIONS  = 8;
+  // The sequence was cancelled before its natural end (client disconnect,
+  // slow-consumer stream cancellation). Maps to "stop" on the OpenAI surface.
+  FINISH_REASON_CANCELLED       = 9;
+  // The backend stalled and the sequence was force-failed mid-generation: the
+  // output is silently truncated, not a clean stop. Maps to "stop" on the
+  // OpenAI surface (OpenAI defines no error value) but is kept distinct here
+  // so pipelines and metrics can observe the truncation.
+  FINISH_REASON_STALLED         = 10;
 }
 
 // Semantic role of an infer step's output in a pipeline.

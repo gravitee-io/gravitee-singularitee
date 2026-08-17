@@ -85,8 +85,33 @@ public final class JinjaContextHelper {
     ctx.put("messages", buildMessages(pctx));
     ctx.put("generated_messages", buildGeneratedMessages(pctx));
     ctx.put("verdicts", buildVerdicts(pctx));
+    // The request's declared tool names, so corrective templates (loopback_message)
+    // can enumerate what is legal — e.g. steering a model off a hallucinated built-in.
+    ctx.put(
+      "tool_names",
+      pctx
+        .tools()
+        .stream()
+        .map(t -> t.getName())
+        .toList()
+    );
 
     buildStepOutputContext(pctx, ctx);
+
+    // The engine-managed todo plan, so prompts can render the current state:
+    // {% for t in todos %}[{{ t.status }}] {{ t.title }}{% endfor %}
+    // MUST come after buildStepOutputContext: the mirrored condition fields
+    // (todos.total/completed/remaining) nest into a map under the same "todos"
+    // key and would otherwise replace the list — templates then iterate three
+    // key STRINGS and render "<function str.title>" garbage, and the model
+    // never sees its plan (observed live: the work loop ground through all 8
+    // bounded iterations unable to complete a single item).
+    ctx.put("todos", buildTodos(pctx));
+
+    // Plan-level constraints (locked user decisions from set_todos) — a
+    // distinct top-level key on purpose: a "todos."-prefixed scalar would be
+    // nested under "todos" by buildStepOutputContext and clobbered above.
+    ctx.put("constraints", pctx.todoConstraints() == null ? "" : pctx.todoConstraints());
 
     return ctx;
   }
@@ -231,6 +256,29 @@ public final class JinjaContextHelper {
           v.details() != null ? v.details() : "",
           "step",
           v.stepId()
+        )
+      );
+    }
+    return out;
+  }
+
+  /**
+   * Returns the engine-managed todo plan as Jinja-shaped maps
+   * ({@code [{id, title, status}]}), in plan order.
+   */
+  public static List<Map<String, Object>> buildTodos(PipelineContext pctx) {
+    List<Map<String, Object>> out = new ArrayList<>(pctx.todos().size());
+    for (var t : pctx.todos()) {
+      out.add(
+        Map.of(
+          "id",
+          t.id(),
+          "title",
+          t.title(),
+          "status",
+          t.status(),
+          "proof",
+          t.proof() == null ? "" : t.proof()
         )
       );
     }

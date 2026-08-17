@@ -114,6 +114,7 @@ message PipelineStep {
     LlmGuardStepConfig        llm_guard_config     = 18;
     RegexGuardStepConfig      regex_guard_config   = 20;
     ToolSelectStepConfig      tool_select_config   = 21;
+    TodoStepConfig            todo_config          = 22;
   }
   // 19 retired: stop_words_config (stop-words guard removed).
   reserved 19;
@@ -146,6 +147,12 @@ enum StepType {
   // request's tool list (GLiNER) and writes a shortlist of tool names into the
   // pipeline context for downstream infer steps to filter injected tool schemas.
   STEP_TYPE_TOOL_SELECT    = 12;
+  // Server-executed todo tooling: consumes set_todos/complete_todo tool calls
+  // from the preceding infer step, mutates the engine-managed plan, answers
+  // the calls in the transcript, and emits PROGRESS events. The presence of a
+  // todo step in a pipeline injects the todo tool definitions into every
+  // infer step's tool list automatically.
+  STEP_TYPE_TODO           = 13;
   // 10 retired: STEP_TYPE_STOP_WORDS_GUARD (stop-words guard removed).
   reserved 10;
   reserved "STEP_TYPE_STOP_WORDS_GUARD";
@@ -237,6 +244,13 @@ message InferStepConfig {
   // gemma-call) until one yields calls — the legacy behavior.
   string tool_extraction_template = 20;
 
+  // Forward THINKING-channel deltas to the client even when the step role is
+  // internal. Content and tool deltas stay suppressed — only the reasoning
+  // stream escapes, so UIs can show live deliberation for planning/working
+  // steps that otherwise produce dead air. No effect on non-internal steps
+  // (their thinking already streams). Default false.
+  optional bool stream_thinking = 23;
+
   // Per-step chat-template override (Jinja source). When set, the step renders
   // its prompt with this template INSTEAD of the engine's GGUF-metadata chat
   // template. In workspace YAML the value may reference a workspace
@@ -244,6 +258,11 @@ message InferStepConfig {
   // content before it reaches this field. Unset = use the model's own
   // template (current behaviour).
   optional string chat_template = 21;
+  // Whether server-owned tools (the todo tools) are injected into this step's
+  // tool list. Unset = true. Set false on steps that must produce plain prose
+  // (e.g. a summarize step) — a tool schema in the prompt invites the model to
+  // call it, and a call from a step with no todo step downstream can only leak.
+  optional bool expose_server_tools = 22;
 }
 
 // Classification step.
@@ -480,6 +499,27 @@ message LoopStepConfig {
   // full pipeline context (e.g. "{{evaluate.output}}", "{{reason.output}}").
   // MessageDef.role defaults to "user".
   MessageDef     loopback_message = 9;
+  // Optional sampling override applied to infer steps executed on the RETRY
+  // edge only (set when branching back to target_step_id, cleared on
+  // condition-met exit and on max-iterations fallback). Repair retries want
+  // determinism: a lower temperature raises tool-JSON parse success. Sits
+  // between the request override and the step's own params in precedence:
+  // request > retry > step.
+  SamplingParams retry_sampling_params = 10;
+}
+
+// Config for STEP_TYPE_TODO. Placed after an infer step, like guards.
+// When the preceding generation contained todo tool calls, the step executes
+// them (mutating the engine-managed plan), appends the assistant call and the
+// TOOL result to the transcript, clears the extracted calls so they never
+// reach the client, emits a PROGRESS event, and branches to handled_step_id
+// (typically back to the infer step so the model continues). When no todo
+// call was made, execution falls through to the step's next_step edge and any
+// client-bound tool calls pass through untouched.
+message TodoStepConfig {
+  // Step to branch to after consuming a todo tool call (usually the infer
+  // step that produced it). Falls back to the step-level next_step if unset.
+  string handled_step_id = 1;
 }
 
 // Shared condition enum used by both BreakStepConfig and LoopStepConfig.

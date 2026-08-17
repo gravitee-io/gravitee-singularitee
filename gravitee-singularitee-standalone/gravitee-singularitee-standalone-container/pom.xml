@@ -125,6 +125,18 @@
             <groupId>io.gravitee.node</groupId>
             <artifactId>gravitee-node-cluster-plugin-standalone</artifactId>
         </dependency>
+        <!-- Pluggable cache backing session state (todo plans). The standalone
+             in-memory impl is the default; swap the CacheManager bean (e.g. to
+             the hazelcast/redis cache plugins) for a distributed backend. The
+             plugin marks its own deps provided, hence cache-common here too. -->
+        <dependency>
+            <groupId>io.gravitee.node</groupId>
+            <artifactId>gravitee-node-cache-plugin-standalone</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.node</groupId>
+            <artifactId>gravitee-node-cache-common</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

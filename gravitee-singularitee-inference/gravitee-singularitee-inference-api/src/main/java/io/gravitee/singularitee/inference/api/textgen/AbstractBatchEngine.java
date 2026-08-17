@@ -242,8 +242,10 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
    * progress ({@link EngineAdapter#hasStalled()}).
    *
    * <p>A decode failure takes down the whole batch. Cleanup mirrors the cancellation path,
-   * slots included, so the engine keeps serving. Finish reason is {@code "stop"}: OpenAI
-   * defines no error value. Call under {@link #lock}; the caller emits the tokens after.
+   * slots included, so the engine keeps serving. Finish reason is {@code "stalled"} so the
+   * truncation stays observable upstream; the OpenAI surface maps it onto {@code "stop"}
+   * (OpenAI defines no error value). Call under {@link #lock}; the caller emits the tokens
+   * after.
    */
   private void failAllSequences(List<InferenceToken<TOKEN>> out) {
     LOGGER.error(
@@ -279,7 +281,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
           null,
           state.index,
           true,
-          "stop",
+          "stalled",
           state.inputTokens,
           state.outputTokens,
           state.reasoningTokens,
@@ -308,6 +310,12 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
    * @return a final token with finish reason {@code "cancelled"}, or
    *         {@code null} if the sequence already emitted its final token
    */
+  /** Per-request performance: current cumulative counters minus the sequence-start baseline. */
+  private InferencePerformance perfDelta(SequenceState<STATE> state) {
+    InferencePerformance current = adapter.buildPerformance(state.engineState);
+    return current == null ? null : current.minus(state.perfBaseline);
+  }
+
   private InferenceToken<TOKEN> finalizeCancelled(SequenceState<STATE> state) {
     if (state == null || state.finalSent) {
       return null;
@@ -326,7 +334,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       state.outputTokens,
       state.reasoningTokens,
       state.toolTokens,
-      adapter.buildPerformance(state.engineState)
+      perfDelta(state)
     );
 
     try {
@@ -403,6 +411,14 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
   /**
    * Processes a token output for a sequence.
    */
+  /** Identical consecutive token emissions before a sequence is cut as degenerate. */
+  private static final int DEGENERATE_RUN_LIMIT = 256;
+
+  private static String sanitizeForLog(String text) {
+    String t = text.replace("\n", "\\n").replace("\r", "\\r");
+    return t.length() > 16 ? t.substring(0, 16) + "…" : t;
+  }
+
   private void processOutput(
     SequenceState<STATE> state,
     TOKEN token,
@@ -423,6 +439,35 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     // Convert token to string for stop detection
     String tokenText = token.toString();
     TokenEmission emission = state.consume(tokenText);
+
+    // Degenerate-run guard: a sequence emitting the SAME token text
+    // back-to-back hundreds of times is stuck (escape-inflation spirals,
+    // sampler loops) and will never recover — cut it instead of burning to
+    // the token cap. The threshold is far above legitimate runs (ASCII-art
+    // rulers, padding) which stay in the low tens.
+    String emitted = emission.text();
+    if (!emitted.isEmpty()) {
+      if (emitted.equals(state.lastEmittedText)) {
+        state.identicalRun++;
+      } else {
+        state.lastEmittedText = emitted;
+        state.identicalRun = 1;
+      }
+      if (state.identicalRun >= DEGENERATE_RUN_LIMIT) {
+        LOGGER.warn(
+          "seq={} degenerate run: token {} repeated {}x — cutting generation",
+          state.externalId,
+          sanitizeForLog(emitted),
+          state.identicalRun
+        );
+        state.stopMatched = true;
+        InferenceToken<TOKEN> finalToken = finalizeSequence(state);
+        if (finalToken != null) {
+          out.add(finalToken);
+        }
+        return;
+      }
+    }
 
     // Stage token if there's text to emit
     if (!emission.text().isEmpty()) {
@@ -543,7 +588,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       state.outputTokens,
       state.reasoningTokens,
       state.toolTokens,
-      adapter.buildPerformance(state.engineState)
+      perfDelta(state)
     );
 
     // Cleanup engine state
@@ -661,6 +706,11 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
         request.stop()
       );
       state.cacheKey = cacheKey;
+      try {
+        state.perfBaseline = adapter.buildPerformance(engineState);
+      } catch (Exception e) {
+        LOGGER.debug("perf baseline unavailable: {}", e.getMessage());
+      }
       sequences.put(internalId, state);
       externalToInternal.put(seqId, internalId);
       hasWork.signalAll();
@@ -784,7 +834,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
    * Builds a length-failed token (emitted by the caller, outside the lock).
    */
   private InferenceToken<TOKEN> buildLengthToken(int seqId, int promptTokens) {
-    return new InferenceToken<>(seqId, null, 0, true, "length", promptTokens, 0, 0, 0, null);
+    return new InferenceToken<>(seqId, null, 0, true, "length_prompt", promptTokens, 0, 0, 0, null);
   }
 
   /**
@@ -821,7 +871,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       state.outputTokens,
       state.reasoningTokens,
       state.toolTokens,
-      isFinal ? adapter.buildPerformance(state.engineState) : null,
+      isFinal ? perfDelta(state) : null,
       channel,
       isFinal ? null : adapter.logprobsOf(state.engineState)
     );

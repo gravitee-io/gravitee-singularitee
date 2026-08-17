@@ -23,9 +23,11 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.client.WebClientOptions;
 import io.vertx.rxjava3.core.Vertx;
+import io.vertx.rxjava3.core.file.AsyncFile;
 import io.vertx.rxjava3.ext.web.client.HttpRequest;
 import io.vertx.rxjava3.ext.web.client.WebClient;
 import io.vertx.rxjava3.ext.web.codec.BodyCodec;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -33,6 +35,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,11 +49,20 @@ import org.slf4j.LoggerFactory;
  *   <li>Validates that every requested file actually exists</li>
  *   <li>Skips files that are already present locally with the expected size
  *       (a size mismatch — e.g. a half-written file from a crashed boot — is re-downloaded)</li>
- *   <li>Downloads the remaining files with streaming (pipe to disk)</li>
+ *   <li>Downloads the remaining files, using chunked parallel HTTP Range requests
+ *       (hf_transfer-style) for large blobs and a plain streaming GET otherwise</li>
  * </ol>
  *
  * <p>File sizes come from the {@code ?blobs=true} repo listing, so no per-file HEAD
  * request is needed: progress totals are exact and each file costs a single GET.
+ *
+ * <p>Large files (≥ {@link Options#chunkedThresholdBytes()}) are fetched the way
+ * hf_transfer does it: the {@code resolve} redirect is followed once by hand to the
+ * signed CDN URL, then {@link Options#parallelism()} concurrent Range requests pull
+ * {@link Options#chunkSizeBytes()}-sized chunks that are written at their offset into a
+ * preallocated file. Peak buffered memory is {@code parallelism × chunkSize}. Servers
+ * that ignore {@code Range} — and any chunked attempt that exhausts its retries — fall
+ * back to the single-stream path.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -61,21 +74,86 @@ public final class HuggingFaceModelDownloader {
   private static final String HF_HOST = "huggingface.co";
   private static final int CONNECT_TIMEOUT_MS = 15_000;
   private static final int IDLE_TIMEOUT_S = 300;
+  private static final int MAX_REDIRECTS = 5;
+  private static final int MAX_CHUNK_RETRIES = 5;
+  private static final int MAX_FILE_RETRIES = 2;
+  private static final long RETRY_BASE_DELAY_MS = 500;
+  private static final long RETRY_MAX_DELAY_MS = 10_000;
 
   /** Sentinel for "size unknown" (listing did not report one). */
   private static final long UNKNOWN_SIZE = -1L;
 
+  /**
+   * Tuning knobs for the chunked download path.
+   *
+   * <p>Peak buffered memory is {@code parallelism × chunkSizeBytes} (80 MiB with the
+   * defaults). Files smaller than {@code chunkedThresholdBytes} use the single-stream
+   * path.
+   */
+  public record Options(long chunkSizeBytes, int parallelism, long chunkedThresholdBytes) {
+    private static final long DEFAULT_CHUNK_SIZE = 10L * 1024 * 1024;
+
+    public Options {
+      if (chunkSizeBytes <= 0) throw new IllegalArgumentException("chunkSizeBytes must be > 0");
+      if (parallelism <= 0) throw new IllegalArgumentException("parallelism must be > 0");
+      if (chunkedThresholdBytes <= 0) {
+        throw new IllegalArgumentException("chunkedThresholdBytes must be > 0");
+      }
+    }
+
+    public static Options defaults() {
+      return new Options(DEFAULT_CHUNK_SIZE, 8, 2 * DEFAULT_CHUNK_SIZE);
+    }
+  }
+
+  /** Where the {@code resolve} redirect chain ends, and whether Range requests work there. */
+  private record ResolvedSource(String url, boolean rangeSupported, long totalSize) {}
+
+  /** Marker for failures that must not be retried at the level they occur. */
+  private static final class NonRetryableException extends RuntimeException {
+
+    NonRetryableException(String message) {
+      super(message);
+    }
+  }
+
   private final Vertx vertx;
   private final WebClient client;
+  private final WebClient absClient;
   private final String hfToken;
+  private final Options options;
+  private final String hubHost;
+  private final int hubPort;
+  private final boolean ssl;
 
   public HuggingFaceModelDownloader(Vertx vertx) {
-    this(vertx, (String) null);
+    this(vertx, null, Options.defaults());
   }
 
   public HuggingFaceModelDownloader(Vertx vertx, String hfToken) {
+    this(vertx, hfToken, Options.defaults());
+  }
+
+  public HuggingFaceModelDownloader(Vertx vertx, String hfToken, Options options) {
+    this(vertx, hfToken, options, HF_HOST, 443, true);
+  }
+
+  /** Test hook: points the downloader at a local stub hub instead of huggingface.co. */
+  HuggingFaceModelDownloader(
+    Vertx vertx,
+    String hfToken,
+    Options options,
+    String hubHost,
+    int hubPort,
+    boolean ssl
+  ) {
     this.vertx = vertx;
-    this.client = createClient(vertx);
+    this.options = options;
+    this.hubHost = hubHost;
+    this.hubPort = hubPort;
+    this.ssl = ssl;
+    this.client = createClient(vertx, hubHost, hubPort, ssl);
+    this.absClient = createAbsClient(vertx, options.parallelism());
     this.hfToken = (hfToken != null && !hfToken.isBlank()) ? hfToken : null;
   }
 
@@ -250,6 +328,260 @@ public final class HuggingFaceModelDownloader {
     Path outputPath,
     long totalSize
   ) {
+    if (totalSize < options.chunkedThresholdBytes()) {
+      return doStreamDownload(repository, fileName, outputPath, totalSize);
+    }
+    return Single.defer(() ->
+      resolveDownloadUrl(repository, fileName).flatMap(source -> {
+        if (!source.rangeSupported() || source.totalSize() <= 0) {
+          return Single.<Path>error(
+            new NonRetryableException("Range requests unsupported for [" + fileName + "]")
+          );
+        }
+        return doChunkedDownload(repository + "/" + fileName, source, outputPath);
+      })
+    )
+      // a fresh attempt re-resolves the redirect, so an expired signed URL heals here
+      .retryWhen(errors -> backoff(errors, MAX_FILE_RETRIES))
+      .onErrorResumeNext(err -> {
+        LOG.warn(
+          "Chunked download of [{}/{}] unavailable ({}); falling back to single stream",
+          repository,
+          fileName,
+          err.getMessage()
+        );
+        return doStreamDownload(repository, fileName, outputPath, totalSize);
+      });
+  }
+
+  // ------------------------------------------------------------------
+  // Chunked (hf_transfer-style) path
+  // ------------------------------------------------------------------
+
+  /**
+   * Follows the {@code /resolve/...} redirect chain by hand (Vert.x's automatic redirect
+   * handling would replay the {@code Authorization} header to the CDN, which signed S3-style
+   * URLs reject) and probes Range support with a 1-byte request.
+   */
+  private Single<ResolvedSource> resolveDownloadUrl(String repository, String fileName) {
+    String url =
+      (ssl ? "https://" : "http://") +
+      hubHost +
+      ":" +
+      hubPort +
+      "/" +
+      repository +
+      "/resolve/main/" +
+      fileName +
+      "?download=true";
+    return probe(url, 0);
+  }
+
+  private Single<ResolvedSource> probe(String url, int hops) {
+    if (hops > MAX_REDIRECTS) {
+      return Single.error(new NonRetryableException("Too many redirects resolving [" + url + "]"));
+    }
+    HttpRequest<io.vertx.core.buffer.Buffer> request = absClient
+      .requestAbs(HttpMethod.GET, url)
+      .putHeader("Range", "bytes=0-0")
+      .followRedirects(false);
+    if (isHubUrl(url)) {
+      authorize(request);
+    }
+    return request
+      .rxSend()
+      .flatMap(response -> {
+        int status = response.statusCode();
+        if (status >= 300 && status < 400) {
+          String location = response.getHeader("Location");
+          if (location == null) {
+            return Single.error(
+              new IllegalStateException("Redirect without Location resolving [" + url + "]")
+            );
+          }
+          return probe(URI.create(url).resolve(location).toString(), hops + 1);
+        }
+        if (status == 206) {
+          return Single.just(
+            new ResolvedSource(url, true, contentRangeTotal(response.getHeader("Content-Range")))
+          );
+        }
+        if (status == 200) {
+          return Single.just(new ResolvedSource(url, false, UNKNOWN_SIZE));
+        }
+        return Single.error(
+          new IllegalStateException("Probe of [" + url + "] failed: HTTP " + status)
+        );
+      });
+  }
+
+  /** Parses the total from a {@code Content-Range: bytes 0-0/12345} header. */
+  private static long contentRangeTotal(String contentRange) {
+    if (contentRange == null) return UNKNOWN_SIZE;
+    int slash = contentRange.lastIndexOf('/');
+    if (slash < 0) return UNKNOWN_SIZE;
+    try {
+      return Long.parseLong(contentRange.substring(slash + 1).trim());
+    } catch (NumberFormatException e) {
+      return UNKNOWN_SIZE;
+    }
+  }
+
+  private boolean isHubUrl(String url) {
+    URI uri = URI.create(url);
+    int port = uri.getPort() != -1 ? uri.getPort() : ("https".equals(uri.getScheme()) ? 443 : 80);
+    return hubHost.equalsIgnoreCase(uri.getHost()) && port == hubPort;
+  }
+
+  private Single<Path> doChunkedDownload(String label, ResolvedSource source, Path outputPath) {
+    long total = source.totalSize();
+    long chunkSize = options.chunkSizeBytes();
+    int chunkCount = (int) ((total + chunkSize - 1) / chunkSize);
+    LOG.info(
+      "Downloading [{}] in {} chunks of {} MiB ({} parallel) ...",
+      label,
+      chunkCount,
+      mib(chunkSize),
+      options.parallelism()
+    );
+
+    return ensureParentDir(outputPath)
+      .andThen(
+        vertx
+          .fileSystem()
+          .rxOpen(
+            outputPath.toString(),
+            new OpenOptions().setCreate(true).setWrite(true).setTruncateExisting(true)
+          )
+      )
+      .flatMap(asyncFile -> {
+        AtomicLong written = new AtomicLong();
+        long timerId = startProgress(label, written::get, total);
+        // preallocate so every chunk writes within the file bounds
+        return asyncFile
+          .rxWrite(io.vertx.core.buffer.Buffer.buffer(new byte[] { 0 }), total - 1)
+          .andThen(
+            Flowable.range(0, chunkCount).flatMapCompletable(
+              index -> {
+                long start = index * chunkSize;
+                long end = Math.min(total, start + chunkSize) - 1;
+                return downloadChunk(source.url(), start, end, asyncFile, written).retryWhen(
+                  errors -> backoff(errors, MAX_CHUNK_RETRIES)
+                );
+              },
+              false,
+              options.parallelism()
+            )
+          )
+          .doFinally(() -> {
+            vertx.cancelTimer(timerId);
+            asyncFile.close();
+          })
+          .andThen(
+            vertx
+              .fileSystem()
+              .rxProps(outputPath.toString())
+              .flatMap(props -> {
+                if (props.size() != total) {
+                  return Single.<Path>error(
+                    new IllegalStateException(
+                      "Downloaded [" + label + "] has size " + props.size() + ", expected " + total
+                    )
+                  );
+                }
+                LOG.info("Downloaded [{}] -> {}", label, outputPath);
+                return Single.just(outputPath.toAbsolutePath());
+              })
+          );
+      })
+      .onErrorResumeNext(err ->
+        vertx
+          .fileSystem()
+          .rxDelete(outputPath.toString())
+          .onErrorComplete()
+          .andThen(Single.<Path>error(err))
+      );
+  }
+
+  private Completable downloadChunk(
+    String url,
+    long start,
+    long end,
+    AsyncFile file,
+    AtomicLong written
+  ) {
+    HttpRequest<io.vertx.core.buffer.Buffer> request = absClient
+      .requestAbs(HttpMethod.GET, url)
+      .putHeader("Range", "bytes=" + start + "-" + end)
+      .followRedirects(false);
+    if (isHubUrl(url)) {
+      authorize(request);
+    }
+    long expectedLength = end - start + 1;
+    return request
+      .rxSend()
+      .flatMapCompletable(response -> {
+        if (response.statusCode() == 403) {
+          // signed CDN URL expired: retrying this chunk is pointless, re-resolve the file
+          return Completable.error(
+            new NonRetryableException("HTTP 403 for chunk " + start + "-" + end + " (URL expired?)")
+          );
+        }
+        if (response.statusCode() != 206) {
+          return Completable.error(
+            new IllegalStateException(
+              "Chunk " + start + "-" + end + " failed: HTTP " + response.statusCode()
+            )
+          );
+        }
+        var body = response.body();
+        if (body == null || body.length() != expectedLength) {
+          return Completable.error(
+            new IllegalStateException(
+              "Chunk " +
+                start +
+                "-" +
+                end +
+                " returned " +
+                (body == null ? 0 : body.length()) +
+                " bytes, expected " +
+                expectedLength
+            )
+          );
+        }
+        return file.rxWrite(body, start).doOnComplete(() -> written.addAndGet(expectedLength));
+      });
+  }
+
+  /**
+   * Exponential backoff for {@code retryWhen}: 500 ms base, doubling, capped at 10 s.
+   * {@link NonRetryableException}s propagate immediately.
+   */
+  private static Flowable<?> backoff(Flowable<Throwable> errors, int maxRetries) {
+    return errors
+      .zipWith(Flowable.range(1, maxRetries + 1), Map::entry)
+      .flatMap(attempt -> {
+        Throwable error = attempt.getKey();
+        int retry = attempt.getValue();
+        if (retry > maxRetries || error instanceof NonRetryableException) {
+          return Flowable.error(error);
+        }
+        long delay = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS << (retry - 1));
+        LOG.debug("Retry {}/{} in {} ms after: {}", retry, maxRetries, delay, error.getMessage());
+        return Flowable.timer(delay, TimeUnit.MILLISECONDS);
+      });
+  }
+
+  // ------------------------------------------------------------------
+  // Single-stream path
+  // ------------------------------------------------------------------
+
+  private Single<Path> doStreamDownload(
+    String repository,
+    String fileName,
+    Path outputPath,
+    long totalSize
+  ) {
     LOG.info("Downloading [{}/{}] ...", repository, fileName);
     String resolvePath = "/" + repository + "/resolve/main/" + fileName;
 
@@ -263,7 +595,11 @@ public final class HuggingFaceModelDownloader {
           )
       )
       .flatMap(asyncFile -> {
-        long timerId = startProgress(repository + "/" + fileName, outputPath, totalSize);
+        long timerId = startProgress(
+          repository + "/" + fileName,
+          () -> statSize(outputPath),
+          totalSize
+        );
         return authorize(client.request(HttpMethod.GET, resolvePath))
           .addQueryParam("download", "true")
           .followRedirects(true)
@@ -297,30 +633,33 @@ public final class HuggingFaceModelDownloader {
       });
   }
 
+  /** Best-effort on-disk size for stream-download progress (0 until the file appears). */
+  private static long statSize(Path file) {
+    try {
+      return Files.size(file);
+    } catch (Exception e) {
+      return 0;
+    }
+  }
+
   /**
-   * Logs a per-file download progress bar once a second via a Vert.x periodic timer, reading the
-   * partial file size on disk. Falls back to a plain byte counter when the total is unknown.
+   * Logs a per-file download progress bar once a second via a Vert.x periodic timer. The
+   * supplier is the on-disk size for stream downloads and a byte counter for chunked ones
+   * (chunked files are preallocated, so their on-disk size is meaningless). Falls back to a
+   * plain byte counter when the total is unknown.
    *
    * @return the periodic timer id (cancel it when the download settles)
    */
-  private long startProgress(String label, Path file, long total) {
-    return vertx.setPeriodic(1_000, id ->
-      vertx
-        .fileSystem()
-        .rxProps(file.toString())
-        .subscribe(
-          props -> {
-            long size = props.size();
-            if (total > 0) {
-              int pct = (int) Math.min(100, (size * 100) / total);
-              LOG.info("  {} {} {}% ({} / {} MiB)", label, bar(pct), pct, mib(size), mib(total));
-            } else {
-              LOG.info("  {} … {} MiB", label, mib(size));
-            }
-          },
-          err -> {} // file may not be flushed to disk yet; ignore this tick
-        )
-    );
+  private long startProgress(String label, LongSupplier downloaded, long total) {
+    return vertx.setPeriodic(1_000, id -> {
+      long size = downloaded.getAsLong();
+      if (total > 0) {
+        int pct = (int) Math.min(100, (size * 100) / total);
+        LOG.info("  {} {} {}% ({} / {} MiB)", label, bar(pct), pct, mib(size), mib(total));
+      } else {
+        LOG.info("  {} … {} MiB", label, mib(size));
+      }
+    });
   }
 
   private static final int BAR_WIDTH = 24;
@@ -352,16 +691,30 @@ public final class HuggingFaceModelDownloader {
     return request;
   }
 
-  private static WebClient createClient(Vertx vertx) {
+  private static WebClient createClient(Vertx vertx, String host, int port, boolean ssl) {
     var options = new WebClientOptions()
       .setName("gio-singularitee-hf-downloader")
-      .setDefaultHost(HF_HOST)
-      .setDefaultPort(443)
-      .setSsl(true)
+      .setDefaultHost(host)
+      .setDefaultPort(port)
+      .setSsl(ssl)
       .setConnectTimeout(CONNECT_TIMEOUT_MS)
       .setIdleTimeout(IDLE_TIMEOUT_S)
       .setIdleTimeoutUnit(TimeUnit.SECONDS);
 
     return WebClient.create(vertx, options);
+  }
+
+  /** Client for absolute (post-redirect, possibly CDN) URLs, pooled for chunk parallelism. */
+  private static WebClient createAbsClient(Vertx vertx, int parallelism) {
+    var options = new WebClientOptions()
+      .setName("gio-singularitee-hf-chunks")
+      .setConnectTimeout(CONNECT_TIMEOUT_MS)
+      .setIdleTimeout(IDLE_TIMEOUT_S)
+      .setIdleTimeoutUnit(TimeUnit.SECONDS);
+    var poolOptions = new io.vertx.core.http.PoolOptions().setHttp1MaxSize(
+      Math.max(parallelism, 5)
+    );
+
+    return WebClient.create(vertx, options, poolOptions);
   }
 }
