@@ -18,8 +18,11 @@ package io.gravitee.singularitee.grpc.resolver;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Single;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.file.OpenOptions;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.PoolOptions;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.client.WebClientOptions;
 import io.vertx.rxjava3.core.Vertx;
@@ -27,6 +30,7 @@ import io.vertx.rxjava3.core.file.AsyncFile;
 import io.vertx.rxjava3.ext.web.client.HttpRequest;
 import io.vertx.rxjava3.ext.web.client.WebClient;
 import io.vertx.rxjava3.ext.web.codec.BodyCodec;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,8 +39,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
+import java.util.function.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,7 +73,7 @@ import org.slf4j.LoggerFactory;
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public final class HuggingFaceModelDownloader {
+public final class HuggingFaceModelDownloader implements AutoCloseable {
 
   private static final Logger LOG = LoggerFactory.getLogger(HuggingFaceModelDownloader.class);
 
@@ -109,10 +115,22 @@ public final class HuggingFaceModelDownloader {
   /** Where the {@code resolve} redirect chain ends, and whether Range requests work there. */
   private record ResolvedSource(String url, boolean rangeSupported, long totalSize) {}
 
-  /** Marker for failures that must not be retried at the level they occur. */
-  private static final class NonRetryableException extends RuntimeException {
+  /** Marker for failures that must not be retried at any level. */
+  private static class NonRetryableException extends RuntimeException {
 
     NonRetryableException(String message) {
+      super(message);
+    }
+  }
+
+  /**
+   * Expired signed CDN URL (HTTP 403 on a chunk). Pointless to retry at chunk level —
+   * the URL stays expired — but retryable at file level, where a fresh attempt
+   * re-resolves the redirect to a new signed URL.
+   */
+  private static final class UrlExpiredException extends NonRetryableException {
+
+    UrlExpiredException(String message) {
       super(message);
     }
   }
@@ -155,6 +173,13 @@ public final class HuggingFaceModelDownloader {
     this.client = createClient(vertx, hubHost, hubPort, ssl);
     this.absClient = createAbsClient(vertx, options.parallelism());
     this.hfToken = (hfToken != null && !hfToken.isBlank()) ? hfToken : null;
+  }
+
+  /** Releases both HTTP clients (and their connection pools). */
+  @Override
+  public void close() {
+    client.close();
+    absClient.close();
   }
 
   /**
@@ -236,7 +261,7 @@ public final class HuggingFaceModelDownloader {
           );
         }
         var body = response.body().toJsonObject();
-        var siblings = body.getJsonArray("siblings", new io.vertx.core.json.JsonArray());
+        var siblings = body.getJsonArray("siblings", new JsonArray());
         Map<String, Long> result = new HashMap<>();
         for (int i = 0; i < siblings.size(); i++) {
           JsonObject sibling = siblings.getJsonObject(i);
@@ -342,7 +367,13 @@ public final class HuggingFaceModelDownloader {
       })
     )
       // a fresh attempt re-resolves the redirect, so an expired signed URL heals here
-      .retryWhen(errors -> backoff(errors, MAX_FILE_RETRIES))
+      .retryWhen(errors ->
+        backoff(
+          errors,
+          MAX_FILE_RETRIES,
+          err -> err instanceof NonRetryableException && !(err instanceof UrlExpiredException)
+        )
+      )
       .onErrorResumeNext(err -> {
         LOG.warn(
           "Chunked download of [{}/{}] unavailable ({}); falling back to single stream",
@@ -381,7 +412,7 @@ public final class HuggingFaceModelDownloader {
     if (hops > MAX_REDIRECTS) {
       return Single.error(new NonRetryableException("Too many redirects resolving [" + url + "]"));
     }
-    HttpRequest<io.vertx.core.buffer.Buffer> request = absClient
+    HttpRequest<Buffer> request = absClient
       .requestAbs(HttpMethod.GET, url)
       .putHeader("Range", "bytes=0-0")
       .followRedirects(false);
@@ -459,7 +490,7 @@ public final class HuggingFaceModelDownloader {
         long timerId = startProgress(label, written::get, total);
         // preallocate so every chunk writes within the file bounds
         return asyncFile
-          .rxWrite(io.vertx.core.buffer.Buffer.buffer(new byte[] { 0 }), total - 1)
+          .rxWrite(Buffer.buffer(new byte[] { 0 }), total - 1)
           .andThen(
             Flowable.range(0, chunkCount).flatMapCompletable(
               index -> {
@@ -473,25 +504,27 @@ public final class HuggingFaceModelDownloader {
               options.parallelism()
             )
           )
-          .doFinally(() -> {
-            vertx.cancelTimer(timerId);
-            asyncFile.close();
-          })
+          .doFinally(() -> vertx.cancelTimer(timerId))
+          // close before verifying, and close (best-effort) on the error path too
+          .andThen(Completable.defer(asyncFile::rxClose))
+          .onErrorResumeNext(err ->
+            asyncFile.rxClose().onErrorComplete().andThen(Completable.error(err))
+          )
           .andThen(
-            vertx
-              .fileSystem()
-              .rxProps(outputPath.toString())
-              .flatMap(props -> {
-                if (props.size() != total) {
-                  return Single.<Path>error(
-                    new IllegalStateException(
-                      "Downloaded [" + label + "] has size " + props.size() + ", expected " + total
-                    )
-                  );
-                }
-                LOG.info("Downloaded [{}] -> {}", label, outputPath);
-                return Single.just(outputPath.toAbsolutePath());
-              })
+            Single.defer(() -> {
+              // The file is preallocated to `total`, so its on-disk size proves nothing;
+              // the byte counter is the real integrity signal.
+              long got = written.get();
+              if (got != total) {
+                return Single.<Path>error(
+                  new IllegalStateException(
+                    "Downloaded [" + label + "] wrote " + got + " bytes, expected " + total
+                  )
+                );
+              }
+              LOG.info("Downloaded [{}] -> {}", label, outputPath);
+              return Single.just(outputPath.toAbsolutePath());
+            })
           );
       })
       .onErrorResumeNext(err ->
@@ -510,7 +543,7 @@ public final class HuggingFaceModelDownloader {
     AsyncFile file,
     AtomicLong written
   ) {
-    HttpRequest<io.vertx.core.buffer.Buffer> request = absClient
+    HttpRequest<Buffer> request = absClient
       .requestAbs(HttpMethod.GET, url)
       .putHeader("Range", "bytes=" + start + "-" + end)
       .followRedirects(false);
@@ -524,7 +557,7 @@ public final class HuggingFaceModelDownloader {
         if (response.statusCode() == 403) {
           // signed CDN URL expired: retrying this chunk is pointless, re-resolve the file
           return Completable.error(
-            new NonRetryableException("HTTP 403 for chunk " + start + "-" + end + " (URL expired?)")
+            new UrlExpiredException("HTTP 403 for chunk " + start + "-" + end + " (URL expired?)")
           );
         }
         if (response.statusCode() != 206) {
@@ -558,18 +591,32 @@ public final class HuggingFaceModelDownloader {
    * {@link NonRetryableException}s propagate immediately.
    */
   private static Flowable<?> backoff(Flowable<Throwable> errors, int maxRetries) {
-    return errors
-      .zipWith(Flowable.range(1, maxRetries + 1), Map::entry)
-      .flatMap(attempt -> {
-        Throwable error = attempt.getKey();
-        int retry = attempt.getValue();
-        if (retry > maxRetries || error instanceof NonRetryableException) {
-          return Flowable.error(error);
-        }
-        long delay = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS << (retry - 1));
-        LOG.debug("Retry {}/{} in {} ms after: {}", retry, maxRetries, delay, error.getMessage());
-        return Flowable.timer(delay, TimeUnit.MILLISECONDS);
-      });
+    return backoff(errors, maxRetries, NonRetryableException.class::isInstance);
+  }
+
+  /**
+   * Backoff with a caller-supplied non-retryable predicate, for levels that treat
+   * some marker exceptions differently (see {@link UrlExpiredException}).
+   *
+   * <p>The attempt index is tracked explicitly (not via {@code zipWith(range)}) so
+   * exhausting the retries always rethrows the error — a completed inner stream
+   * would otherwise terminate the retried operation as a silent success.
+   */
+  private static Flowable<?> backoff(
+    Flowable<Throwable> errors,
+    int maxRetries,
+    Predicate<Throwable> nonRetryable
+  ) {
+    AtomicInteger attempt = new AtomicInteger();
+    return errors.flatMap(error -> {
+      int retry = attempt.incrementAndGet();
+      if (retry > maxRetries || nonRetryable.test(error)) {
+        return Flowable.error(error);
+      }
+      long delay = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS << (retry - 1));
+      LOG.debug("Retry {}/{} in {} ms after: {}", retry, maxRetries, delay, error.getMessage());
+      return Flowable.timer(delay, TimeUnit.MILLISECONDS);
+    });
   }
 
   // ------------------------------------------------------------------
@@ -637,7 +684,7 @@ public final class HuggingFaceModelDownloader {
   private static long statSize(Path file) {
     try {
       return Files.size(file);
-    } catch (Exception e) {
+    } catch (IOException e) {
       return 0;
     }
   }
@@ -711,9 +758,7 @@ public final class HuggingFaceModelDownloader {
       .setConnectTimeout(CONNECT_TIMEOUT_MS)
       .setIdleTimeout(IDLE_TIMEOUT_S)
       .setIdleTimeoutUnit(TimeUnit.SECONDS);
-    var poolOptions = new io.vertx.core.http.PoolOptions().setHttp1MaxSize(
-      Math.max(parallelism, 5)
-    );
+    var poolOptions = new PoolOptions().setHttp1MaxSize(Math.max(parallelism, 5));
 
     return WebClient.create(vertx, options, poolOptions);
   }

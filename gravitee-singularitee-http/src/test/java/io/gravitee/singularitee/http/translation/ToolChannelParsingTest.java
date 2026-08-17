@@ -35,11 +35,11 @@ class ToolChannelParsingTest {
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private static TokenMessage content(String s) {
-    return new TokenMessage(s, 0, false, null, 0, 0, null, null, null, null);
+    return TokenMessage.contentDelta(s);
   }
 
   private static TokenMessage reasoning(String s) {
-    return new TokenMessage(null, s, 0, false, null, 0, 0, null, null, null, null);
+    return TokenMessage.reasoningDelta(s);
   }
 
   private static TokenMessage tool(String s) {
@@ -47,7 +47,12 @@ class ToolChannelParsingTest {
   }
 
   private static TokenMessage fin(String finishReason) {
-    return new TokenMessage(null, 0, true, finishReason, 3, 7, null, null, null, null);
+    return TokenMessage.builder()
+      .isFinal(true)
+      .finishReason(finishReason)
+      .promptTokens(3)
+      .completionTokens(7)
+      .build();
   }
 
   private static Map<String, JsonNode> weatherSchema() {

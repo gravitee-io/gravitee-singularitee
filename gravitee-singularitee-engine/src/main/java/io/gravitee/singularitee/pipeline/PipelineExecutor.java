@@ -34,7 +34,9 @@ import io.reactivex.rxjava3.core.Completable;
 import io.vertx.core.Context;
 import io.vertx.core.streams.WriteStream;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -65,38 +67,15 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
   private final TodoSessionStore todoSessionStore;
   private final ConversationStore conversationStore;
 
-  /** Untraced constructor (client-side executor, CLI, tests). */
+  /** Untraced, store-less constructor (client-side executor, CLI, tests). */
   public PipelineExecutor(PipelineRegistry pipelineRegistry, StepDispatcher dispatcher) {
-    this(pipelineRegistry, dispatcher, null, null, null);
+    this(pipelineRegistry, dispatcher, null, null, null, null);
   }
 
   /**
-   * @param tracer  the OpenTelemetry tracer, or {@code null} to disable tracing
-   * @param metrics the inference metrics recorder, or {@code null} to disable metrics
-   */
-  public PipelineExecutor(
-    PipelineRegistry pipelineRegistry,
-    StepDispatcher dispatcher,
-    Tracer tracer,
-    InferenceMetrics metrics
-  ) {
-    this(pipelineRegistry, dispatcher, tracer, metrics, null);
-  }
-
-  /**
-   * @param todoSessionStore cross-request todo persistence, or {@code null} to disable
-   */
-  public PipelineExecutor(
-    PipelineRegistry pipelineRegistry,
-    StepDispatcher dispatcher,
-    Tracer tracer,
-    InferenceMetrics metrics,
-    TodoSessionStore todoSessionStore
-  ) {
-    this(pipelineRegistry, dispatcher, tracer, metrics, todoSessionStore, null);
-  }
-
-  /**
+   * @param tracer            the OpenTelemetry tracer, or {@code null} to disable tracing
+   * @param metrics           the inference metrics recorder, or {@code null} to disable metrics
+   * @param todoSessionStore  cross-request todo persistence, or {@code null} to disable
    * @param conversationStore stored-conversation continuation (previous_response_id),
    *                          or {@code null} to disable
    */
@@ -160,10 +139,10 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
     // new user turn(s). An unknown id fails loudly — silently dropping history
     // would corrupt the conversation.
     if (!request.getPreviousResponseId().isEmpty()) {
-      var stored = conversationStore != null
+      var storedOpt = conversationStore != null
         ? conversationStore.get(request.getPreviousResponseId())
-        : null;
-      if (stored == null) {
+        : Optional.<ConversationStore.StoredConversation>empty();
+      if (storedOpt.isEmpty()) {
         LOGGER.warn(
           "Pipeline '{}': previous_response_id '{}' not found — failing request",
           pipeline.getPipelineId(),
@@ -186,6 +165,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
           )
         );
       }
+      var stored = storedOpt.get();
       var combined = new ArrayList<>(ConversationStore.toChatTurns(stored));
       if (context.messages() != null) {
         combined.addAll(context.messages());
@@ -222,23 +202,24 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
       // the transcript — seeded so a graph gate can break behavioral loops
       // (the same failing call retried blindly) without model judgment.
       // ask_user is exempt: repeated questions are governed elsewhere.
-      context.set("conversation.repeated_call", Long.toString(trailingRepeatedCalls(context)));
+      context.set(PipelineContext.KEY_REPEATED_CALL, Long.toString(trailingRepeatedCalls(context)));
       // Key-based session recovery is the FALLBACK: a stored-conversation
       // continuation already restored the authoritative plan above, and a
       // stale key-based session (the `user` field maps to cache_key) must
       // never clobber it.
       if (todoSessionStore != null && request.getPreviousResponseId().isEmpty()) {
-        var restored = todoSessionStore.restore(context.cacheKey());
-        if (restored != null) {
-          context.restoreTodos(restored.todos());
-          context.setTodoConstraints(restored.constraints());
-          LOGGER.info(
-            "Pipeline '{}': restored {} todo(s) for session '{}'",
-            pipeline.getPipelineId(),
-            restored.todos().size(),
-            context.cacheKey()
-          );
-        }
+        todoSessionStore
+          .restore(context.cacheKey())
+          .ifPresent(restored -> {
+            context.restoreTodos(restored.todos());
+            context.setTodoConstraints(restored.constraints());
+            LOGGER.info(
+              "Pipeline '{}': restored {} todo(s) for session '{}'",
+              pipeline.getPipelineId(),
+              restored.todos().size(),
+              context.cacheKey()
+            );
+          });
       }
       // Plan-lock policy: a restored plan is locked against set_todos unless
       // it is FINISHED and this request opens with a fresh user message (a
@@ -246,13 +227,11 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
       // input authorizes authoring the next plan.
       var restoredTodos = context.todos();
       if (!restoredTodos.isEmpty()) {
-        boolean allDone = restoredTodos.stream().allMatch(t -> "done".equals(t.status()));
+        boolean allDone = restoredTodos.stream().allMatch(t -> t.status() == TodoStatus.DONE);
         var turns = context.messages();
         var last = (turns == null || turns.isEmpty()) ? null : turns.get(turns.size() - 1);
         boolean freshUserMessage =
-          last != null &&
-          last.role() == io.gravitee.singularitee.engine.ChatRole.USER &&
-          last.toolCallId() == null;
+          last != null && last.role() == ChatRole.USER && last.toolCallId() == null;
         context.setPlanLocked(!(allDone && freshUserMessage));
       }
     }
@@ -291,7 +270,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
             if (
               metrics != null && context.haltReason() == FinishReason.FINISH_REASON_GUARD_BLOCKED
             ) {
-              metrics.recordFailureSignal(pipeline.getPipelineId(), "guard_blocked");
+              metrics.recordFailureSignal(pipeline.getPipelineId(), "pipeline", "guard_blocked");
             }
             return Completable.fromAction(() -> emitHaltResponse(context, response));
           }
@@ -310,12 +289,6 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
   }
 
   /**
-   * End-of-request conversation storage (OpenAI `store`, default true when the
-   * request carries an id): the transcript the pipeline built — internal tool
-   * turns included — plus the todo plan, under the response id, so the next
-   * turn can continue via previous_response_id with server-curated history.
-   */
-  /**
    * Counts how many consecutive assistant tool-call turns at the TAIL of the
    * conversation carry an identical single (name, arguments) call. Different
    * arguments, a different tool, or any intervening assistant prose resets
@@ -328,10 +301,10 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
     long run = 0;
     for (int i = messages.size() - 1; i >= 0; i--) {
       var turn = messages.get(i);
-      if (turn.role() == io.gravitee.singularitee.engine.ChatRole.TOOL) {
+      if (turn.role() == ChatRole.TOOL) {
         continue; // results between the calls do not break the run
       }
-      if (turn.role() != io.gravitee.singularitee.engine.ChatRole.ASSISTANT) {
+      if (turn.role() != ChatRole.ASSISTANT) {
         break;
       }
       var calls = turn.toolCalls();
@@ -351,6 +324,12 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
     return run <= 1 ? 0 : run;
   }
 
+  /**
+   * End-of-request conversation storage (OpenAI `store`, default true when the
+   * request carries an id): the transcript the pipeline built — internal tool
+   * turns included — plus the todo plan, under the response id, so the next
+   * turn can continue via previous_response_id with server-curated history.
+   */
   private void persistConversation(InferPipelineRequest request, PipelineContext context) {
     if (conversationStore == null || !conversationStore.isEnabled()) {
       return;
@@ -374,12 +353,12 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
     // call forever, blind to its own history).
     var pendingCalls = context.extractedToolCalls();
     if (pendingCalls != null && !pendingCalls.isEmpty()) {
-      turns = new java.util.ArrayList<>(turns);
+      turns = new ArrayList<>(turns);
       turns.add(
         new ChatTurn(
           ChatRole.ASSISTANT,
           "",
-          java.util.List.of(),
+          List.of(),
           pendingCalls
             .stream()
             .map(c -> new ChatTurn.ToolCallTurn(c.getId(), c.getName(), c.getArgumentsJson()))
@@ -416,7 +395,8 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
       return;
     }
     var todos = context.todos();
-    boolean allDone = !todos.isEmpty() && todos.stream().allMatch(t -> "done".equals(t.status()));
+    boolean allDone =
+      !todos.isEmpty() && todos.stream().allMatch(t -> t.status() == TodoStatus.DONE);
     if (todos.isEmpty() || allDone) {
       todoSessionStore.clear(key);
       if (allDone) {

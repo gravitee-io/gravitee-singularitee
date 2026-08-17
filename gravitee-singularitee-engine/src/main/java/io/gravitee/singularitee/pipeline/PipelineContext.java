@@ -15,8 +15,19 @@
  */
 package io.gravitee.singularitee.pipeline;
 
+import io.gravitee.singularitee.engine.ChatRole;
+import io.gravitee.singularitee.engine.ChatTurn;
+import io.gravitee.singularitee.protocol.ChatMessage;
+import io.gravitee.singularitee.protocol.ChatMessageList;
+import io.gravitee.singularitee.protocol.FinishReason;
+import io.gravitee.singularitee.protocol.InferPipelineRequest;
+import io.gravitee.singularitee.protocol.InferResponse;
 import io.gravitee.singularitee.protocol.InferencePerformance;
+import io.gravitee.singularitee.protocol.Role;
+import io.gravitee.singularitee.protocol.SamplingParams;
 import io.gravitee.singularitee.protocol.TokenUsage;
+import io.gravitee.singularitee.protocol.ToolCall;
+import io.gravitee.singularitee.protocol.ToolDefinition;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -42,6 +53,15 @@ import java.util.Map;
  *       the final response.</li>
  * </ul>
  *
+ * <p><strong>Threading contract:</strong> one instance exists per pipeline request, and the
+ * DAG walk executes steps strictly sequentially — the plain collections ({@code fields},
+ * {@code generatedMessages}, {@code verdicts}, {@code iterationCounters}) are only ever
+ * mutated between steps, where the reactive chain provides the happens-before edge across
+ * any thread hop. The {@code volatile} scalars and the {@code synchronized} todo/server-tool
+ * accessors exist because those members are additionally touched from streaming callbacks
+ * (capture streams, progress emission) that may run concurrently with a step. Do not mutate
+ * the plain collections from a callback.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -49,6 +69,12 @@ public final class PipelineContext {
 
   /** The entry prompt from {@code InferPipelineRequest}. */
   public static final String KEY_PROMPT = "prompt";
+
+  /**
+   * Request-level reasoning effort, seeded from the request's context. Also the
+   * template variable name under which it is exposed to Jinja rendering.
+   */
+  public static final String KEY_REASONING_EFFORT = "reasoning_effort";
 
   /** Written by a guard step when its action is {@code WARN} or {@code REDACT}. */
   public static final String KEY_GUARD_TRIGGERED = "__guard_triggered";
@@ -72,6 +98,21 @@ public final class PipelineContext {
   public static final String KEY_CONDENSED_TOOL_DESCRIPTIONS = "__condensed_tool_descriptions";
 
   /**
+   * Stuck-call signal seeded by {@code PipelineExecutor} on todo pipelines:
+   * the length of the trailing run of identical assistant tool calls.
+   */
+  public static final String KEY_REPEATED_CALL = "conversation.repeated_call";
+
+  /** Mirrored todo-plan scalar: total item count. */
+  public static final String KEY_TODOS_TOTAL = "todos.total";
+
+  /** Mirrored todo-plan scalar: {@code done} item count. */
+  public static final String KEY_TODOS_COMPLETED = "todos.completed";
+
+  /** Mirrored todo-plan scalar: not-yet-{@code done} item count. */
+  public static final String KEY_TODOS_REMAINING = "todos.remaining";
+
+  /**
    * An assistant message produced by a pipeline step.
    */
   public record GeneratedMessage(String stepId, String content) {}
@@ -83,16 +124,8 @@ public final class PipelineContext {
    */
   public record VerdictMessage(String stepId, String verdict, String details) {}
 
-  /**
-   * One item of the engine-managed todo plan (see {@code STEP_TYPE_TODO}).
-   * {@code status} is {@code pending} | {@code in_progress} | {@code done}.
-   */
-  public record TodoItem(String id, String title, String status, String proof) {
-    /** Proof-less constructor (older plans, tests). */
-    public TodoItem(String id, String title, String status) {
-      this(id, title, status, null);
-    }
-  }
+  /** One item of the engine-managed todo plan (see {@code STEP_TYPE_TODO}). */
+  public record TodoItem(String id, String title, TodoStatus status, String proof) {}
 
   // Use a LinkedHashMap so snapshot() iterates in insertion (execution) order.
   private final Map<String, String> fields;
@@ -109,22 +142,21 @@ public final class PipelineContext {
    * tools. Never subject to tool_select filtering, never returned to the
    * client as pending calls.
    */
-  private final List<io.gravitee.singularitee.protocol.ToolDefinition> serverTools =
-    new ArrayList<>();
+  private final List<ToolDefinition> serverTools = new ArrayList<>();
 
   /**
    * The chat messages from the caller. Mutable — may be updated by a guard
    * step that redacts PII spans before passing to the LLM.
    * Null when the caller sent a flat prompt string instead.
    */
-  private volatile java.util.List<io.gravitee.singularitee.engine.ChatTurn> messages;
+  private volatile List<ChatTurn> messages;
 
   /**
    * Request-level sampling params from the caller.
    * These override any step-level defaults in the pipeline definition.
    * May be {@code null} if the caller didn't provide any.
    */
-  private final io.gravitee.singularitee.protocol.SamplingParams requestSamplingParams;
+  private final SamplingParams requestSamplingParams;
 
   /**
    * Sampling override installed by a loop step on its RETRY edge (see
@@ -132,14 +164,14 @@ public final class PipelineContext {
    * path or fallback — so it never leaks past the loop. Precedence in infer steps:
    * request override > this > step params. {@code null} = no active retry override.
    */
-  private volatile io.gravitee.singularitee.protocol.SamplingParams retrySamplingParams;
+  private volatile SamplingParams retrySamplingParams;
 
   /**
    * Tool definitions provided at runtime by the caller.
    * Available in prompt templates via the {@code {{tools}}} expression.
    * Empty list when the caller didn't provide any tools.
    */
-  private final java.util.List<io.gravitee.singularitee.protocol.ToolDefinition> tools;
+  private final List<ToolDefinition> tools;
 
   /**
    * Opaque client cache-affinity key from {@code InferPipelineRequest.cache_key}
@@ -152,50 +184,48 @@ public final class PipelineContext {
   /** Non-null when the pipeline should halt and return the named field. */
   private volatile String breakOutputField = null;
   /** The finish reason to emit on halt. */
-  private volatile io.gravitee.singularitee.protocol.FinishReason haltReason = null;
+  private volatile FinishReason haltReason = null;
   /**
    * The finish reason reported by the last inference step's engine.
    * Propagated to the final pipeline response so callers can distinguish
    * between normal stop, tool calls, length limits, etc.
    */
-  private volatile io.gravitee.singularitee.protocol.FinishReason lastEngineFinishReason = null;
+  private volatile FinishReason lastEngineFinishReason = null;
   /**
    * Optional human-readable message to include in the {@code guard_message} field
-   * of the final {@link io.gravitee.singularitee.protocol.InferResponse} when a guard
+   * of the final {@link InferResponse} when a guard
    * step rejects the request.
    */
   private volatile String haltMessage = null;
 
   public PipelineContext(
     String prompt,
-    java.util.List<io.gravitee.singularitee.engine.ChatTurn> messages,
-    io.gravitee.singularitee.protocol.SamplingParams requestSamplingParams,
-    java.util.List<io.gravitee.singularitee.protocol.ToolDefinition> tools,
+    List<ChatTurn> messages,
+    SamplingParams requestSamplingParams,
+    List<ToolDefinition> tools,
     Map<String, String> seed
   ) {
     this.fields = new LinkedHashMap<>(seed == null ? Map.of() : seed);
     this.messages = messages;
     this.requestSamplingParams = requestSamplingParams;
-    this.tools = tools != null ? tools : java.util.List.of();
+    this.tools = tools != null ? tools : List.of();
     if (prompt != null) this.fields.put(KEY_PROMPT, prompt);
   }
 
   /**
-   * Creates a {@link PipelineContext} from a gRPC {@link io.gravitee.singularitee.protocol.InferPipelineRequest}.
+   * Creates a {@link PipelineContext} from a gRPC {@link InferPipelineRequest}.
    *
    * <p>Handles the three input modes:
    * <ol>
-   *   <li>Chat messages — converts proto messages to {@link io.gravitee.singularitee.engine.ChatTurn}s,
+   *   <li>Chat messages — converts proto messages to {@link ChatTurn}s,
    *       extracts last user message as flat prompt</li>
    *   <li>Flat prompt string</li>
    *   <li>Empty (no input)</li>
    * </ol>
    */
-  public static PipelineContext fromRequest(
-    io.gravitee.singularitee.protocol.InferPipelineRequest request
-  ) {
+  public static PipelineContext fromRequest(InferPipelineRequest request) {
     String prompt;
-    java.util.List<io.gravitee.singularitee.engine.ChatTurn> chatMessages = null;
+    List<ChatTurn> chatMessages = null;
 
     if (request.hasMessages()) {
       chatMessages = request
@@ -204,40 +234,29 @@ public final class PipelineContext {
         .stream()
         .map(m -> {
           var role = switch (m.getRole()) {
-            case ROLE_SYSTEM -> io.gravitee.singularitee.engine.ChatRole.SYSTEM;
-            case ROLE_ASSISTANT -> io.gravitee.singularitee.engine.ChatRole.ASSISTANT;
-            case ROLE_TOOL -> io.gravitee.singularitee.engine.ChatRole.TOOL;
-            default -> io.gravitee.singularitee.engine.ChatRole.USER;
+            case ROLE_SYSTEM -> ChatRole.SYSTEM;
+            case ROLE_ASSISTANT -> ChatRole.ASSISTANT;
+            case ROLE_TOOL -> ChatRole.TOOL;
+            default -> ChatRole.USER;
           };
-          return new io.gravitee.singularitee.engine.ChatTurn(
+          return new ChatTurn(
             role,
             m.getContent(),
-            java.util.List.of(),
+            List.of(),
             m
               .getToolCallsList()
               .stream()
-              .map(tc ->
-                new io.gravitee.singularitee.engine.ChatTurn.ToolCallTurn(
-                  tc.getId(),
-                  tc.getName(),
-                  tc.getArgumentsJson()
-                )
-              )
+              .map(tc -> new ChatTurn.ToolCallTurn(tc.getId(), tc.getName(), tc.getArgumentsJson()))
               .toList(),
             m.getToolCallId().isEmpty() ? null : m.getToolCallId(),
             m.getName().isEmpty() ? null : m.getName()
           );
         })
         .toList();
-      prompt = io.gravitee.singularitee.engine.ChatTurn.lastUserContent(chatMessages).orElse("");
+      prompt = ChatTurn.lastUserContent(chatMessages).orElse("");
     } else if (request.hasPrompt()) {
       prompt = request.getPrompt();
-      chatMessages = java.util.List.of(
-        new io.gravitee.singularitee.engine.ChatTurn(
-          io.gravitee.singularitee.engine.ChatRole.USER,
-          prompt
-        )
-      );
+      chatMessages = List.of(new ChatTurn(ChatRole.USER, prompt));
     } else {
       prompt = "";
     }
@@ -269,7 +288,7 @@ public final class PipelineContext {
    * Returns the chat messages, or {@code null} if the caller
    * sent a flat prompt string.
    */
-  public java.util.List<io.gravitee.singularitee.engine.ChatTurn> messages() {
+  public List<ChatTurn> messages() {
     return messages;
   }
 
@@ -278,7 +297,7 @@ public final class PipelineContext {
    *
    * @param messages the updated message list
    */
-  public void setMessages(java.util.List<io.gravitee.singularitee.engine.ChatTurn> messages) {
+  public void setMessages(List<ChatTurn> messages) {
     this.messages = messages;
   }
 
@@ -288,38 +307,38 @@ public final class PipelineContext {
    *
    * @param turn the chat turn to append
    */
-  public void appendMessage(io.gravitee.singularitee.engine.ChatTurn turn) {
+  public void appendMessage(ChatTurn turn) {
     if (this.messages == null) {
-      this.messages = new java.util.ArrayList<>();
-    } else if (!(this.messages instanceof java.util.ArrayList)) {
+      this.messages = new ArrayList<>();
+    } else if (!(this.messages instanceof ArrayList)) {
       // Replace unmodifiable list (e.g. from List.of()) with a mutable copy
-      this.messages = new java.util.ArrayList<>(this.messages);
+      this.messages = new ArrayList<>(this.messages);
     }
     this.messages.add(turn);
   }
 
   /**
-   * Converts the internal {@link io.gravitee.singularitee.engine.ChatTurn} list
-   * to a protobuf {@link io.gravitee.singularitee.protocol.ChatMessageList}.
+   * Converts the internal {@link ChatTurn} list
+   * to a protobuf {@link ChatMessageList}.
    *
    * @return the proto message list, or an empty list if messages is {@code null}
    */
-  public io.gravitee.singularitee.protocol.ChatMessageList toChatMessageList() {
-    var builder = io.gravitee.singularitee.protocol.ChatMessageList.newBuilder();
+  public ChatMessageList toChatMessageList() {
+    var builder = ChatMessageList.newBuilder();
     if (messages != null) {
       for (var turn : messages) {
         var role = switch (turn.role()) {
-          case SYSTEM -> io.gravitee.singularitee.protocol.Role.ROLE_SYSTEM;
-          case ASSISTANT -> io.gravitee.singularitee.protocol.Role.ROLE_ASSISTANT;
-          case TOOL -> io.gravitee.singularitee.protocol.Role.ROLE_TOOL;
-          default -> io.gravitee.singularitee.protocol.Role.ROLE_USER;
+          case SYSTEM -> Role.ROLE_SYSTEM;
+          case ASSISTANT -> Role.ROLE_ASSISTANT;
+          case TOOL -> Role.ROLE_TOOL;
+          default -> Role.ROLE_USER;
         };
-        var msg = io.gravitee.singularitee.protocol.ChatMessage.newBuilder()
+        var msg = ChatMessage.newBuilder()
           .setRole(role)
           .setContent(turn.content() == null ? "" : turn.content());
         for (var call : turn.toolCalls()) {
           msg.addToolCalls(
-            io.gravitee.singularitee.protocol.ToolCall.newBuilder()
+            ToolCall.newBuilder()
               .setId(call.id() == null ? "" : call.id())
               .setName(call.name())
               .setArgumentsJson(call.argumentsJson())
@@ -341,17 +360,17 @@ public final class PipelineContext {
   /**
    * Returns the request-level sampling params, or {@code null} if not provided.
    */
-  public io.gravitee.singularitee.protocol.SamplingParams requestSamplingParams() {
+  public SamplingParams requestSamplingParams() {
     return requestSamplingParams;
   }
 
   /** Returns the active loop-retry sampling override, or {@code null} when none is active. */
-  public io.gravitee.singularitee.protocol.SamplingParams retrySamplingParams() {
+  public SamplingParams retrySamplingParams() {
     return retrySamplingParams;
   }
 
   /** Installs ({@code null} clears) the loop-retry sampling override. */
-  public void setRetrySamplingParams(io.gravitee.singularitee.protocol.SamplingParams params) {
+  public void setRetrySamplingParams(SamplingParams params) {
     this.retrySamplingParams = params;
   }
 
@@ -359,7 +378,7 @@ public final class PipelineContext {
    * Returns the tool definitions provided at runtime by the caller.
    * Empty list (never {@code null}) when the caller didn't provide any tools.
    */
-  public java.util.List<io.gravitee.singularitee.protocol.ToolDefinition> tools() {
+  public List<ToolDefinition> tools() {
     return tools;
   }
 
@@ -539,10 +558,7 @@ public final class PipelineContext {
     return debugSnapshot(200);
   }
 
-  private static void appendSamplingSummary(
-    StringBuilder sb,
-    io.gravitee.singularitee.protocol.SamplingParams sp
-  ) {
+  private static void appendSamplingSummary(StringBuilder sb, SamplingParams sp) {
     if (sp == null) return;
     StringBuilder parts = new StringBuilder();
     if (sp.getMaxTokens() > 0) appendPart(parts, "max_tokens=" + sp.getMaxTokens());
@@ -654,12 +670,12 @@ public final class PipelineContext {
     planLocked = !todos.isEmpty();
     // Keep exactly one item active: when nothing is in_progress, promote the
     // first pending item (done items never regress).
-    boolean anyInProgress = todos.stream().anyMatch(t -> "in_progress".equals(t.status()));
+    boolean anyInProgress = todos.stream().anyMatch(t -> t.status() == TodoStatus.IN_PROGRESS);
     if (!anyInProgress) {
       for (int i = 0; i < todos.size(); i++) {
         TodoItem t = todos.get(i);
-        if ("pending".equals(t.status())) {
-          todos.set(i, new TodoItem(t.id(), t.title(), "in_progress", t.proof()));
+        if (t.status() == TodoStatus.PENDING) {
+          todos.set(i, new TodoItem(t.id(), t.title(), TodoStatus.IN_PROGRESS, t.proof()));
           break;
         }
       }
@@ -677,7 +693,7 @@ public final class PipelineContext {
     for (int i = 0; i < todos.size(); i++) {
       TodoItem t = todos.get(i);
       if (t.id().equals(id)) {
-        todos.set(i, new TodoItem(t.id(), t.title(), "done", t.proof()));
+        todos.set(i, new TodoItem(t.id(), t.title(), TodoStatus.DONE, t.proof()));
         found = true;
         break;
       }
@@ -688,22 +704,22 @@ public final class PipelineContext {
       // in_progress there is no ambiguity about which item it means.
       List<Integer> active = new ArrayList<>();
       for (int i = 0; i < todos.size(); i++) {
-        if ("in_progress".equals(todos.get(i).status())) active.add(i);
+        if (todos.get(i).status() == TodoStatus.IN_PROGRESS) active.add(i);
       }
       if (active.size() == 1) {
         int i = active.get(0);
         TodoItem t = todos.get(i);
-        todos.set(i, new TodoItem(t.id(), t.title(), "done", t.proof()));
+        todos.set(i, new TodoItem(t.id(), t.title(), TodoStatus.DONE, t.proof()));
         found = true;
       }
     }
     if (found) {
-      boolean anyActive = todos.stream().anyMatch(t -> "in_progress".equals(t.status()));
+      boolean anyActive = todos.stream().anyMatch(t -> t.status() == TodoStatus.IN_PROGRESS);
       if (!anyActive) {
         for (int i = 0; i < todos.size(); i++) {
           TodoItem t = todos.get(i);
-          if ("pending".equals(t.status())) {
-            todos.set(i, new TodoItem(t.id(), t.title(), "in_progress", t.proof()));
+          if (t.status() == TodoStatus.PENDING) {
+            todos.set(i, new TodoItem(t.id(), t.title(), TodoStatus.IN_PROGRESS, t.proof()));
             break;
           }
         }
@@ -769,17 +785,15 @@ public final class PipelineContext {
   private void mirrorTodoFields() {
     long completed = todos
       .stream()
-      .filter(t -> "done".equals(t.status()))
+      .filter(t -> t.status() == TodoStatus.DONE)
       .count();
-    set("todos.total", Long.toString(todos.size()));
-    set("todos.completed", Long.toString(completed));
-    set("todos.remaining", Long.toString(todos.size() - completed));
+    set(KEY_TODOS_TOTAL, Long.toString(todos.size()));
+    set(KEY_TODOS_COMPLETED, Long.toString(completed));
+    set(KEY_TODOS_REMAINING, Long.toString(todos.size() - completed));
   }
 
   /** Registers server-owned tool definitions (deduplicated by name). */
-  public synchronized void addServerTools(
-    List<io.gravitee.singularitee.protocol.ToolDefinition> defs
-  ) {
+  public synchronized void addServerTools(List<ToolDefinition> defs) {
     if (defs == null) return;
     for (var def : defs) {
       if (serverTools.stream().noneMatch(t -> t.getName().equals(def.getName()))) {
@@ -789,7 +803,7 @@ public final class PipelineContext {
   }
 
   /** Returns an immutable view of the server-owned tool definitions. */
-  public synchronized List<io.gravitee.singularitee.protocol.ToolDefinition> serverTools() {
+  public synchronized List<ToolDefinition> serverTools() {
     return List.copyOf(serverTools);
   }
 
@@ -818,10 +832,7 @@ public final class PipelineContext {
    * @param outputField the context field whose value becomes the final response
    * @param reason      the finish reason to emit
    */
-  public void signalHalt(
-    String outputField,
-    io.gravitee.singularitee.protocol.FinishReason reason
-  ) {
+  public void signalHalt(String outputField, FinishReason reason) {
     this.breakOutputField = outputField;
     this.haltReason = reason;
   }
@@ -840,14 +851,14 @@ public final class PipelineContext {
   }
 
   /** Returns the finish reason to emit on halt, or {@code null} if not halted. */
-  public io.gravitee.singularitee.protocol.FinishReason haltReason() {
+  public FinishReason haltReason() {
     return haltReason;
   }
 
   /**
    * Records the finish reason reported by the last inference step's engine.
    */
-  public void setLastEngineFinishReason(io.gravitee.singularitee.protocol.FinishReason reason) {
+  public void setLastEngineFinishReason(FinishReason reason) {
     this.lastEngineFinishReason = reason;
   }
 
@@ -855,7 +866,7 @@ public final class PipelineContext {
    * Returns the finish reason from the last inference step's engine, or {@code null}
    * if no inference step has run yet.
    */
-  public io.gravitee.singularitee.protocol.FinishReason lastEngineFinishReason() {
+  public FinishReason lastEngineFinishReason() {
     return lastEngineFinishReason;
   }
 
@@ -864,15 +875,15 @@ public final class PipelineContext {
    * extraction template. Surfaced on the final {@code ResponseCompleted} event so clients get
    * structured data instead of re-parsing dialect text. Empty when nothing extracted.
    */
-  private volatile List<io.gravitee.singularitee.protocol.ToolCall> extractedToolCalls = List.of();
+  private volatile List<ToolCall> extractedToolCalls = List.of();
 
   /** Records the tool calls extracted from the last inference step (replaces earlier steps'). */
-  public void setExtractedToolCalls(List<io.gravitee.singularitee.protocol.ToolCall> calls) {
+  public void setExtractedToolCalls(List<ToolCall> calls) {
     this.extractedToolCalls = calls == null ? List.of() : List.copyOf(calls);
   }
 
   /** The tool calls extracted from the last inference step; empty when none. */
-  public List<io.gravitee.singularitee.protocol.ToolCall> extractedToolCalls() {
+  public List<ToolCall> extractedToolCalls() {
     return extractedToolCalls;
   }
 

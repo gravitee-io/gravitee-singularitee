@@ -135,8 +135,9 @@ public class StepDispatcher {
   private static <C> Maybe<String> doDispatch(
     StepExecutor<C> handler,
     PipelineStep step,
-    StepContext ctx
+    StepContext outerCtx
   ) {
+    StepContext ctx = outerCtx.withStep(step);
     C config = handler.extractConfig(step);
     String stepId = step.getStepId();
     PipelineContext pctx = ctx.pipelineContext();

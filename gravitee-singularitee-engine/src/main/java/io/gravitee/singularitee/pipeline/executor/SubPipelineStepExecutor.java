@@ -31,6 +31,7 @@ import io.reactivex.rxjava3.disposables.Disposable;
 import io.vertx.core.Context;
 import io.vertx.core.streams.WriteStream;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -150,19 +151,19 @@ public final class SubPipelineStepExecutor implements StepExecutor<SubPipelineSt
 
     var subRequest = reqBuilder.build();
     var accumulator = new StringBuilder();
-    var captureStreamHolder = new TokenCaptureStream[1];
+    var captureStreamRef = new AtomicReference<TokenCaptureStream>();
 
     return Completable.create(emitter -> {
       var captureStream = TokenCaptureStream.forwardAll(accumulator, emitter, ctx.response());
-      captureStreamHolder[0] = captureStream;
+      captureStreamRef.set(captureStream);
       Disposable d = callback
         .executePipeline(subRequest, captureStream, ctx.callerContext())
         .subscribe(() -> {}, emitter::tryOnError);
       emitter.setCancellable(d::dispose);
     }).andThen(
       Maybe.defer(() -> {
-        var lastResp = captureStreamHolder[0] != null
-          ? captureStreamHolder[0].lastResponse()
+        var lastResp = captureStreamRef.get() != null
+          ? captureStreamRef.get().lastResponse()
           : null;
         if (lastResp != null) {
           if (

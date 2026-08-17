@@ -244,13 +244,6 @@ message InferStepConfig {
   // gemma-call) until one yields calls — the legacy behavior.
   string tool_extraction_template = 20;
 
-  // Forward THINKING-channel deltas to the client even when the step role is
-  // internal. Content and tool deltas stay suppressed — only the reasoning
-  // stream escapes, so UIs can show live deliberation for planning/working
-  // steps that otherwise produce dead air. No effect on non-internal steps
-  // (their thinking already streams). Default false.
-  optional bool stream_thinking = 23;
-
   // Per-step chat-template override (Jinja source). When set, the step renders
   // its prompt with this template INSTEAD of the engine's GGUF-metadata chat
   // template. In workspace YAML the value may reference a workspace
@@ -258,11 +251,19 @@ message InferStepConfig {
   // content before it reaches this field. Unset = use the model's own
   // template (current behaviour).
   optional string chat_template = 21;
+
   // Whether server-owned tools (the todo tools) are injected into this step's
   // tool list. Unset = true. Set false on steps that must produce plain prose
   // (e.g. a summarize step) — a tool schema in the prompt invites the model to
   // call it, and a call from a step with no todo step downstream can only leak.
   optional bool expose_server_tools = 22;
+
+  // Forward THINKING-channel deltas to the client even when the step role is
+  // internal. Content and tool deltas stay suppressed — only the reasoning
+  // stream escapes, so UIs can show live deliberation for planning/working
+  // steps that otherwise produce dead air. No effect on non-internal steps
+  // (their thinking already streams). Default false.
+  optional bool stream_thinking = 23;
 }
 
 // Classification step.

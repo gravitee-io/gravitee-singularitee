@@ -28,7 +28,10 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,16 +79,20 @@ public final class ToolCallExtractor {
    * <|message|>{json}} — are resolvable by explicit name only: they lean on the tool-name check
    * alone, so they are never part of the speculative {@link #BUILTIN_ORDER} trial.
    */
-  public static final java.util.Set<String> BUILTIN_NAMES;
-
-  static {
-    var names = new java.util.HashSet<>(BUILTIN_ORDER);
-    names.add("glm-name-json");
-    names.add("harmony");
-    BUILTIN_NAMES = java.util.Set.copyOf(names);
-  }
+  public static final Set<String> BUILTIN_NAMES = Stream.concat(
+    BUILTIN_ORDER.stream(),
+    Stream.of("glm-name-json", "harmony")
+  ).collect(Collectors.toUnmodifiableSet());
 
   private static final Environment ENV = Jinja4jChatTemplateRenderer.defaultEnvironment();
+
+  /**
+   * Compiled-template cache, keyed by template source. Sources normally come from workspace
+   * config (a small, fixed set), but the cap keeps a caller-supplied inline template from
+   * growing the heap without bound — beyond it, templates compile per call, uncached.
+   */
+  private static final int TEMPLATE_CACHE_MAX = 256;
+
   private static final ConcurrentHashMap<String, Template> TEMPLATE_CACHE =
     new ConcurrentHashMap<>();
   private static final ConcurrentHashMap<String, String> BUILTIN_SOURCES =
@@ -165,9 +172,13 @@ public final class ToolCallExtractor {
       return ExtractionResult.of(List.of());
     }
     try {
-      Template template = TEMPLATE_CACHE.computeIfAbsent(source, s ->
-        ENV.fromString(s, "<tool-extraction>")
-      );
+      Template template = TEMPLATE_CACHE.get(source);
+      if (template == null) {
+        template = ENV.fromString(source, "<tool-extraction>");
+        if (TEMPLATE_CACHE.size() < TEMPLATE_CACHE_MAX) {
+          TEMPLATE_CACHE.putIfAbsent(source, template);
+        }
+      }
       String rendered = template.render(
         Map.of("output", output, "tools", tools == null ? List.of() : tools)
       );

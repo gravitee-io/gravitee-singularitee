@@ -42,21 +42,13 @@ class WireToolCallShapingTest {
   }
 
   private static TokenMessage finalWithWireCalls(List<WireToolCall> calls) {
-    return new TokenMessage(
-      null,
-      null,
-      null,
-      0,
-      true,
-      "tool_calls",
-      3,
-      7,
-      null,
-      null,
-      null,
-      null,
-      calls
-    );
+    return TokenMessage.builder()
+      .isFinal(true)
+      .finishReason("tool_calls")
+      .promptTokens(3)
+      .completionTokens(7)
+      .toolCalls(calls)
+      .build();
   }
 
   @Test

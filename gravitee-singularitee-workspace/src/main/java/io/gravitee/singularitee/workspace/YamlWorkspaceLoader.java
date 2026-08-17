@@ -197,7 +197,7 @@ public final class YamlWorkspaceLoader {
     // Templates declared in the root (or merged from includes) are resolved here
     // once, before pipelines are parsed, so template_id references resolve correctly.
     Map<String, String> templateRegistry = buildTemplateRegistry(root, basePath, templatesBasePath);
-    Map<String, WorkspaceDefinition.TagsDef> tagRegistry = buildTagRegistry(root);
+    Map<String, TagsDef> tagRegistry = buildTagRegistry(root);
 
     List<Pipeline> pipelines = parsePipelines(
       root,
@@ -357,7 +357,7 @@ public final class YamlWorkspaceLoader {
     WorkspaceDefinition.WorkspaceRoot root,
     Path templatesBasePath,
     Map<String, String> templateRegistry,
-    Map<String, WorkspaceDefinition.TagsDef> tagRegistry
+    Map<String, TagsDef> tagRegistry
   ) {
     if (root.pipelines() == null) return List.of();
     List<Pipeline> result = new ArrayList<>();
@@ -410,7 +410,7 @@ public final class YamlWorkspaceLoader {
     PipelineDefinition p,
     Path templatesBasePath,
     Map<String, String> templateRegistry,
-    Map<String, WorkspaceDefinition.TagsDef> tagRegistry
+    Map<String, TagsDef> tagRegistry
   ) {
     var pipelineBuilder = Pipeline.newBuilder();
 
@@ -434,7 +434,7 @@ public final class YamlWorkspaceLoader {
     StepDefinition s,
     Path templatesBasePath,
     Map<String, String> templateRegistry,
-    Map<String, WorkspaceDefinition.TagsDef> tagRegistry
+    Map<String, TagsDef> tagRegistry
   ) {
     var b = PipelineStep.newBuilder();
     if (s.id() != null) {
@@ -466,7 +466,7 @@ public final class YamlWorkspaceLoader {
         case SubPipelineConfig d -> b.setSubPipeline(toSubPipelineStep(d));
         case RegexGuardConfig d -> b.setRegexGuardConfig(toRegexGuardStep(d));
         case ToolSelectConfig d -> b.setToolSelectConfig(toToolSelectStep(d));
-        case WorkspaceDefinition.TodoConfig d -> b.setTodoConfig(toTodoStep(d));
+        case TodoConfig d -> b.setTodoConfig(toTodoStep(d));
       }
     }
     return b.build();
@@ -476,7 +476,7 @@ public final class YamlWorkspaceLoader {
     InferConfig d,
     Path basePath,
     Map<String, String> templateRegistry,
-    Map<String, WorkspaceDefinition.TagsDef> tagRegistry
+    Map<String, TagsDef> tagRegistry
   ) {
     var b = InferStepConfig.newBuilder();
     if (d.modelId() != null) b.setModelId(d.modelId());
@@ -603,13 +603,9 @@ public final class YamlWorkspaceLoader {
     return b.build();
   }
 
-  /** Converts a SamplingDef to a proto SamplingParams (stop tokens excluded — handled separately). */
-
   /** Named tag sets declared at workspace level, keyed by id. */
-  private static Map<String, WorkspaceDefinition.TagsDef> buildTagRegistry(
-    WorkspaceDefinition.WorkspaceRoot root
-  ) {
-    Map<String, WorkspaceDefinition.TagsDef> registry = new java.util.LinkedHashMap<>();
+  private static Map<String, TagsDef> buildTagRegistry(WorkspaceDefinition.WorkspaceRoot root) {
+    Map<String, TagsDef> registry = new LinkedHashMap<>();
     if (root.tags() == null) return registry;
     for (var t : root.tags()) {
       if (t == null || t.id() == null || t.id().isBlank()) {
@@ -623,10 +619,7 @@ public final class YamlWorkspaceLoader {
   }
 
   /** Resolves a reference-only TagsDef (bare string in YAML) against the registry. */
-  private static WorkspaceDefinition.TagsDef resolveTags(
-    WorkspaceDefinition.TagsDef tags,
-    Map<String, WorkspaceDefinition.TagsDef> tagRegistry
-  ) {
+  private static TagsDef resolveTags(TagsDef tags, Map<String, TagsDef> tagRegistry) {
     if (tags == null || !tags.isReference()) {
       return tags;
     }
@@ -639,6 +632,7 @@ public final class YamlWorkspaceLoader {
     return named;
   }
 
+  /** Converts a SamplingDef to a proto SamplingParams (stop tokens excluded — handled separately). */
   private static SamplingParams toSamplingParams(SamplingDef sampling) {
     var sp = SamplingParams.newBuilder();
     if (sampling != null) {
@@ -664,10 +658,8 @@ public final class YamlWorkspaceLoader {
     return b.build();
   }
 
-  private static io.gravitee.singularitee.protocol.TodoStepConfig toTodoStep(
-    WorkspaceDefinition.TodoConfig d
-  ) {
-    var b = io.gravitee.singularitee.protocol.TodoStepConfig.newBuilder();
+  private static TodoStepConfig toTodoStep(TodoConfig d) {
+    var b = TodoStepConfig.newBuilder();
     if (d.handledStep() != null && !d.handledStep().isBlank()) {
       b.setHandledStepId(d.handledStep());
     }

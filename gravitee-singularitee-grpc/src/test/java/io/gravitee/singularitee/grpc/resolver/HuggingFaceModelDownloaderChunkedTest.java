@@ -65,6 +65,10 @@ class HuggingFaceModelDownloaderChunkedTest {
   private volatile boolean ignoreRange;
   private volatile int failuresPerChunk;
   private volatile boolean expireAllTokens;
+  private volatile int shortBodiesPerChunk;
+  private volatile boolean alwaysShortChunks;
+
+  private final Map<String, AtomicInteger> shortBodiesServed = new ConcurrentHashMap<>();
 
   @BeforeEach
   void setUp() {
@@ -136,6 +140,24 @@ class HuggingFaceModelDownloaderChunkedTest {
         req.response().setStatusCode(500).end();
         return;
       }
+    }
+    boolean serveShort =
+      !isProbe &&
+      (alwaysShortChunks ||
+        (shortBodiesPerChunk > 0 &&
+          shortBodiesServed.computeIfAbsent(range, k -> new AtomicInteger()).incrementAndGet() <=
+          shortBodiesPerChunk));
+    if (serveShort) {
+      // A 206 whose body carries fewer bytes than the Range asked for — a
+      // truncated connection the client can only detect by counting bytes.
+      byte[] truncated = new byte[(int) (end - start + 1) / 2];
+      System.arraycopy(payload, (int) start, truncated, 0, truncated.length);
+      req
+        .response()
+        .setStatusCode(206)
+        .putHeader("Content-Range", "bytes " + start + "-" + end + "/" + PAYLOAD_SIZE)
+        .end(Buffer.buffer(truncated));
+      return;
     }
     byte[] slice = new byte[(int) (end - start + 1)];
     System.arraycopy(payload, (int) start, slice, 0, slice.length);
@@ -213,6 +235,42 @@ class HuggingFaceModelDownloaderChunkedTest {
     // single-stream fallback resolved once more
     assertThat(resolveCount.get()).isGreaterThanOrEqualTo(3);
     assertThat(Files.exists(tmp.resolve(FILE))).isFalse();
+  }
+
+  @Test
+  void truncated_chunk_bodies_are_retried_until_complete(@TempDir Path tmp) throws Exception {
+    // 206 with a short body: status says success, only the byte count betrays it.
+    shortBodiesPerChunk = 2;
+
+    Path result = download(tmp);
+
+    assertThat(Files.readAllBytes(result)).isEqualTo(payload);
+    // the chunk-level retry re-requested the truncated ranges
+    assertThat(shortBodiesServed).isNotEmpty();
+    shortBodiesServed.forEach((range, served) ->
+      assertThat(requests)
+        .filteredOn(s -> range.equals(s.range()))
+        .as("range %s must be re-requested after truncated responses", range)
+        .hasSizeGreaterThan(2)
+    );
+  }
+
+  @Test
+  void permanently_truncated_chunks_fall_back_to_single_stream(@TempDir Path tmp) throws Exception {
+    // Every ranged response is short, so the chunked path can never complete:
+    // it must exhaust its retries and fall back to the un-ranged stream, which
+    // this stub serves correctly.
+    alwaysShortChunks = true;
+
+    Path result = downloader()
+      .download(REPO, List.of(FILE), tmp)
+      .timeout(180, TimeUnit.SECONDS)
+      .blockingGet()
+      .get(0);
+
+    assertThat(Files.readAllBytes(result)).isEqualTo(payload);
+    // the fallback is the request with no Range header at all
+    assertThat(cdnRequests()).anyMatch(s -> s.range() == null);
   }
 
   @Test

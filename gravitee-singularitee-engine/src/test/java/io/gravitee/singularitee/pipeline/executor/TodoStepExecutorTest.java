@@ -23,6 +23,7 @@ import static org.mockito.Mockito.when;
 import io.gravitee.singularitee.engine.ChatRole;
 import io.gravitee.singularitee.engine.ChatTurn;
 import io.gravitee.singularitee.pipeline.PipelineContext;
+import io.gravitee.singularitee.pipeline.TodoStatus;
 import io.gravitee.singularitee.protocol.FinishReason;
 import io.gravitee.singularitee.protocol.TodoStepConfig;
 import io.gravitee.singularitee.protocol.ToolCall;
@@ -82,7 +83,7 @@ class TodoStepExecutorTest {
 
     assertThat(next).isEqualTo("work");
     assertThat(pctx.todos()).hasSize(2);
-    assertThat(pctx.todos().get(0).status()).isEqualTo("in_progress");
+    assertThat(pctx.todos().get(0).status()).isEqualTo(TodoStatus.IN_PROGRESS);
     assertThat(pctx.get("todos.total")).isEqualTo("2");
     assertThat(pctx.get("todos.remaining")).isEqualTo("2");
     // Consumed calls never leak; internal generation reverts to a plain stop.
@@ -103,16 +104,16 @@ class TodoStepExecutorTest {
     var pctx = pctx();
     pctx.setTodos(
       List.of(
-        new PipelineContext.TodoItem("1", "a", "in_progress"),
-        new PipelineContext.TodoItem("2", "b", "pending")
+        new PipelineContext.TodoItem("1", "a", TodoStatus.IN_PROGRESS, null),
+        new PipelineContext.TodoItem("2", "b", TodoStatus.PENDING, null)
       )
     );
     pctx.setExtractedToolCalls(List.of(call("complete_todo", "{\"id\":\"1\"}")));
 
     executor.execute("track", config(), stepContext(pctx)).blockingGet();
 
-    assertThat(pctx.todos().get(0).status()).isEqualTo("done");
-    assertThat(pctx.todos().get(1).status()).isEqualTo("in_progress");
+    assertThat(pctx.todos().get(0).status()).isEqualTo(TodoStatus.DONE);
+    assertThat(pctx.todos().get(1).status()).isEqualTo(TodoStatus.IN_PROGRESS);
     assertThat(pctx.get("todos.remaining")).isEqualTo("1");
   }
 
@@ -180,8 +181,8 @@ class TodoStepExecutorTest {
     var pctx = pctx();
     pctx.setTodos(
       List.of(
-        new PipelineContext.TodoItem("1", "a", "done"),
-        new PipelineContext.TodoItem("2", "b", "in_progress")
+        new PipelineContext.TodoItem("1", "a", TodoStatus.DONE, null),
+        new PipelineContext.TodoItem("2", "b", TodoStatus.IN_PROGRESS, null)
       )
     );
     pctx.setExtractedToolCalls(
@@ -212,7 +213,7 @@ class TodoStepExecutorTest {
     assertThat(pctx.isHalted()).isTrue();
     assertThat(pctx.haltReason()).isEqualTo(FinishReason.FINISH_REASON_BREAK_CONDITION);
     assertThat(pctx.get("track.question")).isEqualTo("Which season is your favourite?");
-    assertThat(pctx.todos().get(1).status()).isEqualTo("in_progress");
+    assertThat(pctx.todos().get(1).status()).isEqualTo(TodoStatus.IN_PROGRESS);
     assertThat(pctx.extractedToolCalls()).isEmpty();
   }
 
@@ -321,7 +322,7 @@ class TodoStepExecutorTest {
     // status transitions keep the proof
     pctx.completeTodo("1");
     assertThat(pctx.todos().get(0).proof()).isEqualTo("pytest tests/test_grid.py passes");
-    assertThat(pctx.todos().get(1).status()).isEqualTo("in_progress");
+    assertThat(pctx.todos().get(1).status()).isEqualTo(TodoStatus.IN_PROGRESS);
     assertThat(pctx.todos().get(1).proof()).isNull();
   }
 
@@ -339,11 +340,11 @@ class TodoStepExecutorTest {
     executor.execute("track", config(), stepContext(pctx)).blockingGet();
 
     assertThat(pctx.completeTodo("write_readme")).isTrue();
-    assertThat(pctx.todos().get(0).status()).isEqualTo("done");
-    assertThat(pctx.todos().get(1).status()).isEqualTo("in_progress");
+    assertThat(pctx.todos().get(0).status()).isEqualTo(TodoStatus.DONE);
+    assertThat(pctx.todos().get(1).status()).isEqualTo(TodoStatus.IN_PROGRESS);
     // now two guesses in a row: the fallback stays unambiguous
     assertThat(pctx.completeTodo("nope")).isTrue();
-    assertThat(pctx.todos().get(1).status()).isEqualTo("done");
+    assertThat(pctx.todos().get(1).status()).isEqualTo(TodoStatus.DONE);
     assertThat(pctx.completeTodo("still-nope")).isFalse();
   }
 
@@ -352,8 +353,8 @@ class TodoStepExecutorTest {
     var pctx = pctx();
     pctx.setTodos(
       List.of(
-        new PipelineContext.TodoItem("1", "a", "done"),
-        new PipelineContext.TodoItem("2", "b", "in_progress")
+        new PipelineContext.TodoItem("1", "a", TodoStatus.DONE, null),
+        new PipelineContext.TodoItem("2", "b", TodoStatus.IN_PROGRESS, null)
       )
     );
     pctx.setExtractedToolCalls(
@@ -372,7 +373,7 @@ class TodoStepExecutorTest {
   @Test
   void set_todos_is_accepted_after_the_restore_policy_unlocks_a_finished_plan() {
     var pctx = pctx();
-    pctx.setTodos(List.of(new PipelineContext.TodoItem("1", "a", "done")));
+    pctx.setTodos(List.of(new PipelineContext.TodoItem("1", "a", TodoStatus.DONE, null)));
     // PipelineExecutor lifts the lock at restore when the plan is finished
     // and the request opens with a fresh user message.
     pctx.setPlanLocked(false);
@@ -384,14 +385,14 @@ class TodoStepExecutorTest {
 
     assertThat(pctx.todos()).hasSize(1);
     assertThat(pctx.todos().get(0).title()).isEqualTo("next task");
-    assertThat(pctx.todos().get(0).status()).isEqualTo("in_progress");
+    assertThat(pctx.todos().get(0).status()).isEqualTo(TodoStatus.IN_PROGRESS);
   }
 
   @Test
   void finished_plan_rejects_set_todos_until_the_restore_policy_unlocks_it() {
     var pctx = pctx();
     // Installing a plan locks it; finishing it does NOT lift the lock.
-    pctx.setTodos(List.of(new PipelineContext.TodoItem("1", "a", "done")));
+    pctx.setTodos(List.of(new PipelineContext.TodoItem("1", "a", TodoStatus.DONE, null)));
     pctx.setExtractedToolCalls(
       List.of(call("set_todos", "{\"todos\":[{\"id\":\"x\",\"title\":\"chained plan\"}]}"))
     );
@@ -419,14 +420,14 @@ class TodoStepExecutorTest {
     );
     pctx.setCacheKey("session-1");
     pctx.setLastEngineFinishReason(FinishReason.FINISH_REASON_TOOL_CALLS);
-    pctx.setTodos(List.of(new PipelineContext.TodoItem("1", "a", "in_progress")));
+    pctx.setTodos(List.of(new PipelineContext.TodoItem("1", "a", TodoStatus.IN_PROGRESS, null)));
     pctx.setExtractedToolCalls(List.of(call("ask_user", "{\"question\":\"Which?\"}")));
 
     withStore.execute("track", config(), stepContext(pctx)).blockingGet();
 
-    var restored = store.restore("session-1");
+    var restored = store.restore("session-1").orElseThrow();
     assertThat(restored.todos()).hasSize(1);
-    assertThat(restored.todos().get(0).status()).isEqualTo("in_progress");
+    assertThat(restored.todos().get(0).status()).isEqualTo(TodoStatus.IN_PROGRESS);
   }
 
   @Test
@@ -440,29 +441,35 @@ class TodoStepExecutorTest {
     store.save(
       "s",
       List.of(
-        new PipelineContext.TodoItem("1", "a", "done"),
-        new PipelineContext.TodoItem("2", "b", "done"),
-        new PipelineContext.TodoItem("3", "c", "in_progress"),
-        new PipelineContext.TodoItem("4", "d", "pending"),
-        new PipelineContext.TodoItem("5", "e", "pending")
+        new PipelineContext.TodoItem("1", "a", TodoStatus.DONE, null),
+        new PipelineContext.TodoItem("2", "b", TodoStatus.DONE, null),
+        new PipelineContext.TodoItem("3", "c", TodoStatus.IN_PROGRESS, null),
+        new PipelineContext.TodoItem("4", "d", TodoStatus.PENDING, null),
+        new PipelineContext.TodoItem("5", "e", TodoStatus.PENDING, null)
       ),
       "use uv"
     );
 
     var pctx = pctx();
-    var restored = store.restore("s");
+    var restored = store.restore("s").orElseThrow();
     pctx.restoreTodos(restored.todos());
     pctx.setTodoConstraints(restored.constraints());
 
     assertThat(pctx.todos())
       .extracting(PipelineContext.TodoItem::status)
-      .containsExactly("done", "done", "in_progress", "pending", "pending");
+      .containsExactly(
+        TodoStatus.DONE,
+        TodoStatus.DONE,
+        TodoStatus.IN_PROGRESS,
+        TodoStatus.PENDING,
+        TodoStatus.PENDING
+      );
     assertThat(pctx.get("todos.completed")).isEqualTo("2");
     assertThat(pctx.get("todos.remaining")).isEqualTo("3");
     assertThat(pctx.todoConstraints()).isEqualTo("use uv");
 
     store.clear("s");
-    assertThat(store.restore("s")).isNull();
+    assertThat(store.restore("s")).isEmpty();
   }
 
   @Test
@@ -475,8 +482,8 @@ class TodoStepExecutorTest {
     var pctx = pctx();
     pctx.setTodos(
       List.of(
-        new PipelineContext.TodoItem("1", "write spring haiku", "in_progress"),
-        new PipelineContext.TodoItem("2", "write autumn haiku", "pending")
+        new PipelineContext.TodoItem("1", "write spring haiku", TodoStatus.IN_PROGRESS, null),
+        new PipelineContext.TodoItem("2", "write autumn haiku", TodoStatus.PENDING, null)
       )
     );
 
@@ -511,24 +518,24 @@ class TodoStepExecutorTest {
   @Test
   void unknown_complete_id_falls_back_to_single_in_progress_item() {
     var pctx = pctx();
-    pctx.setTodos(List.of(new PipelineContext.TodoItem("1", "a", "in_progress")));
+    pctx.setTodos(List.of(new PipelineContext.TodoItem("1", "a", TodoStatus.IN_PROGRESS, null)));
     pctx.setExtractedToolCalls(List.of(call("complete_todo", "{\"id\":\"99\"}")));
 
     executor.execute("track", config(), stepContext(pctx)).blockingGet();
 
-    assertThat(pctx.todos().get(0).status()).isEqualTo("done");
+    assertThat(pctx.todos().get(0).status()).isEqualTo(TodoStatus.DONE);
   }
 
   @Test
   void unknown_complete_id_with_no_unambiguous_target_returns_error_result() {
     var pctx = pctx();
-    pctx.setTodos(List.of(new PipelineContext.TodoItem("1", "a", "done")));
+    pctx.setTodos(List.of(new PipelineContext.TodoItem("1", "a", TodoStatus.DONE, null)));
     pctx.setExtractedToolCalls(List.of(call("complete_todo", "{\"id\":\"99\"}")));
     int turnsBefore = pctx.messages().size();
 
     executor.execute("track", config(), stepContext(pctx)).blockingGet();
 
-    assertThat(pctx.todos().get(0).status()).isEqualTo("done");
+    assertThat(pctx.todos().get(0).status()).isEqualTo(TodoStatus.DONE);
     assertThat(pctx.messages().get(turnsBefore + 1).content()).contains("no todo with id 99");
   }
 }

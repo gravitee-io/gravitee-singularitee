@@ -15,11 +15,10 @@
  */
 package io.gravitee.singularitee.pipeline;
 
-import io.gravitee.node.api.cache.Cache;
-import io.gravitee.node.api.cache.CacheConfiguration;
 import io.gravitee.node.api.cache.CacheManager;
 import java.io.Serializable;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Cross-request persistence for the engine-managed todo plan, keyed by the
@@ -33,7 +32,7 @@ import java.util.List;
  * here assumes process-locality. Values are small serializable DTOs, not
  * proto messages. Time-to-idle acts as the session timeout.
  */
-public final class TodoSessionStore {
+public final class TodoSessionStore extends CacheBackedStore<TodoSessionStore.SessionPlan> {
 
   /** Serializable snapshot of one plan item (proto/domain types stay out of the cache). */
   public record SessionTodo(String id, String title, String status, String proof) implements
@@ -50,7 +49,6 @@ public final class TodoSessionStore {
   /** A restored plan: domain todo items plus the constraints paragraph. */
   public record RestoredPlan(List<PipelineContext.TodoItem> todos, String constraints) {}
 
-  private final Cache<String, SessionPlan> cache;
   private final CacheManager cacheManager;
 
   /**
@@ -59,21 +57,8 @@ public final class TodoSessionStore {
    * @param maxEntries     upper bound on concurrently tracked sessions
    */
   public TodoSessionStore(CacheManager cacheManager, long idleTtlSeconds, long maxEntries) {
+    super(cacheManager, "ai-todo-sessions", idleTtlSeconds, maxEntries);
     this.cacheManager = cacheManager;
-    this.cache = (cacheManager == null || idleTtlSeconds <= 0)
-      ? null
-      : cacheManager.getOrCreateCache(
-        "ai-todo-sessions",
-        CacheConfiguration.builder()
-          .timeToIdleInMs(idleTtlSeconds * 1000)
-          .maxSize(maxEntries)
-          .build()
-      );
-  }
-
-  /** Whether persistence is active (a cache is bound and the TTL is positive). */
-  public boolean isEnabled() {
-    return cache != null;
   }
 
   /** The underlying manager (may be {@code null}) — lets other engine caches share the backend. */
@@ -81,41 +66,44 @@ public final class TodoSessionStore {
     return cacheManager;
   }
 
-  /** Returns the stored plan for the session key, or {@code null}. */
-  public RestoredPlan restore(String key) {
-    if (cache == null || key == null || key.isBlank()) return null;
-    SessionPlan stored = cache.get(key);
-    if (stored == null || stored.todos() == null || stored.todos().isEmpty()) return null;
-    return new RestoredPlan(
-      stored
-        .todos()
-        .stream()
-        .map(t -> new PipelineContext.TodoItem(t.id(), t.title(), t.status(), t.proof()))
-        .toList(),
-      stored.constraints()
-    );
+  /** Returns the stored plan for the session key, or empty. */
+  public Optional<RestoredPlan> restore(String key) {
+    SessionPlan stored = lookup(key);
+    if (stored == null || stored.todos() == null || stored.todos().isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(new RestoredPlan(toTodoItems(stored.todos()), stored.constraints()));
   }
 
   /** Saves the plan for the session key (no-op when disabled or the plan is empty). */
   public void save(String key, List<PipelineContext.TodoItem> todos, String constraints) {
-    if (cache == null || key == null || key.isBlank() || todos == null || todos.isEmpty()) {
+    if (unusable(key) || todos == null || todos.isEmpty()) {
       return;
     }
-    cache.put(
-      key,
-      new SessionPlan(
-        todos
-          .stream()
-          .map(t -> new SessionTodo(t.id(), t.title(), t.status(), t.proof()))
-          .toList(),
-        constraints
-      )
-    );
+    cache.put(key, new SessionPlan(toSessionTodos(todos), constraints));
   }
 
   /** Drops the session (a completed plan must not leak into an unrelated conversation). */
   public void clear(String key) {
-    if (cache == null || key == null || key.isBlank()) return;
+    if (unusable(key)) return;
     cache.evict(key);
+  }
+
+  /** Maps domain items to cache DTOs (status flattened to its wire name). */
+  static List<SessionTodo> toSessionTodos(List<PipelineContext.TodoItem> todos) {
+    return todos
+      .stream()
+      .map(t -> new SessionTodo(t.id(), t.title(), t.status().wireName(), t.proof()))
+      .toList();
+  }
+
+  /** Maps cache DTOs back to domain items. */
+  static List<PipelineContext.TodoItem> toTodoItems(List<SessionTodo> todos) {
+    return todos
+      .stream()
+      .map(t ->
+        new PipelineContext.TodoItem(t.id(), t.title(), TodoStatus.fromWire(t.status()), t.proof())
+      )
+      .toList();
   }
 }

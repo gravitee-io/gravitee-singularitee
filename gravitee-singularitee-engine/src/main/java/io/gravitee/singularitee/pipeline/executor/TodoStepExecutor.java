@@ -15,22 +15,31 @@
  */
 package io.gravitee.singularitee.pipeline.executor;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gravitee.singularitee.engine.ChatRole;
 import io.gravitee.singularitee.engine.ChatTurn;
 import io.gravitee.singularitee.engine.tools.TodoTools;
 import io.gravitee.singularitee.pipeline.PipelineContext;
+import io.gravitee.singularitee.pipeline.TodoSessionStore;
+import io.gravitee.singularitee.pipeline.TodoStatus;
 import io.gravitee.singularitee.protocol.FinishReason;
 import io.gravitee.singularitee.protocol.InferResponse;
 import io.gravitee.singularitee.protocol.PipelineStep;
 import io.gravitee.singularitee.protocol.ResponseEventType;
+import io.gravitee.singularitee.protocol.ResponseOutputTextDelta;
 import io.gravitee.singularitee.protocol.ResponseProgress;
+import io.gravitee.singularitee.protocol.StepRole;
 import io.gravitee.singularitee.protocol.TodoStepConfig;
 import io.gravitee.singularitee.protocol.ToolCall;
 import io.reactivex.rxjava3.core.Maybe;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,14 +66,14 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final AtomicLong CALL_ID_SEQ = new AtomicLong();
 
-  private final io.gravitee.singularitee.pipeline.TodoSessionStore sessionStore;
+  private final TodoSessionStore sessionStore;
 
   /** Store-less constructor (client-side executor, tests): no session persistence. */
   public TodoStepExecutor() {
     this(null);
   }
 
-  public TodoStepExecutor(io.gravitee.singularitee.pipeline.TodoSessionStore sessionStore) {
+  public TodoStepExecutor(TodoSessionStore sessionStore) {
     this.sessionStore = sessionStore;
   }
 
@@ -82,7 +91,7 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
     // schema, e.g. with multiple-choice options) is CLIENT-bound: the call
     // rides out as a normal function_call and the answer returns as a
     // function_call_output. Plan tools are never delegable.
-    var declared = new java.util.HashSet<String>();
+    Set<String> declared = new HashSet<>();
     for (var t : pctx.tools()) {
       declared.add(t.getName());
     }
@@ -136,7 +145,7 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
       "TodoStep '{}': executed {} call(s) — plan now {}/{} done{}",
       stepId,
       todoCalls.size(),
-      pctx.get("todos.completed"),
+      pctx.get(PipelineContext.KEY_TODOS_COMPLETED),
       todos.size(),
       clientCalls.isEmpty() ? "" : ", " + clientCalls.size() + " client call(s) passed through"
     );
@@ -201,8 +210,8 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
         // Normalizing it to a real newline is always what the author meant.
         return args.get("question").asText().replace("\\n", "\n");
       }
-    } catch (Exception ignored) {
-      // fall through to the generic question
+    } catch (JsonProcessingException e) {
+      LOGGER.debug("ask_user: arguments did not parse as JSON: {}", e.getMessage());
     }
     return "I need more information from you to continue. Could you clarify?";
   }
@@ -217,10 +226,8 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
       .write(
         InferResponse.newBuilder()
           .setEventType(ResponseEventType.RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA)
-          .setResponseOutputTextDelta(
-            io.gravitee.singularitee.protocol.ResponseOutputTextDelta.newBuilder().setDelta(text)
-          )
-          .setStepRole(io.gravitee.singularitee.protocol.StepRole.STEP_ROLE_OUTPUT)
+          .setResponseOutputTextDelta(ResponseOutputTextDelta.newBuilder().setDelta(text))
+          .setStepRole(StepRole.STEP_ROLE_OUTPUT)
           .build()
       );
   }
@@ -236,8 +243,8 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
       return switch (call.getName()) {
         case TodoTools.SET_TODOS -> setTodos(pctx, args);
         case TodoTools.COMPLETE_TODO -> completeTodo(pctx, args);
-        case TodoTools.ASK_USER -> "{\"ok\":true,\"status\":\"waiting_for_user\"}";
-        default -> "{\"ok\":false,\"error\":\"unknown todo tool\"}";
+        case TodoTools.ASK_USER -> result(true).put("status", "waiting_for_user").toString();
+        default -> error("unknown todo tool");
       };
     } catch (Exception e) {
       // Fail-open: the model gets the error as the tool result and can retry.
@@ -248,15 +255,9 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
         e.getMessage()
       );
       pctx.set(stepId + ".todo_error", String.valueOf(e.getMessage()));
-      return "{\"ok\":false,\"error\":" + quote(e.getMessage()) + "}";
+      return error(String.valueOf(e.getMessage()));
     }
   }
-
-  private static final java.util.Set<String> TODO_STATUSES = java.util.Set.of(
-    "pending",
-    "in_progress",
-    "done"
-  );
 
   private static String setTodos(PipelineContext pctx, JsonNode args) {
     // Installing a plan locks it (see PipelineContext.setTodos); the lock
@@ -269,18 +270,19 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
       boolean inFlight = pctx
         .todos()
         .stream()
-        .anyMatch(t -> !"done".equals(t.status()));
+        .anyMatch(t -> t.status() != TodoStatus.DONE);
       return inFlight
-        ? ("{\"ok\":false,\"error\":\"the current plan is still in progress and cannot be " +
-          "replaced - complete the in_progress item and call complete_todo with its id\"}")
-        : ("{\"ok\":false,\"error\":\"the plan is finished and cannot be replaced here - " +
-          "answer the user directly\"}");
+        ? error(
+          "the current plan is still in progress and cannot be replaced - complete the " +
+            "in_progress item and call complete_todo with its id"
+        )
+        : error("the plan is finished and cannot be replaced here - answer the user directly");
     }
     // Re-planning must be non-destructive: models routinely re-send the whole
     // list to "update" it (sometimes with a status field). Honor an explicit
     // valid status; otherwise inherit the current status of the same id, so a
     // verbatim re-send never resets done items back to pending.
-    var existing = new java.util.HashMap<String, String>();
+    var existing = new HashMap<String, TodoStatus>();
     for (var t : pctx.todos()) {
       existing.put(t.id(), t.status());
     }
@@ -290,7 +292,7 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
     if (items != null && items.isTextual()) {
       try {
         items = MAPPER.readTree(items.asText());
-      } catch (Exception e) {
+      } catch (JsonProcessingException e) {
         LOGGER.debug("set_todos: string-encoded todos did not parse: {}", e.getMessage());
       }
     }
@@ -301,10 +303,10 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
         if (item.isObject()) {
           String id = item.hasNonNull("id") ? item.get("id").asText() : Integer.toString(index);
           String title = item.hasNonNull("title") ? item.get("title").asText() : "";
-          String status = item.hasNonNull("status") ? item.get("status").asText() : null;
-          if (status == null || !TODO_STATUSES.contains(status)) {
-            status = existing.getOrDefault(id, "pending");
-          }
+          String statusText = item.hasNonNull("status") ? item.get("status").asText() : null;
+          TodoStatus status = TodoStatus.isValidWireName(statusText)
+            ? TodoStatus.fromWire(statusText)
+            : existing.getOrDefault(id, TodoStatus.PENDING);
           String proof = item.hasNonNull("proof") ? item.get("proof").asText() : null;
           if (!title.isBlank()) {
             parsed.add(new PipelineContext.TodoItem(id, title, status, proof));
@@ -313,7 +315,12 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
           // Tolerate plain-string items: the index becomes the id.
           String id = Integer.toString(index);
           parsed.add(
-            new PipelineContext.TodoItem(id, item.asText(), existing.getOrDefault(id, "pending"))
+            new PipelineContext.TodoItem(
+              id,
+              item.asText(),
+              existing.getOrDefault(id, TodoStatus.PENDING),
+              null
+            )
           );
         }
         index++;
@@ -322,10 +329,10 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
     if (parsed.isEmpty()) {
       // A plan either has items or does not exist. Installing an empty list
       // would put the pipeline into the work loop with "0/0 done" and nothing
-      // to do (observed live: Gemma calling set_todos with an empty array).
-      // Refuse it — the model gets the error and can re-plan or answer
-      // directly, and plan_check keeps routing planless requests correctly.
-      return "{\"ok\":false,\"error\":\"todos must contain at least one item with a title\"}";
+      // to do — models do call set_todos with an empty array. Refuse it: the
+      // model gets the error and can re-plan or answer directly, and
+      // plan_check keeps routing planless requests correctly.
+      return error("todos must contain at least one item with a title");
     }
     pctx.setTodos(parsed);
     // Plan-level constraints (locked user decisions) ride along optionally.
@@ -335,7 +342,7 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
     if (constraints != null && constraints.isTextual() && !constraints.asText().isBlank()) {
       pctx.setTodoConstraints(constraints.asText());
     }
-    return "{\"ok\":true,\"total\":" + parsed.size() + "}";
+    return result(true).put("total", parsed.size()).toString();
   }
 
   private static String completeTodo(PipelineContext pctx, JsonNode args) {
@@ -345,37 +352,41 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
     boolean alreadyDone = pctx
       .todos()
       .stream()
-      .anyMatch(t -> t.id().equals(id) && "done".equals(t.status()));
+      .anyMatch(t -> t.id().equals(id) && t.status() == TodoStatus.DONE);
     if (alreadyDone) {
-      return (
-        "{\"ok\":false,\"error\":\"item " +
-        id.replace("\"", "") +
-        " is already done\",\"in_progress\":" +
-        quote(nextInProgressTitle(pctx)) +
-        "}"
-      );
+      return result(false)
+        .put("error", "item " + id + " is already done")
+        .put("in_progress", nextInProgressTitle(pctx))
+        .toString();
     }
     boolean found = pctx.completeTodo(id);
     if (!found) {
-      return "{\"ok\":false,\"error\":\"no todo with id " + id.replace("\"", "") + "\"}";
+      return error("no todo with id " + id);
     }
-    return (
-      "{\"ok\":true,\"remaining\":" +
-      pctx.get("todos.remaining") +
-      ",\"next\":" +
-      quote(nextInProgressTitle(pctx)) +
-      "}"
-    );
+    return result(true)
+      .put("remaining", Long.parseLong(pctx.get(PipelineContext.KEY_TODOS_REMAINING)))
+      .put("next", nextInProgressTitle(pctx))
+      .toString();
   }
 
   private static String nextInProgressTitle(PipelineContext pctx) {
     return pctx
       .todos()
       .stream()
-      .filter(t -> "in_progress".equals(t.status()))
+      .filter(t -> t.status() == TodoStatus.IN_PROGRESS)
       .map(PipelineContext.TodoItem::title)
       .findFirst()
       .orElse("none — all items done");
+  }
+
+  /** A fresh {@code {"ok": <ok>}} result node to extend fluently. */
+  private static ObjectNode result(boolean ok) {
+    return MAPPER.createObjectNode().put("ok", ok);
+  }
+
+  /** A serialized {@code {"ok":false,"error":<message>}} result. */
+  private static String error(String message) {
+    return result(false).put("error", message).toString();
   }
 
   /**
@@ -414,14 +425,15 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
     var progress = ResponseProgress.newBuilder().setStepId(stepId);
     int completed = 0;
     for (var t : pctx.todos()) {
-      if ("done".equals(t.status())) {
+      if (t.status() == TodoStatus.DONE) {
         completed++;
       }
+      // The proto TodoItem clashes with the domain record's name, so it stays qualified.
       progress.addTodos(
         io.gravitee.singularitee.protocol.TodoItem.newBuilder()
           .setId(t.id())
           .setTitle(t.title())
-          .setStatus(t.status())
+          .setStatus(t.status().wireName())
           .setProof(t.proof() == null ? "" : t.proof())
       );
     }
@@ -434,13 +446,5 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
           .setResponseProgress(progress)
           .build()
       );
-  }
-
-  private static String quote(String s) {
-    try {
-      return MAPPER.writeValueAsString(s == null ? "" : s);
-    } catch (Exception e) {
-      return "\"\"";
-    }
   }
 }

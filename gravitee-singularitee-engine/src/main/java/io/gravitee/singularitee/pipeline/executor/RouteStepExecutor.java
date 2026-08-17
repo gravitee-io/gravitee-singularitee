@@ -15,6 +15,9 @@
  */
 package io.gravitee.singularitee.pipeline.executor;
 
+import io.gravitee.node.api.cache.Cache;
+import io.gravitee.node.api.cache.CacheConfiguration;
+import io.gravitee.node.api.cache.CacheManager;
 import io.gravitee.singularitee.engine.ClassifierEngine;
 import io.gravitee.singularitee.engine.ClassifyRequest;
 import io.gravitee.singularitee.engine.EmbedRequest;
@@ -29,8 +32,10 @@ import io.gravitee.singularitee.protocol.StepType;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Single;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,46 +54,74 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RouteStepExecutor.class);
 
+  /**
+   * Upper bound on cached reference-embedding entries: one entry per KNN route
+   * step, so this is a safety valve against unbounded workspaces rather than a
+   * working-set size — far more steps than any deployment declares.
+   */
+  private static final int MAX_CACHED_ROUTE_STEPS = 10_000;
+
   private final StepExecutionContext execContext;
 
   /**
-   * KNN reference embeddings, keyed {@code pipelineId:stepId}. Backed by the node
-   * {@link io.gravitee.node.api.cache.Cache} when a manager is wired (pluggable —
-   * distributed backends avoid re-embedding per node); a plain map otherwise
-   * (client-side executor, tests).
+   * KNN reference embeddings, keyed {@code pipelineId:stepId}. Backed by the
+   * node {@link Cache} when a manager is wired (pluggable — distributed
+   * backends avoid re-embedding per node); a plain map otherwise (client-side
+   * executor, tests).
    */
-  private final io.gravitee.node.api.cache.Cache<String, List<RuleEmbedding>> sharedCache;
-  private final ConcurrentHashMap<String, List<RuleEmbedding>> localCache =
-    new ConcurrentHashMap<>();
+  private final EmbeddingCache embeddingCache;
 
-  record RuleEmbedding(String label, float[] embedding) implements java.io.Serializable {}
+  /** Minimal get/put view unifying the node cache and the in-process fallback map. */
+  private interface EmbeddingCache {
+    List<RuleEmbedding> get(String key);
+    void put(String key, List<RuleEmbedding> embeddings);
+  }
+
+  /**
+   * One reference embedding. Serializable so it can live in a distributed node
+   * cache. NOTE: as a record over a {@code float[]}, {@code equals}/{@code hashCode}
+   * use array identity, not content — never use instances as map keys or compare
+   * them for value equality.
+   */
+  record RuleEmbedding(String label, float[] embedding) implements Serializable {
+    private static final long serialVersionUID = 1L;
+  }
 
   public RouteStepExecutor(StepExecutionContext execContext) {
     this(execContext, null);
   }
 
-  public RouteStepExecutor(
-    StepExecutionContext execContext,
-    io.gravitee.node.api.cache.CacheManager cacheManager
-  ) {
+  public RouteStepExecutor(StepExecutionContext execContext, CacheManager cacheManager) {
     this.execContext = execContext;
-    this.sharedCache = cacheManager == null
-      ? null
-      : cacheManager.getOrCreateCache(
-        "ai-route-embeddings",
-        io.gravitee.node.api.cache.CacheConfiguration.builder().maxSize(10_000).build()
-      );
-  }
+    if (cacheManager == null) {
+      ConcurrentHashMap<String, List<RuleEmbedding>> local = new ConcurrentHashMap<>();
+      this.embeddingCache = new EmbeddingCache() {
+        @Override
+        public List<RuleEmbedding> get(String key) {
+          return local.get(key);
+        }
 
-  private List<RuleEmbedding> cachedEmbeddings(String key) {
-    return sharedCache != null ? sharedCache.get(key) : localCache.get(key);
-  }
-
-  private void cacheEmbeddings(String key, List<RuleEmbedding> embeddings) {
-    if (sharedCache != null) {
-      sharedCache.put(key, embeddings);
+        @Override
+        public void put(String key, List<RuleEmbedding> embeddings) {
+          local.put(key, embeddings);
+        }
+      };
     } else {
-      localCache.put(key, embeddings);
+      Cache<String, List<RuleEmbedding>> shared = cacheManager.getOrCreateCache(
+        "ai-route-embeddings",
+        CacheConfiguration.builder().maxSize(MAX_CACHED_ROUTE_STEPS).build()
+      );
+      this.embeddingCache = new EmbeddingCache() {
+        @Override
+        public List<RuleEmbedding> get(String key) {
+          return shared.get(key);
+        }
+
+        @Override
+        public void put(String key, List<RuleEmbedding> embeddings) {
+          shared.put(key, embeddings);
+        }
+      };
     }
   }
 
@@ -129,7 +162,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
       warmups.add(
         rxComputeRuleEmbeddings(cfg, ee)
           .doOnSuccess(embeddings -> {
-            cacheEmbeddings(cacheKey, embeddings);
+            embeddingCache.put(cacheKey, embeddings);
             LOGGER.info(
               "Pre-computed {} reference embedding(s) for KNN route step '{}'",
               embeddings.size(),
@@ -242,7 +275,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
   private Single<String> rxLlmStructuredRoute(RouteStepConfig cfg, String text, String stepId) {
     // The input text (typically from a prior LLM judge step) is the label itself.
     // Normalize: trim whitespace, strip quotes, and lowercase for fuzzy matching.
-    String normalized = text.strip().toLowerCase();
+    String normalized = text.strip().toLowerCase(Locale.ROOT);
     // Strip surrounding quotes if present (e.g. "tool use request" → tool use request)
     if (
       normalized.length() >= 2 &&
@@ -253,7 +286,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
     }
     // Match against rule labels (case-insensitive, using contains for flexibility)
     for (RouteRule rule : cfg.getRulesList()) {
-      if (normalized.contains(rule.getLabel().toLowerCase())) {
+      if (normalized.contains(rule.getLabel().toLowerCase(Locale.ROOT))) {
         LOGGER.debug(
           "RouteStep '{}': LLM_STRUCTURED matched label='{}' from text='{}'",
           stepId,
@@ -297,7 +330,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
       : stepId;
 
     // Check cache first — if populated (by warmup), no async embedding needed
-    List<RuleEmbedding> cached = cachedEmbeddings(cacheKey);
+    List<RuleEmbedding> cached = embeddingCache.get(cacheKey);
     if (cached != null) {
       return ee
         .rxEmbed(new EmbedRequest(text))
@@ -306,7 +339,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
 
     // Cache miss — compute reference embeddings reactively, then embed the query
     return rxComputeRuleEmbeddings(cfg, ee)
-      .doOnSuccess(embeddings -> cacheEmbeddings(cacheKey, embeddings))
+      .doOnSuccess(embeddings -> embeddingCache.put(cacheKey, embeddings))
       .flatMap(references ->
         ee
           .rxEmbed(new EmbedRequest(text))

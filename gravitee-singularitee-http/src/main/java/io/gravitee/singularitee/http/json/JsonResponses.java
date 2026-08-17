@@ -27,7 +27,16 @@ public final class JsonResponses {
 
   private static final Logger log = LoggerFactory.getLogger(JsonResponses.class);
 
+  /** Longest slice of a JSON body worth logging — enough to identify it without flooding the log. */
+  private static final int LOGGED_BODY_MAX_LENGTH = 200;
+
   private JsonResponses() {}
+
+  private static String truncateForLog(String json) {
+    return json.length() <= LOGGED_BODY_MAX_LENGTH
+      ? json
+      : json.substring(0, LOGGED_BODY_MAX_LENGTH) + "… (" + json.length() + " chars)";
+  }
 
   public static void writeJson(RoutingContext rc, int status, String json) {
     var response = rc.response();
@@ -38,11 +47,18 @@ public final class JsonResponses {
     // unhandled exception). Once the head is out, status/headers are gone —
     // terminate the stream instead; once ended, there is nothing left to do.
     if (response.ended()) {
-      log.debug("Response already ended — dropping late write (status {}): {}", status, json);
+      log.debug(
+        "Response already ended — dropping late write (status {}): {}",
+        status,
+        truncateForLog(json)
+      );
       return;
     }
     if (response.headWritten()) {
-      log.warn("Response head already written — terminating stream instead of writing: {}", json);
+      log.warn(
+        "Response head already written — terminating stream instead of writing: {}",
+        truncateForLog(json)
+      );
       response.end();
       return;
     }

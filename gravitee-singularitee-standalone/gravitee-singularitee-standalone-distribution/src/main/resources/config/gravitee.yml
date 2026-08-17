@@ -136,6 +136,19 @@ ai:
   streaming:
     buffer-capacity: 256
 
+  # Cross-request todo-plan persistence, keyed by the request's cache_key
+  # (OpenAI prompt_cache_key / user). session-ttl is the idle timeout in
+  # seconds; 0 disables persistence.
+  #todos:
+  #  session-ttl: 1800
+  #  session-max-entries: 10000
+
+  # Stored conversations for the OpenAI Responses continuation model
+  # (previous_response_id / store). ttl is the idle timeout in seconds; 0 disables.
+  #conversations:
+  #  ttl: 3600
+  #  max-entries: 10000
+
 # ── Management API ───────────────────────────────────────────────────────
 # Internal HTTP API for health checks, metrics, configuration introspection.
 services:

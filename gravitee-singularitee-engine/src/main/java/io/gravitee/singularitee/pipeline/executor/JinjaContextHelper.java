@@ -22,6 +22,7 @@ import io.gravitee.singularitee.pipeline.PipelineContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,12 +32,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Centralises the context composition that every executor needs when
  * resolving Jinja2 templates in step configuration (prompts, guard messages,
- * raw templates). Before this helper existed, three executors
- * ({@link InferStepExecutor}, {@link LlmGuardStepExecutor},
- * {@link GuardStepExecutor}) each copy-pasted their own partial version
- * of the same logic, with predictable drift: the LLM guard was missing
- * {@code messages} and the per-step {@code context:} Struct overlay,
- * causing Qwen3Guard templates to render empty prompts.
+ * raw templates), so every step type renders against the same variables —
+ * partial per-executor copies drift and silently render empty prompts.
  *
  * <p>The standard Jinja2 context exposes:
  * <ul>
@@ -103,9 +100,7 @@ public final class JinjaContextHelper {
     // MUST come after buildStepOutputContext: the mirrored condition fields
     // (todos.total/completed/remaining) nest into a map under the same "todos"
     // key and would otherwise replace the list — templates then iterate three
-    // key STRINGS and render "<function str.title>" garbage, and the model
-    // never sees its plan (observed live: the work loop ground through all 8
-    // bounded iterations unable to complete a single item).
+    // key STRINGS instead of the items and the model never sees its plan.
     ctx.put("todos", buildTodos(pctx));
 
     // Plan-level constraints (locked user decisions from set_todos) — a
@@ -167,7 +162,7 @@ public final class JinjaContextHelper {
         .map(t ->
           Map.<String, Object>of(
             "role",
-            t.role().name().toLowerCase(),
+            t.role().name().toLowerCase(Locale.ROOT),
             "content",
             t.content() != null ? t.content() : ""
           )
@@ -276,7 +271,7 @@ public final class JinjaContextHelper {
           "title",
           t.title(),
           "status",
-          t.status(),
+          t.status().wireName(),
           "proof",
           t.proof() == null ? "" : t.proof()
         )
@@ -432,7 +427,7 @@ public final class JinjaContextHelper {
     var sb = new StringBuilder();
     for (var turn : pctx.messages()) {
       sb
-        .append(turn.role().name().toLowerCase())
+        .append(turn.role().name().toLowerCase(Locale.ROOT))
         .append(": ")
         .append(turn.content() != null ? turn.content() : "")
         .append("\n");

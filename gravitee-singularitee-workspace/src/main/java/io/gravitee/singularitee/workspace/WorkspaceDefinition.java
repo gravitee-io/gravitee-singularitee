@@ -15,6 +15,7 @@
  */
 package io.gravitee.singularitee.workspace;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -580,9 +581,7 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
     List<String> toolClose
   ) {
     /** A bare string as the whole {@code tags:} value is a reference by id. */
-    @com.fasterxml.jackson.annotation.JsonCreator(
-      mode = com.fasterxml.jackson.annotation.JsonCreator.Mode.DELEGATING
-    )
+    @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
     public static TagsDef ref(String id) {
       return new TagsDef(id, null, null, null, null, null);
     }
@@ -610,7 +609,7 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
     @JsonProperty("threshold") float threshold
   ) implements StepConfig {}
 
-  // ── Tool select ───────────────────────────────────────────────────────────
+  // ── Todo ──────────────────────────────────────────────────────────────────
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record TodoConfig(
@@ -618,6 +617,8 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
     // step that produced it); falls through to next_step when unset.
     @JsonProperty("handled_step") String handledStep
   ) implements StepConfig {}
+
+  // ── Tool select ───────────────────────────────────────────────────────────
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record ToolSelectConfig(

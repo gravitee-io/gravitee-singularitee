@@ -213,7 +213,7 @@ workspace:
 the `remote_*` proxies, and `regex` / `composite_classifier` (pure Java, run anywhere).
 
 **Step types** (`StepExecutorFactory.createHandlers`): `infer`, `classify`, `embed`, `route`,
-`guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`.
+`guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`.
 
 **Composition** — `includes:` pulls `models:` / `pipelines:` / `templates:` from the sibling
 `models/`, `pipelines/`, `templates/` folders (globs allowed). Because ids are logical, several

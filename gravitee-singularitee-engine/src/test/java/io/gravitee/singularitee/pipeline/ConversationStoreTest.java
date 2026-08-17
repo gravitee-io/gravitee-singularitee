@@ -51,12 +51,12 @@ class ConversationStoreTest {
       new ChatTurn(ChatRole.ASSISTANT, "Which season?")
     );
     var todos = List.of(
-      new PipelineContext.TodoItem("1", "a", "done"),
-      new PipelineContext.TodoItem("2", "b", "in_progress")
+      new PipelineContext.TodoItem("1", "a", TodoStatus.DONE, null),
+      new PipelineContext.TodoItem("2", "b", TodoStatus.IN_PROGRESS, null)
     );
 
     store.put("resp_x", turns, todos, "use uv; pygame GUI");
-    var stored = store.get("resp_x");
+    var stored = store.get("resp_x").orElseThrow();
 
     var restoredTurns = ConversationStore.toChatTurns(stored);
     assertThat(restoredTurns).hasSize(4);
@@ -68,16 +68,16 @@ class ConversationStoreTest {
 
     var restoredTodos = ConversationStore.toTodoItems(stored);
     assertThat(restoredTodos).hasSize(2);
-    assertThat(restoredTodos.get(1).status()).isEqualTo("in_progress");
+    assertThat(restoredTodos.get(1).status()).isEqualTo(TodoStatus.IN_PROGRESS);
     assertThat(stored.constraints()).isEqualTo("use uv; pygame GUI");
   }
 
   @Test
   void unknown_id_and_disabled_store_return_null() {
-    assertThat(store().get("nope")).isNull();
+    assertThat(store().get("nope")).isEmpty();
     var disabled = new ConversationStore(new StandaloneCacheManager(), 0, 100);
     assertThat(disabled.isEnabled()).isFalse();
     disabled.put("resp_x", List.of(new ChatTurn(ChatRole.USER, "hi")), List.of(), null);
-    assertThat(disabled.get("resp_x")).isNull();
+    assertThat(disabled.get("resp_x")).isEmpty();
   }
 }

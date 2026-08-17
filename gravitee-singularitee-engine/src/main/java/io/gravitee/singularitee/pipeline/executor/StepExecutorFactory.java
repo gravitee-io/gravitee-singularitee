@@ -22,6 +22,7 @@ import static io.gravitee.singularitee.protocol.StepType.STEP_TYPE_LOOP;
 import static io.gravitee.singularitee.protocol.StepType.STEP_TYPE_REGEX_GUARD;
 import static io.gravitee.singularitee.protocol.StepType.STEP_TYPE_ROUTE;
 
+import io.gravitee.singularitee.pipeline.TodoSessionStore;
 import io.gravitee.singularitee.protocol.Pipeline;
 import io.gravitee.singularitee.protocol.StepType;
 import io.gravitee.singularitee.registry.ModelRegistry;
@@ -44,7 +45,7 @@ public final class StepExecutorFactory {
 
   private final StepExecutionContext execContext;
   private final JinjaRenderer jinjaRenderer;
-  private io.gravitee.singularitee.pipeline.TodoSessionStore todoSessionStore;
+  private final TodoSessionStore todoSessionStore;
   private final Map<StepType, StepExecutor<?>> handlers;
   private SubPipelineStepExecutor subPipelineExecutor;
 
@@ -78,7 +79,7 @@ public final class StepExecutorFactory {
     StreamRegistry streamRegistry,
     JinjaRenderer jinjaRenderer,
     SubPipelineStepExecutor.PipelineExecutorCallback pipelineCallback,
-    io.gravitee.singularitee.pipeline.TodoSessionStore todoSessionStore
+    TodoSessionStore todoSessionStore
   ) {
     this.execContext = new StepExecutionContext(modelRegistry, pipelineRegistry, streamRegistry);
     this.jinjaRenderer = jinjaRenderer;
@@ -103,7 +104,7 @@ public final class StepExecutorFactory {
    */
   public void setSubPipelineCallbacks(
     SubPipelineStepExecutor.PipelineExecutorCallback localCallback,
-    java.util.Map<String, SubPipelineStepExecutor.PipelineExecutorCallback> remoteCallbacks
+    Map<String, SubPipelineStepExecutor.PipelineExecutorCallback> remoteCallbacks
   ) {
     if (subPipelineExecutor != null) {
       subPipelineExecutor.setCallbacks(localCallback, remoteCallbacks);
@@ -154,10 +155,7 @@ public final class StepExecutorFactory {
     subPipelineExecutor = new SubPipelineStepExecutor(execContext, pipelineCallback, null);
     handlers.put(StepType.STEP_TYPE_SUB_PIPELINE, subPipelineExecutor);
 
-    LOGGER.info(
-      "Initialized {} step handlers: INFER, CLASSIFY, EMBED, GUARD, LLM_GUARD, REGEX_GUARD, BREAK, ROUTE, LOOP, SUB_PIPELINE, TOOL_SELECT, TODO",
-      handlers.size()
-    );
+    LOGGER.info("Initialized {} step handlers: {}", handlers.size(), handlers.keySet());
 
     return handlers;
   }

@@ -100,6 +100,10 @@ Runnable end-to-end version: `examples/pipelines/todo-agent.yaml`.
 | `complete_todo` | `id`, `note?` | Marks the item `done`; the next `pending` item becomes `in_progress`. Unknown ids return an error result to the model. |
 | `ask_user` | `question` | Pauses for the user: the question streams as the visible assistant answer, the turn ends with `finish_reason: "stop"`, and the plan is saved for the session. |
 
+Individual infer steps can opt out of the injection with `server_tools: false`
+(e.g. a prose-only summarize step that must never call `set_todos`) — see the
+infer `## Options` table in [Text generation](../text-generation/README.md).
+
 ### Session persistence (`gravitee.yml`)
 | Key | Default | Purpose |
 | --- | --- | --- |

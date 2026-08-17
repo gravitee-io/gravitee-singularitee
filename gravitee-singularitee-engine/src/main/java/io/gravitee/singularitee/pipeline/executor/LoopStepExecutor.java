@@ -23,6 +23,7 @@ import io.gravitee.singularitee.protocol.LoopStepConfig;
 import io.gravitee.singularitee.protocol.MessageDef;
 import io.gravitee.singularitee.protocol.PipelineStep;
 import io.reactivex.rxjava3.core.Maybe;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,7 +102,7 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
     if (maxIterations > 0 && currentIteration >= maxIterations) {
       pctx.set(stepId + ".max_iterations_reached", "true");
       if (ctx.metrics() != null) {
-        ctx.metrics().recordFailureSignal(stepId, "loop_max_iterations");
+        ctx.metrics().recordFailureSignal(stepId, "step", "loop_max_iterations");
       }
       LOGGER.warn(
         "LoopStep '{}': max iterations ({}) reached without condition being met, branching to fallback",
@@ -209,7 +210,7 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
    */
   private static ChatRole resolveRole(String roleString) {
     if (roleString == null || roleString.isBlank()) return ChatRole.USER;
-    return switch (roleString.toLowerCase()) {
+    return switch (roleString.toLowerCase(Locale.ROOT)) {
       case "system" -> ChatRole.SYSTEM;
       case "assistant" -> ChatRole.ASSISTANT;
       case "user" -> ChatRole.USER;

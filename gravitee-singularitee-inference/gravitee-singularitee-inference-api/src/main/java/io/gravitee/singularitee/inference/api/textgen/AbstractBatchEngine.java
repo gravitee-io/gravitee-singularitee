@@ -300,6 +300,12 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     }
   }
 
+  /** Per-request performance: current cumulative counters minus the sequence-start baseline. */
+  private InferencePerformance perfDelta(SequenceState<STATE> state) {
+    InferencePerformance current = adapter.buildPerformance(state.engineState);
+    return current == null ? null : current.minus(state.perfBaseline);
+  }
+
   /**
    * Finalizes a sequence cancelled before its natural end (client disconnect,
    * context-window guard): cleans up engine state, releases the tracking maps
@@ -310,12 +316,6 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
    * @return a final token with finish reason {@code "cancelled"}, or
    *         {@code null} if the sequence already emitted its final token
    */
-  /** Per-request performance: current cumulative counters minus the sequence-start baseline. */
-  private InferencePerformance perfDelta(SequenceState<STATE> state) {
-    InferencePerformance current = adapter.buildPerformance(state.engineState);
-    return current == null ? null : current.minus(state.perfBaseline);
-  }
-
   private InferenceToken<TOKEN> finalizeCancelled(SequenceState<STATE> state) {
     if (state == null || state.finalSent) {
       return null;
@@ -408,17 +408,20 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     }
   }
 
-  /**
-   * Processes a token output for a sequence.
-   */
   /** Identical consecutive token emissions before a sequence is cut as degenerate. */
   private static final int DEGENERATE_RUN_LIMIT = 256;
 
+  private static final int LOG_EXCERPT_LENGTH = 16;
+
+  /** Truncated, newline-escaped excerpt of generated text, safe for log lines. */
   private static String sanitizeForLog(String text) {
     String t = text.replace("\n", "\\n").replace("\r", "\\r");
-    return t.length() > 16 ? t.substring(0, 16) + "…" : t;
+    return t.length() > LOG_EXCERPT_LENGTH ? t.substring(0, LOG_EXCERPT_LENGTH) + "…" : t;
   }
 
+  /**
+   * Processes a token output for a sequence.
+   */
   private void processOutput(
     SequenceState<STATE> state,
     TOKEN token,
@@ -708,8 +711,9 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       state.cacheKey = cacheKey;
       try {
         state.perfBaseline = adapter.buildPerformance(engineState);
-      } catch (Exception e) {
-        LOGGER.debug("perf baseline unavailable: {}", e.getMessage());
+      } catch (RuntimeException e) {
+        // Without a baseline this request reports lifetime-cumulative timings.
+        LOGGER.warn("perf baseline unavailable — timings will be cumulative: {}", e.getMessage());
       }
       sequences.put(internalId, state);
       externalToInternal.put(seqId, internalId);

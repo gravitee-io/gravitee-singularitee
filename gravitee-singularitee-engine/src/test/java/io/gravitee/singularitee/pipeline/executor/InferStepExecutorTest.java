@@ -202,14 +202,16 @@ class InferStepExecutorTest {
     // The live leak: invented channel form containing dialect special tokens.
     String leak =
       "<|channel|>functions.set_todos<|channel|>commentary json<|message|>{\"todos\":[]}";
-    assertThat(InferStepExecutor.hasToolMarkerResidue(leak, harmony)).isTrue();
+    assertThat(ToolCallOutcomeRecorder.hasToolMarkerResidue(leak, harmony)).isTrue();
     // A stray to=functions. routing prefix (derived from the configured tag) is residue too.
     assertThat(
-      InferStepExecutor.hasToolMarkerResidue("x to=functions.bash {\"c\":1}", harmony)
+      ToolCallOutcomeRecorder.hasToolMarkerResidue("x to=functions.bash {\"c\":1}", harmony)
     ).isTrue();
     // Plain prose never trips it; markerless dialects never trip it.
-    assertThat(InferStepExecutor.hasToolMarkerResidue("The capital is Paris.", harmony)).isFalse();
-    assertThat(InferStepExecutor.hasToolMarkerResidue(leak, plain)).isFalse();
+    assertThat(
+      ToolCallOutcomeRecorder.hasToolMarkerResidue("The capital is Paris.", harmony)
+    ).isFalse();
+    assertThat(ToolCallOutcomeRecorder.hasToolMarkerResidue(leak, plain)).isFalse();
 
     // Dialect-agnostic: a chatml-tagged step flags ITS leaked tag, not Harmony's.
     var chatml = InferStepConfig.newBuilder()
@@ -217,9 +219,9 @@ class InferStepExecutorTest {
       .setToolCallTags(TagConfig.newBuilder().setOpenTag("<tool_call>").setCloseTag("</tool_call>"))
       .build();
     assertThat(
-      InferStepExecutor.hasToolMarkerResidue("oops <tool_call>{\"n\":1}", chatml)
+      ToolCallOutcomeRecorder.hasToolMarkerResidue("oops <tool_call>{\"n\":1}", chatml)
     ).isTrue();
-    assertThat(InferStepExecutor.hasToolMarkerResidue(leak, chatml)).isFalse();
+    assertThat(ToolCallOutcomeRecorder.hasToolMarkerResidue(leak, chatml)).isFalse();
   }
 
   // ── Step system prompt combines with the caller's ─────────────────────────
@@ -536,15 +538,19 @@ class InferStepExecutorTest {
     @Test
     void empty_tool_payload_returns_text_untouched() {
       var cfg = InferStepConfig.newBuilder().build();
-      assertThat(InferStepExecutor.withReWrappedToolCalls("answer", "", cfg)).isEqualTo("answer");
-      assertThat(InferStepExecutor.withReWrappedToolCalls("answer", null, cfg)).isEqualTo("answer");
+      assertThat(ToolCallOutcomeRecorder.withReWrappedToolCalls("answer", "", cfg)).isEqualTo(
+        "answer"
+      );
+      assertThat(ToolCallOutcomeRecorder.withReWrappedToolCalls("answer", null, cfg)).isEqualTo(
+        "answer"
+      );
     }
 
     @Test
     void bare_payload_is_rewrapped_with_default_tags() {
       var cfg = InferStepConfig.newBuilder().build();
       assertThat(
-        InferStepExecutor.withReWrappedToolCalls("Let me check.", "{\"name\":\"f\"}", cfg)
+        ToolCallOutcomeRecorder.withReWrappedToolCalls("Let me check.", "{\"name\":\"f\"}", cfg)
       ).isEqualTo("Let me check.\n<tool_call>{\"name\":\"f\"}</tool_call>");
     }
 
@@ -555,7 +561,7 @@ class InferStepExecutorTest {
           TagConfig.newBuilder().setOpenTag("<|tool_call>").setCloseTag("<tool_call|>")
         )
         .build();
-      assertThat(InferStepExecutor.withReWrappedToolCalls("", "call:f{x:1}", cfg)).isEqualTo(
+      assertThat(ToolCallOutcomeRecorder.withReWrappedToolCalls("", "call:f{x:1}", cfg)).isEqualTo(
         "<|tool_call>call:f{x:1}<tool_call|>"
       );
     }
@@ -599,7 +605,7 @@ class InferStepExecutorTest {
     void configured_template_with_tools_turns_stop_into_tool_calls() {
       var pctx = contextWithTools();
 
-      InferStepExecutor.maybeExtractMarkerlessToolCalls(
+      ToolCallOutcomeRecorder.maybeExtractMarkerlessToolCalls(
         pctx,
         "generate",
         configWithTemplate("glm-name-json"),
@@ -623,7 +629,7 @@ class InferStepExecutorTest {
     void no_template_configured_leaves_response_untouched() {
       var pctx = contextWithTools();
 
-      InferStepExecutor.maybeExtractMarkerlessToolCalls(
+      ToolCallOutcomeRecorder.maybeExtractMarkerlessToolCalls(
         pctx,
         "generate",
         configWithTemplate(null),
@@ -640,7 +646,7 @@ class InferStepExecutorTest {
     void plain_prose_answer_leaves_response_untouched() {
       var pctx = contextWithTools();
 
-      InferStepExecutor.maybeExtractMarkerlessToolCalls(
+      ToolCallOutcomeRecorder.maybeExtractMarkerlessToolCalls(
         pctx,
         "generate",
         configWithTemplate("glm-name-json"),
@@ -668,7 +674,7 @@ class InferStepExecutorTest {
         io.gravitee.singularitee.protocol.FinishReason.FINISH_REASON_STOP
       );
 
-      InferStepExecutor.maybeExtractMarkerlessToolCalls(
+      ToolCallOutcomeRecorder.maybeExtractMarkerlessToolCalls(
         pctx,
         "generate",
         configWithTemplate("glm-name-json"),
@@ -681,16 +687,16 @@ class InferStepExecutorTest {
     @Test
     void attempted_tool_name_strips_namespace_and_handles_junk() {
       assertThat(
-        InferStepExecutor.attemptedToolName("apply_patch code<|message|>{\"patch\":\"x\"}")
+        ToolCallOutcomeRecorder.attemptedToolName("apply_patch code<|message|>{\"patch\":\"x\"}")
       ).isEqualTo("apply_patch");
       assertThat(
-        InferStepExecutor.attemptedToolName("functions.apply_patch code<|message|>{}")
+        ToolCallOutcomeRecorder.attemptedToolName("functions.apply_patch code<|message|>{}")
       ).isEqualTo("apply_patch");
-      assertThat(InferStepExecutor.attemptedToolName("  send_email {\"to\":\"a\"}")).isEqualTo(
-        "send_email"
-      );
-      assertThat(InferStepExecutor.attemptedToolName("<|weird|>")).isEmpty();
-      assertThat(InferStepExecutor.attemptedToolName(null)).isEmpty();
+      assertThat(
+        ToolCallOutcomeRecorder.attemptedToolName("  send_email {\"to\":\"a\"}")
+      ).isEqualTo("send_email");
+      assertThat(ToolCallOutcomeRecorder.attemptedToolName("<|weird|>")).isEmpty();
+      assertThat(ToolCallOutcomeRecorder.attemptedToolName(null)).isEmpty();
     }
 
     @Test
@@ -700,7 +706,7 @@ class InferStepExecutorTest {
         io.gravitee.singularitee.protocol.FinishReason.FINISH_REASON_LENGTH
       );
 
-      InferStepExecutor.maybeExtractMarkerlessToolCalls(
+      ToolCallOutcomeRecorder.maybeExtractMarkerlessToolCalls(
         pctx,
         "generate",
         configWithTemplate("glm-name-json"),

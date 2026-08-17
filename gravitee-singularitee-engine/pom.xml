@@ -81,6 +81,8 @@
             <artifactId>gravitee-node-cache-common</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Required by the standalone cache plugin above: StandaloneCache's static
+             initializer loads io.gravitee.node.logging.NodeLoggerFactory. -->
         <dependency>
             <groupId>io.gravitee.node</groupId>
             <artifactId>gravitee-node-logging</artifactId>

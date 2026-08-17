@@ -15,8 +15,8 @@
  */
 package io.gravitee.singularitee.pipeline.executor;
 
-import static io.gravitee.singularitee.pipeline.executor.InferStepExecutor.escapeSpecials;
-import static io.gravitee.singularitee.pipeline.executor.InferStepExecutor.neutralizeSpecialTokens;
+import static io.gravitee.singularitee.pipeline.executor.PromptAssembler.escapeSpecials;
+import static io.gravitee.singularitee.pipeline.executor.PromptAssembler.neutralizeSpecialTokens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
@@ -138,7 +138,7 @@ class SpecialTokenNeutralizationTest {
       )
     );
 
-    var out = InferStepExecutor.neutralizeSpecialTokens(List.of(message), HARMONY);
+    var out = PromptAssembler.neutralizeSpecialTokens(List.of(message), HARMONY);
 
     assertThat(flatten(out)).contains("<\\|channel|>").doesNotContain("<|channel|>");
   }
@@ -159,7 +159,7 @@ class SpecialTokenNeutralizationTest {
     );
 
     assertThat(
-      flatten(InferStepExecutor.neutralizeSpecialTokens(List.of(message), HARMONY))
+      flatten(PromptAssembler.neutralizeSpecialTokens(List.of(message), HARMONY))
     ).doesNotContain("<|channel|>");
   }
 
@@ -171,7 +171,7 @@ class SpecialTokenNeutralizationTest {
     message.put("name", "<|start|>");
     message.put("content", "ok");
 
-    assertThat(flatten(InferStepExecutor.neutralizeSpecialTokens(List.of(message), HARMONY)))
+    assertThat(flatten(PromptAssembler.neutralizeSpecialTokens(List.of(message), HARMONY)))
       .doesNotContain("<|channel|>")
       .doesNotContain("<|start|>");
   }
@@ -189,7 +189,7 @@ class SpecialTokenNeutralizationTest {
     );
     List<Map<String, Object>> input = List.of(message);
 
-    assertThat(InferStepExecutor.neutralizeSpecialTokens(input, HARMONY)).isSameAs(input);
+    assertThat(PromptAssembler.neutralizeSpecialTokens(input, HARMONY)).isSameAs(input);
   }
 
   @Test
@@ -200,7 +200,7 @@ class SpecialTokenNeutralizationTest {
     message.put("count", 42);
     message.put("flag", true);
 
-    var out = InferStepExecutor.neutralizeSpecialTokens(List.of(message), HARMONY);
+    var out = PromptAssembler.neutralizeSpecialTokens(List.of(message), HARMONY);
 
     assertThat(out.get(0)).containsEntry("count", 42).containsEntry("flag", true);
   }

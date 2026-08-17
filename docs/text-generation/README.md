@@ -102,6 +102,7 @@ Templated prompts: a step can override messages with Jinja2 content, or bypass t
 | `stream_thinking` | `false` | Pipeline steps with `role: internal` normally stream nothing; `true` forwards ONLY their THINKING deltas so UIs can show live deliberation (content and tool deltas stay suppressed). No effect on non-internal steps. |
 | `context` | empty | Extra typed Jinja variables (e.g. `enable_thinking: false`) merged into the rendering context and forwarded as `template_context`. |
 | `inject_tools` | `true` | `false` hides caller tools from this step (`{{tools}}` undefined, nothing passed to the chat template). |
+| `server_tools` | `true` | `false` hides SERVER-owned tools (the todo tools) from this step — for prose-only steps in a todo pipeline that must not see or call `set_todos`/`complete_todo`. See [Todos](../todos/README.md). |
 | `role` (step level) | `output` | `output` = streamed as OUTPUT; `thinking` = streamed tagged THINKING; `internal` = never streamed and not appended to the conversation. |
 
 #### How markers are matched

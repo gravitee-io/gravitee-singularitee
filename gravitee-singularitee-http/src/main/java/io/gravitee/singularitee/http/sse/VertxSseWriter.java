@@ -51,7 +51,9 @@ public final class VertxSseWriter {
       // may produce their first real event many seconds in, and SSE clients
       // waiting for first byte otherwise look frozen. Comments are ignored by
       // every SSE parser.
-      response.write(": stream-open\n\n");
+      response
+        .write(": stream-open\n\n")
+        .onFailure(err -> log.debug("SSE open-comment write failed: {}", err.getMessage()));
     }
     frames.subscribe(
       new Subscriber<String>() {

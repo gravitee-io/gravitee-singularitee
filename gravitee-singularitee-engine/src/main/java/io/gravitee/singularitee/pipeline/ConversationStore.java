@@ -15,14 +15,15 @@
  */
 package io.gravitee.singularitee.pipeline;
 
-import io.gravitee.node.api.cache.Cache;
-import io.gravitee.node.api.cache.CacheConfiguration;
 import io.gravitee.node.api.cache.CacheManager;
 import io.gravitee.singularitee.engine.ChatRole;
 import io.gravitee.singularitee.engine.ChatTurn;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Server-side conversation state for the OpenAI Responses continuation model
@@ -36,7 +37,10 @@ import java.util.List;
  * restarts and span nodes). Values are small serializable DTOs. Time-to-idle
  * is the conversation timeout.
  */
-public final class ConversationStore {
+public final class ConversationStore
+  extends CacheBackedStore<ConversationStore.StoredConversation> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(ConversationStore.class);
 
   /** Serializable snapshot of one transcript turn. */
   public record StoredTurn(
@@ -58,34 +62,18 @@ public final class ConversationStore {
     String constraints
   ) implements Serializable {}
 
-  private final Cache<String, StoredConversation> cache;
-
   /**
    * @param cacheManager   the node cache manager; {@code null} disables storage
    * @param idleTtlSeconds conversation idle timeout; {@code <= 0} disables storage
    * @param maxEntries     upper bound on concurrently stored conversations
    */
   public ConversationStore(CacheManager cacheManager, long idleTtlSeconds, long maxEntries) {
-    this.cache = (cacheManager == null || idleTtlSeconds <= 0)
-      ? null
-      : cacheManager.getOrCreateCache(
-        "ai-conversations",
-        CacheConfiguration.builder()
-          .timeToIdleInMs(idleTtlSeconds * 1000)
-          .maxSize(maxEntries)
-          .build()
-      );
+    super(cacheManager, "ai-conversations", idleTtlSeconds, maxEntries);
   }
 
-  /** Whether storage is active. */
-  public boolean isEnabled() {
-    return cache != null;
-  }
-
-  /** Returns the stored conversation, or {@code null} when unknown/expired/disabled. */
-  public StoredConversation get(String responseId) {
-    if (cache == null || responseId == null || responseId.isBlank()) return null;
-    return cache.get(responseId);
+  /** Returns the stored conversation, or empty when unknown/expired/disabled. */
+  public Optional<StoredConversation> get(String responseId) {
+    return Optional.ofNullable(lookup(responseId));
   }
 
   /** Persists the transcript + todo plan + plan constraints under the response id. */
@@ -95,7 +83,7 @@ public final class ConversationStore {
     List<PipelineContext.TodoItem> todos,
     String constraints
   ) {
-    if (cache == null || responseId == null || responseId.isBlank() || turns == null) {
+    if (unusable(responseId) || turns == null) {
       return;
     }
     List<StoredTurn> stored = new ArrayList<>(turns.size());
@@ -109,17 +97,21 @@ public final class ConversationStore {
     }
     List<TodoSessionStore.SessionTodo> storedTodos = todos == null
       ? List.of()
-      : todos
-        .stream()
-        .map(t -> new TodoSessionStore.SessionTodo(t.id(), t.title(), t.status(), t.proof()))
-        .toList();
+      : TodoSessionStore.toSessionTodos(todos);
     cache.put(responseId, new StoredConversation(List.copyOf(stored), storedTodos, constraints));
   }
 
-  /** Rebuilds engine turns from a stored conversation. */
+  /** Rebuilds engine turns from a stored conversation. Turns with an unknown role are skipped. */
   public static List<ChatTurn> toChatTurns(StoredConversation conversation) {
     List<ChatTurn> turns = new ArrayList<>(conversation.turns().size());
     for (StoredTurn t : conversation.turns()) {
+      ChatRole role;
+      try {
+        role = ChatRole.valueOf(t.role());
+      } catch (IllegalArgumentException e) {
+        LOGGER.warn("Stored conversation carries unknown role '{}' — skipping turn", t.role());
+        continue;
+      }
       List<ChatTurn.ToolCallTurn> calls = t.toolCalls() == null
         ? List.of()
         : t
@@ -127,26 +119,13 @@ public final class ConversationStore {
           .stream()
           .map(c -> new ChatTurn.ToolCallTurn(c.id(), c.name(), c.argumentsJson()))
           .toList();
-      turns.add(
-        new ChatTurn(
-          ChatRole.valueOf(t.role()),
-          t.content(),
-          List.of(),
-          calls,
-          t.toolCallId(),
-          t.name()
-        )
-      );
+      turns.add(new ChatTurn(role, t.content(), List.of(), calls, t.toolCallId(), t.name()));
     }
     return turns;
   }
 
   /** Rebuilds todo items from a stored conversation. */
   public static List<PipelineContext.TodoItem> toTodoItems(StoredConversation conversation) {
-    return conversation
-      .todos()
-      .stream()
-      .map(t -> new PipelineContext.TodoItem(t.id(), t.title(), t.status(), t.proof()))
-      .toList();
+    return TodoSessionStore.toTodoItems(conversation.todos());
   }
 }

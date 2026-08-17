@@ -21,6 +21,7 @@ import io.gravitee.singularitee.metrics.InferenceMetrics;
 import io.gravitee.singularitee.pipeline.PipelineContext;
 import io.gravitee.singularitee.protocol.InferResponse;
 import io.gravitee.singularitee.protocol.Pipeline;
+import io.gravitee.singularitee.protocol.PipelineStep;
 import io.reactivex.rxjava3.core.Maybe;
 import io.vertx.core.Context;
 import io.vertx.core.streams.WriteStream;
@@ -47,6 +48,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * @param pipelineSpan    the parent {@code ai.pipeline} span for per-step spans, or {@code null}
  * @param activeStepSpan  holder for the in-flight {@code ai.step} span (parent of model-call spans);
  *                        set by {@link StepDispatcher}, read by {@link ModelBoundStepExecutor}
+ * @param currentStep     the step being dispatched, set per step by {@link StepDispatcher} via
+ *                        {@link #withStep(PipelineStep)}; {@code null} outside a dispatch
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -59,8 +62,32 @@ public record StepContext(
   Tracer tracer,
   InferenceMetrics metrics,
   Span pipelineSpan,
-  AtomicReference<Span> activeStepSpan
+  AtomicReference<Span> activeStepSpan,
+  PipelineStep currentStep
 ) {
+  public StepContext(
+    PipelineContext pipelineContext,
+    Pipeline pipeline,
+    WriteStream<InferResponse> response,
+    Context callerContext,
+    Tracer tracer,
+    InferenceMetrics metrics,
+    Span pipelineSpan,
+    AtomicReference<Span> activeStepSpan
+  ) {
+    this(
+      pipelineContext,
+      pipeline,
+      response,
+      callerContext,
+      tracer,
+      metrics,
+      pipelineSpan,
+      activeStepSpan,
+      null
+    );
+  }
+
   /**
    * Untraced constructor for pipelines that run without server-side instrumentation
    * (client-side executor, CLI, tests). All tracer/metrics calls become no-ops.
@@ -80,6 +107,21 @@ public record StepContext(
       null,
       null,
       new AtomicReference<>()
+    );
+  }
+
+  /** Returns a copy of this context scoped to the given step. */
+  public StepContext withStep(PipelineStep step) {
+    return new StepContext(
+      pipelineContext,
+      pipeline,
+      response,
+      callerContext,
+      tracer,
+      metrics,
+      pipelineSpan,
+      activeStepSpan,
+      step
     );
   }
 

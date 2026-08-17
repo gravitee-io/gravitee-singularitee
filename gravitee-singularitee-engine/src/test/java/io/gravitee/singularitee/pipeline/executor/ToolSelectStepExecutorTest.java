@@ -276,7 +276,7 @@ class ToolSelectStepExecutorTest {
 
     // No shortlist → all tools (behavior identical when the key is absent)
     assertThat(
-      InferStepExecutor.injectableTools(
+      PromptAssembler.injectableTools(
         pctx,
         io.gravitee.singularitee.protocol.InferStepConfig.getDefaultInstance()
       )
@@ -285,7 +285,7 @@ class ToolSelectStepExecutorTest {
     // Shortlist → only named tools
     pctx.setSelectedTools(List.of("tool1"));
     assertThat(
-      InferStepExecutor.injectableTools(
+      PromptAssembler.injectableTools(
         pctx,
         io.gravitee.singularitee.protocol.InferStepConfig.getDefaultInstance()
       )
@@ -297,7 +297,7 @@ class ToolSelectStepExecutorTest {
     var pctx2 = pctx("hi", tools(3));
     pctx2.setSelectedTools(List.of());
     assertThat(
-      InferStepExecutor.injectableTools(
+      PromptAssembler.injectableTools(
         pctx2,
         io.gravitee.singularitee.protocol.InferStepConfig.getDefaultInstance()
       )
@@ -385,7 +385,7 @@ class ToolSelectStepExecutorTest {
         "\"parameters\":{\"type\":\"object\"}}}"
     );
 
-    var out = InferStepExecutor.withCondensedDescription(tool, Map.of("read", "Short."));
+    var out = PromptAssembler.withCondensedDescription(tool, Map.of("read", "Short."));
 
     assertThat(out.getDescription()).isEqualTo("Short.");
     assertThat(out.getTemplate())
@@ -405,7 +405,7 @@ class ToolSelectStepExecutorTest {
       "{\"name\":\"read\",\"description\":\"Long original description.\"}"
     );
 
-    var out = InferStepExecutor.withCondensedDescription(tool, Map.of("read", "Short."));
+    var out = PromptAssembler.withCondensedDescription(tool, Map.of("read", "Short."));
 
     assertThat(out.getDescription()).isEqualTo("Short.");
     assertThat(out.getTemplate()).contains("\"description\":\"Short.\"");
@@ -415,7 +415,7 @@ class ToolSelectStepExecutorTest {
   void tool_without_condensed_entry_is_returned_unchanged() {
     var tool = toolWithTemplate("write", "Original.", "{\"name\":\"write\"}");
 
-    var out = InferStepExecutor.withCondensedDescription(tool, Map.of("read", "Short."));
+    var out = PromptAssembler.withCondensedDescription(tool, Map.of("read", "Short."));
 
     assertThat(out).isSameAs(tool);
   }
@@ -424,7 +424,7 @@ class ToolSelectStepExecutorTest {
   void unparseable_template_keeps_original_template_but_rewrites_description() {
     var tool = toolWithTemplate("read", "Original.", "not json {{{");
 
-    var out = InferStepExecutor.withCondensedDescription(tool, Map.of("read", "Short."));
+    var out = PromptAssembler.withCondensedDescription(tool, Map.of("read", "Short."));
 
     assertThat(out.getDescription()).isEqualTo("Short.");
     assertThat(out.getTemplate()).isEqualTo("not json {{{");
@@ -445,7 +445,7 @@ class ToolSelectStepExecutorTest {
     var plain = pctx("hi", toolList);
     plain.setSelectedTools(List.of("tool0"));
     assertThat(
-      InferStepExecutor.injectableTools(
+      PromptAssembler.injectableTools(
         plain,
         io.gravitee.singularitee.protocol.InferStepConfig.getDefaultInstance()
       ).get(0)
@@ -455,7 +455,7 @@ class ToolSelectStepExecutorTest {
     var pctx = pctx("hi", toolList);
     pctx.setSelectedTools(List.of("tool0"));
     pctx.setCondensedToolDescriptions(Map.of("tool0", "Zero."));
-    var injected = InferStepExecutor.injectableTools(
+    var injected = PromptAssembler.injectableTools(
       pctx,
       io.gravitee.singularitee.protocol.InferStepConfig.getDefaultInstance()
     );

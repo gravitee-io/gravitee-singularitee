@@ -19,7 +19,10 @@ import io.gravitee.singularitee.engine.ChatTurn;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Trims a chat history to fit a model's context window.
@@ -49,6 +52,8 @@ import java.util.Map;
  * @author GraviteeSource Team
  */
 public final class ChatWindowTrimmer {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(ChatWindowTrimmer.class);
 
   /** Prefix marking a head-truncated message content. */
   public static final String TRIM_MARKER = "[...trimmed]";
@@ -150,7 +155,7 @@ public final class ChatWindowTrimmer {
   private static final Adapter<ChatTurn> TURN_ADAPTER = new Adapter<>() {
     @Override
     public String role(ChatTurn m) {
-      return m.role() != null ? m.role().name().toLowerCase() : "";
+      return m.role() != null ? m.role().name().toLowerCase(Locale.ROOT) : "";
     }
 
     @Override
@@ -271,6 +276,7 @@ public final class ChatWindowTrimmer {
     // even if unit bookkeeping missed a shape, an orphaned tool message is a
     // guaranteed template error, while dropping it merely loses old context.
     while (keepFrom < n - 1 && "tool".equalsIgnoreCase(a.role(messages.get(keepFrom)))) {
+      LOGGER.debug("Trim window opened on a tool result at index {} — advancing past it", keepFrom);
       keepFrom++;
     }
 

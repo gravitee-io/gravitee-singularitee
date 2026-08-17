@@ -128,11 +128,12 @@ class TokenCaptureStreamTest {
         accumulator,
         emitter,
         downstream,
-        true,
-        StepRole.STEP_ROLE_OUTPUT,
-        true,
-        "<think>",
-        "</think>"
+        TokenCaptureStream.CaptureConfig.forwarding(
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.STRIP,
+          "<think>",
+          "</think>"
+        )
       );
     });
 
@@ -169,11 +170,12 @@ class TokenCaptureStreamTest {
         accumulator,
         emitter,
         downstream,
-        true,
-        StepRole.STEP_ROLE_OUTPUT,
-        TokenCaptureStream.ThinkingMode.ROUTE,
-        "<think>",
-        "</think>"
+        TokenCaptureStream.CaptureConfig.forwarding(
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.ROUTE,
+          "<think>",
+          "</think>"
+        )
       )
     );
 
@@ -208,12 +210,15 @@ class TokenCaptureStreamTest {
         accumulator,
         emitter,
         downstream,
-        false, // internal: content and tool suppressed
-        true, // ...but thinking escapes
-        StepRole.STEP_ROLE_OUTPUT,
-        TokenCaptureStream.ThinkingMode.ROUTE,
-        "<think>",
-        "</think>"
+        new TokenCaptureStream.CaptureConfig(
+          false,
+          true,
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.ROUTE,
+          "<think>",
+          "</think>",
+          null
+        )
       );
     }).subscribe();
 
@@ -235,12 +240,15 @@ class TokenCaptureStreamTest {
         accumulator,
         emitter,
         downstream,
-        false,
-        false,
-        StepRole.STEP_ROLE_OUTPUT,
-        TokenCaptureStream.ThinkingMode.ROUTE,
-        "<think>",
-        "</think>"
+        new TokenCaptureStream.CaptureConfig(
+          false,
+          false,
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.ROUTE,
+          "<think>",
+          "</think>",
+          null
+        )
       );
     }).subscribe();
 
@@ -260,13 +268,16 @@ class TokenCaptureStreamTest {
         accumulator,
         emitter,
         downstream,
-        true,
-        StepRole.STEP_ROLE_OUTPUT,
-        TokenCaptureStream.ThinkingMode.ROUTE,
-        "<think>",
-        "</think>"
+        new TokenCaptureStream.CaptureConfig(
+          true,
+          true,
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.ROUTE,
+          "<think>",
+          "</think>",
+          java.util.List.of("<|channel|>commentary to=functions.")
+        )
       );
-      stream[0].setThinkingCutMarkers(java.util.List.of("<|channel|>commentary to=functions."));
     }).subscribe();
 
     // Marker split across deltas, composed inside the thinking channel.
@@ -288,13 +299,16 @@ class TokenCaptureStreamTest {
         accumulator,
         emitter,
         downstream,
-        true,
-        StepRole.STEP_ROLE_OUTPUT,
-        TokenCaptureStream.ThinkingMode.ROUTE,
-        "<think>",
-        "</think>"
+        new TokenCaptureStream.CaptureConfig(
+          true,
+          true,
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.ROUTE,
+          "<think>",
+          "</think>",
+          java.util.List.of("<|channel|>commentary to=functions.")
+        )
       );
-      stream[0].setThinkingCutMarkers(java.util.List.of("<|channel|>commentary to=functions."));
     }).subscribe();
 
     stream[0].write(thinkingDeltaEvent("Plain reasoning ending with a lone <"));
@@ -713,11 +727,12 @@ class TokenCaptureStreamTest {
         accumulator,
         emitter,
         deadDownstream,
-        true,
-        StepRole.STEP_ROLE_OUTPUT,
-        TokenCaptureStream.ThinkingMode.ROUTE,
-        "<think>",
-        "</think>"
+        TokenCaptureStream.CaptureConfig.forwarding(
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.ROUTE,
+          "<think>",
+          "</think>"
+        )
       )
     ).subscribe(() -> completed.set(true), Throwable::printStackTrace);
 
@@ -745,11 +760,12 @@ class TokenCaptureStreamTest {
         accumulator,
         emitter,
         downstream,
-        true,
-        StepRole.STEP_ROLE_OUTPUT,
-        TokenCaptureStream.ThinkingMode.ROUTE,
-        "<think>",
-        "</think>"
+        TokenCaptureStream.CaptureConfig.forwarding(
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.ROUTE,
+          "<think>",
+          "</think>"
+        )
       )
     ).subscribe(() -> {}, Throwable::printStackTrace);
 
@@ -784,11 +800,12 @@ class TokenCaptureStreamTest {
         accumulator,
         emitter,
         downstream,
-        true,
-        StepRole.STEP_ROLE_OUTPUT,
-        mode,
-        "<think>",
-        "</think>"
+        TokenCaptureStream.CaptureConfig.forwarding(
+          StepRole.STEP_ROLE_OUTPUT,
+          mode,
+          "<think>",
+          "</think>"
+        )
       )
     ).subscribe(() -> {}, Throwable::printStackTrace);
     return stream[0];

@@ -159,19 +159,26 @@ public final class InferenceMetrics {
   }
 
   /**
-   * Counts a detected failure signal — {@code ai_failure_signals_total{source,signal}}.
-   * {@code source} is the nearest useful id: the model id for engine-level signals
-   * ({@code tool_parse_failed}, {@code thinking_unclosed}), the step id for
-   * {@code loop_max_iterations}, the pipeline id for {@code guard_blocked}.
+   * Counts a detected failure signal — {@code ai_failure_signals_total{source,kind,signal}}.
+   * {@code source} is the nearest useful id and {@code kind} says what that id names:
+   * {@code model} for engine-level signals ({@code tool_parse_failed},
+   * {@code thinking_unclosed}), {@code step} for {@code loop_max_iterations},
+   * {@code pipeline} for {@code guard_blocked}.
    */
-  public void recordFailureSignal(String source, String signal) {
+  public void recordFailureSignal(String source, String kind, String signal) {
     if (registry == null) return;
     Counter.builder("ai.failure.signals")
       .description("Detected model failure signals")
       .tag("source", safe(source))
+      .tag("kind", safe(kind))
       .tag("signal", safe(signal))
       .register(registry)
       .increment();
+  }
+
+  /** Model-sourced overload of {@link #recordFailureSignal(String, String, String)}. */
+  public void recordFailureSignal(String modelId, String signal) {
+    recordFailureSignal(modelId, "model", signal);
   }
 
   private static String safe(String value) {
