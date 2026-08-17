@@ -966,7 +966,11 @@ public final class PipelineContext {
       .build();
   }
 
-  /** Builds the accumulated {@link InferencePerformance} proto. */
+  /**
+   * Builds the accumulated {@link InferencePerformance} proto. Raw counters
+   * only — the wire contract carries no derived rates; consumers compute
+   * tokens/second from {@code tokens_generated} and {@code eval_time_ms}.
+   */
   public InferencePerformance buildTotalPerformance() {
     return InferencePerformance.newBuilder()
       .setEvalTimeMs(totalEvalTimeMs)

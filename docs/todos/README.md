@@ -97,7 +97,7 @@ Runnable end-to-end version: `examples/pipelines/todo-agent.yaml`.
 | Tool | Arguments | Effect |
 | --- | --- | --- |
 | `set_todos` | `todos: [{id, title}]` (plain strings tolerated), `constraints?` (string) | Replaces the plan; first item becomes `in_progress`. `constraints` records the user's locked decisions; a re-send without it keeps the existing ones. Persisted with the plan across turns. |
-| `complete_todo` | `id`, `note?` | Marks the item `done`; the next `pending` item becomes `in_progress`. Unknown ids return an error result to the model. |
+| `complete_todo` | `id`, `note?` | Marks the item `done`; the next `pending` item becomes `in_progress`. Unknown ids return an error result to the model. `note` becomes the item's `proof` — and since an `internal` work step's prose is **not** appended to the conversation, the note is the only place its result survives for later steps (prompts should demand the complete result text there, as the examples do). |
 | `ask_user` | `question` | Pauses for the user: the question streams as the visible assistant answer, the turn ends with `finish_reason: "stop"`, and the plan is saved for the session. |
 
 Individual infer steps can opt out of the injection with `server_tools: false`

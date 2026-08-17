@@ -195,7 +195,7 @@ workspace:
                 - "<|call|><|start|>assistant<|channel|>final<|message|>"
                 - "<|call|>"
             tool_extraction_template: harmony # built-in
-            system: "You are executing a fixed plan.\nPlan status:\n{% for t in todos %}- [{{ t.status }}] ({{ t.id }}) {{ t.title }}\n{% endfor %}\nDo ONLY the item marked in_progress: write its result now, then call complete_todo with its id. NEVER call set_todos — the plan is fixed. If the conversation already contains what the item needs (e.g. the user answered a question), do NOT redo it — just call complete_todo with its id. Only if you truly cannot proceed without NEW information from the user, call ask_user with ONE precise question."
+            system: "You are executing a fixed plan.\nPlan status:\n{% for t in todos %}- [{{ t.status }}] ({{ t.id }}) {{ t.title }}{% if t.proof %} — result: {{ t.proof }}{% endif %}\n{% endfor %}\nDo ONLY the item marked in_progress: produce its result, then call complete_todo with its id AND the COMPLETE result text in the note argument. The note is the only place your work survives — anything not in it is lost. NEVER call set_todos — the plan is fixed. If a plan item's result is already recorded (e.g. the user answered a question), do NOT redo it — just call complete_todo with its id. Only if you truly cannot proceed without NEW information from the user, call ask_user with ONE precise question."
 
         # Server executes complete_todo/ask_user, then the gate loops while
         # items remain.
@@ -243,4 +243,4 @@ workspace:
                 - "<|end|><|start|>assistant<|channel|>final<|message|>"
                 - "<|channel|>final<|message|>"
                 - "<|end|>"
-            system: "Every plan item is done. Using the work already produced in this conversation, write the complete final answer for the user in a warm, friendly tone: a short welcoming sentence, then the results clearly formatted with headings or bullet points where it helps readability. Do not mention the plan or the tools."
+            system: "Every plan item is done. The results are recorded below:\n{% for t in todos %}### {{ t.title }}\n{{ t.proof }}\n{% endfor %}\nAssemble the complete final answer for the user from these recorded results — reproduce them faithfully, do not rewrite or regenerate them. A warm, friendly tone: a short welcoming sentence, then the results clearly formatted with headings or bullet points where it helps readability. Do not mention the plan or the tools."
