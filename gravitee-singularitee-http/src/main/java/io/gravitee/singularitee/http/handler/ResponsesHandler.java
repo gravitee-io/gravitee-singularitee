@@ -29,9 +29,11 @@ import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
 
 /**
- * {@code POST /v1/responses} — OpenAI Responses API, streaming and buffered. The request is
- * stateless: {@code previous_response_id} is ignored (only {@code instructions} + {@code input} are
- * mapped to messages).
+ * {@code POST /v1/responses} — OpenAI Responses API, streaming and buffered. Pipeline targets
+ * support the stored-conversation continuation model: every response gets a {@code resp_…} id it
+ * is stored under (unless {@code store: false}), and {@code previous_response_id} resumes the
+ * server-curated transcript — the client sends only the new {@code input}. Direct model targets
+ * remain stateless.
  */
 public final class ResponsesHandler implements Handler<RoutingContext> {
 
@@ -74,6 +76,12 @@ public final class ResponsesHandler implements Handler<RoutingContext> {
 
     boolean stream = payload.at("/stream").asBoolean(false);
     var toolSchemas = InferenceResponseFormatter.toolParameterSchemas(payload.at("/tools"));
+    // Stored-conversation continuation: the pipeline request carries the id this
+    // response is stored under — the emitted response must carry the SAME id so
+    // the client can continue from it via previous_response_id.
+    String responseId = res.pipeline() && !res.pipelineRequest().getRequestId().isBlank()
+      ? res.pipelineRequest().getRequestId()
+      : null;
     var tokens = Dispatch.drive(inference, res, rc);
 
     if (stream) {
@@ -82,15 +90,26 @@ public final class ResponsesHandler implements Handler<RoutingContext> {
           tokens,
           res.modelName(),
           null,
-          toolSchemas
+          toolSchemas,
+          responseId
         )
-        : InferenceResponseFormatter.responsesStreamEvents(tokens, res.modelName(), null);
+        : InferenceResponseFormatter.responsesStreamEvents(
+          tokens,
+          res.modelName(),
+          null,
+          responseId
+        );
       VertxSseWriter.write(rc.response(), events);
     } else {
       tokens
         .collect(SequenceAccumulator::new, SequenceAccumulator::add)
         .map(acc ->
-          InferenceResponseFormatter.buildResponsesResponse(res.modelName(), acc, toolSchemas)
+          InferenceResponseFormatter.buildResponsesResponse(
+            res.modelName(),
+            acc,
+            toolSchemas,
+            responseId
+          )
         )
         .subscribe(
           node -> JsonResponses.writeJson(rc, node),

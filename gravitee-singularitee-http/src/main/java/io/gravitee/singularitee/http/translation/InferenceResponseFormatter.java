@@ -72,39 +72,58 @@ public final class InferenceResponseFormatter {
     String responseId = "chatcmpl-" + created;
     AtomicBoolean roleEmitted = new AtomicBoolean(false);
 
-    return tokenStream.flatMap(token -> {
-      if (token.isFinal()) {
-        if (onFinal != null) {
-          onFinal.accept(token);
+    // Progress updates are not part of the Chat Completions contract — dropped.
+    return tokenStream
+      .filter(t -> t.progress() == null)
+      .flatMap(token -> {
+        if (token.isFinal()) {
+          if (onFinal != null) {
+            onFinal.accept(token);
+          }
+          ObjectNode finalChunk = chatChunk(
+            responseId,
+            created,
+            modelName,
+            null,
+            token.finishReason(),
+            true
+          );
+          List<ServerEvent> events = new ArrayList<>();
+          events.add(new ServerEvent(finalChunk.toString()));
+          if (includeUsage) {
+            events.add(
+              new ServerEvent(usageChunk(responseId, created, modelName, true, token).toString())
+            );
+          }
+          events.add(new ServerEvent("[DONE]"));
+          return Flowable.fromIterable(events);
         }
-        ObjectNode finalChunk = chatChunk(
-          responseId,
-          created,
-          modelName,
-          null,
-          token.finishReason(),
-          true
-        );
-        List<ServerEvent> events = new ArrayList<>();
-        events.add(new ServerEvent(finalChunk.toString()));
-        if (includeUsage) {
-          events.add(
-            new ServerEvent(usageChunk(responseId, created, modelName, true, token).toString())
+
+        boolean isReasoning = token.reasoning() != null;
+        // Tool-request-less path: a stray TOOL-channel delta degrades to plain content (fail-open).
+        String content = isReasoning ? null : (token.tool() != null ? token.tool() : token.token());
+        String reasoning = isReasoning ? token.reasoning() : null;
+
+        // Emit a separate role-only delta before the first content/reasoning token.
+        if (!roleEmitted.getAndSet(true)) {
+          ObjectNode roleChunk = chatChunk(responseId, created, modelName, "", null, null, false);
+          ObjectNode firstChunk = chatChunk(
+            responseId,
+            created,
+            modelName,
+            content,
+            reasoning,
+            null,
+            true,
+            token.logprobs()
+          );
+          return Flowable.just(
+            new ServerEvent(roleChunk.toString()),
+            new ServerEvent(firstChunk.toString())
           );
         }
-        events.add(new ServerEvent("[DONE]"));
-        return Flowable.fromIterable(events);
-      }
 
-      boolean isReasoning = token.reasoning() != null;
-      // Tool-request-less path: a stray TOOL-channel delta degrades to plain content (fail-open).
-      String content = isReasoning ? null : (token.tool() != null ? token.tool() : token.token());
-      String reasoning = isReasoning ? token.reasoning() : null;
-
-      // Emit a separate role-only delta before the first content/reasoning token.
-      if (!roleEmitted.getAndSet(true)) {
-        ObjectNode roleChunk = chatChunk(responseId, created, modelName, "", null, null, false);
-        ObjectNode firstChunk = chatChunk(
+        ObjectNode chunk = chatChunk(
           responseId,
           created,
           modelName,
@@ -114,24 +133,8 @@ public final class InferenceResponseFormatter {
           true,
           token.logprobs()
         );
-        return Flowable.just(
-          new ServerEvent(roleChunk.toString()),
-          new ServerEvent(firstChunk.toString())
-        );
-      }
-
-      ObjectNode chunk = chatChunk(
-        responseId,
-        created,
-        modelName,
-        content,
-        reasoning,
-        null,
-        true,
-        token.logprobs()
-      );
-      return Flowable.just(new ServerEvent(chunk.toString()));
-    });
+        return Flowable.just(new ServerEvent(chunk.toString()));
+      });
   }
 
   /**
@@ -183,147 +186,160 @@ public final class InferenceResponseFormatter {
     // streamed as content — the channel signal replaces the marker-prefix holdback.
     StringBuilder toolContent = new StringBuilder();
 
-    return tokenStream.flatMap(token -> {
-      List<ServerEvent> events = new ArrayList<>();
+    // Progress updates are not part of the Chat Completions contract — dropped.
+    return tokenStream
+      .filter(t -> t.progress() == null)
+      .flatMap(token -> {
+        List<ServerEvent> events = new ArrayList<>();
 
-      if (token.isFinal()) {
-        if (onFinal != null) {
-          onFinal.accept(token);
+        if (token.isFinal()) {
+          if (onFinal != null) {
+            onFinal.accept(token);
+          }
+          if (!roleEmitted.getAndSet(true)) {
+            events.add(
+              new ServerEvent(chatChunk(responseId, created, modelName, "", null, false).toString())
+            );
+          }
+
+          String finishReason = token.finishReason();
+          List<ParsedToolCall> wireCalls = fromWireToolCalls(
+            token.toolCalls(),
+            toolParameterSchemas
+          );
+          boolean toolCandidate =
+            "tool_calls".equals(finishReason) || toolModeConfirmed.get() || !toolContent.isEmpty();
+          List<ParsedToolCall> toolCalls = !wireCalls.isEmpty()
+            ? wireCalls
+            : (toolCandidate
+                ? resolveToolCalls(
+                  toolContent.toString(),
+                  fullContent.toString(),
+                  toolParameterSchemas
+                )
+                : List.<ParsedToolCall>of());
+
+          if (!toolCalls.isEmpty()) {
+            for (int i = 0; i < toolCalls.size(); i++) {
+              events.add(
+                new ServerEvent(
+                  chatToolCallChunk(responseId, created, modelName, i, toolCalls.get(i)).toString()
+                )
+              );
+            }
+            events.add(
+              new ServerEvent(
+                chatChunk(responseId, created, modelName, null, "tool_calls", true).toString()
+              )
+            );
+          } else {
+            // False alarm (or plain stop): flush any withheld tail — and any unparseable bare
+            // tool payload (fail-open) — as ordinary content.
+            pending.append(toolContent);
+            toolContent.setLength(0);
+            if (!pending.isEmpty()) {
+              events.add(
+                new ServerEvent(
+                  chatChunk(
+                    responseId,
+                    created,
+                    modelName,
+                    pending.toString(),
+                    null,
+                    true
+                  ).toString()
+                )
+              );
+              pending.setLength(0);
+            }
+            events.add(
+              new ServerEvent(
+                chatChunk(responseId, created, modelName, null, finishReason, true).toString()
+              )
+            );
+          }
+
+          if (includeUsage) {
+            events.add(
+              new ServerEvent(usageChunk(responseId, created, modelName, true, token).toString())
+            );
+          }
+          events.add(new ServerEvent("[DONE]"));
+          return Flowable.fromIterable(events);
         }
+
+        boolean isReasoning = token.reasoning() != null;
+
         if (!roleEmitted.getAndSet(true)) {
           events.add(
-            new ServerEvent(chatChunk(responseId, created, modelName, "", null, false).toString())
-          );
-        }
-
-        String finishReason = token.finishReason();
-        List<ParsedToolCall> wireCalls = fromWireToolCalls(token.toolCalls(), toolParameterSchemas);
-        boolean toolCandidate =
-          "tool_calls".equals(finishReason) || toolModeConfirmed.get() || !toolContent.isEmpty();
-        List<ParsedToolCall> toolCalls = !wireCalls.isEmpty()
-          ? wireCalls
-          : (toolCandidate
-              ? resolveToolCalls(
-                toolContent.toString(),
-                fullContent.toString(),
-                toolParameterSchemas
-              )
-              : List.<ParsedToolCall>of());
-
-        if (!toolCalls.isEmpty()) {
-          for (int i = 0; i < toolCalls.size(); i++) {
-            events.add(
-              new ServerEvent(
-                chatToolCallChunk(responseId, created, modelName, i, toolCalls.get(i)).toString()
-              )
-            );
-          }
-          events.add(
             new ServerEvent(
-              chatChunk(responseId, created, modelName, null, "tool_calls", true).toString()
-            )
-          );
-        } else {
-          // False alarm (or plain stop): flush any withheld tail — and any unparseable bare
-          // tool payload (fail-open) — as ordinary content.
-          pending.append(toolContent);
-          toolContent.setLength(0);
-          if (!pending.isEmpty()) {
-            events.add(
-              new ServerEvent(
-                chatChunk(responseId, created, modelName, pending.toString(), null, true).toString()
-              )
-            );
-            pending.setLength(0);
-          }
-          events.add(
-            new ServerEvent(
-              chatChunk(responseId, created, modelName, null, finishReason, true).toString()
+              chatChunk(responseId, created, modelName, "", null, null, false).toString()
             )
           );
         }
 
-        if (includeUsage) {
-          events.add(
-            new ServerEvent(usageChunk(responseId, created, modelName, true, token).toString())
-          );
+        // TOOL-channel deltas are buffered silently (never streamed as content); they are
+        // parsed into structured tool_calls on the final token.
+        if (token.tool() != null) {
+          toolContent.append(token.tool());
+          return events.isEmpty() ? Flowable.<ServerEvent>empty() : Flowable.fromIterable(events);
         }
-        events.add(new ServerEvent("[DONE]"));
-        return Flowable.fromIterable(events);
-      }
 
-      boolean isReasoning = token.reasoning() != null;
+        // Reasoning deltas pass through untouched.
+        if (isReasoning) {
+          events.add(
+            new ServerEvent(
+              chatChunk(
+                responseId,
+                created,
+                modelName,
+                null,
+                token.reasoning(),
+                null,
+                true
+              ).toString()
+            )
+          );
+          return Flowable.fromIterable(events);
+        }
 
-      if (!roleEmitted.getAndSet(true)) {
-        events.add(
-          new ServerEvent(
-            chatChunk(responseId, created, modelName, "", null, null, false).toString()
-          )
-        );
-      }
-
-      // TOOL-channel deltas are buffered silently (never streamed as content); they are
-      // parsed into structured tool_calls on the final token.
-      if (token.tool() != null) {
-        toolContent.append(token.tool());
-        return events.isEmpty() ? Flowable.<ServerEvent>empty() : Flowable.fromIterable(events);
-      }
-
-      // Reasoning deltas pass through untouched.
-      if (isReasoning) {
-        events.add(
-          new ServerEvent(
-            chatChunk(
-              responseId,
-              created,
-              modelName,
-              null,
-              token.reasoning(),
-              null,
-              true
-            ).toString()
-          )
-        );
-        return Flowable.fromIterable(events);
-      }
-
-      String delta = token.token();
-      if (delta != null && !delta.isEmpty()) {
-        fullContent.append(delta);
-        if (!toolModeConfirmed.get()) {
-          pending.append(delta);
-          int openerIndex = indexOfToolMarkupOpener(pending);
-          if (openerIndex >= 0) {
-            // Opener confirmed: emit what precedes it, then buffer silently.
-            toolModeConfirmed.set(true);
-            String safe = pending.substring(0, openerIndex);
-            pending.delete(0, openerIndex);
-            if (!safe.isEmpty()) {
-              events.add(
-                new ServerEvent(
-                  chatChunk(responseId, created, modelName, safe, null, null, true).toString()
-                )
-              );
+        String delta = token.token();
+        if (delta != null && !delta.isEmpty()) {
+          fullContent.append(delta);
+          if (!toolModeConfirmed.get()) {
+            pending.append(delta);
+            int openerIndex = indexOfToolMarkupOpener(pending);
+            if (openerIndex >= 0) {
+              // Opener confirmed: emit what precedes it, then buffer silently.
+              toolModeConfirmed.set(true);
+              String safe = pending.substring(0, openerIndex);
+              pending.delete(0, openerIndex);
+              if (!safe.isEmpty()) {
+                events.add(
+                  new ServerEvent(
+                    chatChunk(responseId, created, modelName, safe, null, null, true).toString()
+                  )
+                );
+              }
+            } else {
+              int holdback = toolMarkupHoldbackLength(pending);
+              String safe = pending.substring(0, pending.length() - holdback);
+              pending.delete(0, pending.length() - holdback);
+              if (!safe.isEmpty()) {
+                events.add(
+                  new ServerEvent(
+                    chatChunk(responseId, created, modelName, safe, null, null, true).toString()
+                  )
+                );
+              }
             }
           } else {
-            int holdback = toolMarkupHoldbackLength(pending);
-            String safe = pending.substring(0, pending.length() - holdback);
-            pending.delete(0, pending.length() - holdback);
-            if (!safe.isEmpty()) {
-              events.add(
-                new ServerEvent(
-                  chatChunk(responseId, created, modelName, safe, null, null, true).toString()
-                )
-              );
-            }
+            pending.append(delta);
           }
-        } else {
-          pending.append(delta);
         }
-      }
 
-      return events.isEmpty() ? Flowable.<ServerEvent>empty() : Flowable.fromIterable(events);
-    });
+        return events.isEmpty() ? Flowable.<ServerEvent>empty() : Flowable.fromIterable(events);
+      });
   }
 
   /** Index of the first complete tool-markup opener in {@code text}, or -1 if none. */
@@ -370,33 +386,36 @@ public final class InferenceResponseFormatter {
     long created = Instant.now().getEpochSecond();
     String responseId = "cmpl-" + created;
 
-    return tokenStream.flatMap(token -> {
-      if (token.isFinal()) {
-        if (onFinal != null) {
-          onFinal.accept(token);
-        }
-        ObjectNode finalChunk = completionChunk(
-          responseId,
-          created,
-          modelName,
-          null,
-          token.finishReason()
-        );
-        List<ServerEvent> events = new ArrayList<>();
-        events.add(new ServerEvent(finalChunk.toString()));
-        if (includeUsage) {
-          events.add(
-            new ServerEvent(usageChunk(responseId, created, modelName, false, token).toString())
+    // Progress updates are not part of the Completions contract — dropped.
+    return tokenStream
+      .filter(t -> t.progress() == null)
+      .flatMap(token -> {
+        if (token.isFinal()) {
+          if (onFinal != null) {
+            onFinal.accept(token);
+          }
+          ObjectNode finalChunk = completionChunk(
+            responseId,
+            created,
+            modelName,
+            null,
+            token.finishReason()
           );
+          List<ServerEvent> events = new ArrayList<>();
+          events.add(new ServerEvent(finalChunk.toString()));
+          if (includeUsage) {
+            events.add(
+              new ServerEvent(usageChunk(responseId, created, modelName, false, token).toString())
+            );
+          }
+          events.add(new ServerEvent("[DONE]"));
+          return Flowable.fromIterable(events);
         }
-        events.add(new ServerEvent("[DONE]"));
-        return Flowable.fromIterable(events);
-      }
-      String text = token.tool() != null ? token.tool() : token.token();
-      return Flowable.just(
-        new ServerEvent(completionChunk(responseId, created, modelName, text, null).toString())
-      );
-    });
+        String text = token.tool() != null ? token.tool() : token.token();
+        return Flowable.just(
+          new ServerEvent(completionChunk(responseId, created, modelName, text, null).toString())
+        );
+      });
   }
 
   /**
@@ -424,8 +443,18 @@ public final class InferenceResponseFormatter {
     String modelName,
     Consumer<TokenMessage> onFinal
   ) {
+    return responsesStreamEvents(tokenStream, modelName, onFinal, null);
+  }
+
+  /** @param responseIdOverride stable response id (stored-conversation continuation); null = derive from epoch */
+  public static Flowable<ServerEvent> responsesStreamEvents(
+    Flowable<TokenMessage> tokenStream,
+    String modelName,
+    Consumer<TokenMessage> onFinal,
+    String responseIdOverride
+  ) {
     long created = Instant.now().getEpochSecond();
-    String responseId = "resp-" + created;
+    String responseId = responseIdOverride != null ? responseIdOverride : "resp-" + created;
     String reasoningId = "rs-" + created;
     String msgId = "msg-" + created;
     AtomicBoolean headerEmitted = new AtomicBoolean(false);
@@ -457,9 +486,26 @@ public final class InferenceResponseFormatter {
         );
       }
 
+      // Auxiliary progress update (engine-managed todo plan): the Responses
+      // surface already emits typed non-canonical objects, so a gravitee-
+      // namespaced type is the least invasive representation.
+      if (token.progress() != null) {
+        events.add(progressEvent(seq, token.progress()));
+        return Flowable.fromIterable(events);
+      }
+
       if (token.isFinal()) {
         if (onFinal != null) {
           onFinal.accept(token);
+        }
+        // A guard-only failure with no generated content (previous_response_not_found,
+        // guard block) must surface as response.failed — a fake empty "completed"
+        // reads as a real blank answer and hides the error from streaming clients.
+        if (token.guardMessage() != null && !reasoningOpen.get() && !contentOpen.get()) {
+          events.add(
+            responseFailedEvent(seq, responseId, created, modelName, token.guardMessage())
+          );
+          return Flowable.fromIterable(events);
         }
         if (reasoningOpen.get() && reasoningClosed.compareAndSet(false, true)) {
           closeReasoning(events, seq, reasoningId, reasoning.toString());
@@ -492,6 +538,7 @@ public final class InferenceResponseFormatter {
         usage.put("input_tokens", token.promptTokens());
         usage.put("output_tokens", token.completionTokens());
         usage.put("total_tokens", token.promptTokens() + token.completionTokens());
+        writeTimings(completed, token.performance());
         events.add(responsesEvent("response.completed", seq, completed));
         return Flowable.fromIterable(events);
       }
@@ -573,6 +620,7 @@ public final class InferenceResponseFormatter {
     Map<String, JsonNode> toolParameterSchemas
   ) {
     return tokenStream
+      .filter(t -> t.progress() == null)
       .collect(SequenceAccumulator::new, SequenceAccumulator::add)
       .flatMapPublisher(accumulator -> {
         if (onFinal != null) {
@@ -604,6 +652,14 @@ public final class InferenceResponseFormatter {
         if (isToolCandidate(accumulator)) {
           List<ParsedToolCall> toolCalls = resolveToolCalls(accumulator, toolParameterSchemas);
           if (!toolCalls.isEmpty()) {
+            String narration = narrationText(accumulator, toolCalls);
+            if (narration != null) {
+              events.add(
+                new ServerEvent(
+                  chatChunk(responseId, created, modelName, narration, null, false).toString()
+                )
+              );
+            }
             for (int i = 0; i < toolCalls.size(); i++) {
               ParsedToolCall tc = toolCalls.get(i);
               ObjectNode chunk = chatToolCallChunk(responseId, created, modelName, i, tc);
@@ -701,111 +757,233 @@ public final class InferenceResponseFormatter {
     Consumer<TokenMessage> onFinal,
     Map<String, JsonNode> toolParameterSchemas
   ) {
-    return tokenStream
-      .collect(SequenceAccumulator::new, SequenceAccumulator::add)
-      .flatMapPublisher(accumulator -> {
-        if (onFinal != null) {
-          onFinal.accept(
-            new TokenMessage(
-              null,
-              0,
-              true,
-              accumulator.finishReason(),
-              accumulator.promptTokens(),
-              accumulator.completionTokens(),
-              null,
-              null,
-              accumulator.performance(),
-              accumulator.guardMessage()
+    return responsesBufferedStreamEvents(
+      tokenStream,
+      modelName,
+      onFinal,
+      toolParameterSchemas,
+      null
+    );
+  }
+
+  /** @param responseIdOverride stable response id (stored-conversation continuation); null = derive from epoch */
+  public static Flowable<ServerEvent> responsesBufferedStreamEvents(
+    Flowable<TokenMessage> tokenStream,
+    String modelName,
+    Consumer<TokenMessage> onFinal,
+    Map<String, JsonNode> toolParameterSchemas,
+    String responseIdOverride
+  ) {
+    // Buffering must not swallow the PROGRESS side-channel: gravitee.progress
+    // events stream through LIVE (a plan update the client sees only after the
+    // turn ends is useless), while everything else accumulates as before. The
+    // sequence counter is shared so numbering stays monotonic across both.
+    return Flowable.defer(() -> {
+      SequenceAccumulator accumulator = new SequenceAccumulator();
+      AtomicLong seq = new AtomicLong(0);
+      java.util.concurrent.atomic.AtomicBoolean reasoningOpened =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+      return tokenStream
+        .concatMap(t -> {
+          if (t.progress() != null) {
+            return Flowable.just(progressEvent(seq, t.progress()));
+          }
+          accumulator.add(t);
+          if (t.reasoning() != null) {
+            // Reasoning is the one channel safe to release before tool-call
+            // parsing: stream the summary lifecycle LIVE (same shape as the
+            // unbuffered path) while content/tool text keeps buffering. The
+            // item id matches the final train ("rs-" + created), which also
+            // closes the item and re-embeds it in response.completed.
+            String rid = "rs-" + accumulator.created();
+            List<ServerEvent> live = new ArrayList<>(3);
+            if (reasoningOpened.compareAndSet(false, true)) {
+              live.add(
+                outputItemEvent("response.output_item.added", seq, 0, reasoningItem(rid, null))
+              );
+              live.add(
+                reasoningSummaryPartEvent("response.reasoning_summary_part.added", seq, rid, "")
+              );
+            }
+            live.add(reasoningSummaryDelta(seq, rid, t.reasoning()));
+            return Flowable.fromIterable(live);
+          }
+          return Flowable.<ServerEvent>empty();
+        })
+        .concatWith(
+          Flowable.defer(() ->
+            responsesBufferedFinalEvents(
+              accumulator,
+              seq,
+              modelName,
+              onFinal,
+              toolParameterSchemas,
+              responseIdOverride,
+              reasoningOpened.get()
             )
+          )
+        );
+    });
+  }
+
+  /** The end-of-turn event train for the buffered Responses path (everything except live progress). */
+  private static Flowable<ServerEvent> responsesBufferedFinalEvents(
+    SequenceAccumulator accumulator,
+    AtomicLong seq,
+    String modelName,
+    Consumer<TokenMessage> onFinal,
+    Map<String, JsonNode> toolParameterSchemas,
+    String responseIdOverride,
+    boolean reasoningStreamed
+  ) {
+    {
+      if (onFinal != null) {
+        onFinal.accept(
+          new TokenMessage(
+            null,
+            0,
+            true,
+            accumulator.finishReason(),
+            accumulator.promptTokens(),
+            accumulator.completionTokens(),
+            null,
+            null,
+            accumulator.performance(),
+            accumulator.guardMessage()
+          )
+        );
+      }
+
+      long created = accumulator.created();
+      String responseId = responseIdOverride != null ? responseIdOverride : "resp-" + created;
+      List<ServerEvent> events = new ArrayList<>();
+
+      ObjectNode createdEvent = OBJECT_MAPPER.get().createObjectNode();
+      createdEvent.put("type", "response.created");
+      createdEvent.put("sequence_number", seq.getAndIncrement());
+      ObjectNode responseMeta = createdEvent.putObject("response");
+      responseMeta.put("id", responseId);
+      responseMeta.put("object", "response");
+      responseMeta.put("status", "in_progress");
+      responseMeta.put("created_at", created);
+      responseMeta.put("model", modelName);
+      events.add(new ServerEvent(createdEvent.toString()));
+
+      // Guard-only failure with no generated content: surface response.failed
+      // instead of a fake empty "completed" (mirrors buildResponsesResponse).
+      if (
+        accumulator.guardMessage() != null &&
+        accumulator.content().isEmpty() &&
+        accumulator.reasoning().isEmpty()
+      ) {
+        events.add(
+          responseFailedEvent(seq, responseId, created, modelName, accumulator.guardMessage())
+        );
+        return Flowable.fromIterable(events);
+      }
+
+      // A reasoning item streamed live during the run occupies output_index 0:
+      // close its lifecycle before any other item, and shift the rest up.
+      int itemBase = reasoningStreamed ? 1 : 0;
+      if (reasoningStreamed) {
+        closeReasoning(events, seq, "rs-" + created, accumulator.reasoning());
+      }
+
+      List<ParsedToolCall> resolvedToolCalls = isToolCandidate(accumulator)
+        ? resolveToolCalls(accumulator, toolParameterSchemas)
+        : List.of();
+
+      if (isToolCandidate(accumulator)) {
+        List<ParsedToolCall> toolCalls = resolvedToolCalls;
+        if (!toolCalls.isEmpty()) {
+          String narration = narrationText(accumulator, toolCalls);
+          if (narration != null) {
+            emitBufferedTextItem(events, seq, created, narration, itemBase);
+          }
+          // The narration message item occupies the next index — the calls
+          // shift up so SDK item state machines never collide on an index.
+          int indexBase = itemBase + (narration != null ? 1 : 0);
+          for (int i = 0; i < toolCalls.size(); i++) {
+            ParsedToolCall tc = toolCalls.get(i);
+            // Full item lifecycle, not just arguments.done: stock Responses
+            // SDKs assemble the response from output_item.added/done events
+            // and render NOTHING when a call arrives without them (observed
+            // live with an agent harness on /v1/responses).
+            events.add(
+              outputItemEvent(
+                "response.output_item.added",
+                seq,
+                indexBase + i,
+                functionCallItem(tc, "in_progress")
+              )
+            );
+            ObjectNode fcEvent = OBJECT_MAPPER.get().createObjectNode();
+            fcEvent.put("type", "response.function_call_arguments.done");
+            fcEvent.put("sequence_number", seq.getAndIncrement());
+            fcEvent.put("item_id", tc.id());
+            fcEvent.put("output_index", indexBase + i);
+            fcEvent.put("call_id", tc.id());
+            fcEvent.put("name", tc.name());
+            fcEvent.put("arguments", tc.arguments());
+            events.add(new ServerEvent(fcEvent.toString()));
+            events.add(
+              outputItemEvent(
+                "response.output_item.done",
+                seq,
+                indexBase + i,
+                functionCallItem(tc, "completed")
+              )
+            );
+          }
+        } else {
+          emitBufferedTextItem(
+            events,
+            seq,
+            created,
+            contentWithToolFallback(accumulator),
+            itemBase
           );
         }
+      } else {
+        if (!accumulator.content().isEmpty()) {
+          emitBufferedTextItem(events, seq, created, accumulator.content(), itemBase);
+        }
+      }
 
-        long created = accumulator.created();
-        String responseId = "resp-" + created;
-        AtomicLong seq = new AtomicLong(0);
-        List<ServerEvent> events = new ArrayList<>();
-
-        ObjectNode createdEvent = OBJECT_MAPPER.get().createObjectNode();
-        createdEvent.put("type", "response.created");
-        createdEvent.put("sequence_number", seq.getAndIncrement());
-        ObjectNode responseMeta = createdEvent.putObject("response");
-        responseMeta.put("id", responseId);
-        responseMeta.put("object", "response");
-        responseMeta.put("status", "in_progress");
-        responseMeta.put("created_at", created);
-        responseMeta.put("model", modelName);
-        events.add(new ServerEvent(createdEvent.toString()));
-
-        List<ParsedToolCall> resolvedToolCalls = isToolCandidate(accumulator)
-          ? resolveToolCalls(accumulator, toolParameterSchemas)
-          : List.of();
-
-        if (isToolCandidate(accumulator)) {
-          List<ParsedToolCall> toolCalls = resolvedToolCalls;
-          if (!toolCalls.isEmpty()) {
-            for (int i = 0; i < toolCalls.size(); i++) {
-              ParsedToolCall tc = toolCalls.get(i);
-              ObjectNode fcEvent = OBJECT_MAPPER.get().createObjectNode();
-              fcEvent.put("type", "response.function_call_arguments.done");
-              fcEvent.put("sequence_number", seq.getAndIncrement());
-              fcEvent.put("item_id", tc.id());
-              fcEvent.put("output_index", i);
-              fcEvent.put("call_id", tc.id());
-              fcEvent.put("name", tc.name());
-              fcEvent.put("arguments", tc.arguments());
-              events.add(new ServerEvent(fcEvent.toString()));
-            }
-          } else {
-            ObjectNode delta = OBJECT_MAPPER.get().createObjectNode();
-            delta.put("type", "response.output_text.delta");
-            delta.put("sequence_number", seq.getAndIncrement());
-            delta.put("output_index", 0);
-            delta.put("content_index", 0);
-            delta.put("delta", contentWithToolFallback(accumulator));
-            events.add(new ServerEvent(delta.toString()));
+      // response.completed embeds the assembled output (no [DONE] — that is a Chat convention).
+      ObjectNode completed = responsesObject(responseId, "completed", created, modelName);
+      ArrayNode output = completed.putArray("output");
+      if (!accumulator.reasoning().isEmpty()) {
+        output.add(reasoningItem("rs-" + created, accumulator.reasoning()));
+      }
+      if (isToolCandidate(accumulator)) {
+        if (!resolvedToolCalls.isEmpty()) {
+          String narration = narrationText(accumulator, resolvedToolCalls);
+          if (narration != null) {
+            addTextOutputItem(output, narration);
+          }
+          for (ParsedToolCall tc : resolvedToolCalls) {
+            ObjectNode item = output.addObject();
+            item.put("type", "function_call");
+            item.put("id", tc.id());
+            item.put("call_id", tc.id());
+            item.put("name", tc.name());
+            item.put("arguments", tc.arguments());
           }
         } else {
-          if (!accumulator.content().isEmpty()) {
-            ObjectNode delta = OBJECT_MAPPER.get().createObjectNode();
-            delta.put("type", "response.output_text.delta");
-            delta.put("sequence_number", seq.getAndIncrement());
-            delta.put("output_index", 0);
-            delta.put("content_index", 0);
-            delta.put("delta", accumulator.content());
-            events.add(new ServerEvent(delta.toString()));
-          }
+          addTextOutputItem(output, contentWithToolFallback(accumulator));
         }
-
-        // response.completed embeds the assembled output (no [DONE] — that is a Chat convention).
-        ObjectNode completed = responsesObject(responseId, "completed", created, modelName);
-        ArrayNode output = completed.putArray("output");
-        if (!accumulator.reasoning().isEmpty()) {
-          output.add(reasoningItem("rs-" + created, accumulator.reasoning()));
-        }
-        if (isToolCandidate(accumulator)) {
-          if (!resolvedToolCalls.isEmpty()) {
-            for (ParsedToolCall tc : resolvedToolCalls) {
-              ObjectNode item = output.addObject();
-              item.put("type", "function_call");
-              item.put("id", tc.id());
-              item.put("call_id", tc.id());
-              item.put("name", tc.name());
-              item.put("arguments", tc.arguments());
-            }
-          } else {
-            addTextOutputItem(output, contentWithToolFallback(accumulator));
-          }
-        } else {
-          addTextOutputItem(output, accumulator.content());
-        }
-        ObjectNode usage = completed.putObject("usage");
-        usage.put("input_tokens", accumulator.promptTokens());
-        usage.put("output_tokens", accumulator.completionTokens());
-        usage.put("total_tokens", accumulator.promptTokens() + accumulator.completionTokens());
-        events.add(responsesEvent("response.completed", seq, completed));
-        return Flowable.fromIterable(events);
-      });
+      } else {
+        addTextOutputItem(output, accumulator.content());
+      }
+      ObjectNode usage = completed.putObject("usage");
+      usage.put("input_tokens", accumulator.promptTokens());
+      usage.put("output_tokens", accumulator.completionTokens());
+      usage.put("total_tokens", accumulator.promptTokens() + accumulator.completionTokens());
+      writeTimings(completed, accumulator.performance());
+      events.add(responsesEvent("response.completed", seq, completed));
+      return Flowable.fromIterable(events);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -813,6 +991,72 @@ public final class InferenceResponseFormatter {
   // ═══════════════════════════════════════════════════════════════════════
 
   /** A minimal Responses object ({@code id/object/status/created_at/model}); caller adds output/usage. */
+  /**
+   * Renders a {@code RESPONSE_EVENT_TYPE_PROGRESS} update as a gravitee-namespaced
+   * Responses-API event: {@code {"type":"gravitee.progress","sequence_number":n,
+   * "step_id":…, "todos":[{id,title,status}…], "completed":n, "total":n}}.
+   */
+  private static ServerEvent progressEvent(
+    AtomicLong seq,
+    io.gravitee.singularitee.protocol.ResponseProgress progress
+  ) {
+    ObjectNode node = OBJECT_MAPPER.get().createObjectNode();
+    node.put("type", "gravitee.progress");
+    node.put("sequence_number", seq.getAndIncrement());
+    node.put("step_id", progress.getStepId());
+    ArrayNode todos = node.putArray("todos");
+    for (var t : progress.getTodosList()) {
+      ObjectNode item = todos.addObject();
+      item.put("id", t.getId());
+      item.put("title", t.getTitle());
+      item.put("status", t.getStatus());
+      if (!t.getProof().isEmpty()) {
+        item.put("proof", t.getProof());
+      }
+    }
+    node.put("completed", progress.getCompleted());
+    node.put("total", progress.getTotal());
+    node.put("text", progressText(progress));
+    return new ServerEvent(node.toString());
+  }
+
+  /**
+   * Preformatted multi-line plan view ({@code "1. [x] title\n2. [>] …"}) so a client can
+   * print the plan directly instead of laying out the structured items itself.
+   * Markers: {@code [x]} done, {@code [>]} in_progress, {@code [ ]} pending.
+   */
+  private static String progressText(io.gravitee.singularitee.protocol.ResponseProgress progress) {
+    StringBuilder sb = new StringBuilder();
+    int index = 1;
+    for (var t : progress.getTodosList()) {
+      String marker = switch (t.getStatus()) {
+        case "done" -> "[x]";
+        case "in_progress" -> "[>]";
+        default -> "[ ]";
+      };
+      if (index > 1) {
+        sb.append('\n');
+      }
+      sb.append(index++).append(". ").append(marker).append(' ').append(t.getTitle());
+      if (!t.getProof().isEmpty()) {
+        sb.append(" — proof: ").append(t.getProof());
+      }
+    }
+    return sb.toString();
+  }
+
+  /** A Responses-API {@code function_call} output item. */
+  private static ObjectNode functionCallItem(ParsedToolCall tc, String status) {
+    ObjectNode item = OBJECT_MAPPER.get().createObjectNode();
+    item.put("type", "function_call");
+    item.put("id", tc.id());
+    item.put("call_id", tc.id());
+    item.put("name", tc.name());
+    item.put("arguments", tc.arguments());
+    item.put("status", status);
+    return item;
+  }
+
   private static ObjectNode responsesObject(String id, String status, long created, String model) {
     ObjectNode r = OBJECT_MAPPER.get().createObjectNode();
     r.put("id", id);
@@ -824,6 +1068,85 @@ public final class InferenceResponseFormatter {
   }
 
   /** A Responses {@code message} output item; {@code text == null} → empty content (item still open). */
+  /**
+   * Emits a full message-item lifecycle for a buffered text answer:
+   * output_item.added -> content_part.added -> output_text.delta ->
+   * output_text.done -> content_part.done -> output_item.done. Stock Responses
+   * SDKs assemble the response from these item events and render NOTHING for a
+   * bare output_text.delta (observed live: an agent TUI showing empty answers
+   * whenever tools were declared, because tools select the buffered path).
+   */
+  private static void emitBufferedTextItem(
+    List<ServerEvent> events,
+    AtomicLong seq,
+    long created,
+    String text
+  ) {
+    emitBufferedTextItem(events, seq, created, text, 0);
+  }
+
+  private static void emitBufferedTextItem(
+    List<ServerEvent> events,
+    AtomicLong seq,
+    long created,
+    String text,
+    int outputIndex
+  ) {
+    String msgId = "msg-" + created;
+    events.add(
+      outputItemEvent(
+        "response.output_item.added",
+        seq,
+        outputIndex,
+        responsesMessageItem(msgId, "in_progress", null)
+      )
+    );
+    events.add(contentPartEvent("response.content_part.added", seq, msgId, outputIndex, ""));
+    ObjectNode delta = OBJECT_MAPPER.get().createObjectNode();
+    delta.put("type", "response.output_text.delta");
+    delta.put("sequence_number", seq.getAndIncrement());
+    delta.put("item_id", msgId);
+    delta.put("output_index", outputIndex);
+    delta.put("content_index", 0);
+    delta.put("delta", text);
+    events.add(new ServerEvent(delta.toString()));
+    events.add(outputTextDoneEvent(seq, msgId, outputIndex, text));
+    events.add(contentPartEvent("response.content_part.done", seq, msgId, outputIndex, text));
+    events.add(
+      outputItemEvent(
+        "response.output_item.done",
+        seq,
+        outputIndex,
+        responsesMessageItem(msgId, "completed", text)
+      )
+    );
+  }
+
+  /**
+   * The assistant's NARRATION accompanying tool calls — the visible text a model
+   * writes before calling ("I'll create the engine module now"), which OpenAI
+   * delivers as content alongside tool_calls (Chat) or a message item before the
+   * function_call items (Responses). Returns null when there is none, or when
+   * the text IS the call payload (markerless dialects put the call in the
+   * content — echoing it as narration would duplicate every call as prose).
+   */
+  private static String narrationText(SequenceAccumulator accumulator, List<ParsedToolCall> calls) {
+    String content = accumulator.content();
+    if (content == null || content.isBlank()) {
+      return null;
+    }
+    for (ParsedToolCall tc : calls) {
+      String args = tc.arguments();
+      if (args != null && args.length() > 5 && content.contains(args)) {
+        return null;
+      }
+      if (tc.name() != null && content.trim().startsWith(tc.name())) {
+        return null;
+      }
+    }
+    return content.trim();
+  }
+
   private static ObjectNode responsesMessageItem(String id, String status, String text) {
     ObjectNode item = OBJECT_MAPPER.get().createObjectNode();
     item.put("id", id);
@@ -841,6 +1164,29 @@ public final class InferenceResponseFormatter {
   }
 
   /** Wraps a response object in a top-level Responses stream event ({@code response.*}). */
+  /** Terminal {@code response.failed} event for guard-only failures on the streaming paths. */
+  private static ServerEvent responseFailedEvent(
+    AtomicLong seq,
+    String responseId,
+    long created,
+    String modelName,
+    String guardMessage
+  ) {
+    ObjectNode failed = responsesObject(responseId, "failed", created, modelName);
+    ObjectNode error = failed.putObject("error");
+    error.put(
+      "code",
+      guardMessage.startsWith("No stored response") ? "previous_response_not_found" : "server_error"
+    );
+    error.put("message", guardMessage);
+    failed.putArray("output");
+    ObjectNode event = OBJECT_MAPPER.get().createObjectNode();
+    event.put("type", "response.failed");
+    event.put("sequence_number", seq.getAndIncrement());
+    event.set("response", failed);
+    return new ServerEvent(event.toString());
+  }
+
   private static ServerEvent responsesEvent(String type, AtomicLong seq, ObjectNode response) {
     ObjectNode event = OBJECT_MAPPER.get().createObjectNode();
     event.put("type", type);
@@ -1035,7 +1381,12 @@ public final class InferenceResponseFormatter {
       List<ParsedToolCall> toolCalls = resolveToolCalls(accumulator, toolParameterSchemas);
       if (!toolCalls.isEmpty()) {
         finishReason = "tool_calls";
-        message.putNull("content");
+        String narration = narrationText(accumulator, toolCalls);
+        if (narration != null) {
+          message.put("content", narration);
+        } else {
+          message.putNull("content");
+        }
         ArrayNode toolCallsArray = message.putArray("tool_calls");
         for (int i = 0; i < toolCalls.size(); i++) {
           ParsedToolCall tc = toolCalls.get(i);
@@ -1094,13 +1445,44 @@ public final class InferenceResponseFormatter {
     SequenceAccumulator accumulator,
     Map<String, JsonNode> toolParameterSchemas
   ) {
+    return buildResponsesResponse(modelName, accumulator, toolParameterSchemas, null);
+  }
+
+  /** @param responseIdOverride stable response id (stored-conversation continuation); null = derive from epoch */
+  public static ObjectNode buildResponsesResponse(
+    String modelName,
+    SequenceAccumulator accumulator,
+    Map<String, JsonNode> toolParameterSchemas,
+    String responseIdOverride
+  ) {
     ObjectNode response = OBJECT_MAPPER.get().createObjectNode();
     long created = accumulator.created();
-    response.put("id", "resp-" + created);
+    response.put("id", responseIdOverride != null ? responseIdOverride : "resp-" + created);
     response.put("object", "response");
-    response.put("status", "completed");
     response.put("created_at", created);
     response.put("model", modelName);
+
+    // A FAILED event with no generated content (e.g. previous_response_not_found,
+    // guard block) renders as the OpenAI failed-response shape, not as an empty
+    // "completed" that a client would mistake for a real (blank) answer.
+    if (
+      accumulator.guardMessage() != null &&
+      accumulator.content().isEmpty() &&
+      accumulator.reasoning().isEmpty()
+    ) {
+      response.put("status", "failed");
+      ObjectNode error = response.putObject("error");
+      error.put(
+        "code",
+        accumulator.guardMessage().startsWith("No stored response")
+          ? "previous_response_not_found"
+          : "server_error"
+      );
+      error.put("message", accumulator.guardMessage());
+      response.putArray("output");
+      return response;
+    }
+    response.put("status", "completed");
 
     ArrayNode output = response.putArray("output");
     if (!accumulator.reasoning().isEmpty()) {
@@ -1110,6 +1492,10 @@ public final class InferenceResponseFormatter {
     if (isToolCandidate(accumulator)) {
       List<ParsedToolCall> toolCalls = resolveToolCalls(accumulator, toolParameterSchemas);
       if (!toolCalls.isEmpty()) {
+        String narration = narrationText(accumulator, toolCalls);
+        if (narration != null) {
+          addTextOutputItem(output, narration);
+        }
         for (ParsedToolCall tc : toolCalls) {
           ObjectNode item = output.addObject();
           item.put("type", "function_call");
@@ -1129,6 +1515,7 @@ public final class InferenceResponseFormatter {
     usage.put("input_tokens", accumulator.promptTokens());
     usage.put("output_tokens", accumulator.completionTokens());
     usage.put("total_tokens", accumulator.promptTokens() + accumulator.completionTokens());
+    writeTimings(response, accumulator.performance());
     return response;
   }
 
@@ -1150,6 +1537,25 @@ public final class InferenceResponseFormatter {
     usage.put("completion_tokens", accumulator.completionTokens());
     usage.put("total_tokens", accumulator.promptTokens() + accumulator.completionTokens());
     accumulator.writeUsageDetails(usage);
+    writeTimings(response, accumulator.performance());
+  }
+
+  /**
+   * Writes the engine-measured {@code timings} object (llama.cpp-server convention) next to
+   * {@code usage}. Clients cannot derive tokens/second themselves: wall time includes prompt
+   * eval and, for pipelines, every internal step — only the engine knows pure decode time.
+   */
+  private static void writeTimings(ObjectNode response, PerformanceMessage perf) {
+    if (perf == null || (perf.evalTimeMs() <= 0 && perf.promptEvalTimeMs() <= 0)) {
+      return;
+    }
+    ObjectNode timings = response.putObject("timings");
+    timings.put("prompt_n", perf.promptTokensEvaluated());
+    timings.put("prompt_ms", perf.promptEvalTimeMs());
+    timings.put("prompt_per_second", perf.promptTokensPerSecond());
+    timings.put("predicted_n", perf.tokensGenerated());
+    timings.put("predicted_ms", perf.evalTimeMs());
+    timings.put("predicted_per_second", perf.generationTokensPerSecond());
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1324,13 +1730,18 @@ public final class InferenceResponseFormatter {
     }
     List<ParsedToolCall> result = new ArrayList<>(wireToolCalls.size());
     for (WireToolCall call : wireToolCalls) {
+      ParsedToolCall parsed = toParsedToolCall(
+        call.name(),
+        call.argumentsJson(),
+        call.coercibleArgs(),
+        toolParameterSchemas
+      );
+      // The engine-born id is authoritative: the stored conversation replays
+      // the call under it, so re-minting one here would break the pairing.
       result.add(
-        toParsedToolCall(
-          call.name(),
-          call.argumentsJson(),
-          call.coercibleArgs(),
-          toolParameterSchemas
-        )
+        call.id() != null && !call.id().isBlank()
+          ? new ParsedToolCall(call.id(), parsed.name(), parsed.arguments())
+          : parsed
       );
     }
     return result;
@@ -1582,6 +1993,7 @@ public final class InferenceResponseFormatter {
     usage.put("completion_tokens", token.completionTokens());
     usage.put("total_tokens", token.promptTokens() + token.completionTokens());
     writeCompletionTokensDetails(usage, token.reasoningTokens(), token.toolTokens());
+    writeTimings(chunk, token.performance());
     return chunk;
   }
 }

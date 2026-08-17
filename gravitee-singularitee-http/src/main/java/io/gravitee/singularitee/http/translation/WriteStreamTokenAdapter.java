@@ -148,6 +148,9 @@ public final class WriteStreamTokenAdapter implements WriteStream<InferResponse>
       case RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA -> buildOutputTextDelta(response);
       case RESPONSE_EVENT_TYPE_COMPLETED -> buildCompleted(response);
       case RESPONSE_EVENT_TYPE_FAILED -> buildFailed(response);
+      case RESPONSE_EVENT_TYPE_PROGRESS -> TokenMessage.progressUpdate(
+        response.getResponseProgress()
+      );
       default -> null;
     };
   }
@@ -215,7 +218,14 @@ public final class WriteStreamTokenAdapter implements WriteStream<InferResponse>
       : completed
         .getToolCallsList()
         .stream()
-        .map(tc -> new WireToolCall(tc.getName(), tc.getArgumentsJson(), tc.getCoercibleArgsList()))
+        .map(tc ->
+          new WireToolCall(
+            tc.getId(),
+            tc.getName(),
+            tc.getArgumentsJson(),
+            tc.getCoercibleArgsList()
+          )
+        )
         .toList();
     return new TokenMessage(
       null,

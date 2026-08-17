@@ -59,6 +59,18 @@ public final class PipelineRequestBuilder {
       builder.setMessages(buildChatMessageList(payload.at("/messages")));
     } else if (endpointType == EndpointType.RESPONSES) {
       builder.setMessages(buildResponsesMessageList(payload));
+      // Stored-conversation continuation (OpenAI semantics): every Responses
+      // request gets a unique id it may be continued from; previous_response_id
+      // resumes server-side history; store=false opts out of persistence.
+      builder.setRequestId("resp_" + java.util.UUID.randomUUID().toString().replace("-", ""));
+      JsonNode prev = payload.at("/previous_response_id");
+      if (prev.isTextual() && !prev.asText().isBlank()) {
+        builder.setPreviousResponseId(prev.asText());
+      }
+      JsonNode store = payload.at("/store");
+      if (store.isBoolean()) {
+        builder.setStore(store.asBoolean());
+      }
     } else {
       JsonNode promptNode = payload.at("/prompt");
       if (promptNode.isTextual()) {
@@ -484,11 +496,49 @@ public final class PipelineRequestBuilder {
             ChatMessage.newBuilder().setRole(Role.ROLE_USER).setContent(item.asText()).build()
           );
         } else if (item.isObject()) {
-          String role = item.at("/role").asText("user");
+          String type = item.at("/type").asText("");
+          // Responses-API replay items: an agent client continuing a tool turn
+          // sends function_call / function_call_output items, not role/content
+          // messages. Dropping them to empty USER turns hides every tool
+          // result from the model, which then re-issues the same call forever.
+          if ("function_call".equals(type)) {
+            String callId = item.at("/call_id").asText(item.at("/id").asText(""));
+            listBuilder.addMessages(
+              ChatMessage.newBuilder()
+                .setRole(Role.ROLE_ASSISTANT)
+                .addToolCalls(
+                  io.gravitee.singularitee.protocol.ToolCall.newBuilder()
+                    .setId(callId)
+                    .setName(item.at("/name").asText(""))
+                    .setArgumentsJson(item.at("/arguments").asText("{}"))
+                )
+                .build()
+            );
+            continue;
+          }
+          if ("function_call_output".equals(type)) {
+            JsonNode output = item.at("/output");
+            listBuilder.addMessages(
+              ChatMessage.newBuilder()
+                .setRole(Role.ROLE_TOOL)
+                .setToolCallId(item.at("/call_id").asText(""))
+                .setContent(output.isTextual() ? output.asText() : output.toString())
+                .build()
+            );
+            continue;
+          }
+          if ("reasoning".equals(type)) {
+            continue; // replayed reasoning items carry no conversational state
+          }
+          String role = item.at("/role").asText(null);
           JsonNode contentNode = item.at("/content");
-          Role chatRole = switch (role) {
+          if (role == null && contentNode.isMissingNode()) {
+            continue; // unknown item shape — never fabricate an empty USER turn
+          }
+          Role chatRole = switch (role == null ? "user" : role) {
             case "system", "developer" -> Role.ROLE_SYSTEM;
             case "assistant" -> Role.ROLE_ASSISTANT;
+            case "tool" -> Role.ROLE_TOOL;
             default -> Role.ROLE_USER;
           };
           ChatMessage.Builder msgBuilder = ChatMessage.newBuilder().setRole(chatRole);

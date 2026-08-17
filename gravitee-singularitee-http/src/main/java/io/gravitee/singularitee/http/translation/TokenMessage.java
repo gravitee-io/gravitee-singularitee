@@ -39,8 +39,72 @@ public record TokenMessage(
   PerformanceMessage performance,
   String guardMessage,
   java.util.List<WireToolCall> toolCalls,
-  java.util.List<io.gravitee.singularitee.protocol.PositionLogprobs> logprobs
+  java.util.List<io.gravitee.singularitee.protocol.PositionLogprobs> logprobs,
+  io.gravitee.singularitee.protocol.ResponseProgress progress
 ) {
+  /** Backwards-compatible constructor without a progress payload ({@code progress = null}). */
+  public TokenMessage(
+    String token,
+    String reasoning,
+    String tool,
+    int index,
+    boolean isFinal,
+    String finishReason,
+    int promptTokens,
+    int completionTokens,
+    Integer reasoningTokens,
+    Integer toolTokens,
+    PerformanceMessage performance,
+    String guardMessage,
+    java.util.List<WireToolCall> toolCalls,
+    java.util.List<io.gravitee.singularitee.protocol.PositionLogprobs> logprobs
+  ) {
+    this(
+      token,
+      reasoning,
+      tool,
+      index,
+      isFinal,
+      finishReason,
+      promptTokens,
+      completionTokens,
+      reasoningTokens,
+      toolTokens,
+      performance,
+      guardMessage,
+      toolCalls,
+      logprobs,
+      null
+    );
+  }
+
+  /**
+   * An auxiliary progress update ({@code RESPONSE_EVENT_TYPE_PROGRESS} on the wire). Carries
+   * no text: the Chat Completions surface drops it, the Responses API renders it as a
+   * {@code gravitee.progress} object.
+   */
+  public static TokenMessage progressUpdate(
+    io.gravitee.singularitee.protocol.ResponseProgress progress
+  ) {
+    return new TokenMessage(
+      null,
+      null,
+      null,
+      0,
+      false,
+      null,
+      0,
+      0,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      progress
+    );
+  }
+
   /** Backwards-compatible constructor without per-token logprobs ({@code logprobs = null}). */
   public TokenMessage(
     String token,
