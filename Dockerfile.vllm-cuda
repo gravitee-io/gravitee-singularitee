@@ -34,7 +34,7 @@
 #
 
 # cu129 runs on driver r525+; the default tag is CUDA 13 and needs r580+.
-ARG VLLM_IMAGE=vllm/vllm-openai:v0.23.0-cu129
+ARG VLLM_IMAGE=vllm/vllm-openai:v0.26.0-cu129
 
 FROM ${VLLM_IMAGE} AS runtime
 

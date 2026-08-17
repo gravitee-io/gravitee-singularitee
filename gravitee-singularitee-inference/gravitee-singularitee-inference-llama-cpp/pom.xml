@@ -32,7 +32,7 @@
     <description>llama.cpp implementation of the Inference API</description>
 
     <properties>
-        <llamaj.cpp.version>2.6.1</llamaj.cpp.version>
+        <llamaj.cpp.version>2.7.0</llamaj.cpp.version>
     </properties>
 
     <dependencies>

@@ -107,7 +107,7 @@ Caveats worth knowing before you file a bug against it:
 - **vLLM is Linux/CUDA-first.** `examples/vllm/*.yaml` are sized for an 80 GB card; on Apple
   Silicon use `examples/vllm/gpt-oss-20b-mac.yaml`, which shrinks the context window, KV and
   `gpu_memory_utilization` (Metal applies it to *total* unified memory, not free memory).
-- **Keep the venv's vLLM version in step.** `setup-venv.sh` pins vLLM `0.23.0`, matching
+- **Keep the venv's vLLM version in step.** `setup-venv.sh` pins vLLM `0.26.0`, matching
   `Dockerfile.vllm-cuda`'s `VLLM_IMAGE`; vLLM4j is compiled against a specific vLLM Python API.
 - The `examples/vllm/` set is far less exercised than llama.cpp — see the note in
   [`examples/README.md`](examples/README.md) for what has actually been run end to end.

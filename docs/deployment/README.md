@@ -29,7 +29,7 @@ The plain `Dockerfile` (CPU, all engines) is for local development.
 - `Dockerfile.onnx-cuda` — ONNX Runtime + GLiNER on `nvidia/cuda:*-cudnn-runtime` + Temurin 25. Build the distribution with `-Pcuda,dist-onnx` so ONNX Runtime is the GPU build.
 - `Dockerfile.llamacpp-cuda` — llama.cpp on the same CUDA base; copies prebuilt llama.cpp CUDA libs from `LLAMA_LIBS_IMAGE`. Distribution built with `-Pcuda,dist-llama`. (Was `Dockerfile.cuda`.)
 - `Dockerfile.vllm-cuda` — vLLM on `vllm/vllm-openai`, which already carries CUDA, Python and vLLM; adds the JVM and a venv wired for vLLM4j. Distribution built with `-Pdist-vllm`. Keep `VLLM_IMAGE` in step with `scripts/setup-venv.sh`'s `VLLM_VERSION` — vLLM4j is compiled against a specific vLLM Python API.
-- `Dockerfile.llama-cuda` — builder: clones `ggml-org/llama.cpp` at `LLAMACPP_VERSION` (default `b9873`) and builds `libllama.so`/`libggml*.so` with `-DGGML_CUDA=ON` for Volta→Blackwell architectures.
+- `Dockerfile.llama-cuda` — builder: clones `ggml-org/llama.cpp` at `LLAMACPP_VERSION` (default `b10276`) and builds `libllama.so`/`libggml*.so` with `-DGGML_CUDA=ON` for Volta→Blackwell architectures.
 - `docker/cuda/entrypoint.sh` / `cuda-env.sh` — shared by all three images; every engine-specific block is conditional on its payload being present. Sets `GRAVITEE_HOME` and `LD_LIBRARY_PATH`, adds `LLAMA_CPP_LIB_PATH` when the llama.cpp natives are there, and for the vLLM image translates `VLLM4J_VENV` into `-Dvllm4j.venv` on `JAVA_OPTS` (the only thing vLLM4j reads) and preloads `libpython`. Runs `nvidia-smi` diagnostics, then execs `gravitee.sh`.
 - `prod/server/server.yaml` — production multi-model server workspace (`pii.yaml` + `gliguard.yaml` via includes); `prod/apim/` holds Gravitee APIM Helm values for the fronting gateway.
 - `scripts/setup-venv.sh` — creates the vLLM `uv` venv per backend (`metal` / `cuda` / `cpu`).
@@ -108,7 +108,7 @@ workspace:
 | `CUDA_VERSION` | `12.9.2` | CUDA base image version (`Dockerfile.onnx-cuda`, `Dockerfile.llamacpp-cuda`, `Dockerfile.llama-cuda`). |
 | `UBUNTU_VERSION` | `24.04` | Ubuntu base version. |
 | `LLAMA_LIBS_IMAGE` | `llama-cpp-cuda:local` | Image providing the prebuilt llama.cpp CUDA `.so`s. |
-| `LLAMACPP_VERSION` | `b9873` | llama.cpp tag to build (must match the bundled llamaj.cpp — b9873 ↔ 2.6.1). |
+| `LLAMACPP_VERSION` | `b10276` | llama.cpp tag to build (must match the bundled llamaj.cpp — b10276 ↔ 2.7.0). |
 | `CUDA_ARCHITECTURES` | `70-real;...;121-real;90-virtual` | Target GPU architectures (Volta → Blackwell + PTX fallback). |
 
 ### CUDA image env vars
@@ -151,9 +151,9 @@ is several times quicker on the same machine.
 ## Notes
 - **One model per process/GPU.** From ARCHITECTURE.md: the engines (llama.cpp, vLLM, ONNX Runtime) each load their own native CUDA bindings, so co-locating engines or several large models in one JVM invites native library/version conflicts and GPU-memory contention. Host each model in its own Singularitee process and compose them with remote/multi-server workspaces — each gets its own lifecycle, memory, and failure domain. The production client convention: pii on 9100, guardrails on 9101, embedding on 9102, semantic-router on 9103.
 - **No workspace ships in the image.** Mount one (`-v $PWD/examples:/workspaces:ro`) and select it with `GRAVITEE_AI_WORKSPACE_PATH`; `examples/classifier/`, `examples/embedding/` and `examples/llama/` each hold ready-made single-model workspaces. Model weights are *not* in the image either — they download from HuggingFace on first boot; persist `models/` (e.g. a Docker volume) to avoid re-downloading.
-- **vLLM has its own image** (`Dockerfile.vllm-cuda`, built on `vllm/vllm-openai`), so a host venv is not required to run it in production. `scripts/setup-venv.sh` (vLLM `0.23.0`, Python `3.12`) remains the path for local development and for the build machine.
+- **vLLM has its own image** (`Dockerfile.vllm-cuda`, built on `vllm/vllm-openai`), so a host venv is not required to run it in production. `scripts/setup-venv.sh` (vLLM `0.26.0`, Python `3.12`) remains the path for local development and for the build machine.
 - **Each image serves only its own engine.** A workspace referencing a model type the image does not carry fails at load with "no factory for type". Compose engines across processes over gRPC, not inside one image.
-- **Keep `LLAMACPP_VERSION` in lockstep with the llamaj.cpp dependency** — the FFI wrappers drift across llama.cpp bumps and mismatches surface as runtime `NoSuchMethodError`s. `b9873` pairs with llamaj.cpp `2.6.1` (see `docker/cuda/README.md`).
+- **Keep `LLAMACPP_VERSION` in lockstep with the llamaj.cpp dependency** — the FFI wrappers drift across llama.cpp bumps and mismatches surface as runtime `NoSuchMethodError`s. `b10276` pairs with llamaj.cpp `2.7.0` (see `docker/cuda/README.md`).
 - **The server binds its ports before models load** — a TCP-level readiness check passes while calls still return `UNAVAILABLE` until the workspace finishes loading (see [Getting Started](../getting-started/README.md)). Whatever orchestrator fronts it, size the readiness delay for model-download time on first boot.
 - **`prod/apim/apim-values.yaml` is environment-specific** (AKS non-prod, Traefik, MongoDB) and its header says not to commit changes — treat it as a template for fronting the server with a Gravitee APIM gateway.
 
