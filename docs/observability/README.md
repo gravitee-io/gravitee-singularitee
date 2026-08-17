@@ -91,6 +91,8 @@ edit `examples/observability/prometheus/prometheus.yml` to scrape another target
 | `ai_pipeline_latency_seconds` | timer | `pipeline` | End-to-end pipeline latency. |
 | `ai_model_call_seconds` | timer | `model`,`op` | Duration of each individual model-engine call. |
 | `ai_tokens_total` | counter | `model`,`kind` | Tokens by kind (`prompt` \| `completion` \| `reasoning` \| `tool`); non-positive counts skipped. |
+| `ai_finish_reasons_total` | counter | `model`,`reason` | Infer-step completions by finish reason (`stop` \| `length` \| `tool_calls` \| `stalled` \| `cancelled` \| …) — makes silent truncations graphable. |
+| `ai_failure_signals_total` | counter | `source`,`signal` | Detected failure signals: `tool_parse_failed` \| `thinking_unclosed` (source = model id), `loop_max_iterations` (source = step id), `guard_blocked` (source = pipeline id). |
 | `gpu_utilization_percent`, `gpu_memory_utilization_percent`, `gpu_memory_total_bytes`, `gpu_memory_used_bytes`, `gpu_temperature_celsius`, `gpu_power_watts` | gauges | `gpu`,`name`,`uuid` | From `services.monitoring.gpu` (nvidia-smi). |
 
 ## Notes

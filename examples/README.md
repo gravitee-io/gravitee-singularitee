@@ -151,6 +151,9 @@ seconds and run on a laptop — swap in any file from `llama/` for better output
 | `gliner-router.yaml` | `route → respond_{code,cooking,finance,general}` | `strategy: classifier` — the top label picks the branch. |
 | `embedding-router.yaml` | `route → respond_{support,sales,general}` | `strategy: embedding_knn` — nearest reference sentence picks the branch. |
 | `cot.yaml` | `reason → evaluate → loop_gate → answer / fallback` | A quality gate as a graph edge: loop back and refine until an evaluator step is satisfied. |
+| `tool-repair.yaml` | `generate → repair_gate → done / fallback` | Tool-call self-repair on gpt-oss-20b (Harmony): loop back with the parse error when `generate.tool_parse_failed` is true (a broken attempt, not a prose answer), instead of shipping a malformed call as prose. |
+| `tool-repair-escalate.yaml` | `generate(Qwen3-0.6B) → repair_gate → done / escalate(gpt-oss-20b)` | The fallback is a bigger model, not an apology: two repair attempts on the small model (retries at temp 0.2), then the same conversation — corrective turns included — goes to gpt-oss-20b, Harmony tags and all. |
+| `todo-agent.yaml` | `plan → apply_plan → work → track → work_gate → summarize` | Plan-and-execute: the model decomposes the task via the server-executed `set_todos`/`complete_todo` tools, a loop works through items until `todos.remaining` is 0, and progress streams as `gravitee.progress` events. |
 
 ### Tool router
 

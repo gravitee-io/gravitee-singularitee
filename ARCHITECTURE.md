@@ -45,7 +45,9 @@ In **client-side** mode the client declares `remote:` endpoints and `remote_*` m
 
 A pipeline is `entry` + a list of `steps`. The executor walks step→step: linear steps follow their `next_step` edge, while routing/looping steps name their own targets. Each step reads and writes a shared **`PipelineContext`** scratchpad — `prompt`, per-step outputs (`{step_id}.output`), the running `messages` list, and usage. A step that yields no next step is terminal.
 
-**Termination** (`finish_reason`): normal exhaustion → `STOP`; a `break`/`loop` condition → `BREAK_CONDITION`; a guard rejection → `GUARD_BLOCKED`, surfaced to the caller as HTTP 400 `content_filter` (the original input is never echoed back). A missing/unreachable step ends the pipeline with a logged warning.
+**Termination** (`finish_reason`): normal exhaustion → `STOP`; a `break`/`loop` condition → `BREAK_CONDITION`; a guard rejection → `GUARD_BLOCKED`, surfaced to the caller as HTTP 400 `content_filter` (the original input is never echoed back). A missing/unreachable step ends the pipeline with a logged warning. Two engine-failure reasons stay distinct on the gRPC surface but map onto legal OpenAI values over HTTP: `CANCELLED` (client disconnect / slow-consumer cancellation) and `STALLED` (backend decode failure — the output is silently truncated), both rendered as `stop`.
+
+**Failure signals as context fields**: each infer step publishes `<step>.finish_reason`, `<step>.tool_parse_ok`, `<step>.tool_parse_failed`, `<step>.tool_call_count`, `<step>.parse_error`, `<step>.thinking_unclosed` and per-step token counts into the pipeline context; route steps publish `<step>.label` / `<step>.matched`, loop steps `<step>.iterations` / `<step>.max_iterations_reached`. Loop/break conditions and `loopback_message` templates can therefore drive self-repair off a malformed tool call or a truncated generation — see [Loops & CoT](docs/loops-and-cot/README.md) and `examples/pipelines/tool-repair.yaml`.
 
 ### Step types
 
@@ -62,6 +64,7 @@ A pipeline is `entry` + a list of `steps`. The executor walks step→step: linea
 | `sub_pipeline` | Invoke another pipeline (local or remote) | `pipeline_id`, `input_field`, `output_field`, `server`, `forward_messages`, `system_prompt` |
 | `regex_guard` | Pattern guard with entity redaction | `patterns[]`, `action`, `redact_with_entity_type` |
 | `tool_select` | Shortlist the caller's tools with a classifier before injecting them | `model_id`, `input_field`, `batch_size`, `threshold` |
+| `todo` | Server-executed plan tooling: consumes `set_todos`/`complete_todo` calls, mutates the engine-managed plan, streams PROGRESS events | `handled_step` |
 
 **Infer roles** shape conversation history: `output` appends the response as an assistant turn; `thinking` keeps reasoning out of history (and can be stripped from the stream); `internal` holds grader/router verdicts (e.g. `YES`/`NO`) that must not leak into the conversation.
 
