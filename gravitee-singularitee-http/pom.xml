@@ -32,6 +32,16 @@
     <description>Native OpenAI/Anthropic/Gemini-compatible HTTP/JSON API over Singularitee engines and pipelines</description>
 
     <dependencies>
+        <!-- Provider-wire canonicalization for OpenAI Chat Completions ingress. -->
+        <dependency>
+            <groupId>io.gravitee.llmbridge4j</groupId>
+            <artifactId>llmbridge4j-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.llmbridge4j</groupId>
+            <artifactId>llmbridge4j-openai-chat</artifactId>
+        </dependency>
+
         <!-- Internal protocol (proto messages: InferRequest, InferResponse, ChatMessageList, ...) -->
         <dependency>
             <groupId>io.gravitee.singularitee</groupId>

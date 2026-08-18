@@ -16,7 +16,9 @@
 package io.gravitee.singularitee.http.resolve;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.gravitee.llmbridge4j.core.or.v1.model.LlmRequest;
 import io.gravitee.singularitee.engine.TextGenEngine;
+import io.gravitee.singularitee.http.translation.CanonicalChatRequestMapper;
 import io.gravitee.singularitee.http.translation.EndpointType;
 import io.gravitee.singularitee.http.translation.InferRequestBuilder;
 import io.gravitee.singularitee.http.translation.PipelineRequestBuilder;
@@ -73,6 +75,43 @@ public final class ModelOrPipelineResolver {
     return pipelineRegistry
       .get(rawModel)
       .map(p -> pipelineResolution(rawModel, payload, type, hasTools));
+  }
+
+  /** Resolves Chat Completions using a request already canonicalized by LlmBridge4j. */
+  public Optional<Resolution> resolve(String rawModel, LlmRequest request) {
+    if (rawModel == null || rawModel.isBlank()) {
+      return Optional.empty();
+    }
+    boolean hasTools = request.tools() != null && !request.tools().isEmpty();
+    if (rawModel.startsWith(PIPELINE_PREFIX)) {
+      String id = rawModel.substring(PIPELINE_PREFIX.length());
+      return pipelineRegistry.get(id).map(p -> canonicalPipelineResolution(id, request, hasTools));
+    }
+    var model = modelRegistry.get(rawModel);
+    if (model.isPresent() && model.get().engine() instanceof TextGenEngine) {
+      return Optional.of(
+        new Resolution(
+          false,
+          CanonicalChatRequestMapper.toDirect(rawModel, request),
+          null,
+          rawModel,
+          hasTools
+        )
+      );
+    }
+    return pipelineRegistry
+      .get(rawModel)
+      .map(p -> canonicalPipelineResolution(rawModel, request, hasTools));
+  }
+
+  private Resolution canonicalPipelineResolution(String id, LlmRequest request, boolean hasTools) {
+    return new Resolution(
+      true,
+      null,
+      CanonicalChatRequestMapper.toPipeline(id, request),
+      id,
+      hasTools
+    );
   }
 
   private Resolution pipelineResolution(

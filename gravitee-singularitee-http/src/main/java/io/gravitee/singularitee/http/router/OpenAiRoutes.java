@@ -15,6 +15,8 @@
  */
 package io.gravitee.singularitee.http.router;
 
+import io.gravitee.llmbridge4j.core.LlmBridge;
+import io.gravitee.llmbridge4j.openai.chat.OpenAiChatAdapter;
 import io.gravitee.singularitee.http.handler.ChatCompletionsHandler;
 import io.gravitee.singularitee.http.handler.ClassifyHandler;
 import io.gravitee.singularitee.http.handler.CompletionsHandler;
@@ -53,8 +55,12 @@ public final class OpenAiRoutes {
     boolean exposePipelines
   ) {
     var resolver = new ModelOrPipelineResolver(modelRegistry, pipelineRegistry);
+    // Routes are mounted once for the application. Keep the bridge and adapter scoped to that
+    // mount so request handlers do not repeatedly discover provider adapters or allocate bridge
+    // state per request.
+    var bridge = LlmBridge.builder().adapter(new OpenAiChatAdapter()).build();
 
-    var chat = new ChatCompletionsHandler(inference, resolver);
+    var chat = new ChatCompletionsHandler(inference, resolver, bridge);
     var completions = new CompletionsHandler(inference, resolver);
     var responses = new ResponsesHandler(inference, resolver);
     var embeddings = new EmbeddingsHandler(vector);

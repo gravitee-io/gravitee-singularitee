@@ -59,6 +59,9 @@
         <!-- GLiNER4j -->
         <gliner4j.version>1.0.0</gliner4j.version>
 
+        <!-- LlmBridge4j provider-wire canonicalization -->
+        <llmbridge4j.version>0.6.0</llmbridge4j.version>
+
         <!-- ONNX Runtime native backend, shared by gravitee-singularitee-inference-onnx and
              gliner4j-core. Defaults to the CPU build ("onnxruntime", which also
              carries CoreML on macOS). The "cuda" profile flips the artifact to
@@ -111,6 +114,15 @@
                 <groupId>io.gravitee</groupId>
                 <artifactId>gravitee-bom</artifactId>
                 <version>${gravitee-bom.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+
+            <!-- LlmBridge4j -->
+            <dependency>
+                <groupId>io.gravitee.llmbridge4j</groupId>
+                <artifactId>llmbridge4j-bom</artifactId>
+                <version>${llmbridge4j.version}</version>
                 <scope>import</scope>
                 <type>pom</type>
             </dependency>
