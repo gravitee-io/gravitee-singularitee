@@ -188,8 +188,11 @@ public final class ClientPipelineExecutor {
     }
 
     // 4b. Register client-local models (regex, composite — pure-Java engines)
-    ClientLocalModelRegistrar.register(ws.clientLocalModels(), modelRegistry, (id, name, engine) ->
-      modelRegistry.register(id, name, engine, token -> {})
+    ClientLocalModelRegistrar.register(
+      ws.clientLocalModels(),
+      modelRegistry,
+      (id, name, engine, task, visible) ->
+        modelRegistry.register(id, name, engine, token -> {}, task, visible)
     );
 
     // 5. Build PipelineRegistry from local YAML
@@ -348,7 +351,9 @@ public final class ClientPipelineExecutor {
       modelDef.id(),
       modelDef.name() != null ? modelDef.name() : modelDef.id(),
       engine,
-      tokenDispatcher
+      tokenDispatcher,
+      modelDef.task() != null ? modelDef.task() : "",
+      modelDef.isVisible()
     );
 
     LOGGER.info(

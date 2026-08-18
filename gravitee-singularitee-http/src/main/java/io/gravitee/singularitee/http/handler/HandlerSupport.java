@@ -20,6 +20,7 @@ import io.gravitee.singularitee.http.json.JsonResponses;
 import io.gravitee.singularitee.http.json.Utils;
 import io.gravitee.singularitee.http.validation.PayloadValidator;
 import io.gravitee.singularitee.http.validation.SchemaName;
+import io.gravitee.singularitee.registry.ModelRegistry;
 import io.vertx.ext.web.RoutingContext;
 import java.util.ArrayList;
 import java.util.List;
@@ -59,6 +60,32 @@ public final class HandlerSupport {
         "model",
         "invalid_request_error"
       );
+      return null;
+    }
+    return model;
+  }
+
+  /**
+   * Extracts the required {@code model} field and rejects it when it names a model
+   * the workspace hid.
+   *
+   * <p>A hidden model answers exactly like an undeclared one — same 400, same
+   * {@code model_not_found} — so that hiding a model does not leave it discoverable
+   * by the shape of the refusal. Ids that are not in the registry at all fall
+   * through unchanged: the service below produces the not-found for those, and it
+   * knows about surfaces (vectors, classifiers) this check does not.
+   */
+  public static String requireModel(RoutingContext rc, JsonNode payload, ModelRegistry registry) {
+    String model = requireModel(rc, payload);
+    if (model == null) {
+      return null;
+    }
+    boolean hidden = registry
+      .get(model)
+      .map(entry -> !entry.visible())
+      .orElse(false);
+    if (hidden) {
+      modelNotFound(rc, model);
       return null;
     }
     return model;

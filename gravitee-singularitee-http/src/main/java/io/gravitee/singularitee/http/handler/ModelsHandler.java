@@ -30,7 +30,19 @@ import io.gravitee.singularitee.service.GraviteePipelineServiceImpl;
 import io.vertx.ext.web.RoutingContext;
 import java.time.Instant;
 
-/** {@code GET /v1/models} and {@code GET /v1/models/{id}} — lists models (and pipelines). */
+/**
+ * {@code GET /v1/models} and {@code GET /v1/models/{id}} — lists models (and pipelines).
+ *
+ * <p>Pipelines are listed as models, described by their task, and never labelled as
+ * pipelines: a caller picks an id by the surface it serves, and how the answer is
+ * produced — one model or a guarded, routed DAG of them — is the server's business.
+ * A pipeline reads as {@code "pipeline"} here only if its workspace says so, by
+ * declaring {@code task: pipeline} outright.
+ *
+ * <p>Hidden models and pipelines are absent from the listing and 404 on the
+ * single-id route, matching what {@link io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver}
+ * does on the inference routes.
+ */
 public final class ModelsHandler {
 
   private static final String OWNER = "gravitee";
@@ -70,7 +82,13 @@ public final class ModelsHandler {
     String id = rc.pathParam("model");
     models
       .getModel(GetModelRequest.newBuilder().setModelId(id).build())
-      .onSuccess(m -> JsonResponses.writeJson(rc, modelNode(m.getModelId(), m.getTask())))
+      .onSuccess(m -> {
+        if (m.getHidden()) {
+          notFound(rc, id);
+          return;
+        }
+        JsonResponses.writeJson(rc, modelNode(m.getModelId(), m.getTask()));
+      })
       .onFailure(err -> {
         if (!exposePipelines) {
           notFound(rc, id);
@@ -78,9 +96,16 @@ public final class ModelsHandler {
         }
         pipelines
           .getPipeline(GetPipelineRequest.newBuilder().setPipelineId(id).build())
-          .onSuccess(p ->
-            JsonResponses.writeJson(rc, modelNode(p.getPipeline().getPipelineId(), "pipeline"))
-          )
+          .onSuccess(p -> {
+            if (p.getPipeline().getHidden()) {
+              notFound(rc, id);
+              return;
+            }
+            JsonResponses.writeJson(
+              rc,
+              modelNode(p.getPipeline().getPipelineId(), p.getPipeline().getTask())
+            );
+          })
           .onFailure(e2 -> notFound(rc, id));
       });
   }
@@ -94,7 +119,7 @@ public final class ModelsHandler {
     }
     if (pl != null) {
       for (var p : pl.getPipelinesList()) {
-        data.add(modelNode(p.getPipeline().getPipelineId(), "pipeline"));
+        data.add(modelNode(p.getPipeline().getPipelineId(), p.getPipeline().getTask()));
       }
     }
     return root;

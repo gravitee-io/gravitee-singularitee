@@ -164,7 +164,9 @@ public final class OnnxModelResolver {
           null,
           null,
           null,
-          exclude
+          exclude,
+          request.task(),
+          request.visible()
         );
       }
     );
@@ -218,7 +220,9 @@ public final class OnnxModelResolver {
           null,
           null,
           null,
-          exclude
+          exclude,
+          request.task(),
+          request.visible()
         );
       }
     );
@@ -272,7 +276,9 @@ public final class OnnxModelResolver {
           newCfg,
           null,
           null,
-          exclude
+          exclude,
+          request.task(),
+          request.visible()
         );
       }
     );

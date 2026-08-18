@@ -66,8 +66,20 @@ public final class ClientLocalModelRegistrar {
    */
   @FunctionalInterface
   public interface Registrar {
-    /** Registers the engine and returns the resolved model ID. */
-    String register(String modelId, String modelName, ModelEngine engine);
+    /**
+     * Registers the engine with its publication metadata and returns the resolved
+     * model ID.
+     *
+     * @param task    declared task slug, or blank to defer to the engine
+     * @param visible whether the model joins the public catalogue
+     */
+    String register(
+      String modelId,
+      String modelName,
+      ModelEngine engine,
+      String task,
+      boolean visible
+    );
   }
 
   private ClientLocalModelRegistrar() {}
@@ -116,7 +128,7 @@ public final class ClientLocalModelRegistrar {
                 .toList()
               : List.of();
             var engine = new RegexClassifierEngine(entries);
-            registrar.register(def.id(), displayName(def), engine);
+            registrar.register(def.id(), displayName(def), engine, task(def), def.isVisible());
             LOGGER.info(
               "Client-local model registered: id='{}', type='regex', patterns={}",
               def.id(),
@@ -175,7 +187,7 @@ public final class ClientLocalModelRegistrar {
         if (!resolved) continue;
 
         var engine = new CompositeClassifierEngine(delegates);
-        registrar.register(def.id(), displayName(def), engine);
+        registrar.register(def.id(), displayName(def), engine, task(def), def.isVisible());
         LOGGER.info(
           "Client-local model registered: id='{}', type='composite_classifier', delegates={}",
           def.id(),
@@ -198,6 +210,10 @@ public final class ClientLocalModelRegistrar {
       ? def.entityType()
       : "MATCH";
     return new RegexClassifierEngine.PatternEntry(def.pattern(), entityType);
+  }
+
+  private static String task(WorkspaceDefinition.ModelDefinition def) {
+    return def.task() != null ? def.task() : "";
   }
 
   private static String displayName(WorkspaceDefinition.ModelDefinition def) {

@@ -117,7 +117,9 @@ public final class GlinerModelResolver {
         null,
         null,
         null,
-        request.downloadExclude()
+        request.downloadExclude(),
+        request.task(),
+        request.visible()
       );
     });
   }
@@ -151,7 +153,9 @@ public final class GlinerModelResolver {
         null,
         null,
         null,
-        request.downloadExclude()
+        request.downloadExclude(),
+        request.task(),
+        request.visible()
       );
     });
   }

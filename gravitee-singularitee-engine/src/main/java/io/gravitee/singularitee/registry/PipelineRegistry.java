@@ -17,6 +17,7 @@ package io.gravitee.singularitee.registry;
 
 import io.gravitee.singularitee.protocol.Pipeline;
 import io.gravitee.singularitee.protocol.PipelineStatus;
+import io.gravitee.singularitee.protocol.StepRole;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -70,10 +71,14 @@ public final class PipelineRegistry {
       ? pipeline.getPipelineId()
       : java.util.UUID.randomUUID().toString();
 
+    Pipeline published = pipeline.getTask().isBlank()
+      ? pipeline.toBuilder().setTask(deriveTask(pipeline)).build()
+      : pipeline;
+
     if (
       pipelines.putIfAbsent(
         resolvedId,
-        new PipelineEntry(pipeline, PipelineStatus.PIPELINE_STATUS_ACTIVE, new AtomicInteger(0))
+        new PipelineEntry(published, PipelineStatus.PIPELINE_STATUS_ACTIVE, new AtomicInteger(0))
       ) !=
       null
     ) {
@@ -107,6 +112,42 @@ public final class PipelineRegistry {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Infers the task slug a pipeline exposes from the model behind its output step.
+   *
+   * <p>A pipeline's public surface is the surface of whatever produces its answer:
+   * a pipeline ending in a text-gen model is a text-generation endpoint no matter
+   * how many guards and routers precede it. So the derivation asks the engine
+   * rather than the step type — only the engine can tell sequence-level
+   * classification from token-level.
+   *
+   * <p>Falls back to the entry step when no step claims {@code role: output}, and
+   * to an empty slug when nothing resolves. Empty is the honest answer: a caller
+   * that cannot tell which endpoint a pipeline belongs on is better served by no
+   * label than by a guess.
+   */
+  private String deriveTask(Pipeline pipeline) {
+    var outputStep = pipeline
+      .getStepsList()
+      .stream()
+      .filter(step -> step.getRole() == StepRole.STEP_ROLE_OUTPUT)
+      .reduce((first, second) -> second)
+      .or(() ->
+        pipeline
+          .getStepsList()
+          .stream()
+          .filter(step -> step.getStepId().equals(pipeline.getEntryStepId()))
+          .findFirst()
+      );
+
+    return outputStep
+      .map(PipelineRegistry::extractModelId)
+      .filter(id -> id != null && !id.isBlank())
+      .flatMap(id -> modelRegistry.get(id))
+      .map(ModelRegistry.ModelEntry::task)
+      .orElse("");
+  }
 
   private void validateModelReferences(Pipeline pipeline) {
     for (var step : pipeline.getStepsList()) {

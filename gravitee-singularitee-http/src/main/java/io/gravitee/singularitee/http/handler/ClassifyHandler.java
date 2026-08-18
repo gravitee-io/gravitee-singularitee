@@ -23,6 +23,7 @@ import io.gravitee.singularitee.http.json.Utils;
 import io.gravitee.singularitee.http.validation.SchemaName;
 import io.gravitee.singularitee.protocol.ClassifyBatchRequest;
 import io.gravitee.singularitee.protocol.ClassifyLabel;
+import io.gravitee.singularitee.registry.ModelRegistry;
 import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
@@ -36,9 +37,11 @@ import java.util.List;
 public final class ClassifyHandler implements Handler<RoutingContext> {
 
   private final GraviteeInferenceServiceImpl inference;
+  private final ModelRegistry modelRegistry;
 
-  public ClassifyHandler(GraviteeInferenceServiceImpl inference) {
+  public ClassifyHandler(GraviteeInferenceServiceImpl inference, ModelRegistry modelRegistry) {
     this.inference = inference;
+    this.modelRegistry = modelRegistry;
   }
 
   @Override
@@ -47,7 +50,7 @@ public final class ClassifyHandler implements Handler<RoutingContext> {
     if (payload == null) {
       return;
     }
-    String model = HandlerSupport.requireModel(rc, payload);
+    String model = HandlerSupport.requireModel(rc, payload, modelRegistry);
     if (model == null) {
       return;
     }

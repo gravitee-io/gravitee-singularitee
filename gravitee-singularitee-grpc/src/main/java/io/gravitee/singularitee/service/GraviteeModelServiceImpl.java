@@ -141,7 +141,9 @@ public class GraviteeModelServiceImpl
           requestedId,
           request.modelName(),
           engine,
-          tokenConsumer
+          tokenConsumer,
+          request.task(),
+          request.visible()
         );
         streamsByModel.put(resolvedId, activeStreams);
         return resolvedId;
@@ -165,10 +167,24 @@ public class GraviteeModelServiceImpl
    * and stream map. Used for remote models declared in workspace YAML.
    */
   public String registerPrebuiltModel(String modelId, String modelName, ModelEngine engine) {
+    return registerPrebuiltModel(modelId, modelName, engine, "", true);
+  }
+
+  /**
+   * Registers a pre-built {@link ModelEngine} along with the publication metadata
+   * its workspace entry declared — the task override and catalogue visibility.
+   */
+  public String registerPrebuiltModel(
+    String modelId,
+    String modelName,
+    ModelEngine engine,
+    String task,
+    boolean visible
+  ) {
     var activeStreams = new ConcurrentHashMap<Integer, StreamContext>();
     Consumer<ModelEngineToken> tokenConsumer = token -> dispatchToken(token, activeStreams);
 
-    String resolvedId = registry.register(modelId, modelName, engine, tokenConsumer);
+    String resolvedId = registry.register(modelId, modelName, engine, tokenConsumer, task, visible);
     streamsByModel.put(resolvedId, activeStreams);
 
     LOGGER.info(
@@ -196,7 +212,8 @@ public class GraviteeModelServiceImpl
       .setModelName(entry.modelName())
       .setModelType(resolveModelTypeFromEngine(entry.engine()))
       .setStatus(ModelStatus.MODEL_STATUS_ACTIVE)
-      .setTask(entry.engine().task());
+      .setTask(entry.task())
+      .setHidden(!entry.visible());
 
     if (entry.engine() instanceof TextGenEngine tge) {
       if (tge.chatTemplateString() != null) builder.setChatTemplate(tge.chatTemplateString());
@@ -215,13 +232,14 @@ public class GraviteeModelServiceImpl
   public Future<ListModelsResponse> listModels(ListModelsRequest request) {
     var builder = ListModelsResponse.newBuilder();
     for (var kv : registry.entries()) {
+      if (!kv.getValue().visible()) continue;
       builder.addModels(
         GetModelResponse.newBuilder()
           .setModelId(kv.getKey())
           .setModelName(kv.getValue().modelName())
           .setModelType(resolveModelTypeFromEngine(kv.getValue().engine()))
           .setStatus(ModelStatus.MODEL_STATUS_ACTIVE)
-          .setTask(kv.getValue().engine().task())
+          .setTask(kv.getValue().task())
           .build()
       );
     }

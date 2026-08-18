@@ -316,7 +316,8 @@ public final class YamlWorkspaceLoader {
     ModelType modelType = ModelType.parse(m.type() == null ? "" : m.type());
     return modelType
       .toModelLoadRequest(modelId, modelName, modelPath, policy, m)
-      .withDownloadExclude(downloadExclude(m));
+      .withDownloadExclude(downloadExclude(m))
+      .withPublication(m.task() == null ? "" : m.task(), m.isVisible());
   }
 
   /**
@@ -403,6 +404,8 @@ public final class YamlWorkspaceLoader {
       .setPipelineName(p.name() != null ? p.name() : p.id() + " (remote)")
       .setEntryStepId(stepId)
       .addSteps(step)
+      .setTask(p.task() == null ? "" : p.task())
+      .setHidden(!p.isVisible())
       .build();
   }
 
@@ -417,6 +420,8 @@ public final class YamlWorkspaceLoader {
     if (p.id() != null && !p.id().isBlank()) pipelineBuilder.setPipelineId(p.id());
     if (p.name() != null) pipelineBuilder.setPipelineName(p.name());
     if (p.entry() != null) pipelineBuilder.setEntryStepId(p.entry());
+    if (p.task() != null && !p.task().isBlank()) pipelineBuilder.setTask(p.task());
+    pipelineBuilder.setHidden(!p.isVisible());
 
     if (p.steps() != null) {
       for (StepDefinition s : p.steps()) {

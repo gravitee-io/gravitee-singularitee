@@ -72,12 +72,41 @@ public final class ModelRegistry {
     ModelEngine engine,
     java.util.function.Consumer<ModelEngineToken> tokenConsumer
   ) {
+    return register(modelId, modelName, engine, tokenConsumer, "", true);
+  }
+
+  /**
+   * Registers a model engine along with the publication metadata the workspace
+   * declared for it.
+   *
+   * @param modelId       caller-supplied ID, or empty to auto-generate a UUID
+   * @param modelName     human-readable model name (for logging)
+   * @param engine        the model engine, not yet started
+   * @param tokenConsumer callback that receives every token emitted by a text-gen engine;
+   *                      ignored for classifier and embedding engines
+   * @param task          declared task slug overriding the engine's own; blank to defer
+   *                      to {@link ModelEngine#task()}
+   * @param visible       whether the model joins the public catalogue
+   * @return the final model_id (either the caller's value or the generated UUID)
+   * @throws IllegalArgumentException if the supplied modelId is already registered
+   */
+  public String register(
+    String modelId,
+    String modelName,
+    ModelEngine engine,
+    java.util.function.Consumer<ModelEngineToken> tokenConsumer,
+    String task,
+    boolean visible
+  ) {
     String resolvedId = (modelId != null && !modelId.isBlank())
       ? modelId
       : java.util.UUID.randomUUID().toString();
 
     if (
-      models.putIfAbsent(resolvedId, new ModelEntry(modelName, engine, new AtomicInteger(0))) !=
+      models.putIfAbsent(
+        resolvedId,
+        new ModelEntry(modelName, engine, new AtomicInteger(0), task, visible)
+      ) !=
       null
     ) {
       throw new IllegalArgumentException("model_id already in use: " + resolvedId);
@@ -89,7 +118,13 @@ public final class ModelRegistry {
       tge.start(tokenConsumer);
     }
 
-    LOGGER.info("Model published: id={}, name={}, type={}", resolvedId, modelName, engine.type());
+    LOGGER.info(
+      "Model published: id={}, name={}, type={}, visible={}",
+      resolvedId,
+      modelName,
+      engine.type(),
+      visible
+    );
     return resolvedId;
   }
 
@@ -173,8 +208,34 @@ public final class ModelRegistry {
    * @param modelName     human-readable name
    * @param engine        the running model engine
    * @param seqCounter    monotonically-increasing sequence-ID generator
+   * @param declaredTask  task slug declared by the workspace; blank means the
+   *                      engine's own {@link ModelEngine#task()} answer stands
+   * @param visible       whether the model joins the public catalogue
    */
-  public record ModelEntry(String modelName, ModelEngine engine, AtomicInteger seqCounter) {
+  public record ModelEntry(
+    String modelName,
+    ModelEngine engine,
+    AtomicInteger seqCounter,
+    String declaredTask,
+    boolean visible
+  ) {
+    public ModelEntry {
+      declaredTask = declaredTask == null ? "" : declaredTask;
+    }
+
+    /** Registers an entry with no declared task, visible to the catalogue. */
+    public ModelEntry(String modelName, ModelEngine engine, AtomicInteger seqCounter) {
+      this(modelName, engine, seqCounter, "", true);
+    }
+
+    /**
+     * Returns the task slug to advertise: the workspace's declaration when it made
+     * one, the engine's own answer otherwise.
+     */
+    public String task() {
+      return declaredTask.isBlank() ? engine.task() : declaredTask;
+    }
+
     /** Returns the in-flight sequence counter (shared reference). */
     public AtomicInteger inFlightCount() {
       return seqCounter;

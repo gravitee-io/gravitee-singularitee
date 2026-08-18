@@ -35,6 +35,7 @@ import io.gravitee.singularitee.protocol.EmbedBatchItem;
 import io.gravitee.singularitee.protocol.EmbedBatchResponse;
 import io.gravitee.singularitee.protocol.FinishReason;
 import io.gravitee.singularitee.protocol.FloatVector;
+import io.gravitee.singularitee.protocol.GetModelRequest;
 import io.gravitee.singularitee.protocol.GetModelResponse;
 import io.gravitee.singularitee.protocol.InferResponse;
 import io.gravitee.singularitee.protocol.ListModelsResponse;
@@ -96,6 +97,14 @@ class HttpApiIntegrationTest {
 
     ModelRegistry modelRegistry = new ModelRegistry();
     modelRegistry.register("llm", "LLM", new FakeTextGenEngine(), token -> {});
+    modelRegistry.register(
+      "internal-llm",
+      "Internal LLM",
+      new FakeTextGenEngine(),
+      token -> {},
+      "",
+      false
+    );
     PipelineRegistry pipelineRegistry = new PipelineRegistry(modelRegistry);
 
     // infer(req, ws): drive a thinking delta, two content deltas, then completion.
@@ -136,6 +145,19 @@ class HttpApiIntegrationTest {
           .build()
       )
     );
+    when(modelService.getModel(any())).thenAnswer(inv -> {
+      String id = ((GetModelRequest) inv.getArgument(0)).getModelId();
+      if (!id.equals("llm") && !id.equals("internal-llm")) {
+        return Future.failedFuture("Model not found: " + id);
+      }
+      return Future.succeededFuture(
+        GetModelResponse.newBuilder()
+          .setModelId(id)
+          .setTask("text-generation")
+          .setHidden(id.equals("internal-llm"))
+          .build()
+      );
+    });
     when(pipelineService.listPipelines(any())).thenReturn(
       Future.succeededFuture(ListPipelinesResponse.getDefaultInstance())
     );
@@ -304,6 +326,35 @@ class HttpApiIntegrationTest {
     assertThat(n.at("/object").asText()).isEqualTo("list");
     assertThat(n.at("/data/0/id").asText()).isEqualTo("llm");
     assertThat(n.at("/data/0/object").asText()).isEqualTo("model");
+  }
+
+  @Test
+  void hiddenModelIsNotAnEndpoint() throws Exception {
+    Resp r = post(
+      "/v1/chat/completions",
+      "{\"model\":\"internal-llm\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+    );
+    assertThat(r.status()).isEqualTo(400);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/error/code").asText()).isEqualTo("model_not_found");
+  }
+
+  @Test
+  void hiddenModelIsNotAnEndpointOnTheVectorRoutes() throws Exception {
+    Resp r = post("/v1/embeddings", "{\"model\":\"internal-llm\",\"input\":\"hello\"}");
+    assertThat(r.status()).isEqualTo(400);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/error/code").asText()).isEqualTo("model_not_found");
+  }
+
+  @Test
+  void hiddenModelIsNotRetrievableById() throws Exception {
+    assertThat(get("/v1/models/llm").status()).isEqualTo(200);
+
+    Resp r = get("/v1/models/internal-llm");
+    assertThat(r.status()).isEqualTo(404);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/error/code").asText()).isEqualTo("model_not_found");
   }
 
   @Test

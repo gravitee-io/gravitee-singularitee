@@ -319,7 +319,9 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     modelService.registerPrebuiltModel(
       modelDef.id(),
       modelDef.name() != null ? modelDef.name() : modelDef.id(),
-      engine
+      engine,
+      modelDef.task() != null ? modelDef.task() : "",
+      modelDef.isVisible()
     );
 
     LOGGER.info(

@@ -177,12 +177,29 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
 
   // ── Model ─────────────────────────────────────────────────────────────────
 
+  /**
+   * A model published by the workspace.
+   *
+   * <p>{@code task:} overrides the task slug the engine reports for itself — the
+   * value callers route on ({@code text-generation}, {@code text-classification},
+   * {@code token-classification}, {@code feature-extraction}, {@code reranking}).
+   * Left unset, the engine's own answer stands, which is right for every stock
+   * engine; declaring it matters when a model is repurposed for a surface its
+   * engine cannot infer on its own.
+   *
+   * <p>{@code visible:} controls catalogue membership, per model. {@code false}
+   * drops it from the listings and from the OpenAI HTTP surface while leaving it
+   * callable as a pipeline dependency — the way to publish a pipeline without
+   * publishing the models it is built from. Unset means visible.
+   */
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record ModelDefinition(
     @JsonProperty("id") String id,
     @JsonProperty("name") String name,
     @JsonProperty("type") String type,
     @JsonProperty("server") String server,
+    @JsonProperty("task") String task,
+    @JsonProperty("visible") Boolean visible,
     @JsonProperty("memory_check") String memoryCheck,
     @JsonProperty("download") DownloadDef download,
     @JsonProperty("llama_cpp") LlamaCppDef llamaCpp,
@@ -196,7 +213,12 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
     @JsonProperty("onnx_reranker") OnnxRerankerDef onnxReranker,
     @JsonProperty("llama_cpp_embedding") LlamaCppEmbeddingDef llamaCppEmbedding,
     @JsonProperty("llama_cpp_reranker") LlamaCppRerankerDef llamaCppReranker
-  ) {}
+  ) {
+    /** Returns {@code true} unless the workspace explicitly hid this model. */
+    public boolean isVisible() {
+      return visible == null || visible;
+    }
+  }
 
   /**
    * Narrows what gets pulled from HuggingFace when a model is downloaded.
@@ -425,12 +447,19 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
     @JsonProperty("name") String name,
     @JsonProperty("server") String server,
     @JsonProperty("entry") String entry,
+    @JsonProperty("task") String task,
+    @JsonProperty("visible") Boolean visible,
     @JsonProperty("steps") List<StepDefinition> steps,
     @JsonProperty("remote") RemoteProxyDef remote
   ) {
     /** Returns {@code true} if this pipeline is a remote reference (no local steps). */
     public boolean isRemote() {
       return server != null && !server.isBlank();
+    }
+
+    /** Returns {@code true} unless the workspace explicitly hid this pipeline. */
+    public boolean isVisible() {
+      return visible == null || visible;
     }
   }
 

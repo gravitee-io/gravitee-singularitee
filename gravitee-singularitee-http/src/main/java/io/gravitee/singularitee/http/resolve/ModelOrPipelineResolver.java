@@ -45,6 +45,15 @@ public final class ModelOrPipelineResolver {
     this.pipelineRegistry = pipelineRegistry;
   }
 
+  /**
+   * Resolves the {@code model} field of a request to a published model or pipeline.
+   *
+   * <p>Hidden models and pipelines resolve to nothing: they are internal building
+   * blocks, reachable as pipeline dependencies but not as an endpoint of their own.
+   * Callers turn the empty result into the same {@code model_not_found} they would
+   * get for an id that was never declared — a hidden model does not announce its
+   * own existence by answering differently.
+   */
   public Optional<Resolution> resolve(String rawModel, JsonNode payload, EndpointType type) {
     if (rawModel == null || rawModel.isBlank()) {
       return Optional.empty();
@@ -54,10 +63,13 @@ public final class ModelOrPipelineResolver {
 
     if (rawModel.startsWith(PIPELINE_PREFIX)) {
       String id = rawModel.substring(PIPELINE_PREFIX.length());
-      return pipelineRegistry.get(id).map(p -> pipelineResolution(id, payload, type, hasTools));
+      return pipelineRegistry
+        .get(id)
+        .filter(p -> !p.pipeline().getHidden())
+        .map(p -> pipelineResolution(id, payload, type, hasTools));
     }
 
-    var model = modelRegistry.get(rawModel);
+    var model = modelRegistry.get(rawModel).filter(ModelRegistry.ModelEntry::visible);
     if (model.isPresent() && model.get().engine() instanceof TextGenEngine) {
       return Optional.of(
         new Resolution(
@@ -72,6 +84,7 @@ public final class ModelOrPipelineResolver {
 
     return pipelineRegistry
       .get(rawModel)
+      .filter(p -> !p.pipeline().getHidden())
       .map(p -> pipelineResolution(rawModel, payload, type, hasTools));
   }
 

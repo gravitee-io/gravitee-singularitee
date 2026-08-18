@@ -71,6 +71,7 @@ public class GraviteePipelineServiceImpl extends GraviteePipelineServiceGrpcServ
   public Future<ListPipelinesResponse> listPipelines(ListPipelinesRequest request) {
     var builder = ListPipelinesResponse.newBuilder();
     for (var kv : registry.entries()) {
+      if (kv.getValue().pipeline().getHidden()) continue;
       builder.addPipelines(
         GetPipelineResponse.newBuilder()
           .setPipeline(kv.getValue().pipeline())
