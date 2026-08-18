@@ -32,20 +32,27 @@ fail-fast connect, Fibonacci-backoff retries, TLS, and HTTP Basic auth.
 
 | RPC | Request | Response |
 | --- | --- | --- |
-| `GetModel` | `GetModelRequest { model_id }` | `GetModelResponse { model_id, model_name, model_type, status, chat_template, bos_token, eos_token, task }` |
+| `GetModel` | `GetModelRequest { model_id }` | `GetModelResponse { model_id, model_name, model_type, status, chat_template, bos_token, eos_token, task, hidden }` |
 | `ListModels` | `ListModelsRequest {}` | `ListModelsResponse { repeated GetModelResponse models }` |
 
 `model_type` distinguishes engines (`MODEL_TYPE_LLAMA_CPP`, `MODEL_TYPE_VLLM`,
 `MODEL_TYPE_ONNX_CLASSIFIER`, `MODEL_TYPE_ONNX_EMBEDDING`, `MODEL_TYPE_GLINER_CLASSIFIER`,
 `MODEL_TYPE_GLINER_NER`, `MODEL_TYPE_ONNX_RERANKER`, `MODEL_TYPE_LLAMA_CPP_EMBEDDING`,
 `MODEL_TYPE_LLAMA_CPP_RERANKER`). `task` is a pipeline-task slug for routing
-(`text-generation`, `text-classification`, `token-classification`, `feature-extraction`).
+(`text-generation`, `text-classification`, `token-classification`,
+`feature-extraction`, `reranking`) — the workspace's `task:` when it declared one,
+the engine's own answer otherwise.
+
+`hidden` marks a model the workspace published with `visible: false`. `ListModels`
+omits those entirely; `GetModel` still answers for them, which is what keeps a
+hidden model usable as another server's `remote_*` backing — the OpenAI HTTP
+surface is where hiding turns into a refusal.
 
 **GraviteePipelineService**:
 
 | RPC | Request | Response |
 | --- | --- | --- |
-| `GetPipeline` | `GetPipelineRequest { pipeline_id }` | `GetPipelineResponse { Pipeline pipeline, PipelineStatus status }` |
+| `GetPipeline` | `GetPipelineRequest { pipeline_id }` | `GetPipelineResponse { Pipeline pipeline, PipelineStatus status }` — `Pipeline` carries `task` and `hidden` alongside its steps |
 | `ListPipelines` | `ListPipelinesRequest {}` | `ListPipelinesResponse { repeated GetPipelineResponse pipelines }` |
 
 `Pipeline` carries the full DAG: `entry_step_id`, `repeated PipelineStep steps` (each a oneof of

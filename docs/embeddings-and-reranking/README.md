@@ -121,8 +121,7 @@ curl -s http://localhost:8080/v1/rerank \
 #    "usage":{"total_tokens":42}}
 ```
 
-`POST /v1/similarity` (Gravitee extension — `cross` scores every input against every
-candidate, `zipped` pairs them positionally):
+`POST /v1/similarity` (`cross` scores every input against every candidate, `zipped` pairs them positionally):
 
 ```bash
 curl -s http://localhost:8080/v1/similarity \
