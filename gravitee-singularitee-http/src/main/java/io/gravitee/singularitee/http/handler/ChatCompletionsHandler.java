@@ -16,6 +16,9 @@
 package io.gravitee.singularitee.http.handler;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.gravitee.llmbridge4j.core.LlmBridge;
+import io.gravitee.llmbridge4j.core.or.v1.model.LlmRequest;
 import io.gravitee.singularitee.http.json.JsonResponses;
 import io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver;
 import io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver.Resolution;
@@ -33,13 +36,16 @@ public final class ChatCompletionsHandler implements Handler<RoutingContext> {
 
   private final GraviteeInferenceServiceImpl inference;
   private final ModelOrPipelineResolver resolver;
+  private final LlmBridge bridge;
 
   public ChatCompletionsHandler(
     GraviteeInferenceServiceImpl inference,
-    ModelOrPipelineResolver resolver
+    ModelOrPipelineResolver resolver,
+    LlmBridge bridge
   ) {
     this.inference = inference;
     this.resolver = resolver;
+    this.bridge = bridge;
   }
 
   @Override
@@ -57,7 +63,8 @@ public final class ChatCompletionsHandler implements Handler<RoutingContext> {
     }
     java.util.Optional<Resolution> resolution;
     try {
-      resolution = resolver.resolve(model, payload, EndpointType.CHAT);
+      LlmRequest canonical = bridge.toCanonical("openai-chat", normalizeForBridge(payload));
+      resolution = resolver.resolve(model, canonical);
     } catch (IllegalArgumentException e) {
       HandlerSupport.badRequest(rc, e.getMessage(), "messages");
       return;
@@ -93,5 +100,49 @@ public final class ChatCompletionsHandler implements Handler<RoutingContext> {
           err -> Dispatch.failInternal(rc, err)
         );
     }
+  }
+
+  /**
+   * Keeps representable legacy Chat Completions behavior while the bridge owns wire parsing.
+   *
+   * <p>The bridge's canonical model intentionally has stricter role semantics than Singularitee's
+   * historical loose schema. This defensive copy also spells the two legacy aliases that are
+   * otherwise not recoverable after canonicalization.
+   */
+  static JsonNode normalizeForBridge(JsonNode payload) {
+    if (!(payload instanceof ObjectNode copy)) {
+      return payload;
+    }
+    copy = copy.deepCopy();
+
+    JsonNode flatEffort = copy.path("reasoning_effort");
+    JsonNode nestedEffort = copy.path("reasoning").path("effort");
+    if ((!flatEffort.isTextual() || flatEffort.asText().isEmpty()) && nestedEffort.isTextual()) {
+      copy.put("reasoning_effort", nestedEffort.asText());
+    }
+
+    if (copy.path("logprobs").asBoolean(false) && copy.path("top_logprobs").isMissingNode()) {
+      copy.put("top_logprobs", 1);
+    }
+
+    JsonNode messages = copy.path("messages");
+    if (messages.isArray()) {
+      for (JsonNode message : messages) {
+        if (!(message instanceof ObjectNode object)) {
+          continue;
+        }
+        JsonNode role = object.path("role");
+        if (
+          role.isTextual() &&
+          switch (role.asText()) {
+            case "system", "developer", "user", "assistant", "tool", "function" -> false;
+            default -> true;
+          }
+        ) {
+          object.put("role", "user");
+        }
+      }
+    }
+    return copy;
   }
 }
