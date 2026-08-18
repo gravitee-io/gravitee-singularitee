@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.0.0...1.1.0) (2026-08-18)
+
+
+### Features
+
+* plan engine with proof-carry todos, live progress streaming, and hardened runtime ([#1](https://github.com/gravitee-io/gravitee-singularitee/issues/1)) ([f687a5b](https://github.com/gravitee-io/gravitee-singularitee/commit/f687a5bca0b2cae913f34d087870d19ce469c4c8))
+
 # 1.0.0 (2026-08-07)
 
 
