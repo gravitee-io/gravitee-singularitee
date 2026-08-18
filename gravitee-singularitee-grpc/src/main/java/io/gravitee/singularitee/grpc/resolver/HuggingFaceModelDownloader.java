@@ -451,10 +451,12 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
         if (status == 206) {
           long total = contentRangeTotal(response.getHeader("Content-Range"));
           abortProbe(response);
+          LOG.debug("Range probe: 206 from [{}], total {} bytes — chunked path", url, total);
           return Single.just(new ResolvedSource(url, true, total));
         }
         if (status == 200) {
           abortProbe(response);
+          LOG.debug("Range probe: 200 from [{}] — Range ignored, single-stream path", url);
           return Single.just(new ResolvedSource(url, false, UNKNOWN_SIZE));
         }
         abortProbe(response);
@@ -464,9 +466,28 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
       });
   }
 
-  /** Closes the probe connection before the body transfers. */
+  /**
+   * Closes the probe connection before the body transfers. The unconsumed
+   * response surfaces the close as an HttpClosedException; installing handlers
+   * first keeps that expected teardown out of the error log.
+   */
   private static void abortProbe(HttpClientResponse response) {
-    response.request().connection().close().onErrorComplete().subscribe();
+    // TRACE, not silent: the close-induced HttpClosedException is expected,
+    // but anything else arriving here should still be diagnosable.
+    response.exceptionHandler(err ->
+      LOG.trace("Probe teardown after abort (expected): {}", err.toString())
+    );
+    response.handler(buf -> {});
+    response.endHandler(v -> {});
+    response
+      .request()
+      .connection()
+      .close()
+      .onErrorComplete(err -> {
+        LOG.debug("Probe connection close failed: {}", err.toString());
+        return true;
+      })
+      .subscribe();
   }
 
   /** Parses the total from a {@code Content-Range: bytes 0-0/12345} header. */
