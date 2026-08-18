@@ -96,6 +96,68 @@ class CanonicalChatRequestMapperTest {
   }
 
   @Test
+  void bothMaxTokenSpellingsUseTheLegacyValueForParity() throws Exception {
+    JsonNode payload = json(
+      """
+      {
+        "model":"model",
+        "messages":[{"role":"user","content":"hello"}],
+        "max_tokens":11,
+        "max_completion_tokens":33
+      }
+      """
+    );
+
+    InferRequest legacy = InferRequestBuilder.build("model", payload, EndpointType.CHAT);
+    InferRequest actual = CanonicalChatRequestMapper.toDirect("model", canonical(payload));
+
+    assertThat(actual.toBuilder().clearRequestId().build()).isEqualTo(
+      legacy.toBuilder().clearRequestId().build()
+    );
+  }
+
+  @Test
+  void maxOutputTokensRetainsTheLegacyFallback() throws Exception {
+    JsonNode payload = json(
+      """
+      {
+        "model":"model",
+        "messages":[{"role":"user","content":"hello"}],
+        "max_output_tokens":22
+      }
+      """
+    );
+
+    InferRequest legacy = InferRequestBuilder.build("model", payload, EndpointType.CHAT);
+    InferRequest actual = CanonicalChatRequestMapper.toDirect("model", canonical(payload));
+
+    assertThat(actual.toBuilder().clearRequestId().build()).isEqualTo(
+      legacy.toBuilder().clearRequestId().build()
+    );
+  }
+
+  @Test
+  void maxOutputTokensFallbackSurvivesAnIgnoredMaxCompletionTokensValue() throws Exception {
+    JsonNode payload = json(
+      """
+      {
+        "model":"model",
+        "messages":[{"role":"user","content":"hello"}],
+        "max_output_tokens":22,
+        "max_completion_tokens":33
+      }
+      """
+    );
+
+    InferRequest legacy = InferRequestBuilder.build("model", payload, EndpointType.CHAT);
+    InferRequest actual = CanonicalChatRequestMapper.toDirect("model", canonical(payload));
+
+    assertThat(actual.toBuilder().clearRequestId().build()).isEqualTo(
+      legacy.toBuilder().clearRequestId().build()
+    );
+  }
+
+  @Test
   void toolCallsAndResultsReconstructTheLegacyTranscript() throws Exception {
     JsonNode payload = json(
       """

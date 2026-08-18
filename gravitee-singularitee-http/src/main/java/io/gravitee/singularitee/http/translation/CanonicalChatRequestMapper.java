@@ -232,13 +232,15 @@ public final class CanonicalChatRequestMapper {
   }
 
   private static String metadataText(Map<String, JsonNode> metadata, String suffix) {
+    JsonNode value = metadataValue(metadata, suffix);
+    return value != null && value.isTextual() ? value.asText() : null;
+  }
+
+  private static JsonNode metadataValue(Map<String, JsonNode> metadata, String suffix) {
     if (metadata == null) return null;
     for (Map.Entry<String, JsonNode> entry : metadata.entrySet()) {
-      if (
-        (entry.getKey().equals(suffix) || entry.getKey().endsWith(":" + suffix)) &&
-        entry.getValue().isTextual()
-      ) {
-        return entry.getValue().asText();
+      if (entry.getKey().equals(suffix) || entry.getKey().endsWith(":" + suffix)) {
+        return entry.getValue();
       }
     }
     return null;
@@ -273,22 +275,17 @@ public final class CanonicalChatRequestMapper {
   private static SamplingParams toSampling(LlmRequest request) {
     InferenceConfig config = request.config();
     Integer topLogprobs = request.topLogprobs();
-    if (config == null && (topLogprobs == null || topLogprobs <= 0)) {
+    Integer maxTokens = legacyMaxTokens(request);
+    if (config == null && maxTokens == null && (topLogprobs == null || topLogprobs <= 0)) {
       return null;
     }
     SamplingParams.Builder builder = SamplingParams.newBuilder();
     boolean any = false;
+    if (maxTokens != null) {
+      builder.setMaxTokens(maxTokens);
+      any = true;
+    }
     if (config != null) {
-      // The legacy builder accepts max_tokens/max_output_tokens, but intentionally ignores
-      // max_completion_tokens. The 0.6 adapter preserves the spelling in metadata, allowing this
-      // first canonical slice to retain that established behavior until the legacy path changes.
-      if (
-        config.maxOutputTokens() != null &&
-        !"max_completion_tokens".equals(metadataText(request.metadata(), "max_tokens_spelling"))
-      ) {
-        builder.setMaxTokens(config.maxOutputTokens());
-        any = true;
-      }
       if (config.temperature() != null) {
         builder.setTemperature(config.temperature().floatValue());
         any = true;
@@ -315,6 +312,27 @@ public final class CanonicalChatRequestMapper {
       any = true;
     }
     return any ? builder.build() : null;
+  }
+
+  /** Reconstructs the legacy max-token precedence from 0.6's spelling metadata. */
+  private static Integer legacyMaxTokens(LlmRequest request) {
+    JsonNode spelling = metadataValue(request.metadata(), "max_tokens_spelling");
+    if (spelling != null && spelling.isObject()) {
+      JsonNode maxTokens = spelling.path("max_tokens");
+      if (maxTokens.isIntegralNumber()) return maxTokens.asInt();
+    }
+    if (spelling != null && spelling.isTextual()) {
+      if ("max_tokens".equals(spelling.asText()) && request.config() != null) {
+        return request.config().maxOutputTokens();
+      }
+      if ("max_completion_tokens".equals(spelling.asText())) {
+        JsonNode fallback = metadataValue(request.metadata(), "max_output_tokens");
+        return fallback != null && fallback.isIntegralNumber() ? fallback.asInt() : null;
+      }
+    }
+    JsonNode fallback = metadataValue(request.metadata(), "max_output_tokens");
+    if (fallback != null && fallback.isIntegralNumber()) return fallback.asInt();
+    return spelling == null && request.config() != null ? request.config().maxOutputTokens() : null;
   }
 
   private static Struct reasoningContext(String effort) {
