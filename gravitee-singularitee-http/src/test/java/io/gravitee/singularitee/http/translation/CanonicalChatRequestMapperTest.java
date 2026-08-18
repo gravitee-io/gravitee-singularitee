@@ -158,6 +158,28 @@ class CanonicalChatRequestMapperTest {
   }
 
   @Test
+  void refusalContentIsNotTurnedIntoPromptText() throws Exception {
+    JsonNode payload = json(
+      """
+      {
+        "model":"model",
+        "messages":[
+          {"role":"user","content":"hello"},
+          {"role":"assistant","content":[{"type":"refusal","refusal":"cannot comply"}]}
+        ]
+      }
+      """
+    );
+
+    InferRequest legacy = InferRequestBuilder.build("model", payload, EndpointType.CHAT);
+    InferRequest actual = CanonicalChatRequestMapper.toDirect("model", canonical(payload));
+
+    assertThat(actual.toBuilder().clearRequestId().build()).isEqualTo(
+      legacy.toBuilder().clearRequestId().build()
+    );
+  }
+
+  @Test
   void toolCallsAndResultsReconstructTheLegacyTranscript() throws Exception {
     JsonNode payload = json(
       """

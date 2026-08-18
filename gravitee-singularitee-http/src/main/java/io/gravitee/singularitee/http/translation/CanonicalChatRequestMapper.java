@@ -25,6 +25,7 @@ import io.gravitee.llmbridge4j.core.model.ToolSpec;
 import io.gravitee.llmbridge4j.core.or.v1.model.ContentPart;
 import io.gravitee.llmbridge4j.core.or.v1.model.ContentPart.InputAudio;
 import io.gravitee.llmbridge4j.core.or.v1.model.ContentPart.InputImage;
+import io.gravitee.llmbridge4j.core.or.v1.model.ContentPart.Refusal;
 import io.gravitee.llmbridge4j.core.or.v1.model.FunctionCallItem;
 import io.gravitee.llmbridge4j.core.or.v1.model.FunctionCallOutputItem;
 import io.gravitee.llmbridge4j.core.or.v1.model.Item;
@@ -154,7 +155,11 @@ public final class CanonicalChatRequestMapper {
     StringBuilder text = new StringBuilder();
     if (message.content() != null) {
       for (ContentPart part : message.content()) {
-        if (part instanceof InputImage image) {
+        if (part instanceof Refusal) {
+          // Singularitee's legacy content builder only renders text/input_text/output_text.
+          // Refusal is a provider response detail, not prompt text.
+          continue;
+        } else if (part instanceof InputImage image) {
           MediaContent media = toImage(image);
           if (media != null) {
             builder.addMedia(media);
