@@ -18,8 +18,10 @@ package io.gravitee.singularitee.grpc.resolver;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.reactivex.rxjava3.plugins.RxJavaPlugins;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.rxjava3.core.Vertx;
@@ -32,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -63,12 +66,14 @@ class HuggingFaceModelDownloaderChunkedTest {
   private final Map<String, AtomicInteger> rangeFailures = new ConcurrentHashMap<>();
 
   private volatile boolean ignoreRange;
+  private volatile boolean slowProbeBody;
   private volatile int failuresPerChunk;
   private volatile boolean expireAllTokens;
   private volatile int shortBodiesPerChunk;
   private volatile boolean alwaysShortChunks;
 
   private final Map<String, AtomicInteger> shortBodiesServed = new ConcurrentHashMap<>();
+  private final AtomicInteger probeBytesSent = new AtomicInteger();
 
   @BeforeEach
   void setUp() {
@@ -127,6 +132,12 @@ class HuggingFaceModelDownloaderChunkedTest {
     }
     String range = req.getHeader("Range");
     if (range == null || ignoreRange) {
+      if (range != null && slowProbeBody) {
+        // A Range-carrying request (the probe) answered 200 with the full body, drip-fed
+        // so a client that aborts after the status line stops the transfer early.
+        serveSlowFullBody(req.response());
+        return;
+      }
       req.response().setStatusCode(200).end(Buffer.buffer(payload));
       return;
     }
@@ -166,6 +177,29 @@ class HuggingFaceModelDownloaderChunkedTest {
       .setStatusCode(206)
       .putHeader("Content-Range", "bytes " + start + "-" + end + "/" + PAYLOAD_SIZE)
       .end(Buffer.buffer(slice));
+  }
+
+  /** Streams the full payload as a 200 in small timed pieces, counting the bytes written. */
+  private void serveSlowFullBody(HttpServerResponse resp) {
+    int piece = 64 * 1024;
+    resp.setStatusCode(200).putHeader("Content-Length", String.valueOf(payload.length));
+    AtomicInteger offset = new AtomicInteger();
+    vertx.setPeriodic(20, timerId -> {
+      int start = offset.get();
+      if (resp.closed() || start >= payload.length) {
+        vertx.cancelTimer(timerId);
+        if (!resp.closed() && start >= payload.length) {
+          resp.end();
+        }
+        return;
+      }
+      int len = Math.min(piece, payload.length - start);
+      byte[] slice = new byte[len];
+      System.arraycopy(payload, start, slice, 0, len);
+      resp.write(Buffer.buffer(slice));
+      offset.addAndGet(len);
+      probeBytesSent.addAndGet(len);
+    });
   }
 
   private HuggingFaceModelDownloader downloader() {
@@ -227,14 +261,46 @@ class HuggingFaceModelDownloaderChunkedTest {
   }
 
   @Test
-  void persistent_403_fails_after_retries_and_deletes_the_partial_file(@TempDir Path tmp) {
+  void persistent_403_fails_after_retries_and_deletes_the_partial_file(@TempDir Path tmp)
+    throws Exception {
     expireAllTokens = true;
 
     assertThatThrownBy(() -> download(tmp)).isInstanceOf(RuntimeException.class);
     // chunked attempt re-resolved the signed URL on each file-level retry, then the
     // single-stream fallback resolved once more
     assertThat(resolveCount.get()).isGreaterThanOrEqualTo(3);
+    // the final path never existed (writes go to a temp sibling) and no temp leftovers remain
     assertThat(Files.exists(tmp.resolve(FILE))).isFalse();
+    try (var files = Files.list(tmp)) {
+      assertThat(files).isEmpty();
+    }
+  }
+
+  @Test
+  void stale_part_files_are_cleaned_before_downloading(@TempDir Path tmp) throws Exception {
+    Path stale = tmp.resolve(FILE + ".part-123-456");
+    Files.write(stale, new byte[] { 1, 2, 3 });
+
+    Path result = download(tmp);
+
+    assertThat(Files.readAllBytes(result)).isEqualTo(payload);
+    assertThat(Files.exists(stale)).isFalse();
+    try (var files = Files.list(tmp)) {
+      assertThat(files).containsExactly(result);
+    }
+  }
+
+  @Test
+  void probe_aborts_the_body_when_the_server_ignores_range(@TempDir Path tmp) throws Exception {
+    // the Range probe gets a 200 with the entire payload drip-fed; a probe that
+    // aggregates the body would pull all of it into memory before seeing the status
+    ignoreRange = true;
+    slowProbeBody = true;
+
+    Path result = download(tmp);
+
+    assertThat(Files.readAllBytes(result)).isEqualTo(payload);
+    assertThat(probeBytesSent.get()).isLessThan(PAYLOAD_SIZE / 2);
   }
 
   @Test
@@ -242,7 +308,7 @@ class HuggingFaceModelDownloaderChunkedTest {
     // 206 with a short body: status says success, only the byte count betrays it.
     shortBodiesPerChunk = 2;
 
-    Path result = download(tmp);
+    Path result = withUncaughtCapture(() -> download(tmp));
 
     assertThat(Files.readAllBytes(result)).isEqualTo(payload);
     // the chunk-level retry re-requested the truncated ranges
@@ -262,15 +328,41 @@ class HuggingFaceModelDownloaderChunkedTest {
     // this stub serves correctly.
     alwaysShortChunks = true;
 
-    Path result = downloader()
-      .download(REPO, List.of(FILE), tmp)
-      .timeout(180, TimeUnit.SECONDS)
-      .blockingGet()
-      .get(0);
+    Path result = withUncaughtCapture(() ->
+      downloader()
+        .download(REPO, List.of(FILE), tmp)
+        .timeout(180, TimeUnit.SECONDS)
+        .blockingGet()
+        .get(0)
+    );
 
     assertThat(Files.readAllBytes(result)).isEqualTo(payload);
     // the fallback is the request with no Range header at all
     assertThat(cdnRequests()).anyMatch(s -> s.range() == null);
+  }
+
+  /**
+   * Runs a scenario with an {@code RxJavaPlugins} error handler installed and asserts no
+   * uncaught error reached it — chunk chains disposed by a sibling's fail-fast failure must
+   * drop their late errors, not throw them at the global handler.
+   */
+  private <T> T withUncaughtCapture(Supplier<T> scenario) {
+    List<Throwable> uncaught = new CopyOnWriteArrayList<>();
+    var previous = RxJavaPlugins.getErrorHandler();
+    RxJavaPlugins.setErrorHandler(uncaught::add);
+    T result;
+    try {
+      result = scenario.get();
+      // give disposed in-flight chunk chains time to observe their late responses
+      Thread.sleep(250);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    } finally {
+      RxJavaPlugins.setErrorHandler(previous);
+    }
+    assertThat(uncaught).as("uncaught RxJava errors").isEmpty();
+    return result;
   }
 
   @Test

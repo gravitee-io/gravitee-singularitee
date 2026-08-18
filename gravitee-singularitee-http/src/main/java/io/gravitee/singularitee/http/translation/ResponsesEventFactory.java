@@ -85,29 +85,43 @@ final class ResponsesEventFactory {
       : "server_error";
   }
 
-  /** Writes the failed status, {@code error} object and empty {@code output} onto a response. */
+  /**
+   * Writes the failed status and {@code error} object onto a response. An existing {@code output}
+   * array (partial output produced before the failure) is preserved; otherwise an empty one is
+   * added so the shape stays complete.
+   */
   static void writeFailure(ObjectNode response, String guardMessage) {
     ObjectNode error = response.putObject("error");
     error.put("code", errorCode(guardMessage));
     error.put("message", guardMessage);
-    response.putArray("output");
+    if (!response.has("output")) {
+      response.putArray("output");
+    }
   }
 
-  /** Terminal {@code response.failed} event for guard-only failures on the streaming paths. */
-  static ServerEvent responseFailedEvent(
-    AtomicLong seq,
+  /**
+   * Builds a terminal failed response object carrying whatever partial output was produced
+   * before the failure: a reasoning item ({@code rs-<created>}) and/or an {@code incomplete}
+   * message item ({@code msg-<created>}). Null/empty partials yield an empty {@code output}.
+   */
+  static ObjectNode failedResponseObject(
     String responseId,
     long created,
     String modelName,
-    String guardMessage
+    String guardMessage,
+    String reasoning,
+    String content
   ) {
     ObjectNode failed = responsesObject(responseId, "failed", created, modelName);
+    ArrayNode output = failed.putArray("output");
+    if (reasoning != null && !reasoning.isEmpty()) {
+      output.add(reasoningItem("rs-" + created, reasoning));
+    }
+    if (content != null && !content.isEmpty()) {
+      output.add(responsesMessageItem("msg-" + created, "incomplete", content));
+    }
     writeFailure(failed, guardMessage);
-    ObjectNode event = OBJECT_MAPPER.get().createObjectNode();
-    event.put("type", "response.failed");
-    event.put("sequence_number", seq.getAndIncrement());
-    event.set("response", failed);
-    return new ServerEvent(event.toString());
+    return failed;
   }
 
   /** Wraps a response object in a top-level Responses stream event ({@code response.*}). */
@@ -290,16 +304,5 @@ final class ResponsesEventFactory {
         responsesMessageItem(msgId, "completed", text)
       )
     );
-  }
-
-  static void addTextOutputItem(ArrayNode output, String text) {
-    ObjectNode item = output.addObject();
-    item.put("type", "message");
-    item.put("role", "assistant");
-    item.put("status", "completed");
-    ArrayNode content = item.putArray("content");
-    ObjectNode textPart = content.addObject();
-    textPart.put("type", "output_text");
-    textPart.put("text", text);
   }
 }

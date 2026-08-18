@@ -347,6 +347,7 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
 
   private static String completeTodo(PipelineContext pctx, JsonNode args) {
     String id = args.hasNonNull("id") ? args.get("id").asText() : "";
+    String note = args.hasNonNull("note") ? args.get("note").asText() : null;
     // Completing an already-done item is a silent no-op state-wise; without an
     // explicit error the model repeats it forever. Tell it what to do instead.
     boolean alreadyDone = pctx
@@ -359,7 +360,7 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
         .put("in_progress", nextInProgressTitle(pctx))
         .toString();
     }
-    boolean found = pctx.completeTodo(id);
+    boolean found = pctx.completeTodo(id, note);
     if (!found) {
       return error("no todo with id " + id);
     }

@@ -191,8 +191,12 @@ final class ToolCallOutcomeRecorder {
     String stepOutput
   ) {
     boolean markerBased = cfg.hasToolCallTags() && !cfg.getToolCallTags().getOpenTag().isBlank();
+    // Server-owned tools (the todo tools) count: a todo pipeline with no
+    // caller-declared tools still expects markerless set_todos/complete_todo
+    // calls to be extracted.
+    boolean anyTools = !pctx.tools().isEmpty() || !pctx.serverTools().isEmpty();
     if (
-      pctx.tools().isEmpty() ||
+      !anyTools ||
       cfg.getToolExtractionTemplate().isBlank() ||
       markerBased ||
       pctx.lastEngineFinishReason() != FinishReason.FINISH_REASON_STOP

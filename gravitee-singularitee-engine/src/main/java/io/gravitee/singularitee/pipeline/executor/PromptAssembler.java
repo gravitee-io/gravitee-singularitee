@@ -101,6 +101,7 @@ final class PromptAssembler {
     }
 
     List<Map<String, Object>> messages = resolveMessages(cfg, pctx, jinjaCtx);
+    messages = prependInstructions(pctx, messages);
     messages = mergeSystemPrompt(cfg, messages, jinjaCtx);
     messages = trimToContextWindow(stepId, cfg, tge, messages, maxTokens);
 
@@ -180,6 +181,26 @@ final class PromptAssembler {
    * identity, the step's establishes its role in the graph — dropping either
    * one loses instructions the request depends on.
    */
+  /**
+   * Prepends the caller's per-request instructions (OpenAI Responses
+   * {@code instructions}) as a leading system turn — at render time only.
+   * The instructions never enter the transcript, so stored conversations do
+   * not carry them over and each continuation's own instructions apply.
+   */
+  private static List<Map<String, Object>> prependInstructions(
+    PipelineContext pctx,
+    List<Map<String, Object>> messages
+  ) {
+    String instructions = pctx.get(PipelineContext.KEY_INSTRUCTIONS);
+    if (instructions == null || instructions.isBlank()) {
+      return messages;
+    }
+    List<Map<String, Object>> withInstructions = new ArrayList<>();
+    withInstructions.add(Map.of("role", "system", "content", instructions));
+    withInstructions.addAll(messages);
+    return withInstructions;
+  }
+
   private List<Map<String, Object>> mergeSystemPrompt(
     InferStepConfig cfg,
     List<Map<String, Object>> messages,
@@ -266,11 +287,12 @@ final class PromptAssembler {
     PipelineContext pctx,
     Map<String, Object> jinjaCtx
   ) {
-    List<Map<String, Object>> tools = shouldInjectTools(cfg)
-      ? ToolDefinitionConverter.toOpenAiMaps(injectableTools(pctx, cfg))
-      : null;
+    // Tools are NOT passed separately: buildJinjaContext already placed the
+    // special-token-escaped list in the context, and a raw tools argument
+    // would overwrite it — reopening the prompt-structure injection the
+    // escaping exists to close.
     try {
-      return chatTemplateRenderer.render(templateString, null, tools, true, jinjaCtx);
+      return chatTemplateRenderer.renderFromVariables(templateString, jinjaCtx);
     } catch (RuntimeException e) {
       if (hasOverride) {
         throw new IllegalArgumentException(

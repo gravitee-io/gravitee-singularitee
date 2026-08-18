@@ -102,7 +102,7 @@ class ResponsesGuardFailureTest {
   }
 
   @Test
-  void liveStreamWithPriorContentDoesNotFail() {
+  void liveStreamWithPriorContentFailsAndClosesThePartialMessage() {
     List<JsonNode> events = parse(
       InferenceResponseFormatter.responsesStreamEvents(
         Flowable.fromArray(TokenMessage.contentDelta("partial"), guardFinal("Blocked by guard")),
@@ -118,7 +118,57 @@ class ResponsesGuardFailureTest {
       .stream()
       .map(e -> e.path("type").asText())
       .toList();
-    assertThat(types).doesNotContain("response.failed").contains("response.completed");
+    assertThat(types)
+      .doesNotContain("response.completed")
+      .endsWith(
+        "response.output_text.done",
+        "response.content_part.done",
+        "response.output_item.done",
+        "response.failed"
+      );
+
+    JsonNode itemDone = events.get(types.indexOf("response.output_item.done"));
+    assertThat(itemDone.at("/item/status").asText()).isEqualTo("incomplete");
+    assertThat(itemDone.at("/item/content/0/text").asText()).isEqualTo("partial");
+
+    JsonNode failed = events.get(events.size() - 1).path("response");
+    assertThat(failed.path("status").asText()).isEqualTo("failed");
+    assertThat(failed.at("/error/code").asText()).isEqualTo("server_error");
+    assertThat(failed.at("/output/0/type").asText()).isEqualTo("message");
+    assertThat(failed.at("/output/0/status").asText()).isEqualTo("incomplete");
+    assertThat(failed.at("/output/0/content/0/text").asText()).isEqualTo("partial");
+  }
+
+  @Test
+  void liveStreamWithPriorReasoningFailsAndClosesTheReasoningItem() {
+    List<JsonNode> events = parse(
+      InferenceResponseFormatter.responsesStreamEvents(
+        Flowable.fromArray(TokenMessage.reasoningDelta("thinking"), guardFinal("Blocked by guard")),
+        "test-model",
+        null,
+        null
+      )
+        .toList()
+        .blockingGet()
+    );
+
+    List<String> types = events
+      .stream()
+      .map(e -> e.path("type").asText())
+      .toList();
+    assertThat(types)
+      .doesNotContain("response.completed")
+      .endsWith(
+        "response.reasoning_summary_text.done",
+        "response.reasoning_summary_part.done",
+        "response.output_item.done",
+        "response.failed"
+      );
+
+    JsonNode failed = events.get(events.size() - 1).path("response");
+    assertThat(failed.path("status").asText()).isEqualTo("failed");
+    assertThat(failed.at("/output/0/type").asText()).isEqualTo("reasoning");
+    assertThat(failed.at("/output/0/summary/0/text").asText()).isEqualTo("thinking");
   }
 
   @Test
@@ -138,9 +188,75 @@ class ResponsesGuardFailureTest {
       .stream()
       .map(e -> e.path("type").asText())
       .toList();
-    assertThat(types).containsExactly("response.created", "response.failed");
-    assertThat(events.get(1).at("/response/error/code").asText()).isEqualTo("server_error");
-    assertThat(events.get(1).at("/response/error/message").asText()).isEqualTo("Blocked by guard");
+    assertThat(types).containsExactly(
+      "response.created",
+      "response.in_progress",
+      "response.failed"
+    );
+    assertThat(events.get(2).at("/response/error/code").asText()).isEqualTo("server_error");
+    assertThat(events.get(2).at("/response/error/message").asText()).isEqualTo("Blocked by guard");
+    assertThat(events.get(2).at("/response/output")).isEmpty();
+  }
+
+  @Test
+  void bufferedStreamWithBufferedContentFailsWithPartialOutputAttached() {
+    List<JsonNode> events = parse(
+      InferenceResponseFormatter.responsesBufferedStreamEvents(
+        Flowable.fromArray(TokenMessage.contentDelta("partial"), guardFinal("Blocked by guard")),
+        "test-model",
+        null,
+        null
+      )
+        .toList()
+        .blockingGet()
+    );
+
+    List<String> types = events
+      .stream()
+      .map(e -> e.path("type").asText())
+      .toList();
+    assertThat(types).containsExactly(
+      "response.created",
+      "response.in_progress",
+      "response.failed"
+    );
+    JsonNode failed = events.get(2).path("response");
+    assertThat(failed.path("status").asText()).isEqualTo("failed");
+    assertThat(failed.at("/error/code").asText()).isEqualTo("server_error");
+    assertThat(failed.at("/output/0/type").asText()).isEqualTo("message");
+    assertThat(failed.at("/output/0/status").asText()).isEqualTo("incomplete");
+    assertThat(failed.at("/output/0/content/0/text").asText()).isEqualTo("partial");
+  }
+
+  @Test
+  void bufferedStreamWithLiveReasoningFailsAfterClosingTheReasoningItem() {
+    List<JsonNode> events = parse(
+      InferenceResponseFormatter.responsesBufferedStreamEvents(
+        Flowable.fromArray(TokenMessage.reasoningDelta("thinking"), guardFinal("Blocked by guard")),
+        "test-model",
+        null,
+        null
+      )
+        .toList()
+        .blockingGet()
+    );
+
+    List<String> types = events
+      .stream()
+      .map(e -> e.path("type").asText())
+      .toList();
+    assertThat(types)
+      .doesNotContain("response.completed")
+      .endsWith(
+        "response.reasoning_summary_text.done",
+        "response.reasoning_summary_part.done",
+        "response.output_item.done",
+        "response.failed"
+      );
+    JsonNode failed = events.get(events.size() - 1).path("response");
+    assertThat(failed.path("status").asText()).isEqualTo("failed");
+    assertThat(failed.at("/output/0/type").asText()).isEqualTo("reasoning");
+    assertThat(failed.at("/output/0/summary/0/text").asText()).isEqualTo("thinking");
   }
 
   @Test
@@ -165,7 +281,7 @@ class ResponsesGuardFailureTest {
   }
 
   @Test
-  void nonStreamingResponseWithContentStaysCompletedDespiteGuardMessage() {
+  void nonStreamingResponseWithContentFailsWithPartialOutputAttached() {
     SequenceAccumulator accumulator = new SequenceAccumulator();
     accumulator.add(TokenMessage.contentDelta("partial"));
     accumulator.add(guardFinal("Blocked by guard"));
@@ -176,7 +292,28 @@ class ResponsesGuardFailureTest {
       null
     );
 
-    assertThat(response.path("status").asText()).isEqualTo("completed");
-    assertThat(response.has("error")).isFalse();
+    assertThat(response.path("status").asText()).isEqualTo("failed");
+    assertThat(response.at("/error/code").asText()).isEqualTo("server_error");
+    assertThat(response.at("/error/message").asText()).isEqualTo("Blocked by guard");
+    assertThat(response.at("/output/0/type").asText()).isEqualTo("message");
+    assertThat(response.at("/output/0/status").asText()).isEqualTo("incomplete");
+    assertThat(response.at("/output/0/content/0/text").asText()).isEqualTo("partial");
+  }
+
+  @Test
+  void nonStreamingResponseWithReasoningFailsWithReasoningAttached() {
+    SequenceAccumulator accumulator = new SequenceAccumulator();
+    accumulator.add(TokenMessage.reasoningDelta("thinking"));
+    accumulator.add(guardFinal("Blocked by guard"));
+
+    ObjectNode response = InferenceResponseFormatter.buildResponsesResponse(
+      "test-model",
+      accumulator,
+      null
+    );
+
+    assertThat(response.path("status").asText()).isEqualTo("failed");
+    assertThat(response.at("/output/0/type").asText()).isEqualTo("reasoning");
+    assertThat(response.at("/output/0/summary/0/text").asText()).isEqualTo("thinking");
   }
 }

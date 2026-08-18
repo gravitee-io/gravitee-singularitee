@@ -78,7 +78,8 @@ public final class TodoTools {
         .setName(COMPLETE_TODO)
         .setDescription(
           "Mark one todo item done after you finished it. The next pending item becomes " +
-            "in_progress automatically."
+            "in_progress automatically. Put the COMPLETE result text in note - it is " +
+            "recorded as the item's proof and is the only place the work survives."
         )
         .addParameters(
           ToolParameterDef.newBuilder()
@@ -91,7 +92,10 @@ public final class TodoTools {
           ToolParameterDef.newBuilder()
             .setName("note")
             .setType("string")
-            .setDescription("Optional short note about the outcome.")
+            .setDescription(
+              "The complete result of the item (recorded as its proof; later steps see " +
+                "only this, not your message text)."
+            )
         )
         .build(),
       ToolDefinition.newBuilder()

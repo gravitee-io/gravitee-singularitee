@@ -80,4 +80,20 @@ class ConversationStoreTest {
     disabled.put("resp_x", List.of(new ChatTurn(ChatRole.USER, "hi")), List.of(), null);
     assertThat(disabled.get("resp_x")).isEmpty();
   }
+
+  @Test
+  void a_completion_proof_survives_stored_conversation_and_session_round_trips() {
+    // Both stores persist plans through the SessionTodo DTO; a proof lost in
+    // this mapping is lost across turns — and the proof is the only durable
+    // record of an internal work step's result.
+    var done = new PipelineContext.TodoItem("1", "spring haiku", TodoStatus.DONE, "full verse");
+    var viaSession = TodoSessionStore.toTodoItems(TodoSessionStore.toSessionTodos(List.of(done)));
+    assertThat(viaSession.get(0).proof()).isEqualTo("full verse");
+
+    var store = store();
+    store.put("resp_p", List.of(new ChatTurn(ChatRole.USER, "write it")), List.of(done), null);
+    var restored = ConversationStore.toTodoItems(store.get("resp_p").orElseThrow());
+    assertThat(restored.get(0).proof()).isEqualTo("full verse");
+    assertThat(restored.get(0).status()).isEqualTo(TodoStatus.DONE);
+  }
 }

@@ -76,6 +76,14 @@ public final class PipelineContext {
    */
   public static final String KEY_REASONING_EFFORT = "reasoning_effort";
 
+  /**
+   * Per-request caller instructions (OpenAI Responses {@code instructions}),
+   * seeded from the request's context. Injected as a system turn at prompt
+   * render time only — never part of the transcript, so a stored conversation
+   * does not carry them over and each continuation's own instructions apply.
+   */
+  public static final String KEY_INSTRUCTIONS = "instructions";
+
   /** Written by a guard step when its action is {@code WARN} or {@code REDACT}. */
   public static final String KEY_GUARD_TRIGGERED = "__guard_triggered";
 
@@ -687,13 +695,18 @@ public final class PipelineContext {
    * Marks the item with the given id {@code done} and promotes the next
    * {@code pending} item to {@code in_progress}. Returns {@code false} when
    * no item carries that id (the caller reports the miss to the model).
+   *
+   * <p>{@code proof} is the completion evidence (the tool call's {@code note});
+   * it replaces the item's proof when non-blank. Because an internal work
+   * step's prose is never appended to the conversation, this proof is the only
+   * durable record of the item's result.
    */
-  public synchronized boolean completeTodo(String id) {
+  public synchronized boolean completeTodo(String id, String proof) {
     boolean found = false;
     for (int i = 0; i < todos.size(); i++) {
       TodoItem t = todos.get(i);
       if (t.id().equals(id)) {
-        todos.set(i, new TodoItem(t.id(), t.title(), TodoStatus.DONE, t.proof()));
+        todos.set(i, completed(t, proof));
         found = true;
         break;
       }
@@ -708,8 +721,7 @@ public final class PipelineContext {
       }
       if (active.size() == 1) {
         int i = active.get(0);
-        TodoItem t = todos.get(i);
-        todos.set(i, new TodoItem(t.id(), t.title(), TodoStatus.DONE, t.proof()));
+        todos.set(i, completed(todos.get(i), proof));
         found = true;
       }
     }
@@ -727,6 +739,11 @@ public final class PipelineContext {
       mirrorTodoFields();
     }
     return found;
+  }
+
+  private static TodoItem completed(TodoItem t, String proof) {
+    String kept = (proof != null && !proof.isBlank()) ? proof : t.proof();
+    return new TodoItem(t.id(), t.title(), TodoStatus.DONE, kept);
   }
 
   /** Returns an immutable snapshot of the todo plan. */

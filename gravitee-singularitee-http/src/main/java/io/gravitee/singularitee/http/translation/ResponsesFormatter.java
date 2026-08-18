@@ -15,10 +15,10 @@
  */
 package io.gravitee.singularitee.http.translation;
 
-import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.addTextOutputItem;
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.closeReasoning;
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.contentPartEvent;
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.emitBufferedTextItem;
+import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.failedResponseObject;
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.functionCallItem;
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.outputItemEvent;
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.outputTextDeltaEvent;
@@ -27,7 +27,6 @@ import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.pr
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.reasoningItem;
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.reasoningSummaryDelta;
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.reasoningSummaryPartEvent;
-import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.responseFailedEvent;
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.responsesEvent;
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.responsesMessageItem;
 import static io.gravitee.singularitee.http.translation.ResponsesEventFactory.responsesObject;
@@ -148,12 +147,43 @@ public final class ResponsesFormatter {
         if (onFinal != null) {
           onFinal.accept(token);
         }
-        // A guard-only failure with no generated content (previous_response_not_found,
-        // guard block) must surface as response.failed — a fake empty "completed"
-        // reads as a real blank answer and hides the error from streaming clients.
-        if (token.guardMessage() != null && !reasoningOpen.get() && !contentOpen.get()) {
+        // Any terminal failure (previous_response_not_found, guard block) must
+        // surface as response.failed — even after partial output, which a
+        // "completed" would misreport as a successful answer. Open items are
+        // closed first (partial message as "incomplete") so SDK state machines
+        // unwind cleanly before the terminal event.
+        if (token.guardMessage() != null) {
+          if (reasoningOpen.get() && reasoningClosed.compareAndSet(false, true)) {
+            closeReasoning(events, seq, reasoningId, reasoning.toString());
+          }
+          if (contentOpen.get()) {
+            String full = content.toString();
+            events.add(outputTextDoneEvent(seq, msgId, msgIndex.get(), full));
+            events.add(
+              contentPartEvent("response.content_part.done", seq, msgId, msgIndex.get(), full)
+            );
+            events.add(
+              outputItemEvent(
+                "response.output_item.done",
+                seq,
+                msgIndex.get(),
+                responsesMessageItem(msgId, "incomplete", full)
+              )
+            );
+          }
           events.add(
-            responseFailedEvent(seq, responseId, created, modelName, token.guardMessage())
+            responsesEvent(
+              "response.failed",
+              seq,
+              failedResponseObject(
+                responseId,
+                created,
+                modelName,
+                token.guardMessage(),
+                reasoning.toString(),
+                content.toString()
+              )
+            )
           );
           return Flowable.fromIterable(events);
         }
@@ -255,10 +285,19 @@ public final class ResponsesFormatter {
       SequenceAccumulator accumulator = new SequenceAccumulator();
       AtomicLong seq = new AtomicLong(0);
       AtomicBoolean reasoningOpened = new AtomicBoolean(false);
+      AtomicBoolean headerEmitted = new AtomicBoolean(false);
+      String responseId = responseIdOverride != null
+        ? responseIdOverride
+        : "resp-" + accumulator.created();
       return tokenStream
         .concatMap(t -> {
           if (t.progress() != null) {
-            return Flowable.just(progressEvent(seq, t.progress()));
+            // The header pair must precede ANY outbound event — a live progress
+            // or reasoning event before response.created violates the lifecycle.
+            List<ServerEvent> live = new ArrayList<>(3);
+            addHeaderPair(live, headerEmitted, seq, responseId, accumulator.created(), modelName);
+            live.add(progressEvent(seq, t.progress()));
+            return Flowable.fromIterable(live);
           }
           accumulator.add(t);
           if (t.reasoning() != null) {
@@ -268,7 +307,8 @@ public final class ResponsesFormatter {
             // item id matches the final train ("rs-" + created), which also
             // closes the item and re-embeds it in response.completed.
             String rid = "rs-" + accumulator.created();
-            List<ServerEvent> live = new ArrayList<>(3);
+            List<ServerEvent> live = new ArrayList<>(5);
+            addHeaderPair(live, headerEmitted, seq, responseId, accumulator.created(), modelName);
             if (reasoningOpened.compareAndSet(false, true)) {
               live.add(
                 outputItemEvent("response.output_item.added", seq, 0, reasoningItem(rid, null))
@@ -290,12 +330,45 @@ public final class ResponsesFormatter {
               modelName,
               onFinal,
               toolParameterSchemas,
-              responseIdOverride,
+              responseId,
+              headerEmitted,
               reasoningOpened.get()
             )
           )
         );
     });
+  }
+
+  /**
+   * Appends the {@code response.created} / {@code response.in_progress} header pair exactly
+   * once per stream, before the first outbound event of any kind (progress, live reasoning or
+   * the final train).
+   */
+  private static void addHeaderPair(
+    List<ServerEvent> events,
+    AtomicBoolean headerEmitted,
+    AtomicLong seq,
+    String responseId,
+    long created,
+    String modelName
+  ) {
+    if (headerEmitted.getAndSet(true)) {
+      return;
+    }
+    events.add(
+      responsesEvent(
+        "response.created",
+        seq,
+        responsesObject(responseId, "in_progress", created, modelName)
+      )
+    );
+    events.add(
+      responsesEvent(
+        "response.in_progress",
+        seq,
+        responsesObject(responseId, "in_progress", created, modelName)
+      )
+    );
   }
 
   /** The end-of-turn event train for the buffered Responses path (everything except live progress). */
@@ -305,7 +378,8 @@ public final class ResponsesFormatter {
     String modelName,
     Consumer<TokenMessage> onFinal,
     Map<String, JsonNode> toolParameterSchemas,
-    String responseIdOverride,
+    String responseId,
+    AtomicBoolean headerEmitted,
     boolean reasoningStreamed
   ) {
     if (onFinal != null) {
@@ -313,26 +387,31 @@ public final class ResponsesFormatter {
     }
 
     long created = accumulator.created();
-    String responseId = responseIdOverride != null ? responseIdOverride : "resp-" + created;
     List<ServerEvent> events = new ArrayList<>();
 
-    events.add(
-      responsesEvent(
-        "response.created",
-        seq,
-        responsesObject(responseId, "in_progress", created, modelName)
-      )
-    );
+    addHeaderPair(events, headerEmitted, seq, responseId, created, modelName);
 
-    // Guard-only failure with no generated content: surface response.failed
-    // instead of a fake empty "completed" (mirrors buildResponsesResponse).
-    if (
-      accumulator.guardMessage() != null &&
-      accumulator.content().isEmpty() &&
-      accumulator.reasoning().isEmpty()
-    ) {
+    // Any terminal failure surfaces as response.failed — even after partial
+    // output, which a "completed" would misreport as a successful answer. A
+    // live-streamed reasoning item is closed first so SDK state machines
+    // unwind cleanly; the failed response embeds the partial output.
+    if (accumulator.guardMessage() != null) {
+      if (reasoningStreamed) {
+        closeReasoning(events, seq, "rs-" + created, accumulator.reasoning());
+      }
       events.add(
-        responseFailedEvent(seq, responseId, created, modelName, accumulator.guardMessage())
+        responsesEvent(
+          "response.failed",
+          seq,
+          failedResponseObject(
+            responseId,
+            created,
+            modelName,
+            accumulator.guardMessage(),
+            accumulator.reasoning(),
+            accumulator.content()
+          )
+        )
       );
       return Flowable.fromIterable(events);
     }
@@ -426,15 +505,19 @@ public final class ResponsesFormatter {
     response.put("created_at", created);
     response.put("model", modelName);
 
-    // A FAILED event with no generated content (e.g. previous_response_not_found,
-    // guard block) renders as the OpenAI failed-response shape, not as an empty
-    // "completed" that a client would mistake for a real (blank) answer.
-    if (
-      accumulator.guardMessage() != null &&
-      accumulator.content().isEmpty() &&
-      accumulator.reasoning().isEmpty()
-    ) {
+    // A FAILED event (e.g. previous_response_not_found, guard block) renders as
+    // the OpenAI failed-response shape — even after partial output, which a
+    // "completed" would misreport as a successful answer. Whatever partial
+    // output exists is attached (reasoning item, "incomplete" message).
+    if (accumulator.guardMessage() != null) {
       response.put("status", "failed");
+      ArrayNode partial = response.putArray("output");
+      if (!accumulator.reasoning().isEmpty()) {
+        partial.add(reasoningItem("rs-" + created, accumulator.reasoning()));
+      }
+      if (!accumulator.content().isEmpty()) {
+        partial.add(responsesMessageItem("msg-" + created, "incomplete", accumulator.content()));
+      }
       ResponsesEventFactory.writeFailure(response, accumulator.guardMessage());
       return response;
     }
@@ -463,25 +546,21 @@ public final class ResponsesFormatter {
     if (!accumulator.reasoning().isEmpty()) {
       output.add(reasoningItem("rs-" + created, accumulator.reasoning()));
     }
+    String msgId = "msg-" + created;
     if (isToolCandidate(accumulator)) {
       if (!toolCalls.isEmpty()) {
         String narration = narrationText(accumulator, toolCalls);
         if (narration != null) {
-          addTextOutputItem(output, narration);
+          output.add(responsesMessageItem(msgId, "completed", narration));
         }
         for (ParsedToolCall tc : toolCalls) {
-          ObjectNode item = output.addObject();
-          item.put("type", "function_call");
-          item.put("id", tc.id());
-          item.put("call_id", tc.id());
-          item.put("name", tc.name());
-          item.put("arguments", tc.arguments());
+          output.add(functionCallItem(tc, "completed"));
         }
       } else {
-        addTextOutputItem(output, contentWithToolFallback(accumulator));
+        output.add(responsesMessageItem(msgId, "completed", contentWithToolFallback(accumulator)));
       }
     } else {
-      addTextOutputItem(output, accumulator.content());
+      output.add(responsesMessageItem(msgId, "completed", accumulator.content()));
     }
   }
 

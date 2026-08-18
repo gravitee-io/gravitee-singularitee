@@ -320,7 +320,7 @@ class TodoStepExecutorTest {
     assertThat(pctx.todos().get(0).proof()).isEqualTo("pytest tests/test_grid.py passes");
     assertThat(pctx.todos().get(1).proof()).isNull();
     // status transitions keep the proof
-    pctx.completeTodo("1");
+    pctx.completeTodo("1", null);
     assertThat(pctx.todos().get(0).proof()).isEqualTo("pytest tests/test_grid.py passes");
     assertThat(pctx.todos().get(1).status()).isEqualTo(TodoStatus.IN_PROGRESS);
     assertThat(pctx.todos().get(1).proof()).isNull();
@@ -339,13 +339,13 @@ class TodoStepExecutorTest {
     );
     executor.execute("track", config(), stepContext(pctx)).blockingGet();
 
-    assertThat(pctx.completeTodo("write_readme")).isTrue();
+    assertThat(pctx.completeTodo("write_readme", null)).isTrue();
     assertThat(pctx.todos().get(0).status()).isEqualTo(TodoStatus.DONE);
     assertThat(pctx.todos().get(1).status()).isEqualTo(TodoStatus.IN_PROGRESS);
     // now two guesses in a row: the fallback stays unambiguous
-    assertThat(pctx.completeTodo("nope")).isTrue();
+    assertThat(pctx.completeTodo("nope", null)).isTrue();
     assertThat(pctx.todos().get(1).status()).isEqualTo(TodoStatus.DONE);
-    assertThat(pctx.completeTodo("still-nope")).isFalse();
+    assertThat(pctx.completeTodo("still-nope", null)).isFalse();
   }
 
   @Test
@@ -537,5 +537,36 @@ class TodoStepExecutorTest {
 
     assertThat(pctx.todos().get(0).status()).isEqualTo(TodoStatus.DONE);
     assertThat(pctx.messages().get(turnsBefore + 1).content()).contains("no todo with id 99");
+  }
+
+  @Test
+  void complete_todo_note_is_recorded_as_the_items_proof() {
+    var pctx = pctx();
+    pctx.setExtractedToolCalls(
+      List.of(call("set_todos", "{\"todos\":[{\"id\":\"1\",\"title\":\"spring haiku\"}]}"))
+    );
+    executor.execute("track", config(), stepContext(pctx)).blockingGet();
+
+    pctx.setExtractedToolCalls(
+      List.of(
+        call("complete_todo", "{\"id\":\"1\",\"note\":\"Cherry blossoms drift / over the pond\"}")
+      )
+    );
+    executor.execute("track", config(), stepContext(pctx)).blockingGet();
+
+    assertThat(pctx.todos().get(0).status()).isEqualTo(TodoStatus.DONE);
+    assertThat(pctx.todos().get(0).proof()).isEqualTo("Cherry blossoms drift / over the pond");
+  }
+
+  @Test
+  void a_blank_note_keeps_the_existing_proof() {
+    var pctx = pctx();
+    pctx.setTodos(
+      List.of(
+        new PipelineContext.TodoItem("1", "spring haiku", TodoStatus.IN_PROGRESS, "earlier proof")
+      )
+    );
+    assertThat(pctx.completeTodo("1", "  ")).isTrue();
+    assertThat(pctx.todos().get(0).proof()).isEqualTo("earlier proof");
   }
 }

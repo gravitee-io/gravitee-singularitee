@@ -19,14 +19,19 @@ import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Single;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.file.CopyOptions;
 import io.vertx.core.file.OpenOptions;
+import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.PoolOptions;
+import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.client.WebClientOptions;
 import io.vertx.rxjava3.core.Vertx;
 import io.vertx.rxjava3.core.file.AsyncFile;
+import io.vertx.rxjava3.core.http.HttpClient;
+import io.vertx.rxjava3.core.http.HttpClientResponse;
 import io.vertx.rxjava3.ext.web.client.HttpRequest;
 import io.vertx.rxjava3.ext.web.client.WebClient;
 import io.vertx.rxjava3.ext.web.codec.BodyCodec;
@@ -138,6 +143,7 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
   private final Vertx vertx;
   private final WebClient client;
   private final WebClient absClient;
+  private final HttpClient probeClient;
   private final String hfToken;
   private final Options options;
   private final String hubHost;
@@ -172,14 +178,16 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
     this.ssl = ssl;
     this.client = createClient(vertx, hubHost, hubPort, ssl);
     this.absClient = createAbsClient(vertx, options.parallelism());
+    this.probeClient = createProbeClient(vertx);
     this.hfToken = (hfToken != null && !hfToken.isBlank()) ? hfToken : null;
   }
 
-  /** Releases both HTTP clients (and their connection pools). */
+  /** Releases all HTTP clients (and their connection pools). */
   @Override
   public void close() {
     client.close();
     absClient.close();
+    probeClient.close().onErrorComplete().subscribe();
   }
 
   /**
@@ -353,6 +361,7 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
     Path outputPath,
     long totalSize
   ) {
+    cleanStaleParts(outputPath);
     if (totalSize < options.chunkedThresholdBytes()) {
       return doStreamDownload(repository, fileName, outputPath, totalSize);
     }
@@ -408,23 +417,30 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
     return probe(url, 0);
   }
 
+  /**
+   * The probe only needs the status line and headers: the request is made on a raw
+   * {@link HttpClient} (no body aggregation) and the connection is torn down as soon as the
+   * status is known, so a server that ignores {@code Range} and answers 200 with the whole
+   * blob never gets to transfer — or buffer — that body here.
+   */
   private Single<ResolvedSource> probe(String url, int hops) {
     if (hops > MAX_REDIRECTS) {
       return Single.error(new NonRetryableException("Too many redirects resolving [" + url + "]"));
     }
-    HttpRequest<Buffer> request = absClient
-      .requestAbs(HttpMethod.GET, url)
-      .putHeader("Range", "bytes=0-0")
-      .followRedirects(false);
-    if (isHubUrl(url)) {
-      authorize(request);
-    }
-    return request
-      .rxSend()
+    return probeClient
+      .rxRequest(new RequestOptions().setMethod(HttpMethod.GET).setAbsoluteURI(url))
+      .flatMap(request -> {
+        request.putHeader("Range", "bytes=0-0");
+        if (hfToken != null && isHubUrl(url)) {
+          request.putHeader("Authorization", "Bearer " + hfToken);
+        }
+        return request.rxSend();
+      })
       .flatMap(response -> {
         int status = response.statusCode();
         if (status >= 300 && status < 400) {
           String location = response.getHeader("Location");
+          abortProbe(response);
           if (location == null) {
             return Single.error(
               new IllegalStateException("Redirect without Location resolving [" + url + "]")
@@ -433,17 +449,24 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
           return probe(URI.create(url).resolve(location).toString(), hops + 1);
         }
         if (status == 206) {
-          return Single.just(
-            new ResolvedSource(url, true, contentRangeTotal(response.getHeader("Content-Range")))
-          );
+          long total = contentRangeTotal(response.getHeader("Content-Range"));
+          abortProbe(response);
+          return Single.just(new ResolvedSource(url, true, total));
         }
         if (status == 200) {
+          abortProbe(response);
           return Single.just(new ResolvedSource(url, false, UNKNOWN_SIZE));
         }
+        abortProbe(response);
         return Single.error(
           new IllegalStateException("Probe of [" + url + "] failed: HTTP " + status)
         );
       });
+  }
+
+  /** Closes the probe connection before the body transfers. */
+  private static void abortProbe(HttpClientResponse response) {
+    response.request().connection().close().onErrorComplete().subscribe();
   }
 
   /** Parses the total from a {@code Content-Range: bytes 0-0/12345} header. */
@@ -476,12 +499,15 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
       options.parallelism()
     );
 
+    // written to a temp sibling and published atomically, so the final path never
+    // exists in a preallocated/partial state
+    Path tempPath = tempPathFor(outputPath);
     return ensureParentDir(outputPath)
       .andThen(
         vertx
           .fileSystem()
           .rxOpen(
-            outputPath.toString(),
+            tempPath.toString(),
             new OpenOptions().setCreate(true).setWrite(true).setTruncateExisting(true)
           )
       )
@@ -496,8 +522,12 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
               index -> {
                 long start = index * chunkSize;
                 long end = Math.min(total, start + chunkSize) - 1;
-                return downloadChunk(source.url(), start, end, asyncFile, written).retryWhen(
-                  errors -> backoff(errors, MAX_CHUNK_RETRIES)
+                // detached both inside and around retryWhen: a late error can surface on
+                // either side of the resubscription boundary after fail-fast disposal
+                return detachOnDispose(
+                  detachOnDispose(
+                    downloadChunk(source.url(), start, end, asyncFile, written)
+                  ).retryWhen(errors -> backoff(errors, MAX_CHUNK_RETRIES))
                 );
               },
               false,
@@ -522,18 +552,34 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
                   )
                 );
               }
-              LOG.info("Downloaded [{}] -> {}", label, outputPath);
-              return Single.just(outputPath.toAbsolutePath());
+              return publish(tempPath, outputPath).andThen(
+                Single.fromCallable(() -> {
+                  LOG.info("Downloaded [{}] -> {}", label, outputPath);
+                  return outputPath.toAbsolutePath();
+                })
+              );
             })
           );
       })
       .onErrorResumeNext(err ->
         vertx
           .fileSystem()
-          .rxDelete(outputPath.toString())
+          .rxDelete(tempPath.toString())
           .onErrorComplete()
           .andThen(Single.<Path>error(err))
       );
+  }
+
+  /**
+   * Wraps a chunk chain so that errors arriving after fail-fast disposal (a sibling chunk
+   * failed permanently and cancelled this one mid-flight) are dropped instead of reaching
+   * {@code RxJavaPlugins.onError} as uncaught exceptions.
+   */
+  private static Completable detachOnDispose(Completable chain) {
+    return Completable.create(emitter -> {
+      var disposable = chain.subscribe(emitter::onComplete, emitter::tryOnError);
+      emitter.setCancellable(disposable::dispose);
+    });
   }
 
   private Completable downloadChunk(
@@ -632,19 +678,22 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
     LOG.info("Downloading [{}/{}] ...", repository, fileName);
     String resolvePath = "/" + repository + "/resolve/main/" + fileName;
 
+    // written to a temp sibling and published atomically, so the final path never
+    // exists in a partial state
+    Path tempPath = tempPathFor(outputPath);
     return ensureParentDir(outputPath)
       .andThen(
         vertx
           .fileSystem()
           .rxOpen(
-            outputPath.toString(),
+            tempPath.toString(),
             new OpenOptions().setCreate(true).setWrite(true).setTruncateExisting(true)
           )
       )
       .flatMap(asyncFile -> {
         long timerId = startProgress(
           repository + "/" + fileName,
-          () -> statSize(outputPath),
+          () -> statSize(tempPath),
           totalSize
         );
         return authorize(client.request(HttpMethod.GET, resolvePath))
@@ -658,26 +707,72 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
           })
           .flatMap(response -> {
             if (response.statusCode() >= 400) {
-              return vertx
-                .fileSystem()
-                .rxDelete(outputPath.toString())
-                .andThen(
-                  Single.<Path>error(
-                    new IllegalStateException(
-                      "Download failed for [" +
-                        fileName +
-                        "] from [" +
-                        repository +
-                        "]: HTTP " +
-                        response.statusCode()
-                    )
-                  )
-                );
+              return Single.<Path>error(
+                new IllegalStateException(
+                  "Download failed for [" +
+                    fileName +
+                    "] from [" +
+                    repository +
+                    "]: HTTP " +
+                    response.statusCode()
+                )
+              );
             }
-            LOG.info("Downloaded [{}/{}] -> {}", repository, fileName, outputPath);
-            return Single.just(outputPath.toAbsolutePath());
+            return publish(tempPath, outputPath).andThen(
+              Single.fromCallable(() -> {
+                LOG.info("Downloaded [{}/{}] -> {}", repository, fileName, outputPath);
+                return outputPath.toAbsolutePath();
+              })
+            );
           });
-      });
+      })
+      .onErrorResumeNext(err ->
+        vertx
+          .fileSystem()
+          .rxDelete(tempPath.toString())
+          .onErrorComplete()
+          .andThen(Single.<Path>error(err))
+      );
+  }
+
+  /**
+   * Unique temp sibling of the final path — same directory, hence same filesystem, so the
+   * publishing move can be atomic. The name never collides with a requested file name.
+   */
+  private static Path tempPathFor(Path outputPath) {
+    return outputPath.resolveSibling(
+      outputPath.getFileName() + ".part-" + ProcessHandle.current().pid() + "-" + System.nanoTime()
+    );
+  }
+
+  /** Publishes a fully verified temp file at the final path with an atomic move. */
+  private Completable publish(Path tempPath, Path outputPath) {
+    var fs = vertx.fileSystem();
+    var atomic = new CopyOptions().setAtomicMove(true).setReplaceExisting(true);
+    var replace = new CopyOptions().setReplaceExisting(true);
+    return fs
+      .rxMove(tempPath.toString(), outputPath.toString(), atomic)
+      .onErrorResumeNext(err -> fs.rxMove(tempPath.toString(), outputPath.toString(), replace));
+  }
+
+  /** Best-effort removal of {@code .part-*} leftovers from crashed downloads of this file. */
+  private static void cleanStaleParts(Path outputPath) {
+    Path parent = outputPath.getParent();
+    if (parent == null || !Files.isDirectory(parent)) return;
+    String prefix = outputPath.getFileName() + ".part-";
+    try (var siblings = Files.list(parent)) {
+      siblings
+        .filter(p -> p.getFileName().toString().startsWith(prefix))
+        .forEach(p -> {
+          try {
+            Files.deleteIfExists(p);
+          } catch (IOException e) {
+            LOG.debug("Could not delete stale part file {}: {}", p, e.getMessage());
+          }
+        });
+    } catch (IOException e) {
+      LOG.debug("Could not scan for stale part files of {}: {}", outputPath, e.getMessage());
+    }
   }
 
   /** Best-effort on-disk size for stream-download progress (0 until the file appears). */
@@ -761,5 +856,17 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
     var poolOptions = new PoolOptions().setHttp1MaxSize(Math.max(parallelism, 5));
 
     return WebClient.create(vertx, options, poolOptions);
+  }
+
+  /**
+   * Raw client for Range probes: no body aggregation, so a probe can read the status line
+   * and headers and abort the connection before any body transfers.
+   */
+  private static HttpClient createProbeClient(Vertx vertx) {
+    var options = new HttpClientOptions()
+      .setConnectTimeout(CONNECT_TIMEOUT_MS)
+      .setIdleTimeout(IDLE_TIMEOUT_S)
+      .setIdleTimeoutUnit(TimeUnit.SECONDS);
+    return vertx.createHttpClient(options);
   }
 }

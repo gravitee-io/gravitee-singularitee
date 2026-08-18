@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gravitee.singularitee.protocol.ChatMessage;
 import io.gravitee.singularitee.protocol.ChatMessageList;
 import io.gravitee.singularitee.protocol.MediaType;
+import io.gravitee.singularitee.protocol.Role;
 import org.junit.jupiter.api.Test;
 
 class PipelineRequestBuilderTest {
@@ -224,5 +225,46 @@ class PipelineRequestBuilderTest {
       EndpointType.CHAT
     );
     assertThat(req.hasTemplateContext()).isFalse();
+  }
+
+  @Test
+  void responsesInstructionsTravelInContextNotAsATranscriptTurn() throws Exception {
+    var req = PipelineRequestBuilder.build(
+      "pipe",
+      json("{\"input\":\"hi\",\"instructions\":\"talk like a pirate\"}"),
+      EndpointType.RESPONSES
+    );
+    assertThat(req.getContextMap()).containsEntry("instructions", "talk like a pirate");
+    // No system turn: a stored conversation must not replay this request's
+    // instructions into a continuation (previous_response_id does not carry them).
+    assertThat(req.getMessages().getMessagesList()).allSatisfy(m ->
+      assertThat(m.getRole()).isNotEqualTo(Role.ROLE_SYSTEM)
+    );
+  }
+
+  @Test
+  void continuationUsesItsOwnInstructionsOnly() throws Exception {
+    var first = PipelineRequestBuilder.build(
+      "pipe",
+      json("{\"input\":\"hi\",\"instructions\":\"be terse\"}"),
+      EndpointType.RESPONSES
+    );
+    var second = PipelineRequestBuilder.build(
+      "pipe",
+      json(
+        "{\"input\":\"more\",\"previous_response_id\":\"resp_1\"," +
+          "\"instructions\":\"be verbose\"}"
+      ),
+      EndpointType.RESPONSES
+    );
+    assertThat(first.getContextMap()).containsEntry("instructions", "be terse");
+    assertThat(second.getContextMap()).containsEntry("instructions", "be verbose");
+    // and a continuation with no instructions carries none at all
+    var third = PipelineRequestBuilder.build(
+      "pipe",
+      json("{\"input\":\"more\",\"previous_response_id\":\"resp_2\"}"),
+      EndpointType.RESPONSES
+    );
+    assertThat(third.getContextMap()).doesNotContainKey("instructions");
   }
 }

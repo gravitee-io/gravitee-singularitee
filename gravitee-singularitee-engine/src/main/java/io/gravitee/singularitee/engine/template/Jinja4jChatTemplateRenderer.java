@@ -88,6 +88,16 @@ public final class Jinja4jChatTemplateRenderer implements ChatTemplateRenderer {
     return e;
   }
 
+  /**
+   * Renders a template whose {@code messages}/{@code tools} were already placed
+   * in {@code variables} by the caller — nothing outside the variable map is
+   * injected, so pre-sanitised entries (special-token-escaped tools) cannot be
+   * clobbered by raw parameters.
+   */
+  public String renderFromVariables(String templateString, Map<String, Object> variables) {
+    return render(templateString, null, null, true, variables);
+  }
+
   @Override
   public String render(
     String templateString,
