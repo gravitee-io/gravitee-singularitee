@@ -124,6 +124,62 @@ A `break` step halts on a condition instead of branching:
       threshold: 0.9
 ```
 
+### Self-repair on failure signals
+
+Steps publish their failure signals as context fields, so a loop condition can gate on *how*
+a step finished — not just on what it produced. Every infer step sets:
+
+| Field | Values | Meaning |
+| --- | --- | --- |
+| `<step>.finish_reason` | `stop` \| `length` \| `tool_calls` \| `guard_blocked` \| `stalled` \| `cancelled` \| … | How the engine finished. `stalled` means the backend failed mid-generation and the output is silently truncated. |
+| `<step>.tool_parse_ok` | `true` \| `false` | Whether tool-call extraction produced at least one structured call (set only when the step attempted extraction). |
+| `<step>.tool_parse_failed` | `true` \| `false` | `true` only when the model **attempted** a call and extraction came up empty; `false` for a plain prose answer. **Gate repair loops on this field**, not on `tool_parse_ok` — unset/`false` vs `true` cleanly separates "no attempt" from "broken attempt". |
+| `<step>.tool_call_count` | integer | Number of structured calls extracted. |
+| `<step>.parse_error` | text | The extraction template/JSON error, when one was thrown (absent otherwise). |
+| `<step>.attempted_tool` | text | On a failed attempt, the tool name the model tried to call (namespace-stripped) — lets a loopback message name a hallucinated/undeclared tool instead of issuing generic feedback the model ignores. |
+| `<step>.thinking_unclosed` | `true` \| `false` | "Stuck reasoning", on either path: an unclosed `<think>` block, or engine-classified reasoning (Harmony analysis channels) with no answer content and no tool call by end of stream. |
+| `<step>.prompt_tokens` / `.completion_tokens` / `.reasoning_tokens` | integers | Per-step usage. |
+
+Route steps set `<step>.label` (the resolved label) and `<step>.matched` (`false` when the
+judge output matched no rule and the default edge was taken); loop steps set
+`<step>.iterations` and, on ceiling, `<step>.max_iterations_reached`.
+
+`examples/pipelines/tool-repair.yaml` is the reference wiring: a loop gated on
+`generate.tool_parse_failed` re-enters the infer step with the parse error injected as a
+corrective turn, and falls back to an honest plain-text answer after 3 attempts —
+instead of silently shipping a malformed tool call as prose. Plain answers (including the
+turn after a tool result) exit the gate immediately.
+
+```yaml
+- id: repair_gate
+  type: loop
+  next_step: done
+  config:
+    loopback_step: generate
+    fallback_step: fallback
+    max_iterations: 3
+    condition:
+      type: equals
+      input_field: generate.tool_parse_failed
+      match_value: "false"
+    loopback_message:
+      role: user
+      content: "Your previous reply did not contain a valid tool call.{% if generate.attempted_tool %} You called '{{ generate.attempted_tool }}', which is not a declared tool.{% endif %} The ONLY valid tools are: {{ tool_names | join(', ') }}. Reply again with a single valid tool call — no prose."
+```
+
+The `tool_names` Jinja variable (the request's declared tool names) is available to every
+loopback/guard template — corrective feedback that *names* the wrong tool and lists the
+legal ones converges where a generic "retry" does not (models otherwise repeat hallucinated
+built-ins like gpt-oss's `apply_patch` verbatim).
+
+**Escalation**: `fallback_step` doesn't have to be an apology — point it at an infer step
+bound to a *bigger model*. The escalation step inherits the accumulated conversation,
+including the corrective loopback turns, so the big model sees what the small one got wrong.
+`examples/pipelines/tool-repair-escalate.yaml` wires this: two repair attempts on Qwen3-0.6B
+(retries tightened via `retry_sampling_params`), then gpt-oss-20b takes over — each step
+carrying its own dialect config (default `<tool_call>` tags vs Harmony). No engine feature
+involved — steps bind models statically, and two llama.cpp models in one process are fine.
+
 ## Options
 
 ### `loop` (`LoopStepConfig`)
@@ -135,6 +191,7 @@ A `break` step halts on a condition instead of branching:
 | `max_iterations` | — (must be > 0) | Hard ceiling on loop iterations. |
 | `fallback_step` | `next_step` | Step to branch to when `max_iterations` is reached. |
 | `loopback_message` | — | `{role?, content}` appended to the conversation on every retry edge; `content` is a Jinja template, `role` defaults to `user`. |
+| `retry_sampling_params` | — | Sampling override for retry-edge generations only (e.g. `{temperature: 0.2}` — repair retries want determinism). Installed when looping back, cleared on exit and on fallback. Precedence: request override > retry override > step params. |
 
 ### `break` (`BreakStepConfig`)
 | Field | Default | Purpose |

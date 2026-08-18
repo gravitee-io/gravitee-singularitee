@@ -50,15 +50,15 @@ MODELS_DIR="$HOME/.cache/gravitee-singularitee/models"
 # was generated against: the jextract bindings are ABI-specific, and a mismatched
 # dylib crashes the JVM rather than failing to load.
 NATIVE_DIR="${NATIVE_DIR:-$HOME/.llama.cpp}"
-DEFAULT_LLAMA_CPP_VERSION="b9873"
+DEFAULT_LLAMA_CPP_VERSION="b10276"
 LLAMA_CPP_VERSION="${LLAMA_CPP_VERSION:-$DEFAULT_LLAMA_CPP_VERSION}"
 # SHA-256 of the release archives for the PINNED version above, per host. These are
 # native libraries the JVM loads, so a tampered or truncated download executes as us —
 # HTTPS protects the transport, not the artifact. Verified before extraction.
 # Re-pin when bumping LLAMA_CPP_VERSION:
 #   curl -fsSL <url> | shasum -a 256
-LLAMA_CPP_SHA256_macos_arm64="2499e06ffa95f3bb852579b4b3b80f14a8079061b642c6bf2e6287f6b0a91038"
-LLAMA_CPP_SHA256_ubuntu_x64="5ee4a6c49fec13545b0e2eeeee3d13d1cd594c195e4e38464a205935c41e0f73"
+LLAMA_CPP_SHA256_macos_arm64="20d10cd3bb6004cf1343f8f62c56194c1115a5a926787de0dd65f806faff9887"
+LLAMA_CPP_SHA256_ubuntu_x64="6fe102c1b3681d7386c9939db544063f6349472dc44e195bbbb4a7681b2b3870"
 # Override to verify a version other than the pinned one (with --llama-version).
 LLAMA_CPP_SHA256="${LLAMA_CPP_SHA256:-}"
 SKIP_BUILD=false

@@ -16,11 +16,13 @@
 package io.gravitee.singularitee.standalone.spring;
 
 import io.gravitee.node.api.Node;
+import io.gravitee.node.api.cache.CacheManager;
 import io.gravitee.node.api.cluster.ClusterManager;
 import io.gravitee.node.api.configuration.Configuration;
 import io.gravitee.node.api.opentelemetry.InstrumenterTracerFactory;
 import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.node.api.opentelemetry.TracerFactory;
+import io.gravitee.node.plugin.cache.standalone.StandaloneCacheManager;
 import io.gravitee.node.plugin.cluster.standalone.StandaloneClusterManager;
 import io.gravitee.singularitee.adapter.ModelEngineFactory;
 import io.gravitee.singularitee.adapter.classifier.OnnxClassifierFactory;
@@ -41,7 +43,9 @@ import io.gravitee.singularitee.grpc.resolver.VllmModelResolver;
 import io.gravitee.singularitee.inference.math.api.GioMaths;
 import io.gravitee.singularitee.inference.math.vanilla.NativeMath;
 import io.gravitee.singularitee.metrics.InferenceMetrics;
+import io.gravitee.singularitee.pipeline.ConversationStore;
 import io.gravitee.singularitee.pipeline.PipelineExecutor;
+import io.gravitee.singularitee.pipeline.TodoSessionStore;
 import io.gravitee.singularitee.pipeline.executor.JinjaRenderer;
 import io.gravitee.singularitee.pipeline.executor.StepDispatcher;
 import io.gravitee.singularitee.pipeline.executor.StepExecutorFactory;
@@ -85,6 +89,28 @@ public class SingulariteeConfiguration {
   @Bean
   public ClusterManager clusterManager(Vertx vertx) {
     return new StandaloneClusterManager(vertx.getDelegate());
+  }
+
+  /**
+   * Pluggable cache backing cross-request state (todo sessions). Standalone
+   * in-memory by default — swap this one bean for the hazelcast/redis cache
+   * plugins to get a distributed backend; no engine code changes.
+   */
+  @Bean
+  public CacheManager cacheManager() {
+    return new StandaloneCacheManager();
+  }
+
+  /**
+   * Cross-request todo-plan persistence keyed by the request's cache_key
+   * (OpenAI prompt_cache_key / user). Idle TTL is the session timeout;
+   * {@code ai.todos.session-ttl: 0} disables persistence.
+   */
+  @Bean
+  public TodoSessionStore todoSessionStore(Configuration configuration, CacheManager cacheManager) {
+    long ttlSeconds = getLongProperty(configuration, "ai.todos.session-ttl", 1800L);
+    long maxEntries = getLongProperty(configuration, "ai.todos.session-max-entries", 10000L);
+    return new TodoSessionStore(cacheManager, ttlSeconds, maxEntries);
   }
 
   @Bean
@@ -148,28 +174,44 @@ public class SingulariteeConfiguration {
 
   // ── Model resolvers (HuggingFace download) ────────────────────────────
 
+  /**
+   * One downloader shared by every resolver: one HTTP connection pool instead of four,
+   * closed by Spring on shutdown (inferred {@code close()} destroy method).
+   */
   @Bean
-  public GgufModelResolver ggufModelResolver(Vertx vertx, Configuration configuration) {
-    return new GgufModelResolver(
-      new HuggingFaceModelDownloader(vertx, getHfToken(configuration)),
-      getModelsDir(configuration)
+  public HuggingFaceModelDownloader huggingFaceModelDownloader(
+    Vertx vertx,
+    Configuration configuration
+  ) {
+    return new HuggingFaceModelDownloader(
+      vertx,
+      getHfToken(configuration),
+      getDownloadOptions(configuration)
     );
   }
 
   @Bean
-  public OnnxModelResolver onnxModelResolver(Vertx vertx, Configuration configuration) {
-    return new OnnxModelResolver(
-      new HuggingFaceModelDownloader(vertx, getHfToken(configuration)),
-      getModelsDir(configuration)
-    );
+  public GgufModelResolver ggufModelResolver(
+    HuggingFaceModelDownloader downloader,
+    Configuration configuration
+  ) {
+    return new GgufModelResolver(downloader, getModelsDir(configuration));
   }
 
   @Bean
-  public GlinerModelResolver glinerModelResolver(Vertx vertx, Configuration configuration) {
-    return new GlinerModelResolver(
-      new HuggingFaceModelDownloader(vertx, getHfToken(configuration)),
-      getModelsDir(configuration)
-    );
+  public OnnxModelResolver onnxModelResolver(
+    HuggingFaceModelDownloader downloader,
+    Configuration configuration
+  ) {
+    return new OnnxModelResolver(downloader, getModelsDir(configuration));
+  }
+
+  @Bean
+  public GlinerModelResolver glinerModelResolver(
+    HuggingFaceModelDownloader downloader,
+    Configuration configuration
+  ) {
+    return new GlinerModelResolver(downloader, getModelsDir(configuration));
   }
 
   /**
@@ -177,11 +219,11 @@ public class SingulariteeConfiguration {
    * download path instead of vLLM fetching its own copy through CPython.
    */
   @Bean
-  public VllmModelResolver vllmModelResolver(Vertx vertx, Configuration configuration) {
-    return new VllmModelResolver(
-      new HuggingFaceModelDownloader(vertx, getHfToken(configuration)),
-      getModelsDir(configuration)
-    );
+  public VllmModelResolver vllmModelResolver(
+    HuggingFaceModelDownloader downloader,
+    Configuration configuration
+  ) {
+    return new VllmModelResolver(downloader, getModelsDir(configuration));
   }
 
   private static Path getModelsDir(Configuration configuration) {
@@ -194,6 +236,45 @@ public class SingulariteeConfiguration {
       return Path.of(graviteeHome, "models");
     }
     return Path.of(System.getProperty("user.home"), ".cache", "gravitee-singularitee", "models");
+  }
+
+  /**
+   * Chunked-download tuning (hf_transfer-style parallel Range requests). Peak buffered
+   * memory is {@code parallelism × chunkSize}.
+   */
+  private static HuggingFaceModelDownloader.Options getDownloadOptions(
+    Configuration configuration
+  ) {
+    HuggingFaceModelDownloader.Options defaults = HuggingFaceModelDownloader.Options.defaults();
+    long chunkSize = getLongProperty(
+      configuration,
+      "ai.huggingface.download.chunkSize",
+      defaults.chunkSizeBytes()
+    );
+    int parallelism = (int) getLongProperty(
+      configuration,
+      "ai.huggingface.download.parallelism",
+      defaults.parallelism()
+    );
+    long threshold = getLongProperty(
+      configuration,
+      "ai.huggingface.download.chunkedThreshold",
+      2 * chunkSize
+    );
+    return new HuggingFaceModelDownloader.Options(chunkSize, parallelism, threshold);
+  }
+
+  private static long getLongProperty(Configuration configuration, String key, long defaultValue) {
+    String value = configuration.getProperty(key, "");
+    if (value.isBlank()) {
+      return defaultValue;
+    }
+    try {
+      return Long.parseLong(value.trim());
+    } catch (NumberFormatException e) {
+      LOGGER.warn("Invalid numeric value '{}' for {}; using default {}", value, key, defaultValue);
+      return defaultValue;
+    }
   }
 
   private static String getHfToken(Configuration configuration) {
@@ -411,14 +492,16 @@ public class SingulariteeConfiguration {
     ModelRegistry modelRegistry,
     PipelineRegistry pipelineRegistry,
     GraviteeModelServiceImpl modelService,
-    JinjaRenderer jinjaRenderer
+    JinjaRenderer jinjaRenderer,
+    io.gravitee.singularitee.pipeline.TodoSessionStore todoSessionStore
   ) {
     return new StepExecutorFactory(
       modelRegistry,
       pipelineRegistry,
       modelService,
       jinjaRenderer,
-      null
+      null,
+      todoSessionStore
     );
   }
 
@@ -427,18 +510,36 @@ public class SingulariteeConfiguration {
     return stepExecutorFactory.createDispatcher();
   }
 
+  /**
+   * Stored conversations for the OpenAI Responses continuation model
+   * (previous_response_id / store). {@code ai.conversations.ttl: 0} disables.
+   */
+  @Bean
+  public ConversationStore conversationStore(
+    Configuration configuration,
+    CacheManager cacheManager
+  ) {
+    long ttlSeconds = getLongProperty(configuration, "ai.conversations.ttl", 3600L);
+    long maxEntries = getLongProperty(configuration, "ai.conversations.max-entries", 10000L);
+    return new ConversationStore(cacheManager, ttlSeconds, maxEntries);
+  }
+
   @Bean
   public PipelineExecutor pipelineExecutor(
     PipelineRegistry pipelineRegistry,
     StepDispatcher stepDispatcher,
     Tracer singulariteeTracer,
-    InferenceMetrics inferenceMetrics
+    InferenceMetrics inferenceMetrics,
+    TodoSessionStore todoSessionStore,
+    ConversationStore conversationStore
   ) {
     return new PipelineExecutor(
       pipelineRegistry,
       stepDispatcher,
       singulariteeTracer,
-      inferenceMetrics
+      inferenceMetrics,
+      todoSessionStore,
+      conversationStore
     );
   }
 

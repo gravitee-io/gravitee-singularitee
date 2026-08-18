@@ -49,25 +49,4 @@ public final class Utils {
       throw new IllegalArgumentException("Invalid JSON payload", e);
     }
   }
-
-  /**
-   * Writes the {@code completion_tokens_details} sub-object into a {@code usage} node when
-   * reasoning or tool tokens are present.
-   */
-  public static void writeCompletionTokensDetails(
-    ObjectNode usage,
-    Integer reasoningTokens,
-    Integer toolTokens
-  ) {
-    int reasoning = reasoningTokens == null ? 0 : reasoningTokens;
-    int tool = toolTokens == null ? 0 : toolTokens;
-    // Always written, all buckets explicit. completion_tokens = answer + reasoning + tool;
-    // reasoning_tokens follows the OpenAI field name, answer_tokens/tool_tokens are explicit
-    // extensions so the breakdown always sums to completion_tokens.
-    ObjectNode details = usage.putObject("completion_tokens_details");
-    int completion = usage.path("completion_tokens").asInt(0);
-    details.put("answer_tokens", Math.max(0, completion - reasoning - tool));
-    details.put("reasoning_tokens", reasoning);
-    details.put("tool_tokens", tool);
-  }
 }

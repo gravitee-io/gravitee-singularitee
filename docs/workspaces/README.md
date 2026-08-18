@@ -126,6 +126,7 @@ workspace:
 | `models` | `[]` | Model definitions (see types below). |
 | `pipelines` | `[]` | Pipeline DAGs (`id`, `name`, `entry`, `steps`, optional `server` for remote proxy pipelines). |
 | `templates` | `[]` | Jinja2 templates: `id` + `content` (inline) or `file` (path), never both. |
+| `tags` | `[]` | Named tag sets: `id` + the step `tags:` keys (`reasoning_open/close`, `tool_open/close`, `reasoning_repeatable`). An infer step references one by writing the id as its whole `tags:` value; unknown ids fail loading. Declared in the base file only (not merged from includes). |
 | `includes` | — | `models:` / `pipelines:` / `templates:` lists of filenames or globs, resolved in sibling folders of the same name. |
 
 ### Model `type:` values (`ModelType`)

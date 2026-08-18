@@ -213,7 +213,7 @@ workspace:
 the `remote_*` proxies, and `regex` / `composite_classifier` (pure Java, run anywhere).
 
 **Step types** (`StepExecutorFactory.createHandlers`): `infer`, `classify`, `embed`, `route`,
-`guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`.
+`guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`.
 
 **Composition** — `includes:` pulls `models:` / `pipelines:` / `templates:` from the sibling
 `models/`, `pipelines/`, `templates/` folders (globs allowed). Because ids are logical, several
@@ -329,12 +329,12 @@ GPU-only ONNX Runtime behind that fails on macOS. Rebuild before testing.
 the per-engine images; local development wants the default.
 
 **Keep the venv's vLLM version in step with the image.** `scripts/setup-venv.sh` pins vLLM
-`0.23.0`, matching `Dockerfile.vllm-cuda`'s `VLLM_IMAGE` — vLLM4j is compiled against a specific
+`0.26.0`, matching `Dockerfile.vllm-cuda`'s `VLLM_IMAGE` — vLLM4j is compiled against a specific
 vLLM Python API, so a drifting venv fails at model load rather than at build. See
 [Engines](#engines-llamacpp-is-the-default) for the setup itself.
 
 **Keep `LLAMACPP_VERSION` in lockstep with llamaj.cpp.** The FFI bindings are ABI-specific;
-a mismatch shows up as a runtime `NoSuchMethodError`. Currently `b9873` ↔ llamaj.cpp `2.6.1`
+a mismatch shows up as a runtime `NoSuchMethodError`. Currently `b10276` ↔ llamaj.cpp `2.7.0`
 (`Dockerfile.llama-cuda`, `install.sh`).
 
 **Java reads zero entries from openssl cert-only PKCS12 bundles.** `openssl pkcs12

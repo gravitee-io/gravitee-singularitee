@@ -439,7 +439,7 @@ class AbstractBatchEngineSchedulingTest {
           .findFirst()
           .orElseThrow();
         assertThat(rejected.isFinal()).isTrue();
-        assertThat(rejected.finishReason()).isEqualTo("length");
+        assertThat(rejected.finishReason()).isEqualTo("length_prompt");
         assertThat(adapter.created).isZero();
 
         // The slot is still free, so a normal sequence runs to completion.

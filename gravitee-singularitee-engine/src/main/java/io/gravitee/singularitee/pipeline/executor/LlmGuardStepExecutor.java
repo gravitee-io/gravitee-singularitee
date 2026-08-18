@@ -31,6 +31,7 @@ import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.disposables.Disposable;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -130,11 +131,10 @@ public final class LlmGuardStepExecutor
         accumulator,
         emitter,
         ctx.response(),
-        false,
-        StepRole.STEP_ROLE_INTERNAL,
-        true,
-        null,
-        null
+        TokenCaptureStream.CaptureConfig.capturing(
+          StepRole.STEP_ROLE_INTERNAL,
+          TokenCaptureStream.ThinkingMode.STRIP
+        )
       );
       // Stream the guard model's tokens into the (non-forwarding) capture stream via the
       // engine's per-sequence reactive surface, consistent with InferStepExecutor.
@@ -173,7 +173,9 @@ public final class LlmGuardStepExecutor
         LOGGER.debug("LlmGuardStep '{}': raw output:\n{}", stepId, verdict);
 
         String safeToken = cfg.getSafeToken().isBlank() ? DEFAULT_SAFE_TOKEN : cfg.getSafeToken();
-        boolean isSafe = verdict.toLowerCase().startsWith(safeToken.toLowerCase());
+        boolean isSafe = verdict
+          .toLowerCase(Locale.ROOT)
+          .startsWith(safeToken.toLowerCase(Locale.ROOT));
 
         String verdictFirstLine = verdict.lines().findFirst().orElse(verdict).strip();
         // Flat dot-keys are split by JinjaContextHelper#buildStepOutputContext on
@@ -254,7 +256,7 @@ public final class LlmGuardStepExecutor
 
   private static ChatRole toChatRole(String role) {
     if (role == null) return ChatRole.USER;
-    return switch (role.toLowerCase()) {
+    return switch (role.toLowerCase(Locale.ROOT)) {
       case "system" -> ChatRole.SYSTEM;
       case "assistant" -> ChatRole.ASSISTANT;
       default -> ChatRole.USER;

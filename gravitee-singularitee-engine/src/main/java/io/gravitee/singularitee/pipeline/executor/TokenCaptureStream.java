@@ -20,6 +20,7 @@ import io.reactivex.rxjava3.core.CompletableEmitter;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.streams.WriteStream;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -134,6 +135,51 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
   private static final String DEFAULT_CLOSE_TAG = "</think>";
 
   /**
+   * Immutable capture behavior, fixed at construction.
+   *
+   * @param forwardContent     whether answer/tool deltas are forwarded downstream
+   * @param forwardThinking    whether THINKING-role deltas may reach the downstream even when
+   *                           {@code forwardContent} is false (an internal step with
+   *                           {@code stream_thinking: true}); forwarding content always implies
+   *                           forwarding thinking
+   * @param wireRole           the role stamped on forwarded responses; {@code null} preserves the
+   *                           source role
+   * @param mode               how reasoning blocks are handled (see {@link ThinkingMode})
+   * @param openTag            reasoning open tag; {@code null}/blank uses {@code <think>}
+   * @param closeTag           reasoning close tag; {@code null}/blank uses {@code </think>}
+   * @param thinkingCutMarkers tool-call open markers that cut the forwarded thinking flux
+   *                           (see {@link TokenCaptureStream#thinkingCutMarkers})
+   */
+  public record CaptureConfig(
+    boolean forwardContent,
+    boolean forwardThinking,
+    StepRole wireRole,
+    ThinkingMode mode,
+    String openTag,
+    String closeTag,
+    List<String> thinkingCutMarkers
+  ) {
+    public CaptureConfig {
+      thinkingCutMarkers = thinkingCutMarkers == null ? List.of() : List.copyOf(thinkingCutMarkers);
+    }
+
+    /** Forwarding capture with matched content/thinking forwarding and no cut markers. */
+    public static CaptureConfig forwarding(
+      StepRole wireRole,
+      ThinkingMode mode,
+      String openTag,
+      String closeTag
+    ) {
+      return new CaptureConfig(true, true, wireRole, mode, openTag, closeTag, null);
+    }
+
+    /** Non-forwarding capture (internal steps): nothing reaches the downstream. */
+    public static CaptureConfig capturing(StepRole wireRole, ThinkingMode mode) {
+      return new CaptureConfig(false, false, wireRole, mode, null, null, null);
+    }
+  }
+
+  /**
    * Small models occasionally emit a few junk characters (":", stray punctuation) before their
    * thinking block. AT_START tolerates up to this many leading characters while waiting for the
    * open tag; the junk is dropped with the tag. Beyond this budget the output is treated as real
@@ -146,6 +192,27 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
   private final CompletableEmitter emitter;
   private final WriteStream<InferResponse> downstream;
   private final boolean shouldForward;
+
+  /**
+   * The step's configured tool-call open markers. A tool call composed inside
+   * the thinking channel would otherwise stream its raw call syntax to the
+   * client on the thinking flux (engine-stamped thinking bypasses the tag
+   * machine): once one of these markers appears in forwarded thinking, the
+   * rest of the generation's thinking is machine territory and stops being
+   * forwarded. Config-driven — no dialect literals here.
+   */
+  private final List<String> thinkingCutMarkers;
+
+  private final int thinkingCutMaxLen;
+  private final StringBuilder thinkingHold = new StringBuilder();
+  private boolean thinkingCut = false;
+  /**
+   * Whether THINKING-role deltas may reach the downstream even when
+   * {@code shouldForward} is false (an internal step with
+   * {@code stream_thinking: true}): the reasoning channel escapes, content
+   * and tool deltas stay suppressed.
+   */
+  private final boolean shouldForwardThinking;
   private final StepRole wireRole;
 
   // ── Thinking handling state ─────────────────────────────────────────────
@@ -198,8 +265,34 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    */
   private final StringBuilder toolBuffer = new StringBuilder();
 
+  /**
+   * ANSWER-channel text only (no reasoning, no tool spans, no tag markers):
+   * the model's visible words. For internal steps this is the narration a
+   * client-tool halt can surface ("I'll run git status now").
+   */
+  private final StringBuilder answerBuffer = new StringBuilder();
+
   /** The last response received — carries usage and performance on the completed event. */
   private volatile InferResponse lastResponse;
+
+  /**
+   * Set at end-of-stream when the tag machine was still inside a thinking block — the model
+   * opened {@code <think>} and never closed it ("stuck reasoning"). Only meaningful for
+   * {@link ThinkingMode#STRIP} / {@link ThinkingMode#ROUTE}; always {@code false} otherwise.
+   */
+  private volatile boolean thinkingUnclosed;
+
+  /**
+   * Engine-classified reasoning was seen ({@code STEP_ROLE_THINKING} deltas — e.g. gpt-oss
+   * Harmony channels, where the tag machine never runs). Together with
+   * {@link #sawAnswerContent} this detects the classified-path variant of "stuck reasoning":
+   * the whole generation stayed in the analysis channel and never produced an answer or a
+   * tool call.
+   */
+  private volatile boolean sawClassifiedThinking;
+
+  /** Non-blank answer content (or a tool span — a call is a productive outcome) was seen. */
+  private volatile boolean sawAnswerContent;
 
   /**
    * Set when a downstream write fails (typically: the client disconnected
@@ -213,78 +306,38 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
   /**
    * Creates a capture stream that accumulates and optionally forwards tokens.
    *
-   * @param accumulator    buffer that collects generated text
-   * @param emitter        completed when {@code end()} is called so the reactive chain can proceed
-   * @param downstream     the client response stream to forward to (may be {@code null} if not forwarding)
-   * @param shouldForward  whether to forward tokens to the downstream stream
-   * @param wireRole       the role tag to stamp on forwarded responses (ignored when not forwarding)
-   * @param mode           how reasoning blocks are handled (see {@link ThinkingMode})
-   * @param openTag        reasoning open tag (e.g. {@code <think>}); {@code null} uses the default
-   * @param closeTag       reasoning close tag (e.g. {@code </think>}); {@code null} uses the default
+   * @param accumulator buffer that collects generated text
+   * @param emitter     completed when {@code end()} is called so the reactive chain can proceed
+   * @param downstream  the client response stream to forward to (may be {@code null} if not
+   *                    forwarding)
+   * @param config      the immutable capture behavior (see {@link CaptureConfig})
    */
   public TokenCaptureStream(
     StringBuilder accumulator,
     CompletableEmitter emitter,
     WriteStream<InferResponse> downstream,
-    boolean shouldForward,
-    StepRole wireRole,
-    ThinkingMode mode,
-    String openTag,
-    String closeTag
+    CaptureConfig config
   ) {
+    this.shouldForwardThinking = config.forwardThinking() || config.forwardContent();
     this.accumulator = accumulator;
     this.emitter = emitter;
     this.downstream = downstream;
-    this.shouldForward = shouldForward;
-    this.wireRole = wireRole;
-    this.mode = mode;
-    this.openTag = openTag != null && !openTag.isBlank() ? openTag : DEFAULT_OPEN_TAG;
-    this.closeTag = closeTag != null && !closeTag.isBlank() ? closeTag : DEFAULT_CLOSE_TAG;
+    this.shouldForward = config.forwardContent();
+    this.wireRole = config.wireRole();
+    this.mode = config.mode();
+    this.openTag = config.openTag() != null && !config.openTag().isBlank()
+      ? config.openTag()
+      : DEFAULT_OPEN_TAG;
+    this.closeTag = config.closeTag() != null && !config.closeTag().isBlank()
+      ? config.closeTag()
+      : DEFAULT_CLOSE_TAG;
     this.maxTagLen = Math.max(this.openTag.length(), this.closeTag.length());
     this.thinkState = mode == ThinkingMode.NONE ? ThinkState.PASSTHROUGH : ThinkState.AT_START;
     this.pendingBuffer = new StringBuilder();
     this.closeBuffer = new StringBuilder();
     this.trimNextFlush = false;
-  }
-
-  /**
-   * Backwards-compatible constructor taking the legacy {@code strip_thinking}
-   * boolean: {@code true} maps to {@link ThinkingMode#STRIP}, {@code false}
-   * to {@link ThinkingMode#NONE}.
-   */
-  public TokenCaptureStream(
-    StringBuilder accumulator,
-    CompletableEmitter emitter,
-    WriteStream<InferResponse> downstream,
-    boolean shouldForward,
-    StepRole wireRole,
-    boolean stripThinking,
-    String openTag,
-    String closeTag
-  ) {
-    this(
-      accumulator,
-      emitter,
-      downstream,
-      shouldForward,
-      wireRole,
-      stripThinking ? ThinkingMode.STRIP : ThinkingMode.NONE,
-      openTag,
-      closeTag
-    );
-  }
-
-  /**
-   * Backwards-compatible constructor without thinking handling.
-   */
-  public TokenCaptureStream(
-    StringBuilder accumulator,
-    CompletableEmitter emitter,
-    WriteStream<InferResponse> downstream,
-    boolean shouldForward,
-    StepRole wireRole
-  ) {
-    this(accumulator, emitter, downstream, shouldForward, wireRole, ThinkingMode.NONE, null, null);
+    this.thinkingCutMarkers = config.thinkingCutMarkers();
+    this.thinkingCutMaxLen = thinkingCutMarkers.stream().mapToInt(String::length).max().orElse(0);
   }
 
   /** Convenience: capture-and-always-forward, preserving the original step role from the source. */
@@ -297,8 +350,8 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
       accumulator,
       emitter,
       downstream,
-      true,
-      null // null = preserve original role
+      // null wireRole = preserve original role
+      new CaptureConfig(true, true, null, ThinkingMode.NONE, null, null, null)
     );
   }
 
@@ -339,6 +392,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
     // un-stamped OUTPUT deltas (engines that don't classify) and keeps the
     // stray-</think> stripping on the answer flux.
     if (data.getStepRole() == StepRole.STEP_ROLE_THINKING) {
+      sawClassifiedThinking = true;
       switch (mode) {
         case ROUTE -> {
           // Data plane unchanged: the accumulator keeps the raw reasoning text,
@@ -354,7 +408,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
           // Fully transparent: accumulate and forward verbatim, preserving the
           // THINKING role stamped upstream (no wireRole re-stamping).
           accumulator.append(token);
-          if (shouldForward && downstream != null) {
+          if (shouldForwardThinking && downstream != null) {
             safeDownstreamWrite(data);
           }
         }
@@ -364,6 +418,10 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
 
     if (mode == ThinkingMode.NONE) {
       // Fast path: no thinking handling — accumulate and forward as-is.
+      if (!token.isBlank()) {
+        sawAnswerContent = true;
+      }
+      answerBuffer.append(token);
       accumulator.append(token);
       forwardDeltaToDownstream(data);
       return Future.succeededFuture();
@@ -386,6 +444,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    * wire role — the role IS the tool signal now that markers are suppressed).
    */
   private void handleToolDelta(InferResponse data, String token) {
+    sawAnswerContent = true;
     toolBuffer.append(token);
     if (shouldForward && downstream != null) {
       safeDownstreamWrite(data);
@@ -574,6 +633,10 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    */
   private void flushRealContent(InferResponse data, String text) {
     if (text.isEmpty()) return;
+    if (!text.isBlank()) {
+      sawAnswerContent = true;
+    }
+    answerBuffer.append(text);
 
     String out = text;
     if (trimNextFlush) {
@@ -598,8 +661,55 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    * already appended in {@link #write}.
    */
   private void forwardThinking(String text) {
-    if (text.isEmpty()) return;
-    forwardSyntheticDeltaToDownstream(text, StepRole.STEP_ROLE_THINKING);
+    if (text.isEmpty() || thinkingCut) return;
+    if (thinkingCutMarkers.isEmpty()) {
+      forwardSyntheticDeltaToDownstream(text, StepRole.STEP_ROLE_THINKING);
+      return;
+    }
+    // Markers can split across deltas: scan over held tail + new text, emit
+    // what is provably clean, hold back any suffix that could be a marker
+    // prefix. On a full marker: emit up to it, then cut for good.
+    String candidate = thinkingHold.toString() + text;
+    int cutAt = -1;
+    for (String m : thinkingCutMarkers) {
+      int i = candidate.indexOf(m);
+      if (i >= 0 && (cutAt < 0 || i < cutAt)) cutAt = i;
+    }
+    if (cutAt >= 0) {
+      thinkingCut = true;
+      String clean = candidate.substring(0, cutAt);
+      thinkingHold.setLength(0);
+      if (!clean.isEmpty()) forwardSyntheticDeltaToDownstream(clean, StepRole.STEP_ROLE_THINKING);
+      return;
+    }
+    int hold = 0;
+    int maxHold = Math.min(thinkingCutMaxLen - 1, candidate.length());
+    for (int len = maxHold; len > 0; len--) {
+      String tail = candidate.substring(candidate.length() - len);
+      boolean prefix = false;
+      for (String m : thinkingCutMarkers) {
+        if (m.startsWith(tail)) {
+          prefix = true;
+          break;
+        }
+      }
+      if (prefix) {
+        hold = len;
+        break;
+      }
+    }
+    String emit = candidate.substring(0, candidate.length() - hold);
+    thinkingHold.setLength(0);
+    thinkingHold.append(candidate, candidate.length() - hold, candidate.length());
+    if (!emit.isEmpty()) forwardSyntheticDeltaToDownstream(emit, StepRole.STEP_ROLE_THINKING);
+  }
+
+  /** Flushes held thinking that never completed a marker (end of generation). */
+  private void flushThinkingHold() {
+    if (!thinkingCut && thinkingHold.length() > 0) {
+      forwardSyntheticDeltaToDownstream(thinkingHold.toString(), StepRole.STEP_ROLE_THINKING);
+    }
+    thinkingHold.setLength(0);
   }
 
   /**
@@ -646,7 +756,8 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    * @param role the step role to stamp; {@code null} leaves the role unset
    */
   private void forwardSyntheticDeltaToDownstream(String text, StepRole role) {
-    if (!shouldForward || downstream == null || text == null || text.isEmpty()) {
+    boolean allowed = role == StepRole.STEP_ROLE_THINKING ? shouldForwardThinking : shouldForward;
+    if (!allowed || downstream == null || text == null || text.isEmpty()) {
       return;
     }
     var builder = InferResponse.newBuilder()
@@ -664,6 +775,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
 
   @Override
   public Future<Void> end() {
+    flushThinkingHold();
     flushOnEnd();
     emitter.onComplete();
     return Future.succeededFuture();
@@ -684,6 +796,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
         } else if (!token.isEmpty() && data.getStepRole() == StepRole.STEP_ROLE_THINKING) {
           // Same channel bypass as write(): pre-classified reasoning never
           // enters the tag machine.
+          sawClassifiedThinking = true;
           if (mode == ThinkingMode.ROUTE) {
             accumulator.append(token);
             forwardThinking(token);
@@ -695,6 +808,9 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
           } // STRIP: drop
         } else if (!token.isEmpty()) {
           if (mode == ThinkingMode.NONE) {
+            if (!token.isBlank()) {
+              sawAnswerContent = true;
+            }
             accumulator.append(token);
             if (shouldForward && downstream != null) {
               var builder = data.toBuilder();
@@ -742,7 +858,10 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
       String tail = stripTrailingTagPrefix(pendingBuffer.toString());
       pendingBuffer.setLength(0);
       flushRealContent(null, tail);
-    } else if (thinkState == ThinkState.SUPPRESSING && !closeBuffer.isEmpty()) {
+    } else if (thinkState == ThinkState.SUPPRESSING) {
+      thinkingUnclosed = true;
+    }
+    if (thinkState == ThinkState.SUPPRESSING && !closeBuffer.isEmpty()) {
       // Unclosed reasoning block at end-of-stream. STRIP drops it (per the
       // strip_thinking contract); ROUTE forwards the residual on the
       // thinking flux, minus a truncated trailing tag if max_tokens cut
@@ -758,12 +877,10 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    * Strips from the end of the stream's final residual the longest non-empty
    * suffix that is a proper prefix of the close (or open) tag. At
    * end-of-stream such a suffix can only be a truncated reasoning tag —
-   * e.g. Qwen3 emitting {@code </thin} when {@code max_tokens} cuts the
-   * close tag mid-way (observed in the field on French prompts, where small
-   * Qwen models re-echo think tags as plain text). Under
-   * {@code strip_thinking} a partial reasoning tag is never legitimate
-   * content, so dropping it is always safe. Only applied at stream end;
-   * mid-stream content is never touched by this rule.
+   * e.g. {@code </thin} left behind when {@code max_tokens} cuts the close
+   * tag mid-way. Under {@code strip_thinking} a partial reasoning tag is
+   * never legitimate content, so dropping it is always safe. Only applied at
+   * stream end; mid-stream content is never touched by this rule.
    */
   private String stripTrailingTagPrefix(String tail) {
     int maxCheck = Math.min(tail.length(), maxTagLen - 1);
@@ -826,6 +943,11 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
     return lastResponse;
   }
 
+  /** The answer-channel text alone — reasoning, tool spans and markers excluded. */
+  public String answerOutput() {
+    return answerBuffer.toString();
+  }
+
   /**
    * The bare tool-call payload accumulated from {@code STEP_ROLE_TOOL} deltas
    * (empty when the engine emitted no classified tool span — e.g. legacy engines
@@ -833,5 +955,16 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    */
   public String toolOutput() {
     return toolBuffer.toString();
+  }
+
+  /**
+   * Whether the generation ended "stuck reasoning", on either path: the tag machine was
+   * still inside an unclosed {@code <think>} block, or engine-classified reasoning
+   * ({@code STEP_ROLE_THINKING} — e.g. Harmony analysis channels) was seen while no answer
+   * content and no tool span ever materialised. A reliable signal for repair loops and
+   * fallbacks.
+   */
+  public boolean thinkingUnclosed() {
+    return thinkingUnclosed || (sawClassifiedThinking && !sawAnswerContent);
   }
 }

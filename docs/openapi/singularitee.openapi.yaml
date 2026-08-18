@@ -129,6 +129,16 @@ paths:
         `response.output_text.delta/done`, `response.function_call_arguments.done`,
         `response.completed`), each carrying a `sequence_number`. **No `[DONE]`
         sentinel is emitted** on this endpoint (matching OpenAI's Responses API).
+
+        Pipelines with a `todo` step also interleave `gravitee.progress` events
+        (vendor extension; see GraviteeProgressEvent) carrying the live plan
+        snapshot. Unknown event types are safe to skip.
+
+        Pipeline targets support stored-conversation continuation: each response
+        carries a unique `resp_…` id and is stored server-side unless
+        `store: false`; pass it as `previous_response_id` with only the new
+        `input` to continue. Unknown/expired ids fail with
+        `previous_response_not_found`.
       requestBody:
         required: true
         content:
@@ -600,6 +610,17 @@ components:
       additionalProperties: true
       properties:
         model: { $ref: "#/components/schemas/ModelField" }
+        previous_response_id:
+          type: string
+          description: |
+            Continue the stored conversation from an earlier response id
+            (pipeline targets). Send only the new `input`; the server prepends
+            its curated transcript. Unknown/expired ids fail with
+            `previous_response_not_found`.
+        store:
+          type: boolean
+          default: true
+          description: Persist this response for later continuation.
         input:
           oneOf:
             - type: string
@@ -675,11 +696,41 @@ components:
         `response.content_part.done`, `response.output_text.delta`,
         `response.output_text.done`, `response.function_call_arguments.done`,
         `response.completed` (embeds the full response object). No `[DONE]` sentinel.
+
+        Pipelines with a `todo` step additionally interleave the vendor extension
+        `gravitee.progress` (see GraviteeProgressEvent) — a side-channel plan
+        snapshot that is deliberately NOT an output item, so it never becomes
+        client conversation state. Conforming clients skip unknown event types.
       required: [type, sequence_number]
       properties:
         type: { type: string }
         sequence_number: { type: integer }
       additionalProperties: true
+
+    GraviteeProgressEvent:
+      type: object
+      description: |
+        Vendor extension event (`type: "gravitee.progress"`) emitted on the
+        Responses stream when a pipeline's engine-managed todo plan changes.
+        Never emitted on Chat Completions. Not part of the OpenAI spec.
+      required: [type, sequence_number, todos, completed, total]
+      properties:
+        type: { type: string, enum: ["gravitee.progress"] }
+        sequence_number: { type: integer }
+        step_id:
+          type: string
+          description: The pipeline step that produced the update.
+        todos:
+          type: array
+          items:
+            type: object
+            required: [id, title, status]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              status: { type: string, enum: [pending, in_progress, done] }
+        completed: { type: integer }
+        total: { type: integer }
 
     # ---- embeddings ----
 

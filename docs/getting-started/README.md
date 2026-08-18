@@ -179,7 +179,14 @@ Every key accepts a `-D` system-property override or a `GRAVITEE_`-prefixed envi
 | `ai.workspace.path` | — | Workspace YAML loaded at startup; unset = no workspace (skipped). |
 | `ai.models.path` | `${gravitee.home}/models`, else `~/.cache/gravitee-singularitee/models` | Model cache directory; downloads are skipped when the file is already cached. |
 | `ai.huggingface.token` | `HF_TOKEN` env var | Token for gated HuggingFace repos. |
+| `ai.huggingface.download.chunkSize` | `10485760` (10 MiB) | Chunk size in bytes for accelerated (hf_transfer-style) parallel Range downloads. |
+| `ai.huggingface.download.parallelism` | `8` | Concurrent Range requests per file; peak buffered memory is `parallelism × chunkSize`. |
+| `ai.huggingface.download.chunkedThreshold` | `2 × chunkSize` | Minimum file size (bytes) for the chunked path; smaller files stream over one connection. |
 | `ai.streaming.buffer-capacity` | `256` | Token-stream buffer capacity. |
+| `ai.todos.session-ttl` | `1800` | Todo-session idle timeout (seconds) for cross-turn plan recovery; `0` disables. |
+| `ai.todos.session-max-entries` | `10000` | Max concurrently tracked todo sessions. |
+| `ai.conversations.ttl` | `3600` | Stored-conversation idle timeout (seconds) for Responses `previous_response_id` continuation; `0` disables. |
+| `ai.conversations.max-entries` | `10000` | Max concurrently stored conversations. |
 | `ai.vllm.tensor-parallel-size` | — | Deployment-wide vLLM GPU topology fallback; a model's own `tensor_parallel_size` wins. |
 | `ai.vllm.pipeline-parallel-size` | — | Same, for `pipeline_parallel_size`. |
 | `ai.vllm.distributed-executor-backend` | — | Same, for `distributed_executor_backend`. See [Workspaces](../workspaces/README.md). |

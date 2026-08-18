@@ -52,7 +52,7 @@ class ToolTranscriptRenderingTest {
       null
     );
 
-    var message = InferStepExecutor.toTemplateMessage(turn);
+    var message = PromptAssembler.toTemplateMessage(turn);
 
     assertThat(message.get("role")).isEqualTo("assistant");
     assertThat(functionOf(message, 0).get("name")).isEqualTo("bash");
@@ -70,7 +70,7 @@ class ToolTranscriptRenderingTest {
       null
     );
 
-    var arguments = functionOf(InferStepExecutor.toTemplateMessage(turn), 0).get("arguments");
+    var arguments = functionOf(PromptAssembler.toTemplateMessage(turn), 0).get("arguments");
 
     assertThat(arguments).isInstanceOf(Map.class);
     assertThat((Map<String, Object>) arguments).containsEntry("command", "git log -n 1");
@@ -88,7 +88,7 @@ class ToolTranscriptRenderingTest {
       null
     );
 
-    assertThat(functionOf(InferStepExecutor.toTemplateMessage(turn), 0).get("arguments")).isEqualTo(
+    assertThat(functionOf(PromptAssembler.toTemplateMessage(turn), 0).get("arguments")).isEqualTo(
       Map.of()
     );
   }
@@ -97,7 +97,7 @@ class ToolTranscriptRenderingTest {
   void a_tool_result_keeps_the_id_that_pairs_it_to_its_call() {
     var turn = new ChatTurn(ChatRole.TOOL, "pom.xml", List.of(), List.of(), "c1", "bash");
 
-    var message = InferStepExecutor.toTemplateMessage(turn);
+    var message = PromptAssembler.toTemplateMessage(turn);
 
     assertThat(message.get("role")).isEqualTo("tool");
     assertThat(message.get("tool_call_id")).isEqualTo("c1");
@@ -107,14 +107,14 @@ class ToolTranscriptRenderingTest {
 
   @Test
   void an_ordinary_turn_carries_no_tool_keys() {
-    var message = InferStepExecutor.toTemplateMessage(new ChatTurn(ChatRole.USER, "hello"));
+    var message = PromptAssembler.toTemplateMessage(new ChatTurn(ChatRole.USER, "hello"));
 
     assertThat(message).containsOnlyKeys("role", "content");
   }
 
   @Test
   void null_content_renders_as_empty_text_never_as_the_word_null() {
-    var message = InferStepExecutor.toTemplateMessage(
+    var message = PromptAssembler.toTemplateMessage(
       new ChatTurn(
         ChatRole.ASSISTANT,
         null,

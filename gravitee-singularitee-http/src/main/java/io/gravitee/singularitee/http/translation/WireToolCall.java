@@ -23,4 +23,9 @@ import java.util.List;
  * argument names whose string values came from untyped dialect text and should be coerced to
  * their declared JSON-schema types using the HTTP request's tool schemas.
  */
-public record WireToolCall(String name, String argumentsJson, List<String> coercibleArgs) {}
+public record WireToolCall(
+  String id,
+  String name,
+  String argumentsJson,
+  List<String> coercibleArgs
+) {}

@@ -143,6 +143,44 @@ public final class InferenceMetrics {
       .increment(count);
   }
 
+  /**
+   * Counts an infer-step completion by finish reason — {@code ai_finish_reasons_total{model,reason}}.
+   * Reasons are the context-field labels ({@code stop}, {@code length}, {@code tool_calls},
+   * {@code stalled}, {@code cancelled}, …), so silent truncations become graphable.
+   */
+  public void recordFinishReason(String model, String reason) {
+    if (registry == null) return;
+    Counter.builder("ai.finish.reasons")
+      .description("Infer completions by finish reason")
+      .tag("model", safe(model))
+      .tag("reason", safe(reason))
+      .register(registry)
+      .increment();
+  }
+
+  /**
+   * Counts a detected failure signal — {@code ai_failure_signals_total{source,kind,signal}}.
+   * {@code source} is the nearest useful id and {@code kind} says what that id names:
+   * {@code model} for engine-level signals ({@code tool_parse_failed},
+   * {@code thinking_unclosed}), {@code step} for {@code loop_max_iterations},
+   * {@code pipeline} for {@code guard_blocked}.
+   */
+  public void recordFailureSignal(String source, String kind, String signal) {
+    if (registry == null) return;
+    Counter.builder("ai.failure.signals")
+      .description("Detected model failure signals")
+      .tag("source", safe(source))
+      .tag("kind", safe(kind))
+      .tag("signal", safe(signal))
+      .register(registry)
+      .increment();
+  }
+
+  /** Model-sourced overload of {@link #recordFailureSignal(String, String, String)}. */
+  public void recordFailureSignal(String modelId, String signal) {
+    recordFailureSignal(modelId, "model", signal);
+  }
+
   private static String safe(String value) {
     return (value == null || value.isBlank()) ? "unknown" : value;
   }

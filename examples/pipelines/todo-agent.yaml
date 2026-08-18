@@ -1,0 +1,246 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Pipeline — plan-and-execute with engine-managed to-dos · gpt-oss-20b (Harmony)
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/pipelines/todo-agent.yaml
+#
+#   plan ──→ apply_plan ──→ work ──→ track ──→ work_gate ──→ summarize
+#              │(no call)     ↑________│(call)     ↑ │
+#              └──────────────┤        └───────────┘ └── loops to work while
+#                             │                          todos.remaining > 0
+#                             └── (set_todos consumed, plan installed)
+#
+# The presence of the `todo` steps injects three SERVER-EXECUTED tools into
+# every infer step: set_todos (decompose the task), complete_todo (mark one
+# done) and ask_user (pause for the user). The engine executes those calls
+# itself — they never reach the client — and each mutation streams a PROGRESS
+# event (Responses API: "gravitee.progress") plus mirrors todos.total /
+# todos.completed / todos.remaining into the context for loop conditions.
+# Prompts render the live plan via {{todos}}.
+#
+# gpt-oss speaks Harmony: each infer step carries the channel `tags:` config
+# (full rationale in examples/llama/gpt-oss-20b.yaml) and
+# `tool_extraction_template: harmony` parses the captured spans.
+#
+# `plan`/`work` use role: internal so tool-call spans never stream; the client
+# follows along through PROGRESS events and gets only `summarize`'s answer.
+#
+# The model can also PAUSE for the user: calling ask_user streams the question
+# as the assistant answer and ends the turn with finish_reason "stop". The plan
+# survives across turns when the request carries a session key — OpenAI
+# `prompt_cache_key` (or `user`) — via the pluggable node cache (standalone
+# in-memory by default; ai.todos.session-ttl configures the idle timeout).
+#
+# Try it (http.enabled must be on) — watch the plan tick item by item:
+#   curl -sN localhost:8080/v1/responses -H 'content-type: application/json' -d '{
+#     "model": "agent", "stream": true,
+#     "input": "Write one haiku for each of the four seasons."
+#   }'
+#
+# Two-turn session (step needs the user; same prompt_cache_key resumes the plan):
+#   curl -s localhost:8080/v1/chat/completions -H 'content-type: application/json' -d '{
+#     "model": "agent", "prompt_cache_key": "demo-session-1",
+#     "messages": [{"role": "user", "content": "Write a haiku about my favourite season. Ask me which it is first."}]}'
+#   curl -s localhost:8080/v1/chat/completions -H 'content-type: application/json' -d '{
+#     "model": "agent", "prompt_cache_key": "demo-session-1",
+#     "messages": [{"role": "user", "content": "Write a haiku about my favourite season. Ask me which it is first."},
+#                  {"role": "assistant", "content": "Which season is your favourite?"},
+#                  {"role": "user", "content": "Autumn."}]}'
+
+workspace:
+  name: todo-agent
+
+  models:
+    - id: llm
+      name: ggml-org/gpt-oss-20b-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: gpt-oss-20b-MXFP4.gguf
+        n_ctx: 128000
+        n_seq_max: 1
+        n_gpu_layers: 99999
+        flash_attn_type: ENABLED
+        cache_type_k: q8_0
+        cache_type_v: q8_0
+        mtp: false
+        eog_ramp_start: 0.75
+        eog_ramp_max_bias: 100.0
+
+  pipelines:
+    - id: agent
+      name: Plan-and-execute todo agent (gpt-oss)
+      entry: plan_gate
+
+      steps:
+        # Entry gate: a continued conversation (previous_response_id / session
+        # key) arrives with its plan restored — skip straight to `work` instead
+        # of re-planning. Loop mechanics as a one-shot branch: no plan →
+        # condition met → next_step (plan); plan present → max_iterations
+        # exhausted immediately → fallback_step (work).
+        - id: plan_gate
+          type: loop
+          next_step: plan
+          config:
+            loopback_step: work
+            fallback_step: work
+            max_iterations: 1
+            condition:
+              type: empty
+              input_field: todos.total
+        # Decompose the task into a plan. Internal: the set_todos call span
+        # never streams; progress reaches the client as PROGRESS events.
+        - id: plan
+          type: infer
+          role: internal
+          next_step: apply_plan
+          config:
+            model_id: llm
+            output_field: plan.output
+            context: { reasoning_effort: low }
+            tags:
+              reasoning_repeatable: true
+              reasoning_open:
+                - "<|end|><|start|>assistant<|channel|>analysis<|message|>"
+                - "<|end|><|start|>assistant<|channel|>commentary<|message|>"
+                - "<|start|>assistant<|channel|>analysis<|message|>"
+                - "<|start|>assistant<|channel|>commentary<|message|>"
+                - "<|channel|>analysis<|message|>"
+                - "<|channel|>commentary<|message|>"
+              reasoning_close:
+                - "<|end|><|start|>assistant<|channel|>final<|message|>"
+                - "<|call|><|start|>assistant<|channel|>final<|message|>"
+                - "<|channel|>final<|message|>"
+                - "<|end|>"
+              tool_open:
+                - "<|end|><|start|>assistant<|channel|>commentary to=functions."
+                - "<|end|><|start|>assistant<|channel|>analysis to=functions."
+                - "<|end|><|start|>assistant<|channel|>final to=functions."
+                - "<|call|><|start|>assistant<|channel|>commentary to=functions."
+                - "<|end|><|start|>assistant to=functions."
+                - "<|start|>assistant<|channel|>commentary to=functions."
+                - "<|start|>assistant to=functions."
+                - "<|channel|>commentary to=functions."
+                - "<|channel|>analysis to=functions."
+                - "<|channel|>final to=functions."
+              tool_close:
+                - "<|call|><|start|>assistant<|channel|>final<|message|>"
+                - "<|call|>"
+            tool_extraction_template: harmony # built-in
+            # `system:` steers the step WITHOUT replacing the conversation (a
+            # prompt.messages override would hide the user's turns — including
+            # answers to ask_user questions).
+            system: "You are a planning assistant. If the user's message is a real multi-step task, break it into 2-6 concrete steps and call the set_todos tool with them - ONLY the tool call, no prose. If it is a greeting, a simple question, or something a single reply or single tool call can handle, do NOT call set_todos and do not answer it yourself: reply with the single word SKIP."
+
+        # Server executes set_todos; the plan lands in context, a PROGRESS
+        # event streams, and execution continues to `work` either way.
+        - id: apply_plan
+          type: todo
+          next_step: work
+          config:
+            handled_step: work
+
+        # Do the next item. The live plan renders through {{todos}}.
+        - id: work
+          type: infer
+          role: internal
+          next_step: track
+          config:
+            model_id: llm
+            output_field: work.output
+            # medium, not low: at low gpt-oss is a weak agent — it asks instead
+            # of acting and writes malformed tool JSON more often.
+            context: { reasoning_effort: medium }
+            tags:
+              reasoning_repeatable: true
+              reasoning_open:
+                - "<|end|><|start|>assistant<|channel|>analysis<|message|>"
+                - "<|end|><|start|>assistant<|channel|>commentary<|message|>"
+                - "<|start|>assistant<|channel|>analysis<|message|>"
+                - "<|start|>assistant<|channel|>commentary<|message|>"
+                - "<|channel|>analysis<|message|>"
+                - "<|channel|>commentary<|message|>"
+              reasoning_close:
+                - "<|end|><|start|>assistant<|channel|>final<|message|>"
+                - "<|call|><|start|>assistant<|channel|>final<|message|>"
+                - "<|channel|>final<|message|>"
+                - "<|end|>"
+              tool_open:
+                - "<|end|><|start|>assistant<|channel|>commentary to=functions."
+                - "<|end|><|start|>assistant<|channel|>analysis to=functions."
+                - "<|end|><|start|>assistant<|channel|>final to=functions."
+                - "<|call|><|start|>assistant<|channel|>commentary to=functions."
+                - "<|end|><|start|>assistant to=functions."
+                - "<|start|>assistant<|channel|>commentary to=functions."
+                - "<|start|>assistant to=functions."
+                - "<|channel|>commentary to=functions."
+                - "<|channel|>analysis to=functions."
+                - "<|channel|>final to=functions."
+              tool_close:
+                - "<|call|><|start|>assistant<|channel|>final<|message|>"
+                - "<|call|>"
+            tool_extraction_template: harmony # built-in
+            system: "You are executing a fixed plan.\nPlan status:\n{% for t in todos %}- [{{ t.status }}] ({{ t.id }}) {{ t.title }}{% if t.proof %} — result: {{ t.proof }}{% endif %}\n{% endfor %}\nDo ONLY the item marked in_progress: produce its result, then call complete_todo with its id AND the COMPLETE result text in the note argument. The note is the only place your work survives — anything not in it is lost. NEVER call set_todos — the plan is fixed. If a plan item's result is already recorded (e.g. the user answered a question), do NOT redo it — just call complete_todo with its id. Only if you truly cannot proceed without NEW information from the user, call ask_user with ONE precise question."
+
+        # Server executes complete_todo/ask_user, then the gate loops while
+        # items remain.
+        - id: track
+          type: todo
+          next_step: work_gate
+          config:
+            handled_step: work_gate
+
+        - id: work_gate
+          type: loop
+          next_step: summarize
+          config:
+            loopback_step: work
+            fallback_step: summarize
+            max_iterations: 8
+            condition:
+              type: equals
+              input_field: todos.remaining
+              match_value: "0"
+
+        # All items done — assemble the final answer from the work transcript.
+        # server_tools: false — a prose-only step must not see the todo tool
+        # schemas: a schema in the prompt invites a call, and with no todo step
+        # downstream a Harmony call span could only leak into the answer.
+        - id: summarize
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: summarize.output
+            # A prose-only step must see NO tool schemas at all — client tools
+            # included: this step has no tool tags, so any call it made would
+            # leak its raw span into the visible answer.
+            inject_tools: false
+            server_tools: false
+            context: { reasoning_effort: low }
+            tags:
+              reasoning_repeatable: true
+              reasoning_open:
+                - "<|end|><|start|>assistant<|channel|>analysis<|message|>"
+                - "<|start|>assistant<|channel|>analysis<|message|>"
+                - "<|channel|>analysis<|message|>"
+              reasoning_close:
+                - "<|end|><|start|>assistant<|channel|>final<|message|>"
+                - "<|channel|>final<|message|>"
+                - "<|end|>"
+            system: "Every plan item is done. The results are recorded below:\n{% for t in todos %}### {{ t.title }}\n{{ t.proof }}\n{% endfor %}\nAssemble the complete final answer for the user from these recorded results — reproduce them faithfully, do not rewrite or regenerate them. A warm, friendly tone: a short welcoming sentence, then the results clearly formatted with headings or bullet points where it helps readability. Do not mention the plan or the tools."

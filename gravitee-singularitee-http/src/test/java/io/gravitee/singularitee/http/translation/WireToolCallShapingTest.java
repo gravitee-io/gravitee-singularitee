@@ -42,21 +42,13 @@ class WireToolCallShapingTest {
   }
 
   private static TokenMessage finalWithWireCalls(List<WireToolCall> calls) {
-    return new TokenMessage(
-      null,
-      null,
-      null,
-      0,
-      true,
-      "tool_calls",
-      3,
-      7,
-      null,
-      null,
-      null,
-      null,
-      calls
-    );
+    return TokenMessage.builder()
+      .isFinal(true)
+      .finishReason("tool_calls")
+      .promptTokens(3)
+      .completionTokens(7)
+      .toolCalls(calls)
+      .build();
   }
 
   @Test
@@ -65,7 +57,12 @@ class WireToolCallShapingTest {
     acc.add(
       finalWithWireCalls(
         List.of(
-          new WireToolCall("get_weather", "{\"city\":\"Paris\",\"days\":\"3\"}", List.of("days"))
+          new WireToolCall(
+            null,
+            "get_weather",
+            "{\"city\":\"Paris\",\"days\":\"3\"}",
+            List.of("days")
+          )
         )
       )
     );
@@ -82,7 +79,7 @@ class WireToolCallShapingTest {
   void wireCallsWinOverRawToolText() {
     var acc = new SequenceAccumulator();
     acc.add(TokenMessage.toolDelta("garbage that would not parse"));
-    acc.add(finalWithWireCalls(List.of(new WireToolCall("f", "{}", List.of()))));
+    acc.add(finalWithWireCalls(List.of(new WireToolCall(null, "f", "{}", List.of()))));
     ObjectNode response = InferenceResponseFormatter.buildChatResponse("m", acc, Map.of());
     assertThat(response.at("/choices/0/message/tool_calls/0/function/name").asText()).isEqualTo(
       "f"
@@ -93,7 +90,9 @@ class WireToolCallShapingTest {
   void unflaggedStringArgumentsAreNotCoerced() {
     var acc = new SequenceAccumulator();
     acc.add(
-      finalWithWireCalls(List.of(new WireToolCall("get_weather", "{\"days\":\"3\"}", List.of())))
+      finalWithWireCalls(
+        List.of(new WireToolCall(null, "get_weather", "{\"days\":\"3\"}", List.of()))
+      )
     );
     ObjectNode response = InferenceResponseFormatter.buildChatResponse("m", acc, weatherSchema());
     assertThat(
@@ -104,7 +103,7 @@ class WireToolCallShapingTest {
   @Test
   void wireCallsShapeIntoResponsesFunctionCallItems() {
     var acc = new SequenceAccumulator();
-    acc.add(finalWithWireCalls(List.of(new WireToolCall("f", "{\"x\":1}", List.of()))));
+    acc.add(finalWithWireCalls(List.of(new WireToolCall(null, "f", "{\"x\":1}", List.of()))));
     ObjectNode response = InferenceResponseFormatter.buildResponsesResponse("m", acc, Map.of());
     JsonNode output = response.at("/output");
     assertThat(output.get(0).get("type").asText()).isEqualTo("function_call");

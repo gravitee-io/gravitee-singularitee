@@ -23,6 +23,7 @@ import io.gravitee.singularitee.protocol.LoopStepConfig;
 import io.gravitee.singularitee.protocol.MessageDef;
 import io.gravitee.singularitee.protocol.PipelineStep;
 import io.reactivex.rxjava3.core.Maybe;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,22 +67,26 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
     var pctx = ctx.pipelineContext();
 
     String inputField = cfg.getInputField();
-    String actualValue = pctx.get(inputField);
+    boolean shouldExit = BreakStepEvaluator.evaluateLoopExit(cfg, pctx);
+    // The field value can be a whole generation (a verify verdict, a step
+    // output) — logging it verbatim floods the line. The verdict is what
+    // matters; the raw value stays available at DEBUG.
     LOGGER.info(
-      "LoopStep '{}': condition={}, input_field='{}', value='{}', match_value='{}', next_step='{}', loopback='{}'",
+      "LoopStep '{}': condition={} on '{}' (match_value='{}') -> {}, next_step='{}', loopback='{}'",
       stepId,
       cfg.getCondition(),
       inputField,
-      actualValue,
       cfg.getMatchValue(),
+      shouldExit ? "PASSED" : "NOT MET",
       cfg.getNextStepId(),
       cfg.getTargetStepId()
     );
-
-    boolean shouldExit = BreakStepEvaluator.evaluateLoopExit(cfg, pctx);
-    LOGGER.info("LoopStep '{}': shouldExit={}", stepId, shouldExit);
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("LoopStep '{}': value='{}'", stepId, pctx.get(inputField));
+    }
 
     if (shouldExit) {
+      pctx.setRetrySamplingParams(null);
       LOGGER.info(
         "LoopStep '{}': exit condition met, proceeding to '{}'",
         stepId,
@@ -92,22 +97,37 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
 
     int currentIteration = pctx.incrementIteration(stepId);
     int maxIterations = cfg.getMaxIterations();
+    pctx.set(stepId + ".iterations", Integer.toString(currentIteration));
 
     if (maxIterations > 0 && currentIteration >= maxIterations) {
+      pctx.set(stepId + ".max_iterations_reached", "true");
+      if (ctx.metrics() != null) {
+        ctx.metrics().recordFailureSignal(stepId, "step", "loop_max_iterations");
+      }
       LOGGER.warn(
         "LoopStep '{}': max iterations ({}) reached without condition being met, branching to fallback",
         stepId,
         maxIterations
       );
+      pctx.setRetrySamplingParams(null);
       String fallback = cfg.getFallbackStepId();
       return Maybe.just((fallback != null && !fallback.isBlank()) ? fallback : cfg.getNextStepId());
     }
 
     // We're looping back — inject the configured feedback message (if any)
     // into the conversation so the next iteration of target_step_id sees it
-    // as a real chat turn.
+    // as a real chat turn, and install the retry sampling override (if any)
+    // so the retry runs tighter than the first attempt.
     if (cfg.hasLoopbackMessage()) {
       injectLoopbackMessage(stepId, cfg.getLoopbackMessage(), pctx);
+    }
+    if (cfg.hasRetrySamplingParams()) {
+      pctx.setRetrySamplingParams(cfg.getRetrySamplingParams());
+      LOGGER.info(
+        "LoopStep '{}': retry sampling override installed (temperature={})",
+        stepId,
+        cfg.getRetrySamplingParams().getTemperature()
+      );
     }
 
     LOGGER.debug(
@@ -190,7 +210,7 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
    */
   private static ChatRole resolveRole(String roleString) {
     if (roleString == null || roleString.isBlank()) return ChatRole.USER;
-    return switch (roleString.toLowerCase()) {
+    return switch (roleString.toLowerCase(Locale.ROOT)) {
       case "system" -> ChatRole.SYSTEM;
       case "assistant" -> ChatRole.ASSISTANT;
       case "user" -> ChatRole.USER;

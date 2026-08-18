@@ -95,11 +95,14 @@ Templated prompts: a step can override messages with Jinja2 content, or bypass t
 | `sampling.temperature` / `top_p` / `presence_penalty` / `frequency_penalty` | engine defaults | Sampling controls (0 / unset = engine default). |
 | `sampling.stop` | none | Stop strings — generation halts when one is emitted (`finishReason "stop"`). |
 | `tags.reasoning_open` / `reasoning_close` | `<think>` / `</think>` (strip mode) | Reasoning-span markers; declaring them routes the span to the THINKING stream. Each accepts a **string or a list** — a channel can be entered and left more than one way. |
+| `tags` (bare string) | — | References a **named tag set** declared once at workspace level under `workspace.tags:` (`- id: harmony` + the usual keys); the loader expands it before the proto. Removes per-step duplication of large dialect blocks — see the `tags` entry in `docs/workspaces/README.md`. |
 | `tags.tool_open` / `tool_close` | unset | Tool-call markers, string or list. The engine counts tool tokens and emits `finishReason "tool_calls"`. |
 | `tags.reasoning_repeatable` | unset (engine default) | Whether the reasoning channel may be entered **again** after it closes, within one generation. Unset leaves the engine's rule — tool channels repeat, everything else occurs once. |
 | `strip_thinking` | `false` (ROUTE) | `true` removes the reasoning span from both the stream and the step output. |
+| `stream_thinking` | `false` | Pipeline steps with `role: internal` normally stream nothing; `true` forwards ONLY their THINKING deltas so UIs can show live deliberation (content and tool deltas stay suppressed). No effect on non-internal steps. |
 | `context` | empty | Extra typed Jinja variables (e.g. `enable_thinking: false`) merged into the rendering context and forwarded as `template_context`. |
 | `inject_tools` | `true` | `false` hides caller tools from this step (`{{tools}}` undefined, nothing passed to the chat template). |
+| `server_tools` | `true` | `false` hides SERVER-owned tools (the todo tools) from this step — for prose-only steps in a todo pipeline that must not see or call `set_todos`/`complete_todo`. See [Todos](../todos/README.md). |
 | `role` (step level) | `output` | `output` = streamed as OUTPUT; `thinking` = streamed tagged THINKING; `internal` = never streamed and not appended to the conversation. |
 
 #### How markers are matched

@@ -15,6 +15,10 @@
  */
 package io.gravitee.singularitee.http.translation;
 
+import io.gravitee.singularitee.protocol.PositionLogprobs;
+import io.gravitee.singularitee.protocol.ResponseProgress;
+import java.util.List;
+
 /**
  * A normalized token event flowing from the engine adapter to the response formatter.
  *
@@ -38,146 +42,152 @@ public record TokenMessage(
   Integer toolTokens,
   PerformanceMessage performance,
   String guardMessage,
-  java.util.List<WireToolCall> toolCalls,
-  java.util.List<io.gravitee.singularitee.protocol.PositionLogprobs> logprobs
+  List<WireToolCall> toolCalls,
+  List<PositionLogprobs> logprobs,
+  ResponseProgress progress
 ) {
-  /** Backwards-compatible constructor without per-token logprobs ({@code logprobs = null}). */
-  public TokenMessage(
-    String token,
-    String reasoning,
-    String tool,
-    int index,
-    boolean isFinal,
-    String finishReason,
-    int promptTokens,
-    int completionTokens,
-    Integer reasoningTokens,
-    Integer toolTokens,
-    PerformanceMessage performance,
-    String guardMessage,
-    java.util.List<WireToolCall> toolCalls
-  ) {
-    this(
-      token,
-      reasoning,
-      tool,
-      index,
-      isFinal,
-      finishReason,
-      promptTokens,
-      completionTokens,
-      reasoningTokens,
-      toolTokens,
-      performance,
-      guardMessage,
-      toolCalls,
-      null
-    );
+  public static Builder builder() {
+    return new Builder();
   }
 
-  /**
-   * Backwards-compatible constructor without structured wire tool calls
-   * ({@code toolCalls = null}).
-   */
-  public TokenMessage(
-    String token,
-    String reasoning,
-    String tool,
-    int index,
-    boolean isFinal,
-    String finishReason,
-    int promptTokens,
-    int completionTokens,
-    Integer reasoningTokens,
-    Integer toolTokens,
-    PerformanceMessage performance,
-    String guardMessage
-  ) {
-    this(
-      token,
-      reasoning,
-      tool,
-      index,
-      isFinal,
-      finishReason,
-      promptTokens,
-      completionTokens,
-      reasoningTokens,
-      toolTokens,
-      performance,
-      guardMessage,
-      null,
-      null
-    );
+  /** A content-delta token. */
+  public static TokenMessage contentDelta(String token) {
+    return builder().token(token).build();
   }
 
-  /**
-   * Backwards-compatible constructor for content + reasoning tokens without a tool delta.
-   * Delegates to the canonical constructor with {@code tool = null}.
-   */
-  public TokenMessage(
-    String token,
-    String reasoning,
-    int index,
-    boolean isFinal,
-    String finishReason,
-    int promptTokens,
-    int completionTokens,
-    Integer reasoningTokens,
-    Integer toolTokens,
-    PerformanceMessage performance,
-    String guardMessage
-  ) {
-    this(
-      token,
-      reasoning,
-      null,
-      index,
-      isFinal,
-      finishReason,
-      promptTokens,
-      completionTokens,
-      reasoningTokens,
-      toolTokens,
-      performance,
-      guardMessage
-    );
-  }
-
-  /**
-   * Backwards-compatible constructor for content / usage / final tokens that carry no separate
-   * reasoning or tool delta.
-   */
-  public TokenMessage(
-    String token,
-    int index,
-    boolean isFinal,
-    String finishReason,
-    int promptTokens,
-    int completionTokens,
-    Integer reasoningTokens,
-    Integer toolTokens,
-    PerformanceMessage performance,
-    String guardMessage
-  ) {
-    this(
-      token,
-      null,
-      null,
-      index,
-      isFinal,
-      finishReason,
-      promptTokens,
-      completionTokens,
-      reasoningTokens,
-      toolTokens,
-      performance,
-      guardMessage
-    );
+  /** A reasoning-delta token ({@code STEP_ROLE_THINKING} on the wire). */
+  public static TokenMessage reasoningDelta(String reasoning) {
+    return builder().reasoning(reasoning).build();
   }
 
   /** A tool-payload delta token ({@code STEP_ROLE_TOOL} on the wire). */
   public static TokenMessage toolDelta(String tool) {
-    return new TokenMessage(null, null, tool, 0, false, null, 0, 0, null, null, null, null);
+    return builder().tool(tool).build();
+  }
+
+  /**
+   * An auxiliary progress update ({@code RESPONSE_EVENT_TYPE_PROGRESS} on the wire). Carries
+   * no text: the Chat Completions surface drops it, the Responses API renders it as a
+   * {@code gravitee.progress} object.
+   */
+  public static TokenMessage progressUpdate(ResponseProgress progress) {
+    return builder().progress(progress).build();
+  }
+
+  /** Fluent builder replacing the former telescoping constructors. */
+  public static final class Builder {
+
+    private String token;
+    private String reasoning;
+    private String tool;
+    private int index;
+    private boolean isFinal;
+    private String finishReason;
+    private int promptTokens;
+    private int completionTokens;
+    private Integer reasoningTokens;
+    private Integer toolTokens;
+    private PerformanceMessage performance;
+    private String guardMessage;
+    private List<WireToolCall> toolCalls;
+    private List<PositionLogprobs> logprobs;
+    private ResponseProgress progress;
+
+    private Builder() {}
+
+    public Builder token(String token) {
+      this.token = token;
+      return this;
+    }
+
+    public Builder reasoning(String reasoning) {
+      this.reasoning = reasoning;
+      return this;
+    }
+
+    public Builder tool(String tool) {
+      this.tool = tool;
+      return this;
+    }
+
+    public Builder index(int index) {
+      this.index = index;
+      return this;
+    }
+
+    public Builder isFinal(boolean isFinal) {
+      this.isFinal = isFinal;
+      return this;
+    }
+
+    public Builder finishReason(String finishReason) {
+      this.finishReason = finishReason;
+      return this;
+    }
+
+    public Builder promptTokens(int promptTokens) {
+      this.promptTokens = promptTokens;
+      return this;
+    }
+
+    public Builder completionTokens(int completionTokens) {
+      this.completionTokens = completionTokens;
+      return this;
+    }
+
+    public Builder reasoningTokens(Integer reasoningTokens) {
+      this.reasoningTokens = reasoningTokens;
+      return this;
+    }
+
+    public Builder toolTokens(Integer toolTokens) {
+      this.toolTokens = toolTokens;
+      return this;
+    }
+
+    public Builder performance(PerformanceMessage performance) {
+      this.performance = performance;
+      return this;
+    }
+
+    public Builder guardMessage(String guardMessage) {
+      this.guardMessage = guardMessage;
+      return this;
+    }
+
+    public Builder toolCalls(List<WireToolCall> toolCalls) {
+      this.toolCalls = toolCalls;
+      return this;
+    }
+
+    public Builder logprobs(List<PositionLogprobs> logprobs) {
+      this.logprobs = logprobs;
+      return this;
+    }
+
+    public Builder progress(ResponseProgress progress) {
+      this.progress = progress;
+      return this;
+    }
+
+    public TokenMessage build() {
+      return new TokenMessage(
+        token,
+        reasoning,
+        tool,
+        index,
+        isFinal,
+        finishReason,
+        promptTokens,
+        completionTokens,
+        reasoningTokens,
+        toolTokens,
+        performance,
+        guardMessage,
+        toolCalls,
+        logprobs,
+        progress
+      );
+    }
   }
 }

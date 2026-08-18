@@ -17,9 +17,10 @@ package io.gravitee.singularitee.http.translation;
 
 import static java.util.Objects.nonNull;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.gravitee.singularitee.http.json.Utils;
+import io.gravitee.singularitee.protocol.PositionLogprobs;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Accumulates a token stream into the full content/reasoning + usage for a non-streaming response. */
 public final class SequenceAccumulator {
@@ -35,6 +36,8 @@ public final class SequenceAccumulator {
   private int reasoningTokens;
   private int toolTokens;
   private PerformanceMessage performance;
+  private List<WireToolCall> wireToolCalls;
+  private List<PositionLogprobs> logprobs;
 
   public void add(TokenMessage token) {
     if (nonNull(token.token()) && !token.token().isEmpty()) {
@@ -42,7 +45,7 @@ public final class SequenceAccumulator {
     }
     if (nonNull(token.logprobs()) && !token.logprobs().isEmpty()) {
       if (logprobs == null) {
-        logprobs = new java.util.ArrayList<>();
+        logprobs = new ArrayList<>();
       }
       logprobs.addAll(token.logprobs());
     }
@@ -85,18 +88,14 @@ public final class SequenceAccumulator {
     return tool.toString();
   }
 
-  private java.util.List<WireToolCall> wireToolCalls;
-
-  /** Structured tool calls delivered on the final COMPLETED event; {@code null} when absent. */
-  public java.util.List<WireToolCall> wireToolCalls() {
-    return wireToolCalls;
+  /** Structured tool calls delivered on the final COMPLETED event; empty when absent. */
+  public List<WireToolCall> wireToolCalls() {
+    return wireToolCalls == null ? List.of() : wireToolCalls;
   }
 
-  private java.util.List<io.gravitee.singularitee.protocol.PositionLogprobs> logprobs;
-
-  /** Per-token logprobs accumulated from content deltas; {@code null} when not collected. */
-  public java.util.List<io.gravitee.singularitee.protocol.PositionLogprobs> logprobs() {
-    return logprobs;
+  /** Per-token logprobs accumulated from content deltas; empty when not collected. */
+  public List<PositionLogprobs> logprobs() {
+    return logprobs == null ? List.of() : logprobs;
   }
 
   public String finishReason() {
@@ -119,12 +118,26 @@ public final class SequenceAccumulator {
     return performance;
   }
 
-  /** Writes {@code completion_tokens_details} into the usage node when present. */
-  public void writeUsageDetails(ObjectNode usage) {
-    if (usage == null) {
-      return;
-    }
-    Utils.writeCompletionTokensDetails(usage, reasoningTokens, toolTokens);
+  /** Reasoning-channel token count; {@code 0} when the engine reported none. */
+  public Integer reasoningTokens() {
+    return reasoningTokens;
+  }
+
+  /** Tool-channel token count; {@code 0} when the engine reported none. */
+  public Integer toolTokens() {
+    return toolTokens;
+  }
+
+  /** The synthetic final token handed to {@code onFinal} callbacks on buffered paths. */
+  public TokenMessage finalToken() {
+    return TokenMessage.builder()
+      .isFinal(true)
+      .finishReason(finishReason)
+      .promptTokens(promptTokens)
+      .completionTokens(completionTokens)
+      .performance(performance)
+      .guardMessage(guardMessage)
+      .build();
   }
 
   public long created() {

@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
  */
 class HarmonyToolTemplateTest {
 
-  /** Same shape InferStepExecutor.toolsData builds: name + description per tool. */
+  /** Same shape ToolCallOutcomeRecorder.toolsData builds: name + description per tool. */
   private static final List<Map<String, Object>> TOOLS = List.of(
     Map.of("name", "send_email", "description", "Send an email to a recipient."),
     Map.of("name", "get_weather", "description", "Get current weather for a city.")

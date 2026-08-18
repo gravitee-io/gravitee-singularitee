@@ -111,12 +111,14 @@ workspace:
               tool_open:
                 - "<|end|><|start|>assistant<|channel|>commentary to=functions."
                 - "<|end|><|start|>assistant<|channel|>analysis to=functions."
+                - "<|end|><|start|>assistant<|channel|>final to=functions."
                 - "<|call|><|start|>assistant<|channel|>commentary to=functions."
                 - "<|end|><|start|>assistant to=functions."
                 - "<|start|>assistant<|channel|>commentary to=functions."
                 - "<|start|>assistant to=functions."
                 - "<|channel|>commentary to=functions."
                 - "<|channel|>analysis to=functions."
+                - "<|channel|>final to=functions."
               # Longest first: when the model continues past the call, the header is part
               # of the marker; when <|call|> ends generation (the agent flow, it is an EOS
               # token) the short form settles the span at flush.

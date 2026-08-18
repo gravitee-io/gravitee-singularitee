@@ -47,6 +47,13 @@ public final class VertxSseWriter {
       response.putHeader("content-type", "text/event-stream");
       response.putHeader("cache-control", "no-cache");
       response.putHeader("connection", "keep-alive");
+      // Flush a comment frame immediately: buffered pipelines (tool holdback)
+      // may produce their first real event many seconds in, and SSE clients
+      // waiting for first byte otherwise look frozen. Comments are ignored by
+      // every SSE parser.
+      response
+        .write(": stream-open\n\n")
+        .onFailure(err -> log.debug("SSE open-comment write failed: {}", err.getMessage()));
     }
     frames.subscribe(
       new Subscriber<String>() {

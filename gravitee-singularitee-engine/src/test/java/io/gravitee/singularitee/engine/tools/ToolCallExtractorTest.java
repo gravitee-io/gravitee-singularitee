@@ -288,6 +288,43 @@ class ToolCallExtractorTest {
     }
 
     @Test
+    void truncatedBareSpanIsBalancedAndRecovered() {
+      // Small models routinely drop the last closing brace(s). The bare
+      // TOOL-channel span (engine-classified, markers stripped) is what
+      // extraction actually receives on the modern path.
+      String truncated =
+        "{\"name\": \"set_todos\", \"arguments\": {\"todos\": [{\"id\": \"1\", \"title\": \"a\"}]}";
+      var calls = ToolCallExtractor.extract(truncated, List.of(), "chatml-json");
+      assertThat(calls).hasSize(1);
+      assertThat(calls.get(0).name()).isEqualTo("set_todos");
+    }
+
+    @Test
+    void balanceJsonClosesBracesOutsideStrings() {
+      assertThat(ToolCallExtractor.balanceJson("{\"a\": [1, 2")).isEqualTo("{\"a\": [1, 2]}");
+      assertThat(ToolCallExtractor.balanceJson("{\"a\": \"} ] {\"")).isEqualTo(
+        "{\"a\": \"} ] {\"}"
+      );
+      assertThat(ToolCallExtractor.balanceJson("{\"done\": true}")).isEqualTo("{\"done\": true}");
+    }
+
+    @Test
+    void extractResultSurfacesFailureCause() {
+      var broken = ToolCallExtractor.extractResult("anything", List.of(), "{% for x in %}broken");
+      assertThat(broken.calls()).isEmpty();
+      assertThat(broken.error()).isNotBlank();
+
+      var notJson = ToolCallExtractor.extractResult("anything", List.of(), "this renders no json");
+      assertThat(notJson.calls()).isEmpty();
+      assertThat(notJson.error()).isNotBlank();
+
+      // No recognizable call is not an error — plain fail-open.
+      var noCall = ToolCallExtractor.extractResult("plain prose", List.of(), null);
+      assertThat(noCall.calls()).isEmpty();
+      assertThat(noCall.error()).isNull();
+    }
+
+    @Test
     void toolsVariableIsAvailableToTemplates() {
       String template = """
         [{% for t in tools %}{"name": {{ t.name | tojson }}, "arguments": {}}\

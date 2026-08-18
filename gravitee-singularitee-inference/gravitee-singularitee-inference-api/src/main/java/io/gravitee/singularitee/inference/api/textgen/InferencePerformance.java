@@ -58,6 +58,30 @@ public record InferencePerformance(
   }
 
   /**
+   * Returns this snapshot minus a baseline: llama.cpp perf counters accumulate
+   * for the CONTEXT's lifetime, so a raw read reports every request ever served
+   * — a client computing tokens/second from it sees numbers drifting toward the
+   * lifetime average. Subtracting the sequence-start snapshot yields the
+   * per-request figures. Clamped at zero (a backend may reset counters).
+   */
+  public InferencePerformance minus(InferencePerformance baseline) {
+    if (baseline == null) {
+      return this;
+    }
+    return new InferencePerformance(
+      startTimeMs,
+      loadTimeMs,
+      Math.max(0, promptEvalTimeMs - baseline.promptEvalTimeMs),
+      Math.max(0, evalTimeMs - baseline.evalTimeMs),
+      Math.max(0, promptTokensEvaluated - baseline.promptTokensEvaluated),
+      Math.max(0, tokensGenerated - baseline.tokensGenerated),
+      tokensReused,
+      Math.max(0, samplingTimeMs - baseline.samplingTimeMs),
+      Math.max(0, sampleCount - baseline.sampleCount)
+    );
+  }
+
+  /**
    * Calculates tokens per second (TPS) for generation.
    * @return Tokens per second, or 0 if evalTimeMs is 0
    */

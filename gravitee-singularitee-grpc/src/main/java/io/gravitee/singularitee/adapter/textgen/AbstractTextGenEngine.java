@@ -197,8 +197,11 @@ abstract sealed class AbstractTextGenEngine<
 
   /**
    * Cancels the sequence on the underlying engine and emits a synthetic final
-   * token with {@code finishReason = "length"} so the registered consumer (and
-   * the reactive chain awaiting it) completes cleanly.
+   * token with {@code finishReason = "length_runaway"} so the registered consumer
+   * (and the reactive chain awaiting it) completes cleanly. The distinct reason
+   * keeps this "model went off the rails" stop separable from an ordinary
+   * max_tokens {@code "length"} or a prompt-overflow {@code "length_prompt"};
+   * all three map onto {@code FINISH_REASON_LENGTH} on the wire.
    */
   private void stopForContextLimit(ModelEngineToken trigger, Consumer<ModelEngineToken> consumer) {
     if (!contextStoppedSequences.add(trigger.seqId())) {
@@ -223,7 +226,7 @@ abstract sealed class AbstractTextGenEngine<
       null,
       trigger.index() + 1,
       true,
-      "length",
+      "length_runaway",
       trigger.promptTokens(),
       trigger.completionTokens(),
       trigger.reasoningTokens(),

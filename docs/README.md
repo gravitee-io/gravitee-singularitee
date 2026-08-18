@@ -17,6 +17,7 @@ One folder per capability, one page each. Start with **[Getting Started](./getti
 | [Routing](./routing/README.md) | Branch a pipeline to different steps based on a classifier label, embedding similarity, or an LLM's structured output. |
 | [Loops & Chain-of-Thought](./loops-and-cot/README.md) | Build bounded self-refinement cycles with `loop` back-edges, `break` halts, and infer step roles that separate reasoning from the final answer. |
 | [Sub-pipelines](./sub-pipelines/README.md) | Invoke another published pipeline as a nested step — locally or on a remote server — and capture its output in the parent context. |
+| [Engine-managed to-dos](./todos/README.md) | Plan-and-execute with server-executed `set_todos`/`complete_todo` tools, `{{todos}}` in prompts, `todos.remaining` loop gates, and streamed `gravitee.progress` events. |
 
 ### Classification & retrieval
 | Capability | What it does |

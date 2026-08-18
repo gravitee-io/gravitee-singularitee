@@ -46,7 +46,7 @@ bundled in the jar. `bin/cuda-entrypoint.sh` **sources** `bin/cuda-env.sh` to se
 
 ## Version pinning (important)
 
-llama.cpp is compiled at `--build-arg LLAMACPP_VERSION` (default `b9873`). This
+llama.cpp is compiled at `--build-arg LLAMACPP_VERSION` (default `b10276`). This
 **must** match the build the bundled `llamaj.cpp` JNI binding targets, or the Java
 FFM symbol lookups fail at runtime. To find the right value for a given
 `gravitee-inference` version, inspect the resolved jar's SONAME:
@@ -54,10 +54,10 @@ FFM symbol lookups fail at runtime. To find the right value for a given
 ```bash
 unzip -l ~/.m2/repository/io/gravitee/llama/cpp/llamaj.cpp/<ver>/llamaj.cpp-<ver>.jar \
   | grep -oE 'libllama\.so\.0\.0\.[0-9]+'
-# libllama.so.0.0.9873  ->  LLAMACPP_VERSION=b9873
+# libllama.so.0.0.10276  ->  LLAMACPP_VERSION=b10276
 ```
 
-(`llamaj.cpp 2.6.1` → `b9873`.)
+(`llamaj.cpp 2.7.0` → `b10276`.)
 
 ## Build
 
@@ -84,7 +84,7 @@ prebuilt image tag:
 | `LLAMA_LIBS_IMAGE`   | `Dockerfile.llamacpp-cuda` | `llama-cpp-cuda:local`               | prebuilt llama.cpp image to copy `/llama-libs` from |
 | `CUDA_VERSION`       | both              | `12.9.2`                             | CUDA 12.x (satisfies ONNX Runtime); minor-version compat runs on 12.0+ drivers |
 | `UBUNTU_VERSION`     | both              | `24.04`                              |                                             |
-| `LLAMACPP_VERSION`   | `Dockerfile.llama-cuda` | `b9873`                        | must match the bundled `llamaj.cpp` ABI     |
+| `LLAMACPP_VERSION`   | `Dockerfile.llama-cuda` | `b10276`                        | must match the bundled `llamaj.cpp` ABI     |
 | `CUDA_ARCHITECTURES` | `Dockerfile.llama-cuda` | `70-real;75-real;80-real;86-real;89-real;90-real;100-real;103-real;120-real;121-real;90-virtual` | Volta→Blackwell + PTX fallback. One nvcc pass per arch — trim to the GPU(s) you deploy (e.g. `89-real;90-virtual` for Ada) for much faster builds |
 
 ## Run

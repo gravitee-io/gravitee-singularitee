@@ -1,0 +1,165 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Pipeline — tool-call repair with model escalation
+#
+# Standalone workspace — run it with:
+#   ./run-server.sh --workspace examples/pipelines/tool-repair-escalate.yaml
+#
+#   generate (llm, Qwen3-0.6B) ──→ repair_gate ──→ done
+#      ↑_________________________________|
+#      (loops back on a failed tool-call parse, max 2, retries at temp 0.2)
+#      └────────────────────────────────→ escalate (llm-big, gpt-oss-20b) ──→ done
+#
+# The fallback is not an apology — it is a BIGGER MODEL. The small model gets
+# two repair attempts (with the parse error injected and near-greedy retry
+# sampling); if it still can't produce a valid call, `escalate` re-runs the
+# task on gpt-oss-20b. The escalation step inherits the accumulated
+# conversation, including the corrective loopback turns, so the big model sees
+# exactly what the small one got wrong. This needs no engine feature:
+# `fallback_step` simply points at an infer step bound to a different
+# model_id. Note the two steps speak different dialects — the small model uses
+# the default <tool_call> tags, the escalation step carries the full Harmony
+# `tags:` config (see examples/llama/gpt-oss-20b.yaml for the rationale).
+#
+# Two llama.cpp models in one process are fine — the one-backend-per-process
+# rule is about mixing backend TYPES (llama.cpp + ONNX + vLLM), not model
+# count. The constraint is memory: 0.6B-Q8 + gpt-oss-20b-MXFP4 need ~14 GB
+# total with these context sizes.
+#
+# Exercise it over HTTP with tools declared (http.enabled must be on), e.g.:
+#   curl -s localhost:8080/v1/chat/completions -H 'content-type: application/json' -d '{
+#     "model": "agent",
+#     "messages": [{"role": "user", "content": "Email bob@example.com that the build is green."}],
+#     "tools": [{"type": "function", "function": {"name": "send_email",
+#       "parameters": {"type": "object", "properties": {"to": {"type": "string"},
+#       "body": {"type": "string"}}, "required": ["to"]}}}]
+#   }' | jq
+
+workspace:
+  name: tool-repair-escalate
+
+  models:
+    - id: llm
+      name: Qwen/Qwen3-0.6B-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: Qwen3-0.6B-Q8_0.gguf
+        n_ctx: 8192
+        n_seq_max: 4
+        n_gpu_layers: 999
+        flash_attn_type: AUTO
+
+    - id: llm-big
+      name: ggml-org/gpt-oss-20b-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: gpt-oss-20b-MXFP4.gguf
+        n_ctx: 8192 # escalation turns are short — no need for the full window
+        n_seq_max: 1
+        n_gpu_layers: 99999
+        flash_attn_type: ENABLED
+        cache_type_k: q8_0
+        cache_type_v: q8_0
+        mtp: false
+        eog_ramp_start: 0.75
+        eog_ramp_max_bias: 100.0
+
+  pipelines:
+    - id: agent
+      name: Tool-call repair with escalation
+      entry: generate
+
+      steps:
+        # First attempt on the small, fast model.
+        - id: generate
+          type: infer
+          role: output
+          next_step: repair_gate
+          config:
+            model_id: llm
+            output_field: generate.output
+
+        # Two repair attempts on the small model, then escalate.
+        - id: repair_gate
+          type: loop
+          next_step: done
+          config:
+            loopback_step: generate
+            fallback_step: escalate
+            max_iterations: 2
+            condition:
+              type: equals
+              input_field: generate.tool_parse_failed
+              match_value: "false"
+            loopback_message:
+              role: user
+              content: "Your previous reply did not contain a valid tool call.{% if generate.attempted_tool %} You called '{{ generate.attempted_tool }}', which is not a declared tool.{% endif %}{% if generate.parse_error %} Parse error: {{ generate.parse_error }}.{% endif %} The ONLY valid tools are: {{ tool_names | join(', ') }}. Reply again with a single valid tool call — no prose."
+            retry_sampling_params:
+              temperature: 0.2
+
+        # Small model exhausted its attempts — hand the same conversation
+        # (corrective turns included) to the bigger model. gpt-oss speaks
+        # Harmony: the tags fold its chained channel headers into
+        # reasoning/tool spans (full rationale in examples/llama/gpt-oss-20b.yaml).
+        - id: escalate
+          type: infer
+          role: output
+          config:
+            model_id: llm-big
+            output_field: escalate.output
+            context:
+              reasoning_effort: medium
+            tags:
+              reasoning_repeatable: true
+              reasoning_open:
+                - "<|end|><|start|>assistant<|channel|>analysis<|message|>"
+                - "<|end|><|start|>assistant<|channel|>commentary<|message|>"
+                - "<|start|>assistant<|channel|>analysis<|message|>"
+                - "<|start|>assistant<|channel|>commentary<|message|>"
+                - "<|channel|>analysis<|message|>"
+                - "<|channel|>commentary<|message|>"
+              reasoning_close:
+                - "<|end|><|start|>assistant<|channel|>final<|message|>"
+                - "<|call|><|start|>assistant<|channel|>final<|message|>"
+                - "<|channel|>final<|message|>"
+                - "<|end|>"
+              tool_open:
+                - "<|end|><|start|>assistant<|channel|>commentary to=functions."
+                - "<|end|><|start|>assistant<|channel|>analysis to=functions."
+                - "<|end|><|start|>assistant<|channel|>final to=functions."
+                - "<|call|><|start|>assistant<|channel|>commentary to=functions."
+                - "<|end|><|start|>assistant to=functions."
+                - "<|start|>assistant<|channel|>commentary to=functions."
+                - "<|start|>assistant to=functions."
+                - "<|channel|>commentary to=functions."
+                - "<|channel|>analysis to=functions."
+                - "<|channel|>final to=functions."
+              tool_close:
+                - "<|call|><|start|>assistant<|channel|>final<|message|>"
+                - "<|call|>"
+            tool_extraction_template: harmony # built-in
+
+        # Valid call extracted — halt cleanly; generate already streamed.
+        - id: done
+          type: break
+          config:
+            output_field: generate.output
+            condition:
+              type: not_empty
+              input_field: generate.output

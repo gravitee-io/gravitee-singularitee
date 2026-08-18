@@ -22,6 +22,7 @@ import io.gravitee.singularitee.pipeline.PipelineContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,12 +32,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Centralises the context composition that every executor needs when
  * resolving Jinja2 templates in step configuration (prompts, guard messages,
- * raw templates). Before this helper existed, three executors
- * ({@link InferStepExecutor}, {@link LlmGuardStepExecutor},
- * {@link GuardStepExecutor}) each copy-pasted their own partial version
- * of the same logic, with predictable drift: the LLM guard was missing
- * {@code messages} and the per-step {@code context:} Struct overlay,
- * causing Qwen3Guard templates to render empty prompts.
+ * raw templates), so every step type renders against the same variables —
+ * partial per-executor copies drift and silently render empty prompts.
  *
  * <p>The standard Jinja2 context exposes:
  * <ul>
@@ -85,8 +82,31 @@ public final class JinjaContextHelper {
     ctx.put("messages", buildMessages(pctx));
     ctx.put("generated_messages", buildGeneratedMessages(pctx));
     ctx.put("verdicts", buildVerdicts(pctx));
+    // The request's declared tool names, so corrective templates (loopback_message)
+    // can enumerate what is legal — e.g. steering a model off a hallucinated built-in.
+    ctx.put(
+      "tool_names",
+      pctx
+        .tools()
+        .stream()
+        .map(t -> t.getName())
+        .toList()
+    );
 
     buildStepOutputContext(pctx, ctx);
+
+    // The engine-managed todo plan, so prompts can render the current state:
+    // {% for t in todos %}[{{ t.status }}] {{ t.title }}{% endfor %}
+    // MUST come after buildStepOutputContext: the mirrored condition fields
+    // (todos.total/completed/remaining) nest into a map under the same "todos"
+    // key and would otherwise replace the list — templates then iterate three
+    // key STRINGS instead of the items and the model never sees its plan.
+    ctx.put("todos", buildTodos(pctx));
+
+    // Plan-level constraints (locked user decisions from set_todos) — a
+    // distinct top-level key on purpose: a "todos."-prefixed scalar would be
+    // nested under "todos" by buildStepOutputContext and clobbered above.
+    ctx.put("constraints", pctx.todoConstraints() == null ? "" : pctx.todoConstraints());
 
     return ctx;
   }
@@ -142,7 +162,7 @@ public final class JinjaContextHelper {
         .map(t ->
           Map.<String, Object>of(
             "role",
-            t.role().name().toLowerCase(),
+            t.role().name().toLowerCase(Locale.ROOT),
             "content",
             t.content() != null ? t.content() : ""
           )
@@ -231,6 +251,29 @@ public final class JinjaContextHelper {
           v.details() != null ? v.details() : "",
           "step",
           v.stepId()
+        )
+      );
+    }
+    return out;
+  }
+
+  /**
+   * Returns the engine-managed todo plan as Jinja-shaped maps
+   * ({@code [{id, title, status}]}), in plan order.
+   */
+  public static List<Map<String, Object>> buildTodos(PipelineContext pctx) {
+    List<Map<String, Object>> out = new ArrayList<>(pctx.todos().size());
+    for (var t : pctx.todos()) {
+      out.add(
+        Map.of(
+          "id",
+          t.id(),
+          "title",
+          t.title(),
+          "status",
+          t.status().wireName(),
+          "proof",
+          t.proof() == null ? "" : t.proof()
         )
       );
     }
@@ -384,7 +427,7 @@ public final class JinjaContextHelper {
     var sb = new StringBuilder();
     for (var turn : pctx.messages()) {
       sb
-        .append(turn.role().name().toLowerCase())
+        .append(turn.role().name().toLowerCase(Locale.ROOT))
         .append(": ")
         .append(turn.content() != null ? turn.content() : "")
         .append("\n");

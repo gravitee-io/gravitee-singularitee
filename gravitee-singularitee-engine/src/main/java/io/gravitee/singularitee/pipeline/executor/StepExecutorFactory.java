@@ -22,6 +22,7 @@ import static io.gravitee.singularitee.protocol.StepType.STEP_TYPE_LOOP;
 import static io.gravitee.singularitee.protocol.StepType.STEP_TYPE_REGEX_GUARD;
 import static io.gravitee.singularitee.protocol.StepType.STEP_TYPE_ROUTE;
 
+import io.gravitee.singularitee.pipeline.TodoSessionStore;
 import io.gravitee.singularitee.protocol.Pipeline;
 import io.gravitee.singularitee.protocol.StepType;
 import io.gravitee.singularitee.registry.ModelRegistry;
@@ -44,6 +45,7 @@ public final class StepExecutorFactory {
 
   private final StepExecutionContext execContext;
   private final JinjaRenderer jinjaRenderer;
+  private final TodoSessionStore todoSessionStore;
   private final Map<StepType, StepExecutor<?>> handlers;
   private SubPipelineStepExecutor subPipelineExecutor;
 
@@ -64,8 +66,24 @@ public final class StepExecutorFactory {
     JinjaRenderer jinjaRenderer,
     SubPipelineStepExecutor.PipelineExecutorCallback pipelineCallback
   ) {
+    this(modelRegistry, pipelineRegistry, streamRegistry, jinjaRenderer, pipelineCallback, null);
+  }
+
+  /**
+   * @param todoSessionStore cross-request todo persistence, or {@code null} to disable
+   *                         (client-side executor, tests)
+   */
+  public StepExecutorFactory(
+    ModelRegistry modelRegistry,
+    PipelineRegistry pipelineRegistry,
+    StreamRegistry streamRegistry,
+    JinjaRenderer jinjaRenderer,
+    SubPipelineStepExecutor.PipelineExecutorCallback pipelineCallback,
+    TodoSessionStore todoSessionStore
+  ) {
     this.execContext = new StepExecutionContext(modelRegistry, pipelineRegistry, streamRegistry);
     this.jinjaRenderer = jinjaRenderer;
+    this.todoSessionStore = todoSessionStore;
     this.handlers = createHandlers(pipelineCallback);
   }
 
@@ -86,7 +104,7 @@ public final class StepExecutorFactory {
    */
   public void setSubPipelineCallbacks(
     SubPipelineStepExecutor.PipelineExecutorCallback localCallback,
-    java.util.Map<String, SubPipelineStepExecutor.PipelineExecutorCallback> remoteCallbacks
+    Map<String, SubPipelineStepExecutor.PipelineExecutorCallback> remoteCallbacks
   ) {
     if (subPipelineExecutor != null) {
       subPipelineExecutor.setCallbacks(localCallback, remoteCallbacks);
@@ -121,19 +139,23 @@ public final class StepExecutorFactory {
     handlers.put(STEP_TYPE_BREAK, new BreakStepExecutor());
     handlers.put(STEP_TYPE_LOOP, new LoopStepExecutor(jinjaRenderer));
     handlers.put(STEP_TYPE_GUARD, new GuardStepExecutor(execContext, jinjaRenderer));
-    handlers.put(STEP_TYPE_ROUTE, new RouteStepExecutor(execContext));
+    handlers.put(
+      STEP_TYPE_ROUTE,
+      new RouteStepExecutor(
+        execContext,
+        todoSessionStore != null ? todoSessionStore.cacheManager() : null
+      )
+    );
     handlers.put(STEP_TYPE_INFER, new InferStepExecutor(execContext, jinjaRenderer));
     handlers.put(STEP_TYPE_LLM_GUARD, new LlmGuardStepExecutor(execContext, jinjaRenderer));
     handlers.put(STEP_TYPE_REGEX_GUARD, new RegexGuardStepExecutor(jinjaRenderer));
     handlers.put(STEP_TYPE_TOOL_SELECT, new ToolSelectStepExecutor(execContext, jinjaRenderer));
+    handlers.put(STEP_TYPE_TODO, new TodoStepExecutor(todoSessionStore));
 
     subPipelineExecutor = new SubPipelineStepExecutor(execContext, pipelineCallback, null);
     handlers.put(StepType.STEP_TYPE_SUB_PIPELINE, subPipelineExecutor);
 
-    LOGGER.info(
-      "Initialized {} step handlers: INFER, CLASSIFY, EMBED, GUARD, LLM_GUARD, REGEX_GUARD, BREAK, ROUTE, LOOP, SUB_PIPELINE, TOOL_SELECT",
-      handlers.size()
-    );
+    LOGGER.info("Initialized {} step handlers: {}", handlers.size(), handlers.keySet());
 
     return handlers;
   }

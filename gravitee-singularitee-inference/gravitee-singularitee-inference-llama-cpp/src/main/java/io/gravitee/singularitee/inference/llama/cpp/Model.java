@@ -552,7 +552,7 @@ public final class Model implements AutoCloseable {
     return sampler
       .temperature(temperature)
       .topP(topP, 64)
-      .penalties(context.nCtx(), 1.0f, frequencyPenalty, presencePenalty)
+      .penalties(vocab, context.nCtx(), 1.0f, frequencyPenalty, presencePenalty)
       .seed(seed);
   }
 

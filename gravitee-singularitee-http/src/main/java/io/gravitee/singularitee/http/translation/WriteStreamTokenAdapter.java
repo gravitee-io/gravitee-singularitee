@@ -25,6 +25,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.streams.WriteStream;
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -148,6 +149,9 @@ public final class WriteStreamTokenAdapter implements WriteStream<InferResponse>
       case RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA -> buildOutputTextDelta(response);
       case RESPONSE_EVENT_TYPE_COMPLETED -> buildCompleted(response);
       case RESPONSE_EVENT_TYPE_FAILED -> buildFailed(response);
+      case RESPONSE_EVENT_TYPE_PROGRESS -> TokenMessage.progressUpdate(
+        response.getResponseProgress()
+      );
       default -> null;
     };
   }
@@ -161,7 +165,7 @@ public final class WriteStreamTokenAdapter implements WriteStream<InferResponse>
     // tool-call payload (tag markers suppressed engine-side) and are buffered/parsed by
     // the formatter; everything else is content.
     if (response.getStepRole() == StepRole.STEP_ROLE_THINKING) {
-      return new TokenMessage(null, delta, 0, false, null, 0, 0, null, null, null, null);
+      return TokenMessage.reasoningDelta(delta);
     }
     if (response.getStepRole() == StepRole.STEP_ROLE_TOOL) {
       return TokenMessage.toolDelta(delta);
@@ -169,22 +173,10 @@ public final class WriteStreamTokenAdapter implements WriteStream<InferResponse>
     // Per-token logprobs ride only on content deltas — OpenAI logprobs cover
     // the answer, not reasoning or tool spans.
     var logprobs = response.getResponseOutputTextDelta().getLogprobsList();
-    return new TokenMessage(
-      delta,
-      null,
-      null,
-      0,
-      false,
-      null,
-      0,
-      0,
-      null,
-      null,
-      null,
-      null,
-      null,
-      logprobs.isEmpty() ? null : logprobs
-    );
+    return TokenMessage.builder()
+      .token(delta)
+      .logprobs(logprobs.isEmpty() ? null : logprobs)
+      .build();
   }
 
   private static TokenMessage buildFailed(InferResponse response) {
@@ -193,7 +185,11 @@ public final class WriteStreamTokenAdapter implements WriteStream<InferResponse>
       ? "content_filter"
       : "stop";
     String guardMessage = !failed.getErrorMessage().isBlank() ? failed.getErrorMessage() : null;
-    return new TokenMessage(null, 0, true, finishReason, 0, 0, null, null, null, guardMessage);
+    return TokenMessage.builder()
+      .isFinal(true)
+      .finishReason(finishReason)
+      .guardMessage(guardMessage)
+      .build();
   }
 
   private static TokenMessage buildCompleted(InferResponse response) {
@@ -210,28 +206,30 @@ public final class WriteStreamTokenAdapter implements WriteStream<InferResponse>
     };
     // Structured tool calls extracted engine-side (Jinja extraction template) ride on the
     // COMPLETED event; surface them so the formatter can skip client-side re-extraction.
-    java.util.List<WireToolCall> wireToolCalls = completed.getToolCallsList().isEmpty()
+    List<WireToolCall> wireToolCalls = completed.getToolCallsList().isEmpty()
       ? null
       : completed
         .getToolCallsList()
         .stream()
-        .map(tc -> new WireToolCall(tc.getName(), tc.getArgumentsJson(), tc.getCoercibleArgsList()))
+        .map(tc ->
+          new WireToolCall(
+            tc.getId(),
+            tc.getName(),
+            tc.getArgumentsJson(),
+            tc.getCoercibleArgsList()
+          )
+        )
         .toList();
-    return new TokenMessage(
-      null,
-      null,
-      null,
-      0,
-      true,
-      finishReason,
-      usage.getPromptTokens(),
-      usage.getCompletionTokens(),
-      reasoningTokens,
-      toolTokens,
-      performance,
-      null,
-      wireToolCalls
-    );
+    return TokenMessage.builder()
+      .isFinal(true)
+      .finishReason(finishReason)
+      .promptTokens(usage.getPromptTokens())
+      .completionTokens(usage.getCompletionTokens())
+      .reasoningTokens(reasoningTokens)
+      .toolTokens(toolTokens)
+      .performance(performance)
+      .toolCalls(wireToolCalls)
+      .build();
   }
 
   private static PerformanceMessage getPerformanceMessage(ResponseCompleted completed) {

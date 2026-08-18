@@ -126,6 +126,62 @@ class ChatWindowTrimmerTest {
   }
 
   @Test
+  void structuredToolCallUnitDroppedAtomically() {
+    // Modern OpenAI shape: assistant carries a tool_calls LIST (content empty)
+    // and the result is a role=tool message. Splitting them orphans the tool
+    // message, which chat templates reject ("tool role without a previous
+    // assistant tool call") — observed live with an agent client's huge
+    // read-file result forcing a trim.
+    Map<String, Object> call = new java.util.LinkedHashMap<>(msg("assistant", ""));
+    call.put("tool_calls", List.of(Map.of("id", "call_1", "function", Map.of("name", "read"))));
+    Map<String, Object> result = new java.util.LinkedHashMap<>(msg("tool", chars(400)));
+    result.put("tool_call_id", "call_1");
+    List<Map<String, Object>> messages = List.of(
+      msg("system", chars(100)),
+      msg("user", chars(100)),
+      call,
+      result,
+      msg("assistant", chars(200)),
+      msg("user", chars(200))
+    );
+
+    var out = ChatWindowTrimmer.trim(messages, 1000, 0, CHAR_COUNTER, TOOL_TAG);
+
+    // Whatever is dropped, no retained window may contain the tool result
+    // without its assistant call.
+    for (int i = 0; i < out.size(); i++) {
+      if ("tool".equals(out.get(i).get("role"))) {
+        assertThat(i).isGreaterThan(0);
+        assertThat(out.get(i - 1).get("tool_calls")).isNotNull();
+      }
+    }
+    assertThat(out.get(out.size() - 1)).isSameAs(messages.get(5));
+  }
+
+  @Test
+  void retainedWindowNeverStartsWithToolMessages() {
+    // Safety net: even if unit bookkeeping missed a shape, leading tool
+    // messages are dropped rather than orphaned.
+    List<Map<String, Object>> messages = List.of(
+      msg("system", chars(50)),
+      msg("user", chars(600)),
+      msg("tool", chars(300)), // pathological: tool result with no visible call
+      msg("user", chars(200)),
+      msg("assistant", chars(150))
+    );
+
+    var out = ChatWindowTrimmer.trim(messages, 1000, 0, CHAR_COUNTER, TOOL_TAG);
+
+    assertThat(out).isNotEmpty();
+    var firstNonSystem = out
+      .stream()
+      .filter(m -> !"system".equals(m.get("role")))
+      .findFirst()
+      .orElseThrow();
+    assertThat(firstNonSystem.get("role")).isNotEqualTo("tool");
+  }
+
+  @Test
   void toolCallUnitKeptAtomically() {
     List<Map<String, Object>> messages = List.of(
       msg("system", chars(50)),

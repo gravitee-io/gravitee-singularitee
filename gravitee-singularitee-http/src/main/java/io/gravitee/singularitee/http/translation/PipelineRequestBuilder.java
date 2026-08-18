@@ -58,7 +58,27 @@ public final class PipelineRequestBuilder {
     if (endpointType == EndpointType.CHAT) {
       builder.setMessages(buildChatMessageList(payload.at("/messages")));
     } else if (endpointType == EndpointType.RESPONSES) {
-      builder.setMessages(buildResponsesMessageList(payload));
+      // Instructions travel in the context map, NOT as a transcript turn:
+      // per the Responses API, instructions are per-request and are never
+      // carried over via previous_response_id — a stored system turn would
+      // replay stale instructions into every continuation.
+      builder.setMessages(buildResponsesMessageList(payload, false));
+      JsonNode instructions = payload.at("/instructions");
+      if (instructions.isTextual() && !instructions.asText().isBlank()) {
+        builder.putContext("instructions", instructions.asText());
+      }
+      // Stored-conversation continuation (OpenAI semantics): every Responses
+      // request gets a unique id it may be continued from; previous_response_id
+      // resumes server-side history; store=false opts out of persistence.
+      builder.setRequestId("resp_" + java.util.UUID.randomUUID().toString().replace("-", ""));
+      JsonNode prev = payload.at("/previous_response_id");
+      if (prev.isTextual() && !prev.asText().isBlank()) {
+        builder.setPreviousResponseId(prev.asText());
+      }
+      JsonNode store = payload.at("/store");
+      if (store.isBoolean()) {
+        builder.setStore(store.asBoolean());
+      }
     } else {
       JsonNode promptNode = payload.at("/prompt");
       if (promptNode.isTextual()) {
@@ -463,10 +483,23 @@ public final class PipelineRequestBuilder {
    * a string (single user message) or an array of message objects / bare strings.
    */
   public static ChatMessageList buildResponsesMessageList(JsonNode payload) {
+    return buildResponsesMessageList(payload, true);
+  }
+
+  /**
+   * @param instructionsAsSystemTurn whether {@code instructions} becomes a leading system
+   *                                 message. Direct-model targets (stateless) keep it in the
+   *                                 list; pipeline targets carry it in the request context so
+   *                                 it is never persisted into a stored conversation.
+   */
+  public static ChatMessageList buildResponsesMessageList(
+    JsonNode payload,
+    boolean instructionsAsSystemTurn
+  ) {
     ChatMessageList.Builder listBuilder = ChatMessageList.newBuilder();
 
     JsonNode instructions = payload.at("/instructions");
-    if (instructions.isTextual() && !instructions.asText().isBlank()) {
+    if (instructionsAsSystemTurn && instructions.isTextual() && !instructions.asText().isBlank()) {
       listBuilder.addMessages(
         ChatMessage.newBuilder().setRole(Role.ROLE_SYSTEM).setContent(instructions.asText()).build()
       );
@@ -484,11 +517,49 @@ public final class PipelineRequestBuilder {
             ChatMessage.newBuilder().setRole(Role.ROLE_USER).setContent(item.asText()).build()
           );
         } else if (item.isObject()) {
-          String role = item.at("/role").asText("user");
+          String type = item.at("/type").asText("");
+          // Responses-API replay items: an agent client continuing a tool turn
+          // sends function_call / function_call_output items, not role/content
+          // messages. Dropping them to empty USER turns hides every tool
+          // result from the model, which then re-issues the same call forever.
+          if ("function_call".equals(type)) {
+            String callId = item.at("/call_id").asText(item.at("/id").asText(""));
+            listBuilder.addMessages(
+              ChatMessage.newBuilder()
+                .setRole(Role.ROLE_ASSISTANT)
+                .addToolCalls(
+                  io.gravitee.singularitee.protocol.ToolCall.newBuilder()
+                    .setId(callId)
+                    .setName(item.at("/name").asText(""))
+                    .setArgumentsJson(item.at("/arguments").asText("{}"))
+                )
+                .build()
+            );
+            continue;
+          }
+          if ("function_call_output".equals(type)) {
+            JsonNode output = item.at("/output");
+            listBuilder.addMessages(
+              ChatMessage.newBuilder()
+                .setRole(Role.ROLE_TOOL)
+                .setToolCallId(item.at("/call_id").asText(""))
+                .setContent(output.isTextual() ? output.asText() : output.toString())
+                .build()
+            );
+            continue;
+          }
+          if ("reasoning".equals(type)) {
+            continue; // replayed reasoning items carry no conversational state
+          }
+          String role = item.at("/role").asText(null);
           JsonNode contentNode = item.at("/content");
-          Role chatRole = switch (role) {
+          if (role == null && contentNode.isMissingNode()) {
+            continue; // unknown item shape — never fabricate an empty USER turn
+          }
+          Role chatRole = switch (role == null ? "user" : role) {
             case "system", "developer" -> Role.ROLE_SYSTEM;
             case "assistant" -> Role.ROLE_ASSISTANT;
+            case "tool" -> Role.ROLE_TOOL;
             default -> Role.ROLE_USER;
           };
           ChatMessage.Builder msgBuilder = ChatMessage.newBuilder().setRole(chatRole);
