@@ -933,6 +933,15 @@ components:
             - token-classification
             - feature-extraction
             - reranking
+        input_modalities:
+          type: array
+          description: >-
+            Non-standard — what the entry accepts as input. Absent when the entry
+            reads text alone. A multimodal model keeps `type: text-generation`;
+            this field says what may be attached, not which endpoint to call.
+          items:
+            type: string
+            enum: [text, image, audio]
 
     ModelList:
       type: object

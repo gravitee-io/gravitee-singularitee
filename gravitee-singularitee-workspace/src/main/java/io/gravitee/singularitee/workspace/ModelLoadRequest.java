@@ -83,11 +83,17 @@ public record ModelLoadRequest(
    * the listings and off the OpenAI HTTP surface while leaving it callable as a
    * pipeline dependency.
    */
-  boolean visible
+  boolean visible,
+  /**
+   * Input modalities declared by {@code modalities:} in the workspace, overriding
+   * what the backend reports. Empty means "ask the engine".
+   */
+  List<String> modalities
 ) {
   public ModelLoadRequest {
     downloadExclude = downloadExclude == null ? List.of() : List.copyOf(downloadExclude);
     task = task == null ? "" : task;
+    modalities = modalities == null ? List.of() : List.copyOf(modalities);
   }
 
   /**
@@ -129,7 +135,8 @@ public record ModelLoadRequest(
       llamaCppReranker,
       List.of(),
       "",
-      true
+      true,
+      List.of()
     );
   }
 
@@ -151,7 +158,8 @@ public record ModelLoadRequest(
       llamaCppReranker,
       exclude,
       task,
-      visible
+      visible,
+      modalities
     );
   }
 
@@ -164,7 +172,7 @@ public record ModelLoadRequest(
    * thing for every engine, so neither is threaded through the {@link ModelType}
    * branches.
    */
-  public ModelLoadRequest withPublication(String task, boolean visible) {
+  public ModelLoadRequest withPublication(String task, boolean visible, List<String> modalities) {
     return new ModelLoadRequest(
       modelId,
       modelName,
@@ -181,7 +189,8 @@ public record ModelLoadRequest(
       llamaCppReranker,
       downloadExclude,
       task,
-      visible
+      visible,
+      modalities
     );
   }
 

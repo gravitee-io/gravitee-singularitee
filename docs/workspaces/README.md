@@ -156,10 +156,11 @@ workspace:
 | `download` | — | Narrows what gets pulled from HuggingFace — see below. |
 | `task` | engine's own | Overrides the task slug the model is advertised under. |
 | `visible` | `true` | `false` keeps the model out of the catalogue — see below. |
+| `modalities` | detected | Overrides the input modalities the model is advertised as accepting. |
 
-### `task` and `visible`
+### `task`, `visible` and `modalities`
 
-Both fields say how a model or pipeline is *published*, and both work the same on
+All three say how a model or pipeline is *published*, and all three work the same on
 either.
 
 `task` is the slug callers route on — `text-generation`, `text-classification`,
@@ -197,6 +198,16 @@ pipelines:
 
 `http.expose-pipelines: false` still hides *every* pipeline at once; `visible` is
 the per-entry switch on top of it.
+
+`modalities` lists what the entry accepts as input — `text`, `image`, `audio`.
+Leave it unset and the backend is asked: llama.cpp interrogates the loaded `mmproj`
+projector, vLLM reads `vision_config` / `audio_config` out of the checkpoint's
+`config.json`, and a pipeline inherits from the model behind its output step.
+Declare it only where nothing can be interrogated — a `remote_*` proxy, or a vLLM
+model whose weights were never resolved to a local directory — because a model that
+under-reports will have its media requests refused with `unsupported_modality`. A
+multimodal model's `task` stays `text-generation`: modality says what it reads, not
+which endpoint it serves. See [Multimodal](../multimodal/README.md).
 
 ### `download` block
 

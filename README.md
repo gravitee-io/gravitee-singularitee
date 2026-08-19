@@ -73,7 +73,7 @@ From a fresh clone (Java 25 + Maven):
 ./install.sh
 ```
 
-That checks prerequisites, downloads the llama.cpp native libraries into `~/.llama.cpp` (they are **not** bundled in the jar, for licensing), builds the distribution, and starts the server with the OpenAI-compatible API on port 8080. From then on, switch workspaces with:
+That checks prerequisites, downloads the llama.cpp native libraries into `~/.llama.cpp` (they are **not** bundled in the jar, for size reasons), builds the distribution, and starts the server with the OpenAI-compatible API on port 8080. From then on, switch workspaces with:
 
 ```bash
 ./run-server.sh --list                                          # every runnable workspace
@@ -123,7 +123,7 @@ client.chat.completions.create(model="agent", messages=[{"role": "user", "conten
 
 The `model` field takes a model id or a pipeline id. Beyond the standard OpenAI routes the server
 adds `/v1/classify`, `/v1/rerank` and `/v1/similarity`; the full endpoint reference, streaming
-semantics, auth and the error envelope are in
+semantics, auth, and the error envelope are in
 **[OpenAI HTTP API](./docs/openai-http-api/README.md)** (machine-readable schema:
 [OpenAPI spec](./docs/openapi/singularitee.openapi.yaml)).
 

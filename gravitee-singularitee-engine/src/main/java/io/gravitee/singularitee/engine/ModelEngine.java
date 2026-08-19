@@ -58,6 +58,22 @@ public sealed interface ModelEngine
   String task();
 
   /**
+   * Returns the input modalities this engine accepts — always containing
+   * {@link Modalities#TEXT}, plus {@link Modalities#IMAGE} / {@link Modalities#AUDIO}
+   * when a projector able to decode them is loaded.
+   *
+   * <p>Defaults to text-only, which is correct for every engine that cannot read
+   * media: a backend claims more only by overriding this after asking the loaded
+   * model what it can decode. Callers use it to pre-flight a request rather than
+   * discovering the mismatch as a tokenization failure.
+   *
+   * @return the accepted modalities; never {@code null} or empty
+   */
+  default java.util.List<String> inputModalities() {
+    return Modalities.TEXT_ONLY;
+  }
+
+  /**
    * Releases all resources held by this engine (GPU memory, native handles, threads).
    * After this call the engine must not be used.
    */

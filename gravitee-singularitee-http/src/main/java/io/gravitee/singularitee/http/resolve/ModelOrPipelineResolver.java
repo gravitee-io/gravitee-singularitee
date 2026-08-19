@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.http.resolve;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.gravitee.singularitee.engine.Modalities;
 import io.gravitee.singularitee.engine.TextGenEngine;
 import io.gravitee.singularitee.http.translation.EndpointType;
 import io.gravitee.singularitee.http.translation.InferRequestBuilder;
@@ -66,7 +67,9 @@ public final class ModelOrPipelineResolver {
       return pipelineRegistry
         .get(id)
         .filter(p -> !p.pipeline().getHidden())
-        .map(p -> pipelineResolution(id, payload, type, hasTools));
+        .map(p ->
+          pipelineResolution(id, payload, type, hasTools, p.pipeline().getInputModalitiesList())
+        );
     }
 
     var model = modelRegistry.get(rawModel).filter(ModelRegistry.ModelEntry::visible);
@@ -77,7 +80,8 @@ public final class ModelOrPipelineResolver {
           InferRequestBuilder.build(rawModel, payload, type),
           null,
           rawModel,
-          hasTools
+          hasTools,
+          model.get().inputModalities()
         )
       );
     }
@@ -85,30 +89,46 @@ public final class ModelOrPipelineResolver {
     return pipelineRegistry
       .get(rawModel)
       .filter(p -> !p.pipeline().getHidden())
-      .map(p -> pipelineResolution(rawModel, payload, type, hasTools));
+      .map(p ->
+        pipelineResolution(rawModel, payload, type, hasTools, p.pipeline().getInputModalitiesList())
+      );
   }
 
   private Resolution pipelineResolution(
     String id,
     JsonNode payload,
     EndpointType type,
-    boolean hasTools
+    boolean hasTools,
+    java.util.List<String> acceptedModalities
   ) {
     return new Resolution(
       true,
       null,
       PipelineRequestBuilder.build(id, payload, type),
       id,
-      hasTools
+      hasTools,
+      acceptedModalities.isEmpty() ? Modalities.TEXT_ONLY : acceptedModalities
     );
   }
 
-  /** A resolved target: exactly one of {@code inferRequest} / {@code pipelineRequest} is set. */
+  /**
+   * A resolved target: exactly one of {@code inferRequest} / {@code pipelineRequest} is set.
+   *
+   * <p>{@code acceptedModalities} is what the target will read — the model's own
+   * answer, or for a pipeline the answer of the model behind its output step, since
+   * that is what any attached media ends up being decoded by.
+   */
   public record Resolution(
     boolean pipeline,
     InferRequest inferRequest,
     InferPipelineRequest pipelineRequest,
     String modelName,
-    boolean hasTools
-  ) {}
+    boolean hasTools,
+    java.util.List<String> acceptedModalities
+  ) {
+    /** Returns {@code true} if the target accepts the given input modality. */
+    public boolean accepts(String modality) {
+      return acceptedModalities.contains(modality);
+    }
+  }
 }

@@ -124,7 +124,10 @@ public final class VllmEngineFactory implements ModelEngineFactory {
         : cfg.distributedExecutorBackend()
     );
 
-    return new VllmTextGenEngine(new BatchEngine(vllmConfig));
+    return new VllmTextGenEngine(
+      new BatchEngine(vllmConfig),
+      CheckpointModalities.read(resolvedPath, request.modelName())
+    );
   }
 
   private static MemoryCheckPolicy toMemoryCheckPolicy(

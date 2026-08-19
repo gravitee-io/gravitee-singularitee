@@ -39,6 +39,7 @@ class PublicationYamlTest {
         - id: pii
           type: regex
           task: token-classification
+          modalities: [text]
           regex:
             patterns:
               - pattern: '\\bsecret\\b'
@@ -57,6 +58,7 @@ class PublicationYamlTest {
           entry: generate
           visible: false
           task: text-generation
+          modalities: [text, image]
           steps:
             - id: generate
               type: infer
@@ -79,6 +81,18 @@ class PublicationYamlTest {
     assertThat(pii.id()).isEqualTo("pii");
     assertThat(pii.task()).isEqualTo("token-classification");
     assertThat(pii.isVisible()).isTrue();
+    assertThat(pii.modalities()).containsExactly("text");
+  }
+
+  @Test
+  void reads_declared_modalities_off_models_and_pipelines(@TempDir Path tmp) throws IOException {
+    var result = load(tmp);
+
+    // Undeclared on the llama.cpp model: the engine is asked at registration instead.
+    assertThat(result.models().get(0).modalities()).isEmpty();
+
+    assertThat(result.pipelines().get(0).getInputModalitiesList()).isEmpty();
+    assertThat(result.pipelines().get(1).getInputModalitiesList()).containsExactly("text", "image");
   }
 
   @Test

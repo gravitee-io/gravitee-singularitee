@@ -143,7 +143,8 @@ public class GraviteeModelServiceImpl
           engine,
           tokenConsumer,
           request.task(),
-          request.visible()
+          request.visible(),
+          request.modalities()
         );
         streamsByModel.put(resolvedId, activeStreams);
         return resolvedId;
@@ -213,7 +214,8 @@ public class GraviteeModelServiceImpl
       .setModelType(resolveModelTypeFromEngine(entry.engine()))
       .setStatus(ModelStatus.MODEL_STATUS_ACTIVE)
       .setTask(entry.task())
-      .setHidden(!entry.visible());
+      .setHidden(!entry.visible())
+      .addAllInputModalities(entry.inputModalities());
 
     if (entry.engine() instanceof TextGenEngine tge) {
       if (tge.chatTemplateString() != null) builder.setChatTemplate(tge.chatTemplateString());
@@ -240,6 +242,7 @@ public class GraviteeModelServiceImpl
           .setModelType(resolveModelTypeFromEngine(kv.getValue().engine()))
           .setStatus(ModelStatus.MODEL_STATUS_ACTIVE)
           .setTask(kv.getValue().task())
+          .addAllInputModalities(kv.getValue().inputModalities())
           .build()
       );
     }

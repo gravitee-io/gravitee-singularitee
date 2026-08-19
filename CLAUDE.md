@@ -215,13 +215,17 @@ the `remote_*` proxies, and `regex` / `composite_classifier` (pure Java, run any
 **Step types** (`StepExecutorFactory.createHandlers`): `infer`, `classify`, `embed`, `route`,
 `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`.
 
-**Publication** — `task:` and `visible:` apply to both a model and a pipeline entry.
+**Publication** — `task:`, `visible:` and `modalities:` apply to both a model and a pipeline entry.
 `task` is the slug `/v1/models` advertises (`text-generation`, `text-classification`,
 `token-classification`, `feature-extraction`, `reranking`); unset, a model reports its
 engine's and a pipeline inherits the model behind its `role: output` step. Pipelines are
 never labelled `pipeline`. `visible: false` drops an entry from the listings and from HTTP
 resolution while leaving it callable as a pipeline dependency and over gRPC — publish the
-pipeline, hide its parts.
+pipeline, hide its parts. `modalities` is what the entry accepts (`text`/`image`/`audio`),
+detected not declared — llama.cpp asks the mtmd projector, vLLM reads the checkpoint's
+`config.json`, pipelines inherit from the output step's model; HTTP refuses media the target
+cannot read (`unsupported_modality`) rather than dropping it silently. A VLM/ALM is still
+`task: text-generation`.
 
 **Composition** — `includes:` pulls `models:` / `pipelines:` / `templates:` from the sibling
 `models/`, `pipelines/`, `templates/` folders (globs allowed). Because ids are logical, several

@@ -83,6 +83,16 @@ public class BatchEngine
     return engineAdapter.model().isMultimodal();
   }
 
+  /** Whether the loaded projector can decode images, i.e. the model is a VLM. */
+  public boolean supportsVision() {
+    return engineAdapter.model().supportsVision();
+  }
+
+  /** Whether the loaded projector can decode audio, i.e. the model is an ALM. */
+  public boolean supportsAudio() {
+    return engineAdapter.model().supportsAudio();
+  }
+
   /** The media marker the model's mtmd context expects, or {@code null} if not multimodal. */
   public String mediaMarker() {
     return engineAdapter.model().mediaMarker();

@@ -72,7 +72,19 @@ public final class ModelRegistry {
     ModelEngine engine,
     java.util.function.Consumer<ModelEngineToken> tokenConsumer
   ) {
-    return register(modelId, modelName, engine, tokenConsumer, "", true);
+    return register(modelId, modelName, engine, tokenConsumer, "", true, java.util.List.of());
+  }
+
+  /** Registers a model with a declared task and visibility, deferring modalities to the engine. */
+  public String register(
+    String modelId,
+    String modelName,
+    ModelEngine engine,
+    java.util.function.Consumer<ModelEngineToken> tokenConsumer,
+    String task,
+    boolean visible
+  ) {
+    return register(modelId, modelName, engine, tokenConsumer, task, visible, java.util.List.of());
   }
 
   /**
@@ -87,6 +99,8 @@ public final class ModelRegistry {
    * @param task          declared task slug overriding the engine's own; blank to defer
    *                      to {@link ModelEngine#task()}
    * @param visible       whether the model joins the public catalogue
+   * @param modalities    declared input modalities overriding what the engine reports;
+   *                      empty to defer to {@link ModelEngine#inputModalities()}
    * @return the final model_id (either the caller's value or the generated UUID)
    * @throws IllegalArgumentException if the supplied modelId is already registered
    */
@@ -96,7 +110,8 @@ public final class ModelRegistry {
     ModelEngine engine,
     java.util.function.Consumer<ModelEngineToken> tokenConsumer,
     String task,
-    boolean visible
+    boolean visible,
+    java.util.List<String> modalities
   ) {
     String resolvedId = (modelId != null && !modelId.isBlank())
       ? modelId
@@ -105,7 +120,7 @@ public final class ModelRegistry {
     if (
       models.putIfAbsent(
         resolvedId,
-        new ModelEntry(modelName, engine, new AtomicInteger(0), task, visible)
+        new ModelEntry(modelName, engine, new AtomicInteger(0), task, visible, modalities)
       ) !=
       null
     ) {
@@ -211,21 +226,27 @@ public final class ModelRegistry {
    * @param declaredTask  task slug declared by the workspace; blank means the
    *                      engine's own {@link ModelEngine#task()} answer stands
    * @param visible       whether the model joins the public catalogue
+   * @param declaredModalities input modalities declared by the workspace; empty means the
+   *                      engine's own {@link ModelEngine#inputModalities()} answer stands
    */
   public record ModelEntry(
     String modelName,
     ModelEngine engine,
     AtomicInteger seqCounter,
     String declaredTask,
-    boolean visible
+    boolean visible,
+    java.util.List<String> declaredModalities
   ) {
     public ModelEntry {
       declaredTask = declaredTask == null ? "" : declaredTask;
+      declaredModalities = declaredModalities == null
+        ? java.util.List.of()
+        : java.util.List.copyOf(declaredModalities);
     }
 
     /** Registers an entry with no declared task, visible to the catalogue. */
     public ModelEntry(String modelName, ModelEngine engine, AtomicInteger seqCounter) {
-      this(modelName, engine, seqCounter, "", true);
+      this(modelName, engine, seqCounter, "", true, java.util.List.of());
     }
 
     /**
@@ -234,6 +255,19 @@ public final class ModelRegistry {
      */
     public String task() {
       return declaredTask.isBlank() ? engine.task() : declaredTask;
+    }
+
+    /**
+     * Returns the input modalities to advertise: the workspace's declaration when
+     * it made one, what the engine reports otherwise.
+     */
+    public java.util.List<String> inputModalities() {
+      return declaredModalities.isEmpty() ? engine.inputModalities() : declaredModalities;
+    }
+
+    /** Returns {@code true} if this model will accept the given modality as input. */
+    public boolean accepts(String modality) {
+      return inputModalities().contains(modality);
     }
 
     /** Returns the in-flight sequence counter (shared reference). */

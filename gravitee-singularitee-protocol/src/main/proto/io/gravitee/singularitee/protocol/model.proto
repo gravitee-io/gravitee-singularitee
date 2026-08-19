@@ -125,6 +125,17 @@ message GetModelResponse {
   // Stated negatively so that proto3's false default means "published" — a
   // message built without this field describes a normal, listed model.
   bool hidden          = 14;
+
+  // What the model accepts as input: always "text", plus "image" and/or "audio"
+  // when a projector able to decode them is loaded.
+  //
+  // Separate from `task` on purpose: a vision-language model and a text-only one
+  // are both "text-generation" and belong on the same endpoint — they differ only
+  // in what they will read. Callers use this to pre-flight a request carrying
+  // media instead of discovering the mismatch as a tokenization failure.
+  //
+  // Empty is read as text-only.
+  repeated string input_modalities = 15;
 }
 
 // ---------------------------------------------------------------------------

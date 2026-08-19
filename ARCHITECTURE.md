@@ -96,8 +96,8 @@ workspace:
   remote:                         # optional — client-side / multi-server
     default: { host, port, username?, password? }
     servers: [ { id, host, port, username?, password? } ]
-  models:    [ ... ]              # see model types below; each takes task? + visible?
-  pipelines: [ ... ]              # entry + steps; each takes task? + visible?
+  models:    [ ... ]              # see model types below; + task? visible? modalities?
+  pipelines: [ ... ]              # entry + steps;      + task? visible? modalities?
   templates: [ { id, content | file } ]
   includes:                       # pull shared defs from sibling folders
     models:    [ "*.yaml" ]       # → ./models/
@@ -107,7 +107,7 @@ workspace:
 
 `includes` resolve each list against the hardcoded `models/`, `pipelines/`, `templates/` subfolder next to the file (globs allowed). Because models are referenced by **logical id**, several model files can share an id (e.g. `llm` = llama.cpp here, vLLM there) and a server includes exactly one — the same pipeline then runs unchanged on any backend.
 
-**Publication (`task:` / `visible:`)** — both apply to a model or a pipeline. `task` is the slug the entry is advertised under on `/v1/models` (`text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`); models default to what their engine reports, pipelines to the task of the model behind their `role: output` step (falling back to the entry step). Nothing is ever advertised as a "pipeline" — callers route on the surface, not on how the answer is produced. `visible: false` removes an entry from `ListModels`/`ListPipelines`, from `/v1/models`, and from HTTP resolution (`model_not_found`), while leaving it callable as a pipeline dependency, as a sub-pipeline, and over gRPC — which is how a workspace publishes a pipeline without publishing its parts.
+**Publication (`task:` / `visible:` / `modalities:`)** — all apply to a model or a pipeline. `task` is the slug the entry is advertised under on `/v1/models` (`text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`); models default to what their engine reports, pipelines to the task of the model behind their `role: output` step (falling back to the entry step). Nothing is ever advertised as a "pipeline" — callers route on the surface, not on how the answer is produced. `visible: false` removes an entry from `ListModels`/`ListPipelines`, from `/v1/models`, and from HTTP resolution (`model_not_found`), while leaving it callable as a pipeline dependency, as a sub-pipeline, and over gRPC — which is how a workspace publishes a pipeline without publishing its parts. `modalities` is what the entry accepts as input (`text`, `image`, `audio`), detected rather than declared: llama.cpp asks the loaded `mmproj` projector (`mtmd_support_vision`/`mtmd_support_audio`), vLLM reads `vision_config`/`audio_config` from the checkpoint's `config.json`, and a pipeline inherits from the model behind its output step. The HTTP layer refuses media a target cannot read (`unsupported_modality`) instead of letting it fail inside tokenization. A multimodal model's task stays `text-generation` — modality says what it reads, not which endpoint it serves.
 
 **Model types:** `llama_cpp`, `vllm`, `onnx_classifier`, `onnx_embedding`, `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker` (local engines); `remote_llm`, `remote_classifier`, `remote_embedding`, `remote_reranker` (gRPC proxies); `regex`, `composite_classifier` (in-process, pure-Java).
 

@@ -95,7 +95,57 @@ task audio                # shell 2: push-to-talk (or: uv run --with openai --wi
 | `CAMERA` / `NUM_FRAMES` / `INTERVAL` | `0` / `1` / `0.6` | vision_live only: camera index, frames per ask, seconds between automatic asks (`0` = manual SPACE only). |
 | `MAX_TOKENS` / `IMG_WIDTH` | `48` / `448` | vision_live only: reply cap and image size — the two knobs that decide whether a query fits inside `INTERVAL`. |
 | `TEMPERATURE` | `0.2` | audio_ptt only. Audio understanding is a transcription-shaped task and wants a low temperature; the engine default (0.7) noticeably degrades answer quality on small quantized audio models. |
-| `SKIP_PREFLIGHT` | unset | Bypass the multimodal capability probe (see below). |
+| `SKIP_PREFLIGHT` | unset | Bypass the multimodal capability probe (see below). The probe predates `input_modalities` on `/v1/models`, which answers the same question without a round-trip. |
+
+### Capability reporting and pre-flight
+
+A model states what it will read on `GET /v1/models`:
+
+```json
+{ "id": "llm", "object": "model", "type": "text-generation",
+  "input_modalities": ["text", "image"] }
+```
+
+`input_modalities` is omitted when the entry reads text alone — that is the
+assumption every OpenAI client already makes. Note what it is *not*: a VLM's `type`
+stays `text-generation`, because modality decides what a model accepts, not which
+endpoint it belongs on.
+
+Where the answer comes from depends on the backend, and neither guesses from the
+model id:
+
+| Backend | Source |
+| --- | --- |
+| llama.cpp | the loaded projector itself — `mtmd_support_vision` / `mtmd_support_audio` via `MtmdContext.supportsVision()`/`supportsAudio()`. This is what separates a VLM from an ALM: both load from an `mmproj` sidecar that looks identical from outside. |
+| vLLM | the checkpoint's `config.json` — a `vision_config` block means images, an `audio_config` block means audio (`CheckpointModalities`). `VllmModelResolver` guarantees the file is on disk, so it costs one JSON parse at load. |
+| `remote_*`, or vLLM with no locally-resolved directory | nothing to interrogate — text-only is assumed and a warning is logged. Declare `modalities:` to correct it. |
+
+A pipeline inherits the modalities of the model behind its `role: output` step,
+since that is the model any attachment ends up being decoded by.
+
+Attaching media a target cannot read is now refused up front:
+
+```json
+{ "error": { "message": "The model `llm` does not accept image input (accepts: text)",
+             "type": "invalid_request_error", "param": "messages",
+             "code": "unsupported_modality" } }
+```
+
+That check (`HandlerSupport.requireSupportedModalities`) runs on
+`/v1/chat/completions` and `/v1/responses` after the model resolves. It replaces the
+old failure mode, where an image sent to a text-only llama.cpp model was dropped
+without comment and the reply simply read as though the model had seen nothing.
+
+To override detection — a `remote_*` proxy, or a checkpoint whose config does not
+declare its encoders in the usual place — declare it on the model or the pipeline:
+
+```yaml
+models:
+  - id: llm
+    type: remote_llm
+    server: vision-server
+    modalities: [text, image]
+```
 
 ## Supported formats
 
@@ -129,7 +179,7 @@ sending; the removed proto enum numbers are `reserved` and will not be recycled.
 
 ## Notes
 - **Remote URLs are rejected**: `extractBase64Data` throws `IllegalArgumentException` ("Remote image URLs are not supported; provide the image as base64-encoded data or a data URL"), surfaced as HTTP 400 `invalid_request_error`. Bare base64 (no `data:` prefix) is accepted; invalid base64 is a 400 too.
-- **No mmproj → media silently ignored** on llama.cpp: `mediaMarker()` returns `null`, no markers are injected, and attachments are dropped without error. If a VLM answers as if it saw no image, check `mmproj_path`.
+- **No mmproj → the request is refused**, not silently degraded. Without a projector the model reports `["text"]`, so the HTTP pre-flight answers `400 unsupported_modality` before the engine sees it. Past that gate — over gRPC, or from a pipeline step — the old behaviour still applies: `mediaMarker()` returns `null`, no markers are injected, and attachments are dropped without error. If a VLM answers as if it saw no image, check `mmproj_path`.
 - **vLLM** (`VllmTextGenEngine`) also forwards media: the vLLM `EngineAdapter` builds `MultiModalData` from image/audio attachments (base64 decode failures are logged and skipped, not thrown). It uses no marker injection — the model's own chat template handles placement. There is also **no `mmproj_path` to configure**: the vision tower ships inside the checkpoint, so binding the logical `llm` id to a VLM repo is the whole change. See `examples/vllm/qwen3-vl-2b.yaml`, and `gemma4-12b.yaml` / `gemma4-26b.yaml`, which are vision models despite their names. Note that image tokens are charged against `max_model_len` — a single 1024x1024 image is worth well over a thousand of them — and that the VRAM pre-flight widens its safety margin automatically when it sees a `vision_config` in the checkpoint.
 
   > The vLLM media path is **not yet verified end-to-end**: it is wired and reviewed, but the vision integration suite requires CUDA (vllm-metal does not forward image data), so it has only been exercised on the llama.cpp backend.

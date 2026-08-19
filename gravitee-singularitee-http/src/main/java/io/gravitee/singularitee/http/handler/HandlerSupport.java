@@ -18,6 +18,8 @@ package io.gravitee.singularitee.http.handler;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.gravitee.singularitee.http.json.JsonResponses;
 import io.gravitee.singularitee.http.json.Utils;
+import io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver.Resolution;
+import io.gravitee.singularitee.http.resolve.RequestModalities;
 import io.gravitee.singularitee.http.validation.PayloadValidator;
 import io.gravitee.singularitee.http.validation.SchemaName;
 import io.gravitee.singularitee.registry.ModelRegistry;
@@ -100,6 +102,45 @@ public final class HandlerSupport {
       "model",
       "model_not_found"
     );
+  }
+
+  /**
+   * Rejects a request that attaches media the target cannot read.
+   *
+   * <p>Without this the mismatch surfaces from deep inside the engine — a marker
+   * count that does not match the attached bitmaps, or a tokenizer that never saw a
+   * media token — which tells the caller nothing about what to change. Checked
+   * after resolution so the answer names the modality and the resolved target.
+   *
+   * @param param the payload field carrying the conversation ({@code messages} or {@code input})
+   * @return {@code true} when the request may proceed
+   */
+  public static boolean requireSupportedModalities(
+    RoutingContext rc,
+    JsonNode payload,
+    Resolution res,
+    String param
+  ) {
+    for (String modality : RequestModalities.of(payload)) {
+      if (!res.accepts(modality)) {
+        JsonResponses.writeError(
+          rc,
+          400,
+          "The model `" +
+            res.modelName() +
+            "` does not accept " +
+            modality +
+            " input (accepts: " +
+            String.join(", ", res.acceptedModalities()) +
+            ")",
+          "invalid_request_error",
+          param,
+          "unsupported_modality"
+        );
+        return false;
+      }
+    }
+    return true;
   }
 
   public static void badRequest(RoutingContext rc, String message, String param) {

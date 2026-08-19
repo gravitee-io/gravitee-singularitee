@@ -15,6 +15,7 @@
  */
 package io.gravitee.singularitee.registry;
 
+import io.gravitee.singularitee.engine.Modalities;
 import io.gravitee.singularitee.protocol.Pipeline;
 import io.gravitee.singularitee.protocol.PipelineStatus;
 import io.gravitee.singularitee.protocol.StepRole;
@@ -71,9 +72,18 @@ public final class PipelineRegistry {
       ? pipeline.getPipelineId()
       : java.util.UUID.randomUUID().toString();
 
-    Pipeline published = pipeline.getTask().isBlank()
-      ? pipeline.toBuilder().setTask(deriveTask(pipeline)).build()
-      : pipeline;
+    var builder = pipeline.toBuilder();
+    if (pipeline.getTask().isBlank()) {
+      builder.setTask(outputModel(pipeline).map(ModelRegistry.ModelEntry::task).orElse(""));
+    }
+    if (pipeline.getInputModalitiesCount() == 0) {
+      builder.addAllInputModalities(
+        outputModel(pipeline)
+          .map(ModelRegistry.ModelEntry::inputModalities)
+          .orElse(Modalities.TEXT_ONLY)
+      );
+    }
+    Pipeline published = builder.build();
 
     if (
       pipelines.putIfAbsent(
@@ -114,20 +124,23 @@ public final class PipelineRegistry {
   // ---------------------------------------------------------------------------
 
   /**
-   * Infers the task slug a pipeline exposes from the model behind its output step.
+   * Resolves the model behind a pipeline's output step — the one that decides both
+   * what the pipeline is (its task) and what it can be fed (its modalities).
    *
    * <p>A pipeline's public surface is the surface of whatever produces its answer:
    * a pipeline ending in a text-gen model is a text-generation endpoint no matter
-   * how many guards and routers precede it. So the derivation asks the engine
-   * rather than the step type — only the engine can tell sequence-level
-   * classification from token-level.
+   * how many guards and routers precede it, and it can read an image exactly when
+   * that model can. So both derivations ask the engine rather than the step type —
+   * only the engine can tell sequence-level classification from token-level, or a
+   * loaded vision projector from an audio one.
    *
    * <p>Falls back to the entry step when no step claims {@code role: output}, and
-   * to an empty slug when nothing resolves. Empty is the honest answer: a caller
-   * that cannot tell which endpoint a pipeline belongs on is better served by no
-   * label than by a guess.
+   * to nothing when the step names no model. Empty is the honest answer for the
+   * task: a caller that cannot tell which endpoint a pipeline belongs on is better
+   * served by no label than by a guess. Modalities fall back to text-only instead,
+   * which is what a pipeline with no model in front can actually accept.
    */
-  private String deriveTask(Pipeline pipeline) {
+  private java.util.Optional<ModelRegistry.ModelEntry> outputModel(Pipeline pipeline) {
     var outputStep = pipeline
       .getStepsList()
       .stream()
@@ -144,9 +157,7 @@ public final class PipelineRegistry {
     return outputStep
       .map(PipelineRegistry::extractModelId)
       .filter(id -> id != null && !id.isBlank())
-      .flatMap(id -> modelRegistry.get(id))
-      .map(ModelRegistry.ModelEntry::task)
-      .orElse("");
+      .flatMap(id -> modelRegistry.get(id));
   }
 
   private void validateModelReferences(Pipeline pipeline) {

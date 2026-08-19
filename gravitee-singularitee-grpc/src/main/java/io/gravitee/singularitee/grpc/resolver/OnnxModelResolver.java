@@ -166,7 +166,8 @@ public final class OnnxModelResolver {
           null,
           exclude,
           request.task(),
-          request.visible()
+          request.visible(),
+          request.modalities()
         );
       }
     );
@@ -222,7 +223,8 @@ public final class OnnxModelResolver {
           null,
           exclude,
           request.task(),
-          request.visible()
+          request.visible(),
+          request.modalities()
         );
       }
     );
@@ -278,7 +280,8 @@ public final class OnnxModelResolver {
           null,
           exclude,
           request.task(),
-          request.visible()
+          request.visible(),
+          request.modalities()
         );
       }
     );

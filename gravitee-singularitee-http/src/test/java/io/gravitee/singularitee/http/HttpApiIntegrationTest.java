@@ -97,6 +97,7 @@ class HttpApiIntegrationTest {
 
     ModelRegistry modelRegistry = new ModelRegistry();
     modelRegistry.register("llm", "LLM", new FakeTextGenEngine(), token -> {});
+    modelRegistry.register("vlm", "VLM", new FakeVisionEngine(), token -> {});
     modelRegistry.register(
       "internal-llm",
       "Internal LLM",
@@ -141,6 +142,14 @@ class HttpApiIntegrationTest {
               .setModelId("llm")
               .setModelName("LLM")
               .setTask("text-generation")
+              .addInputModalities("text")
+          )
+          .addModels(
+            GetModelResponse.newBuilder()
+              .setModelId("vlm")
+              .setModelName("VLM")
+              .setTask("text-generation")
+              .addAllInputModalities(java.util.List.of("text", "image"))
           )
           .build()
       )
@@ -329,6 +338,51 @@ class HttpApiIntegrationTest {
   }
 
   @Test
+  void imageSentToATextOnlyModelIsRejected() throws Exception {
+    Resp r = post("/v1/chat/completions", IMAGE_REQUEST.replace("$MODEL", "llm"));
+    assertThat(r.status()).isEqualTo(400);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/error/code").asText()).isEqualTo("unsupported_modality");
+    assertThat(n.at("/error/param").asText()).isEqualTo("messages");
+    assertThat(n.at("/error/message").asText()).contains("does not accept image input");
+  }
+
+  @Test
+  void imageSentToAVisionModelIsAccepted() throws Exception {
+    Resp r = post("/v1/chat/completions", IMAGE_REQUEST.replace("$MODEL", "vlm"));
+    assertThat(r.status()).isEqualTo(200);
+  }
+
+  @Test
+  void audioSentToAVisionOnlyModelIsRejected() throws Exception {
+    String body =
+      "{\"model\":\"vlm\",\"messages\":[{\"role\":\"user\",\"content\":[" +
+      "{\"type\":\"input_audio\",\"input_audio\":{\"data\":\"AAA\",\"format\":\"wav\"}}]}]}";
+    Resp r = post("/v1/chat/completions", body);
+    assertThat(r.status()).isEqualTo(400);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/error/code").asText()).isEqualTo("unsupported_modality");
+    assertThat(n.at("/error/message").asText()).contains("accepts: text, image");
+  }
+
+  @Test
+  void listingCarriesInputModalitiesOnlyBeyondText() throws Exception {
+    JsonNode n = mapper.readTree(get("/v1/models").body());
+    var entries = n.at("/data");
+    JsonNode textOnly = null;
+    JsonNode vision = null;
+    for (JsonNode e : entries) {
+      if (e.at("/id").asText().equals("llm")) textOnly = e;
+      if (e.at("/id").asText().equals("vlm")) vision = e;
+    }
+    assertThat(textOnly).isNotNull();
+    assertThat(textOnly.has("input_modalities")).isFalse();
+    assertThat(vision).isNotNull();
+    assertThat(vision.at("/input_modalities/0").asText()).isEqualTo("text");
+    assertThat(vision.at("/input_modalities/1").asText()).isEqualTo("image");
+  }
+
+  @Test
   void hiddenModelIsNotAnEndpoint() throws Exception {
     Resp r = post(
       "/v1/chat/completions",
@@ -375,6 +429,11 @@ class HttpApiIntegrationTest {
   }
 
   // ── helpers ──
+
+  private static final String IMAGE_REQUEST =
+    "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":[" +
+    "{\"type\":\"text\",\"text\":\"what is this\"}," +
+    "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,AAA\"}}]}]}";
 
   private record Resp(int status, String body) {}
 
@@ -428,7 +487,16 @@ class HttpApiIntegrationTest {
       .build();
   }
 
-  private static final class FakeTextGenEngine implements TextGenEngine {
+  /** A text-gen engine that also reads images, i.e. what a loaded vision projector looks like. */
+  private static final class FakeVisionEngine extends FakeTextGenEngine {
+
+    @Override
+    public java.util.List<String> inputModalities() {
+      return java.util.List.of("text", "image");
+    }
+  }
+
+  private static sealed class FakeTextGenEngine implements TextGenEngine permits FakeVisionEngine {
 
     @Override
     public ModelEngineType type() {

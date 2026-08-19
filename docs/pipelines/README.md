@@ -91,6 +91,7 @@ grpcurl -plaintext -d '{"pipeline_id":"toxicity-guard-pipeline","prompt":"Hello 
 | `steps` | required | The step list; edges come from each step's `next_step` / routing config. |
 | `task` | derived | Task slug advertised on `/v1/models`; derived from the output step's model when unset. |
 | `visible` | `true` | `false` keeps the pipeline out of the catalogue — see [Workspaces](../workspaces/README.md). |
+| `modalities` | derived | Input modalities accepted; derived from the output step's model when unset. |
 | `server` | — | Remote endpoint id: declares this pipeline as a proxy to one on another server. |
 
 ### Step envelope (every step)

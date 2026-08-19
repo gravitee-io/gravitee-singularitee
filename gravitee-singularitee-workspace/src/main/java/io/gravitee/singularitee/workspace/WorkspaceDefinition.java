@@ -187,6 +187,12 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
    * engine; declaring it matters when a model is repurposed for a surface its
    * engine cannot infer on its own.
    *
+   * <p>{@code modalities:} overrides what the model is advertised as accepting
+   * ({@code text}, {@code image}, {@code audio}). Left unset, the backend is asked —
+   * llama.cpp interrogates the loaded projector, vLLM reads the checkpoint's
+   * {@code config.json}. Declare it when detection cannot run, e.g. a vLLM model
+   * whose weights were never resolved locally, or a {@code remote_*} proxy.
+   *
    * <p>{@code visible:} controls catalogue membership, per model. {@code false}
    * drops it from the listings and from the OpenAI HTTP surface while leaving it
    * callable as a pipeline dependency — the way to publish a pipeline without
@@ -200,6 +206,7 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
     @JsonProperty("server") String server,
     @JsonProperty("task") String task,
     @JsonProperty("visible") Boolean visible,
+    @JsonProperty("modalities") List<String> modalities,
     @JsonProperty("memory_check") String memoryCheck,
     @JsonProperty("download") DownloadDef download,
     @JsonProperty("llama_cpp") LlamaCppDef llamaCpp,
@@ -449,6 +456,7 @@ public record WorkspaceDefinition(@JsonProperty("workspace") WorkspaceRoot works
     @JsonProperty("entry") String entry,
     @JsonProperty("task") String task,
     @JsonProperty("visible") Boolean visible,
+    @JsonProperty("modalities") List<String> modalities,
     @JsonProperty("steps") List<StepDefinition> steps,
     @JsonProperty("remote") RemoteProxyDef remote
   ) {

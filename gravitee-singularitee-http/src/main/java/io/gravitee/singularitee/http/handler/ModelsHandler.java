@@ -87,7 +87,10 @@ public final class ModelsHandler {
           notFound(rc, id);
           return;
         }
-        JsonResponses.writeJson(rc, modelNode(m.getModelId(), m.getTask()));
+        JsonResponses.writeJson(
+          rc,
+          modelNode(m.getModelId(), m.getTask(), m.getInputModalitiesList())
+        );
       })
       .onFailure(err -> {
         if (!exposePipelines) {
@@ -103,7 +106,11 @@ public final class ModelsHandler {
             }
             JsonResponses.writeJson(
               rc,
-              modelNode(p.getPipeline().getPipelineId(), p.getPipeline().getTask())
+              modelNode(
+                p.getPipeline().getPipelineId(),
+                p.getPipeline().getTask(),
+                p.getPipeline().getInputModalitiesList()
+              )
             );
           })
           .onFailure(e2 -> notFound(rc, id));
@@ -115,24 +122,41 @@ public final class ModelsHandler {
     root.put("object", "list");
     ArrayNode data = root.putArray("data");
     for (var m : ml.getModelsList()) {
-      data.add(modelNode(m.getModelId(), m.getTask()));
+      data.add(modelNode(m.getModelId(), m.getTask(), m.getInputModalitiesList()));
     }
     if (pl != null) {
       for (var p : pl.getPipelinesList()) {
-        data.add(modelNode(p.getPipeline().getPipelineId(), p.getPipeline().getTask()));
+        data.add(
+          modelNode(
+            p.getPipeline().getPipelineId(),
+            p.getPipeline().getTask(),
+            p.getPipeline().getInputModalitiesList()
+          )
+        );
       }
     }
     return root;
   }
 
-  private ObjectNode modelNode(String id, String type) {
+  /**
+   * Renders one catalogue entry.
+   *
+   * <p>{@code input_modalities} is emitted only when the entry reads more than text:
+   * text-only is the overwhelming majority and the assumption every OpenAI client
+   * already makes, so listing it on every entry would be noise that says nothing.
+   */
+  private ObjectNode modelNode(String id, String task, java.util.List<String> inputModalities) {
     ObjectNode node = Utils.OBJECT_MAPPER.get().createObjectNode();
     node.put("id", id);
     node.put("object", "model");
     node.put("created", created);
     node.put("owned_by", OWNER);
-    if (type != null && !type.isBlank()) {
-      node.put("type", type);
+    if (task != null && !task.isBlank()) {
+      node.put("type", task);
+    }
+    if (inputModalities.size() > 1) {
+      ArrayNode modalities = node.putArray("input_modalities");
+      inputModalities.forEach(modalities::add);
     }
     return node;
   }

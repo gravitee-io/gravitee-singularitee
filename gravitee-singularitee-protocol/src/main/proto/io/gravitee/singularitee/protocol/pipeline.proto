@@ -104,6 +104,13 @@ message Pipeline {
   // Stated negatively so that proto3's false default means "published" — a
   // pipeline built in code, without a workspace, is listed like any other.
   bool hidden          = 8;
+  // What this pipeline accepts as input, in the same vocabulary as
+  // GetModelResponse.input_modalities. Declared in the workspace as `modalities:`;
+  // otherwise derived at registration from the model behind the output step, since
+  // that is the model any attached media has to be decoded by.
+  //
+  // Empty is read as text-only.
+  repeated string input_modalities = 9;
 }
 
 // ---------------------------------------------------------------------------

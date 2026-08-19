@@ -32,7 +32,7 @@ fail-fast connect, Fibonacci-backoff retries, TLS, and HTTP Basic auth.
 
 | RPC | Request | Response |
 | --- | --- | --- |
-| `GetModel` | `GetModelRequest { model_id }` | `GetModelResponse { model_id, model_name, model_type, status, chat_template, bos_token, eos_token, task, hidden }` |
+| `GetModel` | `GetModelRequest { model_id }` | `GetModelResponse { model_id, model_name, model_type, status, chat_template, bos_token, eos_token, task, hidden, input_modalities }` |
 | `ListModels` | `ListModelsRequest {}` | `ListModelsResponse { repeated GetModelResponse models }` |
 
 `model_type` distinguishes engines (`MODEL_TYPE_LLAMA_CPP`, `MODEL_TYPE_VLLM`,
@@ -43,6 +43,11 @@ fail-fast connect, Fibonacci-backoff retries, TLS, and HTTP Basic auth.
 `feature-extraction`, `reranking`) — the workspace's `task:` when it declared one,
 the engine's own answer otherwise.
 
+`input_modalities` is what the model accepts as input — always `text`, plus `image`
+and/or `audio` when a projector able to decode them is loaded. Empty reads as
+text-only. It is separate from `task` because a vision-language model and a
+text-only one are both `text-generation`, differing only in what they will read.
+
 `hidden` marks a model the workspace published with `visible: false`. `ListModels`
 omits those entirely; `GetModel` still answers for them, which is what keeps a
 hidden model usable as another server's `remote_*` backing — the OpenAI HTTP
@@ -52,7 +57,7 @@ surface is where hiding turns into a refusal.
 
 | RPC | Request | Response |
 | --- | --- | --- |
-| `GetPipeline` | `GetPipelineRequest { pipeline_id }` | `GetPipelineResponse { Pipeline pipeline, PipelineStatus status }` — `Pipeline` carries `task` and `hidden` alongside its steps |
+| `GetPipeline` | `GetPipelineRequest { pipeline_id }` | `GetPipelineResponse { Pipeline pipeline, PipelineStatus status }` — `Pipeline` carries `task`, `hidden` and `input_modalities` alongside its steps |
 | `ListPipelines` | `ListPipelinesRequest {}` | `ListPipelinesResponse { repeated GetPipelineResponse pipelines }` |
 
 `Pipeline` carries the full DAG: `entry_step_id`, `repeated PipelineStep steps` (each a oneof of

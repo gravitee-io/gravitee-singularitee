@@ -82,6 +82,22 @@ surface it serves, not by whether one model or a guarded, routed DAG produced th
 answer. A pipeline reads as anything else only if its workspace says so, by
 declaring `task:` outright. When no task can be determined the field is omitted.
 
+`input_modalities` lists what the entry will read — `["text","image"]` for a vision
+model — and is omitted for the text-only majority. It is deliberately separate from
+`type`: a VLM is still `text-generation` and still belongs on `/chat/completions`;
+modality says what you may attach, not where to send it.
+
+Attaching media the target cannot read is refused before inference, on
+`/v1/chat/completions` and `/v1/responses`:
+
+```json
+{ "error": { "message": "The model `llm` does not accept image input (accepts: text)",
+             "type": "invalid_request_error", "param": "messages",
+             "code": "unsupported_modality" } }
+```
+
+See [Multimodal](../multimodal/README.md) for where each backend's answer comes from.
+
 ### curl
 
 ```bash

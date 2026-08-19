@@ -317,7 +317,11 @@ public final class YamlWorkspaceLoader {
     return modelType
       .toModelLoadRequest(modelId, modelName, modelPath, policy, m)
       .withDownloadExclude(downloadExclude(m))
-      .withPublication(m.task() == null ? "" : m.task(), m.isVisible());
+      .withPublication(
+        m.task() == null ? "" : m.task(),
+        m.isVisible(),
+        m.modalities() == null ? List.of() : m.modalities()
+      );
   }
 
   /**
@@ -406,6 +410,7 @@ public final class YamlWorkspaceLoader {
       .addSteps(step)
       .setTask(p.task() == null ? "" : p.task())
       .setHidden(!p.isVisible())
+      .addAllInputModalities(p.modalities() == null ? List.of() : p.modalities())
       .build();
   }
 
@@ -422,6 +427,7 @@ public final class YamlWorkspaceLoader {
     if (p.entry() != null) pipelineBuilder.setEntryStepId(p.entry());
     if (p.task() != null && !p.task().isBlank()) pipelineBuilder.setTask(p.task());
     pipelineBuilder.setHidden(!p.isVisible());
+    if (p.modalities() != null) pipelineBuilder.addAllInputModalities(p.modalities());
 
     if (p.steps() != null) {
       for (StepDefinition s : p.steps()) {
