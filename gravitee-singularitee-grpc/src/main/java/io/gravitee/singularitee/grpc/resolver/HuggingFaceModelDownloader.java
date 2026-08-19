@@ -596,9 +596,21 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
    * failed permanently and cancelled this one mid-flight) are dropped instead of reaching
    * {@code RxJavaPlugins.onError} as uncaught exceptions.
    */
+  /**
+   * Wraps a chain so disposal swallows late errors instead of leaking them to
+   * RxJava's global error handler. When a sibling chunk fails fast, the merge
+   * disposes its peers; a peer's in-flight error then has no subscriber and would
+   * normally reach {@link io.reactivex.rxjava3.plugins.RxJavaPlugins#getErrorHandler()}.
+   * This wrapper catches those late errors and completes silently.
+   */
   private static Completable detachOnDispose(Completable chain) {
     return Completable.create(emitter -> {
-      var disposable = chain.subscribe(emitter::onComplete, emitter::tryOnError);
+      var disposable = chain.subscribe(emitter::onComplete, err -> {
+        if (!emitter.isDisposed()) {
+          emitter.onError(err);
+        }
+        // else: disposal raced with the error, swallow it silently
+      });
       emitter.setCancellable(disposable::dispose);
     });
   }
