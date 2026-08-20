@@ -67,6 +67,9 @@ public final class ChatCompletionsHandler implements Handler<RoutingContext> {
       return;
     }
     Resolution res = resolution.get();
+    if (!HandlerSupport.requireSupportedModalities(rc, payload, res, "messages")) {
+      return;
+    }
 
     boolean stream = payload.at("/stream").asBoolean(false);
     var toolSchemas = InferenceResponseFormatter.toolParameterSchemas(payload.at("/tools"));

@@ -72,10 +72,28 @@ public record ModelLoadRequest(
    *
    * @see WorkspaceDefinition.DownloadDef
    */
-  List<String> downloadExclude
+  List<String> downloadExclude,
+  /**
+   * Task slug declared by {@code task:} in the workspace, overriding the one the
+   * engine reports for itself. Empty means "ask the engine".
+   */
+  String task,
+  /**
+   * Whether the model joins the public catalogue. {@code false} keeps it out of
+   * the listings and off the OpenAI HTTP surface while leaving it callable as a
+   * pipeline dependency.
+   */
+  boolean visible,
+  /**
+   * Input modalities declared by {@code modalities:} in the workspace, overriding
+   * what the backend reports. Empty means "ask the engine".
+   */
+  List<String> modalities
 ) {
   public ModelLoadRequest {
     downloadExclude = downloadExclude == null ? List.of() : List.copyOf(downloadExclude);
+    task = task == null ? "" : task;
+    modalities = modalities == null ? List.of() : List.copyOf(modalities);
   }
 
   /**
@@ -115,6 +133,9 @@ public record ModelLoadRequest(
       onnxReranker,
       llamaCppEmbedding,
       llamaCppReranker,
+      List.of(),
+      "",
+      true,
       List.of()
     );
   }
@@ -135,7 +156,41 @@ public record ModelLoadRequest(
       onnxReranker,
       llamaCppEmbedding,
       llamaCppReranker,
-      exclude
+      exclude,
+      task,
+      visible,
+      modalities
+    );
+  }
+
+  /**
+   * Returns a copy of this request carrying the workspace's publication metadata —
+   * the declared task override and catalogue visibility.
+   *
+   * <p>Applied by {@link YamlWorkspaceLoader} for the same reason as
+   * {@link #withDownloadExclude(List)}: both are model-level and mean the same
+   * thing for every engine, so neither is threaded through the {@link ModelType}
+   * branches.
+   */
+  public ModelLoadRequest withPublication(String task, boolean visible, List<String> modalities) {
+    return new ModelLoadRequest(
+      modelId,
+      modelName,
+      modelPath,
+      memoryCheckPolicy,
+      llamaCppConfig,
+      vllmConfig,
+      onnxClassifier,
+      onnxEmbedding,
+      glinerClassifier,
+      glinerNer,
+      onnxReranker,
+      llamaCppEmbedding,
+      llamaCppReranker,
+      downloadExclude,
+      task,
+      visible,
+      modalities
     );
   }
 

@@ -55,14 +55,27 @@ public final class VllmTextGenEngine
 
   private volatile List<String> specialTokens;
 
-  VllmTextGenEngine(BatchEngine delegate) {
+  /**
+   * What the checkpoint accepts as input, read from its {@code config.json} at
+   * construction. Fixed for the life of the engine — the weights do not change
+   * underneath it — so it is resolved once rather than per request.
+   */
+  private final List<String> inputModalities;
+
+  VllmTextGenEngine(BatchEngine delegate, List<String> inputModalities) {
     super(delegate);
     this.delegate = delegate;
+    this.inputModalities = inputModalities;
   }
 
   @Override
   public ModelEngineType type() {
     return ModelEngineType.TEXT_GEN;
+  }
+
+  @Override
+  public List<String> inputModalities() {
+    return inputModalities;
   }
 
   @Override

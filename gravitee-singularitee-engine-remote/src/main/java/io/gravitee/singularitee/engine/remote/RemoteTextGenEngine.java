@@ -24,6 +24,7 @@ import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.processors.FlowableProcessor;
 import io.reactivex.rxjava3.processors.UnicastProcessor;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -50,6 +51,15 @@ public final class RemoteTextGenEngine implements TextGenEngine {
   private volatile String chatTemplate;
   private volatile String bosToken;
   private volatile String eosToken;
+
+  /**
+   * What the backend behind the proxy reads, as reported by {@code GetModel}.
+   * Text-only until the probe answers; a workspace {@code modalities:} declaration
+   * on the proxy entry overrides this at the registry, so the probe is only the
+   * default — the thing that makes a proxy over a VLM advertise images without
+   * anyone having to say so.
+   */
+  private volatile List<String> inputModalities = Modalities.TEXT_ONLY;
 
   /**
    * Whether the chat-template metadata is final. True when the caller supplied
@@ -98,12 +108,41 @@ public final class RemoteTextGenEngine implements TextGenEngine {
     String bosToken,
     String eosToken
   ) {
+    this(client, modelId, chatTemplate, bosToken, eosToken, Modalities.TEXT_ONLY);
+  }
+
+  /**
+   * Creates an engine with caller-supplied chat-template metadata and the input
+   * modalities the caller already read off {@code GetModel}. No remote probe is
+   * ever made.
+   */
+  public RemoteTextGenEngine(
+    SingulariteeClient client,
+    String modelId,
+    String chatTemplate,
+    String bosToken,
+    String eosToken,
+    List<String> inputModalities
+  ) {
     this.client = client;
     this.modelId = modelId;
     this.chatTemplate = chatTemplate;
     this.bosToken = bosToken != null ? bosToken : "";
     this.eosToken = eosToken != null ? eosToken : "";
+    this.inputModalities = inputModalities == null || inputModalities.isEmpty()
+      ? Modalities.TEXT_ONLY
+      : List.copyOf(inputModalities);
     this.metadataLoaded = true;
+  }
+
+  @Override
+  public List<String> inputModalities() {
+    if (!metadataLoaded) {
+      // Listing the catalogue is as good a trigger as a request: the probe that
+      // fetches the template also answers what the backend reads.
+      fetchMetadataAsync();
+    }
+    return inputModalities;
   }
 
   @Override
@@ -147,6 +186,9 @@ public final class RemoteTextGenEngine implements TextGenEngine {
           // they never observe a template paired with stale special tokens.
           bosToken = info.getBosToken() != null ? info.getBosToken() : "";
           eosToken = info.getEosToken() != null ? info.getEosToken() : "";
+          if (info.getInputModalitiesCount() > 0) {
+            inputModalities = List.copyOf(info.getInputModalitiesList());
+          }
           if (template != null && !template.isEmpty()) {
             chatTemplate = template;
             metadataLoaded = true;

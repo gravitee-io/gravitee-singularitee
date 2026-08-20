@@ -275,6 +275,10 @@ public final class YamlWorkspaceLoader {
     List<ClientLocalModelData> clientLocal = new ArrayList<>();
 
     for (ModelDefinition m : root.models()) {
+      // Outside the try: a bad task or modality slug fails the workspace rather than
+      // quietly dropping the model, since the value is what callers route on.
+      Publication.validatedTask(m.id(), m.task());
+      Publication.validatedModalities(m.id(), m.modalities());
       try {
         ModelType modelType = ModelType.parse(m.type() == null ? "" : m.type());
         if (modelType.isRemote()) {
@@ -316,7 +320,12 @@ public final class YamlWorkspaceLoader {
     ModelType modelType = ModelType.parse(m.type() == null ? "" : m.type());
     return modelType
       .toModelLoadRequest(modelId, modelName, modelPath, policy, m)
-      .withDownloadExclude(downloadExclude(m));
+      .withDownloadExclude(downloadExclude(m))
+      .withPublication(
+        Publication.validatedTask(m.id(), m.task()),
+        m.isVisible(),
+        Publication.validatedModalities(m.id(), m.modalities())
+      );
   }
 
   /**
@@ -403,6 +412,9 @@ public final class YamlWorkspaceLoader {
       .setPipelineName(p.name() != null ? p.name() : p.id() + " (remote)")
       .setEntryStepId(stepId)
       .addSteps(step)
+      .setTask(Publication.validatedTask(p.id(), p.task()))
+      .setHidden(!p.isVisible())
+      .addAllInputModalities(Publication.validatedModalities(p.id(), p.modalities()))
       .build();
   }
 
@@ -417,6 +429,9 @@ public final class YamlWorkspaceLoader {
     if (p.id() != null && !p.id().isBlank()) pipelineBuilder.setPipelineId(p.id());
     if (p.name() != null) pipelineBuilder.setPipelineName(p.name());
     if (p.entry() != null) pipelineBuilder.setEntryStepId(p.entry());
+    pipelineBuilder.setTask(Publication.validatedTask(p.id(), p.task()));
+    pipelineBuilder.setHidden(!p.isVisible());
+    pipelineBuilder.addAllInputModalities(Publication.validatedModalities(p.id(), p.modalities()));
 
     if (p.steps() != null) {
       for (StepDefinition s : p.steps()) {

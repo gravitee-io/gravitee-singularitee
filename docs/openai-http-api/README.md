@@ -52,7 +52,7 @@ http:
 | `POST /v1/completions` | Legacy text completions |
 | `POST /v1/responses` | OpenAI Responses API (typed `response.*` SSE events) |
 | `POST /v1/embeddings` | Embeddings (`float` or `base64` encoding) |
-| `GET /v1/models`, `GET /v1/models/{id}` | List / get models (and pipelines when `expose-pipelines: true`) |
+| `GET /v1/models`, `GET /v1/models/{id}` | List / get published models (and pipelines when `expose-pipelines: true`) |
 | `POST /v1/classify` | Classification — fixed-label, token-level NER spans, or GLiNER zero-shot via `labels` *(Gravitee extension)* |
 | `POST /v1/rerank` | Cohere-style reranking *(Gravitee extension)* |
 | `POST /v1/similarity` | Text similarity, `cross` or `zipped` mode *(Gravitee extension)* |
@@ -66,6 +66,37 @@ The `model` field resolves in this order (model ids and pipeline ids are separat
 2. Otherwise, a registered model whose engine is a `TextGenEngine` wins (`Infer`).
 3. Otherwise, a bare pipeline id is the fallback.
 4. Unresolved → `400` with code `model_not_found`.
+
+Entries the workspace marked `visible: false` never resolve: they are absent from
+`/v1/models`, `404` on `/v1/models/{id}`, and answer `model_not_found` on every
+inference route — the same reply an id that was never declared gets. They stay
+callable as pipeline dependencies and over gRPC, so hiding a model is how you
+publish a pipeline without publishing the parts it is built from.
+
+### What `/v1/models` says an entry is
+`type` carries the entry's **task** — `text-generation`, `text-classification`,
+`token-classification`, `feature-extraction`, `reranking` — and pipelines are
+described the same way as models. A pipeline is not labelled as a pipeline: the
+field answers "which endpoint does this belong on", and that is settled by the
+surface it serves, not by whether one model or a guarded, routed DAG produced the
+answer. A pipeline reads as anything else only if its workspace says so, by
+declaring `task:` outright. When no task can be determined the field is omitted.
+
+`input_modalities` lists what the entry will read — `["text","image"]` for a vision
+model — and is omitted for the text-only majority. It is deliberately separate from
+`type`: a VLM is still `text-generation` and still belongs on `/chat/completions`;
+modality says what you may attach, not where to send it.
+
+Attaching media the target cannot read is refused before inference, on
+`/v1/chat/completions` and `/v1/responses`:
+
+```json
+{ "error": { "message": "The model `llm` does not accept image input (accepts: text)",
+             "type": "invalid_request_error", "param": "messages",
+             "code": "unsupported_modality" } }
+```
+
+See [Multimodal](../multimodal/README.md) for where each backend's answer comes from.
 
 ### curl
 
@@ -136,7 +167,7 @@ BASE_URL=http://localhost:8080/v1 API_KEY=sk-local-changeme uv run --with reques
 | `http.port` | `8080` | Listen port (independent of `grpc.port`). |
 | `http.host` | `0.0.0.0` | Bind address. |
 | `http.secured` / `http.ssl.*` | `false` / — | TLS; same structure as the `grpc.ssl` block (keystore, truststore, SNI, mTLS, hot-reload). |
-| `http.expose-pipelines` | `true` | List pipelines on `/v1/models` and accept pipeline ids as `model`. |
+| `http.expose-pipelines` | `true` | List pipelines on `/v1/models` and accept pipeline ids as `model`. Per-entry `visible: false` hides individually on top of this switch. |
 | `http.auth.enabled` | `false` | Bearer API-key auth. |
 | `http.auth.type` | `bearer` | Only `bearer` is supported (anything else fails startup). |
 | `http.auth.tokens` | — | YAML list of accepted API keys; empty list with auth enabled fails startup. |

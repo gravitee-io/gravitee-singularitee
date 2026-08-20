@@ -35,6 +35,7 @@ import io.gravitee.singularitee.protocol.EmbedBatchItem;
 import io.gravitee.singularitee.protocol.EmbedBatchResponse;
 import io.gravitee.singularitee.protocol.FinishReason;
 import io.gravitee.singularitee.protocol.FloatVector;
+import io.gravitee.singularitee.protocol.GetModelRequest;
 import io.gravitee.singularitee.protocol.GetModelResponse;
 import io.gravitee.singularitee.protocol.InferResponse;
 import io.gravitee.singularitee.protocol.ListModelsResponse;
@@ -96,6 +97,15 @@ class HttpApiIntegrationTest {
 
     ModelRegistry modelRegistry = new ModelRegistry();
     modelRegistry.register("llm", "LLM", new FakeTextGenEngine(), token -> {});
+    modelRegistry.register("vlm", "VLM", new FakeVisionEngine(), token -> {});
+    modelRegistry.register(
+      "internal-llm",
+      "Internal LLM",
+      new FakeTextGenEngine(),
+      token -> {},
+      "",
+      false
+    );
     PipelineRegistry pipelineRegistry = new PipelineRegistry(modelRegistry);
 
     // infer(req, ws): drive a thinking delta, two content deltas, then completion.
@@ -132,10 +142,31 @@ class HttpApiIntegrationTest {
               .setModelId("llm")
               .setModelName("LLM")
               .setTask("text-generation")
+              .addInputModalities("text")
+          )
+          .addModels(
+            GetModelResponse.newBuilder()
+              .setModelId("vlm")
+              .setModelName("VLM")
+              .setTask("text-generation")
+              .addAllInputModalities(java.util.List.of("text", "image"))
           )
           .build()
       )
     );
+    when(modelService.getModel(any())).thenAnswer(inv -> {
+      String id = ((GetModelRequest) inv.getArgument(0)).getModelId();
+      if (!id.equals("llm") && !id.equals("internal-llm")) {
+        return Future.failedFuture("Model not found: " + id);
+      }
+      return Future.succeededFuture(
+        GetModelResponse.newBuilder()
+          .setModelId(id)
+          .setTask("text-generation")
+          .setHidden(id.equals("internal-llm"))
+          .build()
+      );
+    });
     when(pipelineService.listPipelines(any())).thenReturn(
       Future.succeededFuture(ListPipelinesResponse.getDefaultInstance())
     );
@@ -307,6 +338,80 @@ class HttpApiIntegrationTest {
   }
 
   @Test
+  void imageSentToATextOnlyModelIsRejected() throws Exception {
+    Resp r = post("/v1/chat/completions", IMAGE_REQUEST.replace("$MODEL", "llm"));
+    assertThat(r.status()).isEqualTo(400);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/error/code").asText()).isEqualTo("unsupported_modality");
+    assertThat(n.at("/error/param").asText()).isEqualTo("messages");
+    assertThat(n.at("/error/message").asText()).contains("does not accept image input");
+  }
+
+  @Test
+  void imageSentToAVisionModelIsAccepted() throws Exception {
+    Resp r = post("/v1/chat/completions", IMAGE_REQUEST.replace("$MODEL", "vlm"));
+    assertThat(r.status()).isEqualTo(200);
+  }
+
+  @Test
+  void audioSentToAVisionOnlyModelIsRejected() throws Exception {
+    String body =
+      "{\"model\":\"vlm\",\"messages\":[{\"role\":\"user\",\"content\":[" +
+      "{\"type\":\"input_audio\",\"input_audio\":{\"data\":\"AAA\",\"format\":\"wav\"}}]}]}";
+    Resp r = post("/v1/chat/completions", body);
+    assertThat(r.status()).isEqualTo(400);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/error/code").asText()).isEqualTo("unsupported_modality");
+    assertThat(n.at("/error/message").asText()).contains("accepts: text, image");
+  }
+
+  @Test
+  void listingCarriesInputModalitiesOnlyBeyondText() throws Exception {
+    JsonNode n = mapper.readTree(get("/v1/models").body());
+    var entries = n.at("/data");
+    JsonNode textOnly = null;
+    JsonNode vision = null;
+    for (JsonNode e : entries) {
+      if (e.at("/id").asText().equals("llm")) textOnly = e;
+      if (e.at("/id").asText().equals("vlm")) vision = e;
+    }
+    assertThat(textOnly).isNotNull();
+    assertThat(textOnly.has("input_modalities")).isFalse();
+    assertThat(vision).isNotNull();
+    assertThat(vision.at("/input_modalities/0").asText()).isEqualTo("text");
+    assertThat(vision.at("/input_modalities/1").asText()).isEqualTo("image");
+  }
+
+  @Test
+  void hiddenModelIsNotAnEndpoint() throws Exception {
+    Resp r = post(
+      "/v1/chat/completions",
+      "{\"model\":\"internal-llm\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+    );
+    assertThat(r.status()).isEqualTo(400);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/error/code").asText()).isEqualTo("model_not_found");
+  }
+
+  @Test
+  void hiddenModelIsNotAnEndpointOnTheVectorRoutes() throws Exception {
+    Resp r = post("/v1/embeddings", "{\"model\":\"internal-llm\",\"input\":\"hello\"}");
+    assertThat(r.status()).isEqualTo(400);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/error/code").asText()).isEqualTo("model_not_found");
+  }
+
+  @Test
+  void hiddenModelIsNotRetrievableById() throws Exception {
+    assertThat(get("/v1/models/llm").status()).isEqualTo(200);
+
+    Resp r = get("/v1/models/internal-llm");
+    assertThat(r.status()).isEqualTo(404);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/error/code").asText()).isEqualTo("model_not_found");
+  }
+
+  @Test
   void missingModelReturns400() throws Exception {
     Resp r = post("/v1/chat/completions", "{\"messages\":[]}");
     assertThat(r.status()).isEqualTo(400);
@@ -324,6 +429,11 @@ class HttpApiIntegrationTest {
   }
 
   // ── helpers ──
+
+  private static final String IMAGE_REQUEST =
+    "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":[" +
+    "{\"type\":\"text\",\"text\":\"what is this\"}," +
+    "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,AAA\"}}]}]}";
 
   private record Resp(int status, String body) {}
 
@@ -377,7 +487,16 @@ class HttpApiIntegrationTest {
       .build();
   }
 
-  private static final class FakeTextGenEngine implements TextGenEngine {
+  /** A text-gen engine that also reads images, i.e. what a loaded vision projector looks like. */
+  private static final class FakeVisionEngine extends FakeTextGenEngine {
+
+    @Override
+    public java.util.List<String> inputModalities() {
+      return java.util.List.of("text", "image");
+    }
+  }
+
+  private static sealed class FakeTextGenEngine implements TextGenEngine permits FakeVisionEngine {
 
     @Override
     public ModelEngineType type() {

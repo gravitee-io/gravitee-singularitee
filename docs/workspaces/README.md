@@ -15,7 +15,7 @@ workspace binds to that id. Larger setups compose a workspace from shared fragme
 - `WorkspaceDefinition` / `WorkspaceRoot` — Jackson mapping of the document: `name`, `remote`, `models`, `pipelines`, `templates`, `includes` (unknown keys are ignored).
 - `YamlWorkspaceLoader` — parses the YAML, resolves includes and globs, builds the template registry, and validates step ids.
 - `ModelType` — enum of every `type:` string (parsed case-insensitively) and the builder that turns each config block into a model-load request.
-- `ModelDefinition` — one `models:` entry: `id`, `name`, `type`, optional `server`, `memory_check`, `download`, plus exactly one type-specific block.
+- `ModelDefinition` — one `models:` entry: `id`, `name`, `type`, optional `server`, `memory_check`, `download`, `task`, `visible`, plus exactly one type-specific block.
 - `RemoteConfig` / `RemoteEndpoint` — the `remote:` block: a `default` endpoint and/or named `servers` (`id`, `host`, `port`, optional `username`/`password`).
 - `TemplateDefinition` — a template entry: `id` plus `content` (inline Jinja2) *or* `file` (mutually exclusive).
 - `MemoryCheckPolicyType` — per-model GPU/RAM pre-load check: `fail`, `warn` (default), `disabled`.
@@ -154,6 +154,63 @@ workspace:
 | `server` | `default` endpoint | Remote endpoint id for `remote_*` models. |
 | `memory_check` | `warn` | Pre-load memory policy: `fail`, `warn`, or `disabled`. |
 | `download` | — | Narrows what gets pulled from HuggingFace — see below. |
+| `task` | engine's own | Overrides the task slug the model is advertised under. |
+| `visible` | `true` | `false` keeps the model out of the catalogue — see below. |
+| `modalities` | detected | Overrides the input modalities the model is advertised as accepting. |
+
+### `task`, `visible` and `modalities`
+
+All three say how a model or pipeline is *published*, and all three work the same on
+either.
+
+`task` is the slug callers route on — `text-generation`, `text-classification`,
+`token-classification`, `feature-extraction`, `reranking`; any other value (including
+a typo such as `text_generation`) fails the workspace at load. Models answer it from
+their engine, so declaring it is only needed when a model serves a surface its
+engine cannot infer. Pipelines have no engine to ask: an undeclared pipeline task
+is derived at registration from the model behind the `role: output` step (falling
+back to the entry step), which is why a guarded, routed pipeline over an LLM
+advertises itself as plain `text-generation`. Nothing is ever advertised as a
+"pipeline" — see [OpenAI HTTP API](../openai-http-api/README.md).
+
+`visible: false` takes an entry out of the catalogue: gone from `/v1/models` and
+from `ListModels` / `ListPipelines`, `404` by id, and `model_not_found` on every
+inference route. It stays reachable where composition needs it — as a pipeline's
+model, as a sub-pipeline, and over gRPC to another Singularitee. That is the
+point: publish the pipeline, hide the four models and two helper pipelines it is
+assembled from.
+
+```yaml
+models:
+  - id: llm                   # the pipeline's engine — not for direct calls
+    name: Qwen/Qwen3-0.6B-GGUF
+    type: llama_cpp
+    visible: false
+    llama_cpp: { path: Qwen3-0.6B-Q8_0.gguf }
+pipelines:
+  - id: assistant             # the one id clients see, advertised as text-generation
+    entry: generate
+    steps:
+      - id: generate
+        type: infer
+        role: output
+        config: { model_id: llm, output_field: generate.output }
+```
+
+`http.expose-pipelines: false` still hides *every* pipeline at once; `visible` is
+the per-entry switch on top of it.
+
+`modalities` lists what the entry accepts as input — `text`, `image`, `audio`.
+Leave it unset and the backend is asked: llama.cpp interrogates the loaded `mmproj`
+projector, vLLM reads `vision_config` / `audio_config` out of the checkpoint's
+`config.json`, a `remote_llm` proxy reads it off its `GetModel` probe, and a pipeline
+accepts the union of what its model-bound steps accept — media is decoded by
+whichever step feeds it to a model, not necessarily the output step.
+Declare it only where nothing can be interrogated — a `remote_*` proxy, or a vLLM
+model whose weights were never resolved to a local directory — because a model that
+under-reports will have its media requests refused with `unsupported_modality`. A
+multimodal model's `task` stays `text-generation`: modality says what it reads, not
+which endpoint it serves. See [Multimodal](../multimodal/README.md).
 
 ### `download` block
 

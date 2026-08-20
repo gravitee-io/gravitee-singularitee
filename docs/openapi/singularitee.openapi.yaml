@@ -922,7 +922,26 @@ components:
         owned_by: { type: string, const: gravitee }
         type:
           type: string
-          description: Non-standard — the model task, or `pipeline`.
+          description: >-
+            Non-standard — the task the entry serves (`text-generation`,
+            `text-classification`, `token-classification`, `feature-extraction`,
+            `reranking`). Pipelines are described by their task like any other
+            entry; omitted when the task cannot be determined.
+          enum:
+            - text-generation
+            - text-classification
+            - token-classification
+            - feature-extraction
+            - reranking
+        input_modalities:
+          type: array
+          description: >-
+            Non-standard — what the entry accepts as input. Absent when the entry
+            reads text alone. A multimodal model keeps `type: text-generation`;
+            this field says what may be attached, not which endpoint to call.
+          items:
+            type: string
+            enum: [text, image, audio]
 
     ModelList:
       type: object

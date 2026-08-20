@@ -77,6 +77,20 @@ public final class LlamaCppTextGenEngine
     return delegate.isMultimodal() ? delegate.mediaMarker() : null;
   }
 
+  /**
+   * Reports what the loaded {@code mmproj} projector can actually decode. A model
+   * with no projector reads text alone; one with a projector reads text plus
+   * whatever {@code mtmd} says it supports, which is how a VLM is told from an ALM
+   * without guessing from the model name.
+   */
+  @Override
+  public java.util.List<String> inputModalities() {
+    return io.gravitee.singularitee.engine.Modalities.of(
+      delegate.supportsVision(),
+      delegate.supportsAudio()
+    );
+  }
+
   @Override
   public int countTokens(String text) {
     return delegate.countTokens(text);

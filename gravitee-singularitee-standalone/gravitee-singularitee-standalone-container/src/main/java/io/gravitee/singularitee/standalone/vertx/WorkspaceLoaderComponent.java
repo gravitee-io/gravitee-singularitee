@@ -33,6 +33,7 @@ import io.gravitee.singularitee.workspace.WorkspaceDefinition;
 import io.gravitee.singularitee.workspace.YamlWorkspaceLoader;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -319,7 +320,10 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     modelService.registerPrebuiltModel(
       modelDef.id(),
       modelDef.name() != null ? modelDef.name() : modelDef.id(),
-      engine
+      engine,
+      modelDef.task() != null ? modelDef.task() : "",
+      modelDef.isVisible(),
+      modelDef.modalities() != null ? modelDef.modalities() : List.of()
     );
 
     LOGGER.info(

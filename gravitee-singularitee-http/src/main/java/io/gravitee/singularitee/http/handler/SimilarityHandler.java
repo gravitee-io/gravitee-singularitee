@@ -23,6 +23,7 @@ import io.gravitee.singularitee.http.json.Utils;
 import io.gravitee.singularitee.http.validation.SchemaName;
 import io.gravitee.singularitee.protocol.SimilarityMode;
 import io.gravitee.singularitee.protocol.TextSimilarityRequest;
+import io.gravitee.singularitee.registry.ModelRegistry;
 import io.gravitee.singularitee.service.GraviteeVectorServiceImpl;
 import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
@@ -32,9 +33,11 @@ import java.util.List;
 public final class SimilarityHandler implements Handler<RoutingContext> {
 
   private final GraviteeVectorServiceImpl vector;
+  private final ModelRegistry modelRegistry;
 
-  public SimilarityHandler(GraviteeVectorServiceImpl vector) {
+  public SimilarityHandler(GraviteeVectorServiceImpl vector, ModelRegistry modelRegistry) {
     this.vector = vector;
+    this.modelRegistry = modelRegistry;
   }
 
   @Override
@@ -43,7 +46,7 @@ public final class SimilarityHandler implements Handler<RoutingContext> {
     if (payload == null) {
       return;
     }
-    String model = HandlerSupport.requireModel(rc, payload);
+    String model = HandlerSupport.requireModel(rc, payload, modelRegistry);
     if (model == null) {
       return;
     }

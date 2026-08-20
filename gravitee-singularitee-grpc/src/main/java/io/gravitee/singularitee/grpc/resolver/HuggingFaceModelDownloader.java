@@ -46,6 +46,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 import org.slf4j.Logger;
@@ -534,6 +535,7 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
       )
       .flatMap(asyncFile -> {
         AtomicLong written = new AtomicLong();
+        AtomicReference<Throwable> firstFailure = new AtomicReference<>();
         long timerId = startProgress(label, written::get, total);
         // preallocate so every chunk writes within the file bounds
         return asyncFile
@@ -545,10 +547,13 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
                 long end = Math.min(total, start + chunkSize) - 1;
                 // detached both inside and around retryWhen: a late error can surface on
                 // either side of the resubscription boundary after fail-fast disposal
-                return detachOnDispose(
+                return firstFailureOnly(
                   detachOnDispose(
-                    downloadChunk(source.url(), start, end, asyncFile, written)
-                  ).retryWhen(errors -> backoff(errors, MAX_CHUNK_RETRIES))
+                    detachOnDispose(
+                      downloadChunk(source.url(), start, end, asyncFile, written)
+                    ).retryWhen(errors -> backoff(errors, MAX_CHUNK_RETRIES))
+                  ),
+                  firstFailure
                 );
               },
               false,
@@ -594,13 +599,33 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
   /**
    * Wraps a chunk chain so that errors arriving after fail-fast disposal (a sibling chunk
    * failed permanently and cancelled this one mid-flight) are dropped instead of reaching
-   * {@code RxJavaPlugins.onError} as uncaught exceptions.
+   * {@code RxJavaPlugins.onError} as uncaught exceptions. {@code tryOnError} is the
+   * atomic form: it swallows when already disposed without touching the plugin hook.
    */
   private static Completable detachOnDispose(Completable chain) {
     return Completable.create(emitter -> {
       var disposable = chain.subscribe(emitter::onComplete, emitter::tryOnError);
       emitter.setCancellable(disposable::dispose);
     });
+  }
+
+  /**
+   * Lets exactly one chunk failure through to the fail-fast merge and completes the rest.
+   *
+   * <p>{@link #detachOnDispose} only covers a chunk that is already disposed. A sibling
+   * whose error wins the race against the merge's own disposal is delivered normally,
+   * and a non-delaying {@code flatMapCompletable} that has already terminated hands
+   * that second error to the global error handler — which is downstream of any wrapper
+   * on the chunk itself. Collapsing to the first failure here means the merge never sees
+   * a second one; the first still aborts the download and triggers the fallback.
+   */
+  private static Completable firstFailureOnly(
+    Completable chain,
+    AtomicReference<Throwable> firstFailure
+  ) {
+    return chain.onErrorResumeNext(err ->
+      firstFailure.compareAndSet(null, err) ? Completable.error(err) : Completable.complete()
+    );
   }
 
   private Completable downloadChunk(

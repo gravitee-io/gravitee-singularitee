@@ -25,6 +25,10 @@
 # template embedded in the GGUF (via Jinja4j); the engine injects the model's
 # media marker once per image and mtmd_tokenize replaces it with vision tokens.
 #
+# Nothing here declares the modality: the projector is asked at load time, so
+# /v1/models reports this model as `"input_modalities": ["text", "image"]` and an
+# audio clip sent to it is refused with `unsupported_modality`.
+#
 # Send an image (base64 or data URL — remote http(s) URLs are rejected with 400):
 #   {"model":"llm","messages":[{"role":"user","content":[
 #     {"type":"text","text":"What is in this image?"},

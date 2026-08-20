@@ -73,6 +73,9 @@ public final class ResponsesHandler implements Handler<RoutingContext> {
       return;
     }
     Resolution res = resolution.get();
+    if (!HandlerSupport.requireSupportedModalities(rc, payload, res, "input")) {
+      return;
+    }
 
     boolean stream = payload.at("/stream").asBoolean(false);
     var toolSchemas = InferenceResponseFormatter.toolParameterSchemas(payload.at("/tools"));

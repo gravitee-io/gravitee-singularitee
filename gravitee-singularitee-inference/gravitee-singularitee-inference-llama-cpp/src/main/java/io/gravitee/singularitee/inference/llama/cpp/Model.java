@@ -359,6 +359,23 @@ public final class Model implements AutoCloseable {
   }
 
   /**
+   * Whether the loaded projector can decode images.
+   *
+   * <p>Asked of {@code mtmd} itself ({@code mtmd_support_vision}) rather than
+   * inferred from the file name or the model id: the projector is the only thing
+   * that actually knows, and a VLM and an ALM are both loaded from an
+   * {@code mmproj} sidecar that looks identical from the outside.
+   */
+  public boolean supportsVision() {
+    return mtmdContext != null && mtmdContext.supportsVision();
+  }
+
+  /** Whether the loaded projector can decode audio ({@code mtmd_support_audio}). */
+  public boolean supportsAudio() {
+    return mtmdContext != null && mtmdContext.supportsAudio();
+  }
+
+  /**
    * Returns the MtmdContext for multimodal operations, or null if not multimodal.
    */
   public MtmdContext getMtmdContext() {

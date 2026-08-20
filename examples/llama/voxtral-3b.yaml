@@ -25,6 +25,10 @@
 # Voxtral's own embedded chat template; mtmd_tokenize wraps the injected media
 # marker with Voxtral's audio tokens (<|audio_bos|> … <|audio_eos|>).
 #
+# Nothing here declares the modality: the projector is asked at load time, so
+# /v1/models reports this model as `"input_modalities": ["text", "audio"]` and an
+# image sent to it is refused with `unsupported_modality`.
+#
 # Send audio (base64 or data URL; wav/mp3):
 #   {"model":"llm","messages":[{"role":"user","content":[
 #     {"type":"text","text":"Answer the spoken question."},

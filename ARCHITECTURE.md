@@ -96,8 +96,8 @@ workspace:
   remote:                         # optional — client-side / multi-server
     default: { host, port, username?, password? }
     servers: [ { id, host, port, username?, password? } ]
-  models:    [ ... ]              # see model types below
-  pipelines: [ ... ]              # entry + steps
+  models:    [ ... ]              # see model types below; + task? visible? modalities?
+  pipelines: [ ... ]              # entry + steps;      + task? visible? modalities?
   templates: [ { id, content | file } ]
   includes:                       # pull shared defs from sibling folders
     models:    [ "*.yaml" ]       # → ./models/
@@ -106,6 +106,8 @@ workspace:
 ```
 
 `includes` resolve each list against the hardcoded `models/`, `pipelines/`, `templates/` subfolder next to the file (globs allowed). Because models are referenced by **logical id**, several model files can share an id (e.g. `llm` = llama.cpp here, vLLM there) and a server includes exactly one — the same pipeline then runs unchanged on any backend.
+
+**Publication (`task:` / `visible:` / `modalities:`)** — all apply to a model or a pipeline. `task` is the slug the entry is advertised under on `/v1/models` (`text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`); models default to what their engine reports, pipelines to the task of the model behind their `role: output` step (falling back to the entry step). Nothing is ever advertised as a "pipeline" — callers route on the surface, not on how the answer is produced. `visible: false` removes an entry from `ListModels`/`ListPipelines`, from `/v1/models`, and from HTTP resolution (`model_not_found`), while leaving it callable as a pipeline dependency, as a sub-pipeline, and over gRPC — which is how a workspace publishes a pipeline without publishing its parts. `modalities` is what the entry accepts as input (`text`, `image`, `audio`), detected rather than declared: llama.cpp asks the loaded `mmproj` projector (`mtmd_support_vision`/`mtmd_support_audio`), vLLM reads `vision_config`/`audio_config` from the checkpoint's `config.json`, and a pipeline accepts the union of what its model-bound steps accept (media is decoded by whichever step feeds it to a model, not necessarily the output step). Declared `task`/`modalities` values outside those sets fail the workspace at load. The HTTP layer refuses media a target cannot read (`unsupported_modality`) instead of letting it fail inside tokenization. A multimodal model's task stays `text-generation` — modality says what it reads, not which endpoint it serves.
 
 **Model types:** `llama_cpp`, `vllm`, `onnx_classifier`, `onnx_embedding`, `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker` (local engines); `remote_llm`, `remote_classifier`, `remote_embedding`, `remote_reranker` (gRPC proxies); `regex`, `composite_classifier` (in-process, pure-Java).
 
@@ -122,7 +124,7 @@ An optional second front-end (module `gravitee-singularitee-http`, lifecycle `Ht
 - **Endpoints**: `POST /v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/embeddings`; `GET /v1/models` (+`/{id}`); Gravitee extensions `POST /v1/classify`, `/v1/rerank`, `/v1/similarity`. Each is served bare and under `/v1`.
 - **Streaming**: SSE (`text/event-stream`, terminal `[DONE]`) with end-to-end backpressure coupling the RxJava token `Flowable` to the HTTP write queue (`drainHandler`); a client disconnect fires the engine's termination hook, cancelling the sequence/pipeline.
 - **Token bridge**: a `WriteStream<InferResponse>` adapter feeds the engine's reactive token stream (`replay().autoConnect`) into the response formatter; `step_role=THINKING` deltas render as OpenAI `reasoning_content`; `tool_calls` are parsed from `<tool_call>…</tool_call>` output.
-- **Resolution**: the `model` field maps to a text-gen model (`Infer`) or a pipeline (`InferPipeline`) — `pipeline:` prefix forces the pipeline, otherwise a matching model wins and a bare pipeline id is the fallback; unknown ids → `model_not_found` (400).
+- **Resolution**: the `model` field maps to a text-gen model (`Infer`) or a pipeline (`InferPipeline`) — `pipeline:` prefix forces the pipeline, otherwise a matching model wins and a bare pipeline id is the fallback; unknown **and hidden** ids alike → `model_not_found` (400).
 - **Validation / auth / errors**: lenient per-endpoint JSON-schema validation (networknt — required/type/enum, `additionalProperties` allowed); optional Bearer API-key auth (constant-time); OpenAI error envelope `{"error":{message,type,param,code}}`.
 
 Translation/formatting classes are fully decoupled from the gateway (local `ServerEvent`, no `gravitee-gateway-api` dependency). Scope is OpenAI-compatible only — Anthropic and Gemini are out of scope. Setup, config and `curl` examples are in the [README](README.md#http-api-openai-compatible) and the [module README](gravitee-singularitee-http/README.md).

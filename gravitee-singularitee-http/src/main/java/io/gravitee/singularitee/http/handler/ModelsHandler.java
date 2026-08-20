@@ -30,7 +30,19 @@ import io.gravitee.singularitee.service.GraviteePipelineServiceImpl;
 import io.vertx.ext.web.RoutingContext;
 import java.time.Instant;
 
-/** {@code GET /v1/models} and {@code GET /v1/models/{id}} — lists models (and pipelines). */
+/**
+ * {@code GET /v1/models} and {@code GET /v1/models/{id}} — lists models (and pipelines).
+ *
+ * <p>Pipelines are listed as models, described by their task, and never labelled as
+ * pipelines: a caller picks an id by the surface it serves, and how the answer is
+ * produced — one model or a guarded, routed DAG of them — is the server's business.
+ * The workspace loader only admits the five task slugs, so {@code type} is a closed
+ * set here and {@code "pipeline"} is never one of its values.
+ *
+ * <p>Hidden models and pipelines are absent from the listing and 404 on the
+ * single-id route, matching what {@link io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver}
+ * does on the inference routes.
+ */
 public final class ModelsHandler {
 
   private static final String OWNER = "gravitee";
@@ -70,7 +82,16 @@ public final class ModelsHandler {
     String id = rc.pathParam("model");
     models
       .getModel(GetModelRequest.newBuilder().setModelId(id).build())
-      .onSuccess(m -> JsonResponses.writeJson(rc, modelNode(m.getModelId(), m.getTask())))
+      .onSuccess(m -> {
+        if (m.getHidden()) {
+          notFound(rc, id);
+          return;
+        }
+        JsonResponses.writeJson(
+          rc,
+          modelNode(m.getModelId(), m.getTask(), m.getInputModalitiesList())
+        );
+      })
       .onFailure(err -> {
         if (!exposePipelines) {
           notFound(rc, id);
@@ -78,9 +99,20 @@ public final class ModelsHandler {
         }
         pipelines
           .getPipeline(GetPipelineRequest.newBuilder().setPipelineId(id).build())
-          .onSuccess(p ->
-            JsonResponses.writeJson(rc, modelNode(p.getPipeline().getPipelineId(), "pipeline"))
-          )
+          .onSuccess(p -> {
+            if (p.getPipeline().getHidden()) {
+              notFound(rc, id);
+              return;
+            }
+            JsonResponses.writeJson(
+              rc,
+              modelNode(
+                p.getPipeline().getPipelineId(),
+                p.getPipeline().getTask(),
+                p.getPipeline().getInputModalitiesList()
+              )
+            );
+          })
           .onFailure(e2 -> notFound(rc, id));
       });
   }
@@ -90,24 +122,43 @@ public final class ModelsHandler {
     root.put("object", "list");
     ArrayNode data = root.putArray("data");
     for (var m : ml.getModelsList()) {
-      data.add(modelNode(m.getModelId(), m.getTask()));
+      data.add(modelNode(m.getModelId(), m.getTask(), m.getInputModalitiesList()));
     }
     if (pl != null) {
       for (var p : pl.getPipelinesList()) {
-        data.add(modelNode(p.getPipeline().getPipelineId(), "pipeline"));
+        data.add(
+          modelNode(
+            p.getPipeline().getPipelineId(),
+            p.getPipeline().getTask(),
+            p.getPipeline().getInputModalitiesList()
+          )
+        );
       }
     }
     return root;
   }
 
-  private ObjectNode modelNode(String id, String type) {
+  /**
+   * Renders one catalogue entry.
+   *
+   * <p>{@code input_modalities} is emitted only when the entry reads more than text:
+   * text-only is the overwhelming majority and the assumption every OpenAI client
+   * already makes, so listing it on every entry would be noise that says nothing.
+   */
+  private static final java.util.List<String> TEXT_ONLY = java.util.List.of("text");
+
+  private ObjectNode modelNode(String id, String task, java.util.List<String> inputModalities) {
     ObjectNode node = Utils.OBJECT_MAPPER.get().createObjectNode();
     node.put("id", id);
     node.put("object", "model");
     node.put("created", created);
     node.put("owned_by", OWNER);
-    if (type != null && !type.isBlank()) {
-      node.put("type", type);
+    if (task != null && !task.isBlank()) {
+      node.put("type", task);
+    }
+    if (!TEXT_ONLY.equals(inputModalities)) {
+      ArrayNode modalities = node.putArray("input_modalities");
+      inputModalities.forEach(modalities::add);
     }
     return node;
   }

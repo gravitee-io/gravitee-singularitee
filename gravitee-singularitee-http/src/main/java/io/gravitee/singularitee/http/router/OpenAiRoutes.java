@@ -57,10 +57,10 @@ public final class OpenAiRoutes {
     var chat = new ChatCompletionsHandler(inference, resolver);
     var completions = new CompletionsHandler(inference, resolver);
     var responses = new ResponsesHandler(inference, resolver);
-    var embeddings = new EmbeddingsHandler(vector);
-    var classify = new ClassifyHandler(inference);
-    var rerank = new RerankHandler(vector);
-    var similarity = new SimilarityHandler(vector);
+    var embeddings = new EmbeddingsHandler(vector, modelRegistry);
+    var classify = new ClassifyHandler(inference, modelRegistry);
+    var rerank = new RerankHandler(vector, modelRegistry);
+    var similarity = new SimilarityHandler(vector, modelRegistry);
     var modelsHandler = new ModelsHandler(models, pipelines, exposePipelines);
 
     post(router, "/chat/completions", chat);

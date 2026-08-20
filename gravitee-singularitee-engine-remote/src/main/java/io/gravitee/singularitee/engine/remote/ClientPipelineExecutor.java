@@ -33,6 +33,7 @@ import io.vertx.core.streams.WriteStream;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -188,8 +189,11 @@ public final class ClientPipelineExecutor {
     }
 
     // 4b. Register client-local models (regex, composite — pure-Java engines)
-    ClientLocalModelRegistrar.register(ws.clientLocalModels(), modelRegistry, (id, name, engine) ->
-      modelRegistry.register(id, name, engine, token -> {})
+    ClientLocalModelRegistrar.register(
+      ws.clientLocalModels(),
+      modelRegistry,
+      (id, name, engine, task, visible, modalities) ->
+        modelRegistry.register(id, name, engine, token -> {}, task, visible, modalities)
     );
 
     // 5. Build PipelineRegistry from local YAML
@@ -348,7 +352,10 @@ public final class ClientPipelineExecutor {
       modelDef.id(),
       modelDef.name() != null ? modelDef.name() : modelDef.id(),
       engine,
-      tokenDispatcher
+      tokenDispatcher,
+      modelDef.task() != null ? modelDef.task() : "",
+      modelDef.isVisible(),
+      modelDef.modalities() != null ? modelDef.modalities() : List.of()
     );
 
     LOGGER.info(
@@ -386,7 +393,8 @@ public final class ClientPipelineExecutor {
         modelId,
         emptyToNull(modelInfo.getChatTemplate()),
         emptyToNull(modelInfo.getBosToken()),
-        emptyToNull(modelInfo.getEosToken())
+        emptyToNull(modelInfo.getEosToken()),
+        modelInfo.getInputModalitiesList()
       );
       case REMOTE_CLASSIFIER -> new RemoteClassifierEngine(client, modelId, modelInfo.getTask());
       case REMOTE_EMBEDDING -> new RemoteEmbeddingEngine(client, modelId);
