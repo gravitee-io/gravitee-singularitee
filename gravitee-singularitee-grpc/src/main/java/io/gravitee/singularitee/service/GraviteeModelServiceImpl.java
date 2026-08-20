@@ -33,6 +33,7 @@ import io.reactivex.rxjava3.core.Single;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -168,24 +169,36 @@ public class GraviteeModelServiceImpl
    * and stream map. Used for remote models declared in workspace YAML.
    */
   public String registerPrebuiltModel(String modelId, String modelName, ModelEngine engine) {
-    return registerPrebuiltModel(modelId, modelName, engine, "", true);
+    return registerPrebuiltModel(modelId, modelName, engine, "", true, List.of());
   }
 
   /**
    * Registers a pre-built {@link ModelEngine} along with the publication metadata
-   * its workspace entry declared — the task override and catalogue visibility.
+   * its workspace entry declared — the task override, catalogue visibility and
+   * declared input modalities. Remote proxies and pure-Java engines have nothing
+   * to interrogate, so the declaration is the only way a workspace can say that
+   * the model behind a proxy reads images.
    */
   public String registerPrebuiltModel(
     String modelId,
     String modelName,
     ModelEngine engine,
     String task,
-    boolean visible
+    boolean visible,
+    List<String> modalities
   ) {
     var activeStreams = new ConcurrentHashMap<Integer, StreamContext>();
     Consumer<ModelEngineToken> tokenConsumer = token -> dispatchToken(token, activeStreams);
 
-    String resolvedId = registry.register(modelId, modelName, engine, tokenConsumer, task, visible);
+    String resolvedId = registry.register(
+      modelId,
+      modelName,
+      engine,
+      tokenConsumer,
+      task,
+      visible,
+      modalities
+    );
     streamsByModel.put(resolvedId, activeStreams);
 
     LOGGER.info(

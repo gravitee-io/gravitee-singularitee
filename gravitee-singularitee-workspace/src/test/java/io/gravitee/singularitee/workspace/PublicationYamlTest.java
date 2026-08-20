@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -122,6 +123,34 @@ class PublicationYamlTest {
 
     assertThat(result.models().get(0).visible()).isTrue();
     assertThat(result.pipelines()).allSatisfy(p -> assertThat(p.getHidden()).isFalse());
+  }
+
+  @Test
+  void rejects_a_task_slug_the_catalogue_does_not_publish(@TempDir Path tmp) throws IOException {
+    Path workspace = tmp.resolve("workspace.yaml");
+    Files.writeString(
+      workspace,
+      YAML.replace("task: token-classification", "task: token_classification")
+    );
+
+    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace))
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("pii")
+      .hasMessageContaining("token_classification");
+  }
+
+  @Test
+  void rejects_a_modality_nothing_checks_for(@TempDir Path tmp) throws IOException {
+    Path workspace = tmp.resolve("workspace.yaml");
+    Files.writeString(
+      workspace,
+      YAML.replace("modalities: [text, image]", "modalities: [text, vision]")
+    );
+
+    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace))
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("internal")
+      .hasMessageContaining("vision");
   }
 
   private static YamlWorkspaceLoader.WorkspaceRequests load(Path tmp) throws IOException {

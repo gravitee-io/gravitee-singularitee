@@ -36,8 +36,8 @@ import java.time.Instant;
  * <p>Pipelines are listed as models, described by their task, and never labelled as
  * pipelines: a caller picks an id by the surface it serves, and how the answer is
  * produced — one model or a guarded, routed DAG of them — is the server's business.
- * A pipeline reads as {@code "pipeline"} here only if its workspace says so, by
- * declaring {@code task: pipeline} outright.
+ * The workspace loader only admits the five task slugs, so {@code type} is a closed
+ * set here and {@code "pipeline"} is never one of its values.
  *
  * <p>Hidden models and pipelines are absent from the listing and 404 on the
  * single-id route, matching what {@link io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver}
@@ -145,6 +145,8 @@ public final class ModelsHandler {
    * text-only is the overwhelming majority and the assumption every OpenAI client
    * already makes, so listing it on every entry would be noise that says nothing.
    */
+  private static final java.util.List<String> TEXT_ONLY = java.util.List.of("text");
+
   private ObjectNode modelNode(String id, String task, java.util.List<String> inputModalities) {
     ObjectNode node = Utils.OBJECT_MAPPER.get().createObjectNode();
     node.put("id", id);
@@ -154,7 +156,7 @@ public final class ModelsHandler {
     if (task != null && !task.isBlank()) {
       node.put("type", task);
     }
-    if (inputModalities.size() > 1) {
+    if (!TEXT_ONLY.equals(inputModalities)) {
       ArrayNode modalities = node.putArray("input_modalities");
       inputModalities.forEach(modalities::add);
     }

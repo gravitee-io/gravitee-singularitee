@@ -275,6 +275,10 @@ public final class YamlWorkspaceLoader {
     List<ClientLocalModelData> clientLocal = new ArrayList<>();
 
     for (ModelDefinition m : root.models()) {
+      // Outside the try: a bad task or modality slug fails the workspace rather than
+      // quietly dropping the model, since the value is what callers route on.
+      Publication.validatedTask(m.id(), m.task());
+      Publication.validatedModalities(m.id(), m.modalities());
       try {
         ModelType modelType = ModelType.parse(m.type() == null ? "" : m.type());
         if (modelType.isRemote()) {
@@ -318,9 +322,9 @@ public final class YamlWorkspaceLoader {
       .toModelLoadRequest(modelId, modelName, modelPath, policy, m)
       .withDownloadExclude(downloadExclude(m))
       .withPublication(
-        m.task() == null ? "" : m.task(),
+        Publication.validatedTask(m.id(), m.task()),
         m.isVisible(),
-        m.modalities() == null ? List.of() : m.modalities()
+        Publication.validatedModalities(m.id(), m.modalities())
       );
   }
 
@@ -408,9 +412,9 @@ public final class YamlWorkspaceLoader {
       .setPipelineName(p.name() != null ? p.name() : p.id() + " (remote)")
       .setEntryStepId(stepId)
       .addSteps(step)
-      .setTask(p.task() == null ? "" : p.task())
+      .setTask(Publication.validatedTask(p.id(), p.task()))
       .setHidden(!p.isVisible())
-      .addAllInputModalities(p.modalities() == null ? List.of() : p.modalities())
+      .addAllInputModalities(Publication.validatedModalities(p.id(), p.modalities()))
       .build();
   }
 
@@ -425,9 +429,9 @@ public final class YamlWorkspaceLoader {
     if (p.id() != null && !p.id().isBlank()) pipelineBuilder.setPipelineId(p.id());
     if (p.name() != null) pipelineBuilder.setPipelineName(p.name());
     if (p.entry() != null) pipelineBuilder.setEntryStepId(p.entry());
-    if (p.task() != null && !p.task().isBlank()) pipelineBuilder.setTask(p.task());
+    pipelineBuilder.setTask(Publication.validatedTask(p.id(), p.task()));
     pipelineBuilder.setHidden(!p.isVisible());
-    if (p.modalities() != null) pipelineBuilder.addAllInputModalities(p.modalities());
+    pipelineBuilder.addAllInputModalities(Publication.validatedModalities(p.id(), p.modalities()));
 
     if (p.steps() != null) {
       for (StepDefinition s : p.steps()) {

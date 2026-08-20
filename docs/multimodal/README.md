@@ -118,10 +118,14 @@ model id:
 | --- | --- |
 | llama.cpp | the loaded projector itself — `mtmd_support_vision` / `mtmd_support_audio` via `MtmdContext.supportsVision()`/`supportsAudio()`. This is what separates a VLM from an ALM: both load from an `mmproj` sidecar that looks identical from outside. |
 | vLLM | the checkpoint's `config.json` — a `vision_config` block means images, an `audio_config` block means audio (`CheckpointModalities`). `VllmModelResolver` guarantees the file is on disk, so it costs one JSON parse at load. |
-| `remote_*`, or vLLM with no locally-resolved directory | nothing to interrogate — text-only is assumed and a warning is logged. Declare `modalities:` to correct it. |
+| `remote_llm` | the backend's own answer — the proxy reads `input_modalities` off the same lazy `GetModel` probe that fetches the chat template, so a proxy over a VLM advertises images without a declaration once the remote has answered. Text-only until then. |
+| other `remote_*`, or vLLM with no locally-resolved directory | nothing to interrogate — text-only is assumed and a warning is logged. Declare `modalities:` to correct it. |
 
-A pipeline inherits the modalities of the model behind its `role: output` step,
-since that is the model any attachment ends up being decoded by.
+A pipeline accepts whatever any of its model-bound steps accepts — the union, not
+the output step alone. Media rides on the request's messages and is decoded by
+whichever step feeds them to a model, so a caption-then-polish pipeline (a VLM in
+the entry step, a text-only LLM answering) advertises `["text","image"]`. The
+`task` still follows the output step.
 
 Attaching media a target cannot read is now refused up front:
 
@@ -137,7 +141,9 @@ old failure mode, where an image sent to a text-only llama.cpp model was dropped
 without comment and the reply simply read as though the model had seen nothing.
 
 To override detection — a `remote_*` proxy, or a checkpoint whose config does not
-declare its encoders in the usual place — declare it on the model or the pipeline:
+declare its encoders in the usual place — declare it on the model or the pipeline.
+Only `text`, `image` and `audio` are accepted; anything else fails the workspace at
+load rather than publishing a slug no client recognises:
 
 ```yaml
 models:

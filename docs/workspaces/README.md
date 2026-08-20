@@ -164,7 +164,8 @@ All three say how a model or pipeline is *published*, and all three work the sam
 either.
 
 `task` is the slug callers route on — `text-generation`, `text-classification`,
-`token-classification`, `feature-extraction`, `reranking`. Models answer it from
+`token-classification`, `feature-extraction`, `reranking`; any other value (including
+a typo such as `text_generation`) fails the workspace at load. Models answer it from
 their engine, so declaring it is only needed when a model serves a surface its
 engine cannot infer. Pipelines have no engine to ask: an undeclared pipeline task
 is derived at registration from the model behind the `role: output` step (falling
@@ -202,7 +203,9 @@ the per-entry switch on top of it.
 `modalities` lists what the entry accepts as input — `text`, `image`, `audio`.
 Leave it unset and the backend is asked: llama.cpp interrogates the loaded `mmproj`
 projector, vLLM reads `vision_config` / `audio_config` out of the checkpoint's
-`config.json`, and a pipeline inherits from the model behind its output step.
+`config.json`, a `remote_llm` proxy reads it off its `GetModel` probe, and a pipeline
+accepts the union of what its model-bound steps accept — media is decoded by
+whichever step feeds it to a model, not necessarily the output step.
 Declare it only where nothing can be interrogated — a `remote_*` proxy, or a vLLM
 model whose weights were never resolved to a local directory — because a model that
 under-reports will have its media requests refused with `unsupported_modality`. A

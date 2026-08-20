@@ -23,7 +23,7 @@
 # Usage:
 #   ./install.sh [--port PORT] [--skip-build] [--no-run] [--llama-version bNNNN]
 #
-# The llama.cpp native libraries are NOT bundled in the jar (licensing); they are
+# The llama.cpp native libraries are NOT bundled in the jar (size); they are
 # downloaded here into ~/.llama.cpp, which is where llamaj.cpp's loader looks
 # after LLAMA_CPP_LIB_PATH. Same libraries, same layout as the llamaj.cpp repo's
 # own build. The host's release archive is picked automatically.

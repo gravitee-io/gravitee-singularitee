@@ -77,11 +77,7 @@ public final class PipelineRegistry {
       builder.setTask(outputModel(pipeline).map(ModelRegistry.ModelEntry::task).orElse(""));
     }
     if (pipeline.getInputModalitiesCount() == 0) {
-      builder.addAllInputModalities(
-        outputModel(pipeline)
-          .map(ModelRegistry.ModelEntry::inputModalities)
-          .orElse(Modalities.TEXT_ONLY)
-      );
+      builder.addAllInputModalities(derivedModalities(pipeline));
     }
     Pipeline published = builder.build();
 
@@ -124,21 +120,19 @@ public final class PipelineRegistry {
   // ---------------------------------------------------------------------------
 
   /**
-   * Resolves the model behind a pipeline's output step — the one that decides both
-   * what the pipeline is (its task) and what it can be fed (its modalities).
+   * Resolves the model behind a pipeline's output step — the one that decides what
+   * the pipeline is, i.e. its task.
    *
    * <p>A pipeline's public surface is the surface of whatever produces its answer:
    * a pipeline ending in a text-gen model is a text-generation endpoint no matter
-   * how many guards and routers precede it, and it can read an image exactly when
-   * that model can. So both derivations ask the engine rather than the step type —
-   * only the engine can tell sequence-level classification from token-level, or a
-   * loaded vision projector from an audio one.
+   * how many guards and routers precede it. So the derivation asks the engine
+   * rather than the step type — only the engine can tell sequence-level
+   * classification from token-level.
    *
    * <p>Falls back to the entry step when no step claims {@code role: output}, and
-   * to nothing when the step names no model. Empty is the honest answer for the
-   * task: a caller that cannot tell which endpoint a pipeline belongs on is better
-   * served by no label than by a guess. Modalities fall back to text-only instead,
-   * which is what a pipeline with no model in front can actually accept.
+   * to nothing when the step names no model. Empty is the honest answer: a caller
+   * that cannot tell which endpoint a pipeline belongs on is better served by no
+   * label than by a guess.
    */
   private java.util.Optional<ModelRegistry.ModelEntry> outputModel(Pipeline pipeline) {
     var outputStep = pipeline
@@ -158,6 +152,33 @@ public final class PipelineRegistry {
       .map(PipelineRegistry::extractModelId)
       .filter(id -> id != null && !id.isBlank())
       .flatMap(id -> modelRegistry.get(id));
+  }
+
+  /**
+   * Derives what a pipeline accepts as input: the union of what every model-bound
+   * step accepts.
+   *
+   * <p>Unlike the task, this is not a property of the output step. Media rides on
+   * the request's messages and reaches whichever step feeds those messages to a
+   * model — a caption-then-polish pipeline decodes its image in the entry step and
+   * answers from a text-only model. A union rather than an intersection because
+   * that is how media flows: a text-only guard in front of a vision model does not
+   * stop the image reaching the model that can read it.
+   *
+   * <p>Text-only when no step names a model, which is all such a pipeline can read.
+   */
+  private List<String> derivedModalities(Pipeline pipeline) {
+    var vision = false;
+    var audio = false;
+    for (var step : pipeline.getStepsList()) {
+      String modelId = extractModelId(step);
+      if (modelId == null || modelId.isBlank()) continue;
+      var entry = modelRegistry.get(modelId);
+      if (entry.isEmpty()) continue;
+      vision |= entry.get().accepts(Modalities.IMAGE);
+      audio |= entry.get().accepts(Modalities.AUDIO);
+    }
+    return Modalities.of(vision, audio);
   }
 
   private void validateModelReferences(Pipeline pipeline) {

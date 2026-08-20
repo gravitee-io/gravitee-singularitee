@@ -33,7 +33,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * What a pipeline advertises — its task and its input modalities — either declared
- * by the workspace or derived from the model behind its output step.
+ * by the workspace or derived: the task from the model behind its output step, the
+ * modalities from every model the DAG feeds.
  */
 class PipelineDerivationTest {
 
@@ -146,6 +147,47 @@ class PipelineDerivationTest {
     assertThat(
       registry.get("describe").orElseThrow().pipeline().getInputModalitiesList()
     ).containsExactly("text", "image");
+  }
+
+  @Test
+  void accepts_what_any_model_bound_step_accepts_not_just_the_output_step() {
+    // caption-then-polish: the entry step decodes the image, a text-only model answers
+    var modelRegistry = new ModelRegistry();
+    modelRegistry.register("vlm", "vlm", new StubVisionEngine(), token -> {});
+    modelRegistry.register(
+      "llm",
+      "llm",
+      new StubClassifier(ModelTasks.TEXT_GENERATION),
+      token -> {}
+    );
+    var registry = new PipelineRegistry(modelRegistry);
+
+    registry.register(
+      Pipeline.newBuilder()
+        .setPipelineId("caption")
+        .setEntryStepId("describe")
+        .addSteps(
+          PipelineStep.newBuilder()
+            .setStepId("describe")
+            .setType(StepType.STEP_TYPE_INFER)
+            .setInferConfig(InferStepConfig.newBuilder().setModelId("vlm"))
+            .build()
+        )
+        .addSteps(
+          PipelineStep.newBuilder()
+            .setStepId("polish")
+            .setType(StepType.STEP_TYPE_INFER)
+            .setRole(StepRole.STEP_ROLE_OUTPUT)
+            .setInferConfig(InferStepConfig.newBuilder().setModelId("llm"))
+            .build()
+        )
+        .build()
+    );
+
+    var caption = registry.get("caption").orElseThrow().pipeline();
+    assertThat(caption.getInputModalitiesList()).containsExactly("text", "image");
+    // the task still follows the step that answers
+    assertThat(caption.getTask()).isEqualTo(ModelTasks.TEXT_GENERATION);
   }
 
   @Test
