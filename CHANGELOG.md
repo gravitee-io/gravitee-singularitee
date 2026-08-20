@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.1.0...1.2.0) (2026-08-20)
+
+
+### Features
+
+* per-entry task/visibility for models & pipelines, plus input-modality reporting ([#3](https://github.com/gravitee-io/gravitee-singularitee/issues/3)) ([7c3d968](https://github.com/gravitee-io/gravitee-singularitee/commit/7c3d968f02676f2a7afeaa70d493aa73daadca95))
+
 # [1.1.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.0.0...1.1.0) (2026-08-18)
 
 
