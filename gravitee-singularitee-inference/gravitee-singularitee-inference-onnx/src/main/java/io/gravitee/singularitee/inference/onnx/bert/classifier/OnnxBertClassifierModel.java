@@ -33,6 +33,15 @@ import io.gravitee.singularitee.inference.onnx.bert.config.OnnxBertConfig;
 import java.util.*;
 
 /**
+ * BERT sequence or token classifier over ONNX Runtime (e.g. DeBERTa, ModernBERT, MiniLM heads).
+ *
+ * <p>{@code CLASSIFIER_MODE} selects the head: {@code SEQUENCE} applies a sigmoid per label and
+ * returns labels sorted by score; {@code TOKEN} applies a softmax per token and returns one
+ * result per content token with its character span, dropping labels in
+ * {@code DISCARDED_LABELS}. Labels come from {@code id2label} in {@code config.json} when
+ * present, else {@code CLASSIFIER_LABELS}, else the class index. Inputs longer than the
+ * sequence budget are split (sequence) or windowed (token); see the per-mode methods.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -69,7 +78,7 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
 
   /**
    * Sequence classification. A long input is split on semantic boundaries, classified in one
-   * batched pass, and merged by keeping the highest score per label — so any chunk that triggers a
+   * batched pass, and merged by keeping the highest score per label, so any chunk that triggers a
    * label (e.g. a toxicity / guardrail category) flags the whole input.
    */
   private ClassifierResults inferSequence(String string) {
@@ -82,7 +91,7 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
   }
 
   /**
-   * Sequence-classifies pre-split chunk texts (each must fit the sequence budget — see
+   * Sequence-classifies pre-split chunk texts (each must fit the sequence budget, see
    * {@link #split(String)}) in ONE batched forward pass, one result per text. This is the batch
    * entry point used by micro-batching callers to fuse chunks from concurrent requests into a
    * single GPU run. Only meaningful in {@code SEQUENCE} mode.
@@ -96,7 +105,7 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
 
   /**
    * For a split input, emits one row per (label, split) tagged with that split's character span
-   * (all labels per split). The headline score per label — the {@code max} across splits — is
+   * (all labels per split). The headline score per label (the {@code max} across splits) is
    * derived downstream by {@code OnnxClassifierEngine}; keeping every (label, split) row lets
    * callers see the full per-passage distribution and locate which passage drove a label.
    */
@@ -113,7 +122,7 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
 
   /**
    * Token classification. The input is tokenized once; if it exceeds the sequence budget it is run
-   * as overlapping token windows (overlap ≥ {@code TOKEN_WINDOW_OVERLAP}) so every token is
+   * as overlapping token windows (overlap of at least {@code TOKEN_WINDOW_OVERLAP}) so every token is
    * labelled with full surrounding context. Each token's prediction is taken from the window where
    * it sits most interior, so an entity sliced at one window's edge is whole in the next. Character
    * offsets come from the single full tokenization, so spans need no remapping.
@@ -220,7 +229,6 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
             sanitizedToken,
             spans[j]
           );
-          // we don't want all tokens to be present
           if (!discarded.contains(classifierResult.label())) {
             result.add(classifierResult);
           }

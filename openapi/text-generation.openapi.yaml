@@ -1,0 +1,723 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+openapi: 3.1.0
+info:
+  title: Singularitee Text Generation API
+  version: "1.0"
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  description: |
+    OpenAI-compatible text generation over the HTTP API of `gravitee-singularitee-http`:
+    Chat Completions, legacy Completions and the Responses API.
+
+    - Every path is served under `/v1` (documented here) and bare (`/chat/completions`).
+    - `model` accepts a model id, `pipeline:<id>`, or a bare pipeline id. Resolution order:
+      `pipeline:` prefix, then a visible text-generation model, then a visible pipeline id.
+      Anything else, including entries published with `visible: false`, returns `400`
+      with `code: model_not_found`.
+    - Validation is lenient: unknown fields are accepted; required fields, types and
+      enums are enforced and every violation is joined into one `400`.
+    - The server is opt-in (`http.enabled: false` by default) and listens on port `8080`.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+tags:
+  - name: Text generation
+    description: Chat Completions, Completions and the Responses API.
+
+paths:
+  /v1/chat/completions:
+    post:
+      tags: [Text generation]
+      operationId: createChatCompletion
+      summary: Create a chat completion
+      description: |
+        Streaming and non-streaming chat completions, tool calls, and multimodal
+        content parts (`text`, `image_url`, `input_audio`).
+
+        Behaviour specific to this server:
+        - `reasoning_content` (non-standard) carries the text the model produced between
+          its reasoning tags, in both streamed deltas and buffered messages.
+        - `n > 1` is not honored: exactly one choice is returned.
+        - `logprobs: true` returns per-token log-probabilities on content deltas;
+          `top_logprobs` (0-20) sets how many alternatives are listed per position.
+        - When `tools` are present the stream is held back until tool-call markup is
+          parsed: tool calls arrive as whole `delta.tool_calls` chunks with
+          `finish_reason: "tool_calls"`.
+        - `prompt_cache_key` (falling back to `user`) is a cache-affinity key.
+        - `reasoning_effort` (or `reasoning.effort`) is passed to the chat template.
+        - Media the target cannot read is refused with `code: unsupported_modality`.
+        - A guard block ends the response with `finish_reason: "content_filter"`.
+        - Remote `http(s)://` media URLs are rejected; send a `data:` URL or base64.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+      responses:
+        "200":
+          description: |
+            Non-streaming: a `chat.completion` object.
+            Streaming (`stream: true`): `text/event-stream` of `data: {chunk}` frames
+            (`chat.completion.chunk` objects) terminated by `data: [DONE]`. The stream
+            opens with a `: stream-open` comment frame. With
+            `stream_options.include_usage`, a final chunk with empty `choices` and a
+            `usage` object precedes `[DONE]`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionChunk"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/completions:
+    post:
+      tags: [Text generation]
+      operationId: createCompletion
+      summary: Create a text completion
+      description: |
+        Raw-prompt completion. An array `prompt` is joined with newlines into one
+        prompt. The prompt is sent as-is (no chat template), so `reasoning_effort`
+        and other template variables have no effect here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompletionRequest"
+      responses:
+        "200":
+          description: |
+            Non-streaming: a `text_completion` object. Streaming: SSE frames of
+            `text_completion` chunks terminated by `data: [DONE]`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletionResponse"
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/CompletionResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/responses:
+    post:
+      tags: [Text generation]
+      operationId: createResponse
+      summary: Create a model response (Responses API)
+      description: |
+        Streaming uses typed SSE events, each carrying a `sequence_number`:
+        `response.created`, `response.in_progress`, `response.output_item.added`,
+        `response.output_item.done`, `response.reasoning_summary_part.added`,
+        `response.reasoning_summary_part.done`, `response.reasoning_summary_text.delta`,
+        `response.reasoning_summary_text.done`, `response.content_part.added`,
+        `response.content_part.done`, `response.output_text.delta`,
+        `response.output_text.done`, `response.function_call_arguments.done`,
+        `response.completed`, `response.failed`. No `[DONE]` sentinel is emitted.
+
+        Pipelines with a `todo` step also interleave `gravitee.progress` events
+        (vendor extension, see `GraviteeProgressEvent`) carrying the live plan
+        snapshot. They are not output items. Unknown event types are safe to skip.
+
+        Pipeline targets support stored-conversation continuation: each response
+        carries a unique `resp_<hex>` id and is stored server-side unless
+        `store: false`; pass it as `previous_response_id` with only the new `input`
+        to continue. An unknown or expired id fails the response with
+        `error.code: previous_response_not_found`. Direct-model targets are stateless
+        and use `resp-<created>` ids.
+
+        `instructions` is applied per request and is never persisted into a stored
+        conversation. `input` items of type `function_call`, `function_call_output`
+        and `reasoning` are replayed into the transcript (reasoning items are dropped).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResponsesRequest"
+      responses:
+        "200":
+          description: |
+            Non-streaming: a `response` object with `status: completed`, or
+            `status: failed` with an `error` object (guard block, unknown
+            `previous_response_id`). Streaming: typed `response.*` SSE events;
+            `response.completed` or `response.failed` embeds the full response object.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponsesResponse"
+            text/event-stream:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ResponsesStreamEvent"
+                  - $ref: "#/components/schemas/GraviteeProgressEvent"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Opt-in API-key auth (`http.auth.enabled: true`, `http.auth.type: bearer`,
+        keys in `http.auth.tokens`). When disabled, requests need no credentials.
+        Failures return 401 with `WWW-Authenticate: Bearer` and `code: invalid_api_key`.
+
+  responses:
+    BadRequest:
+      description: |
+        Invalid JSON or schema violation (`code: invalid_request_error`), missing
+        `model` (`param: model`), unresolved or hidden model (`code: model_not_found`),
+        wrong model task (`code: unsupported_model`), media the target cannot read
+        (`code: unsupported_modality`, `param: messages` or `input`), or a remote
+        media URL (`code: invalid_request_error`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: "Missing or invalid bearer token (`code: invalid_api_key`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: "Unexpected server error (`type: internal_error`, `code: internal_error`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotReady:
+      description: "Workspace still loading (`type: server_error`, `code: model_not_ready`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, type, param, code]
+          properties:
+            message: { type: string }
+            type:
+              type: string
+              enum: [invalid_request_error, internal_error, server_error]
+            param:
+              type: [string, "null"]
+              description: The offending field, or `null`.
+            code:
+              type: [string, "null"]
+              enum:
+                - invalid_request_error
+                - model_not_found
+                - unsupported_model
+                - unsupported_modality
+                - invalid_api_key
+                - model_not_ready
+                - not_found
+                - method_not_allowed
+                - internal_error
+                - null
+
+    ModelField:
+      type: string
+      description: |
+        Model id, `pipeline:<id>`, or a bare pipeline id. Resolution order:
+        `pipeline:` prefix, then a visible text-generation model, then a visible
+        pipeline id, else `400 model_not_found`.
+
+    ReasoningEffort:
+      type: string
+      enum: [minimal, low, medium, high]
+      description: Passed verbatim to the chat template as `reasoning_effort`.
+
+    Usage:
+      type: object
+      required: [prompt_tokens, completion_tokens, total_tokens]
+      properties:
+        prompt_tokens: { type: integer }
+        completion_tokens: { type: integer }
+        total_tokens: { type: integer }
+        completion_tokens_details:
+          type: object
+          properties:
+            answer_tokens: { type: integer }
+            reasoning_tokens: { type: integer }
+            tool_tokens: { type: integer }
+
+    Logprobs:
+      type: [object, "null"]
+      description: "Present when the request set `logprobs: true`; `null` otherwise."
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+            properties:
+              token: { type: string }
+              logprob: { type: number }
+              bytes:
+                type: array
+                items: { type: integer }
+              top_logprobs:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    token: { type: string }
+                    logprob: { type: number }
+                    bytes:
+                      type: array
+                      items: { type: integer }
+
+    # ---- chat/completions ----
+
+    ChatCompletionRequest:
+      type: object
+      required: [model, messages]
+      additionalProperties: true
+      properties:
+        model: { $ref: "#/components/schemas/ModelField" }
+        messages:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/ChatMessage" }
+        stream: { type: boolean, default: false }
+        stream_options:
+          type: object
+          properties:
+            include_usage:
+              type: boolean
+              default: false
+              description: Emit a final chunk with empty `choices` and `usage` before `[DONE]`.
+        temperature: { type: number, minimum: 0, maximum: 2 }
+        top_p: { type: number }
+        max_tokens: { type: integer }
+        max_completion_tokens:
+          type: integer
+          description: Accepted by validation; `max_tokens` is the value applied.
+        n:
+          type: integer
+          description: Accepted but not honored. Exactly one choice is returned.
+        presence_penalty: { type: number }
+        frequency_penalty: { type: number }
+        seed: { type: integer }
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        tools:
+          type: array
+          items: { $ref: "#/components/schemas/Tool" }
+        logprobs:
+          type: boolean
+          description: Collect per-token log-probabilities on content deltas.
+        top_logprobs:
+          type: integer
+          minimum: 0
+          maximum: 20
+          description: "Alternatives per position; only meaningful with `logprobs: true`."
+        reasoning_effort: { $ref: "#/components/schemas/ReasoningEffort" }
+        reasoning:
+          type: object
+          properties:
+            effort: { $ref: "#/components/schemas/ReasoningEffort" }
+        prompt_cache_key:
+          type: string
+          description: Cache-affinity key; falls back to `user` when absent.
+        user: { type: string }
+
+    ChatMessage:
+      type: object
+      required: [role]
+      additionalProperties: true
+      description: |
+        `role` is one of `system`, `user`, `assistant`, `tool` (`function` is read as
+        `tool`; other values are read as `user`). A message with neither `content`
+        nor `tool_calls` is dropped.
+      properties:
+        role: { type: string }
+        content:
+          oneOf:
+            - type: string
+            - type: "null"
+            - type: array
+              items: { $ref: "#/components/schemas/ContentPart" }
+        name: { type: string, description: Tool name on a `tool` message. }
+        tool_call_id: { type: string, description: "On a `tool` message, the call it answers." }
+        tool_calls:
+          type: array
+          description: On an `assistant` message, the calls that turn made.
+          items: { $ref: "#/components/schemas/ToolCall" }
+
+    ContentPart:
+      type: object
+      required: [type]
+      description: |
+        `text` parts are concatenated with newlines. `image_url` carries a `data:` URL or
+        bare base64 (JPEG, PNG, GIF, BMP). `input_audio` carries base64 WAV.
+      properties:
+        type:
+          type: string
+          enum: [text, image_url, input_audio]
+        text: { type: string }
+        image_url:
+          type: object
+          properties:
+            url: { type: string, description: "`data:<mime>;base64,...` or bare base64." }
+        input_audio:
+          type: object
+          properties:
+            data: { type: string, description: Base64-encoded audio. }
+            format: { type: string, description: "Format hint, e.g. `wav`." }
+
+    Tool:
+      type: object
+      properties:
+        type: { type: string, const: function }
+        function:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string }
+            description: { type: string }
+            parameters: { type: object, description: JSON schema of the arguments. }
+
+    ToolCall:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, const: function }
+        function:
+          type: object
+          properties:
+            name: { type: string }
+            arguments: { type: string, description: JSON-encoded arguments. }
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id: { type: string, description: "`chatcmpl-<id>`" }
+        object: { type: string, const: chat.completion }
+        created: { type: integer }
+        model: { type: string }
+        system_fingerprint: { type: "null" }
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer, const: 0 }
+              message:
+                type: object
+                properties:
+                  role: { type: string, const: assistant }
+                  content:
+                    type: [string, "null"]
+                    description: "`null` when the turn is a pure tool call."
+                  reasoning_content:
+                    type: string
+                    description: Non-standard. Text produced inside the reasoning tags.
+                  tool_calls:
+                    type: array
+                    items: { $ref: "#/components/schemas/ToolCall" }
+              logprobs: { $ref: "#/components/schemas/Logprobs" }
+              finish_reason:
+                type: string
+                enum: [stop, length, tool_calls, content_filter]
+                description: "`content_filter` when a guard blocked the request."
+        usage: { $ref: "#/components/schemas/Usage" }
+
+    ChatCompletionChunk:
+      type: object
+      description: "One SSE `data:` frame; the stream ends with `data: [DONE]`."
+      properties:
+        id: { type: string }
+        object: { type: string, const: chat.completion.chunk }
+        created: { type: integer }
+        model: { type: string }
+        system_fingerprint: { type: "null" }
+        choices:
+          type: array
+          description: Empty on the final usage-only chunk.
+          items:
+            type: object
+            properties:
+              index: { type: integer, const: 0 }
+              delta:
+                type: object
+                properties:
+                  role: { type: string, const: assistant }
+                  content: { type: string }
+                  reasoning_content: { type: string }
+                  tool_calls:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/ToolCall"
+                        - type: object
+                          properties:
+                            index: { type: integer }
+              logprobs: { $ref: "#/components/schemas/Logprobs" }
+              finish_reason:
+                type: [string, "null"]
+                enum: [stop, length, tool_calls, content_filter, null]
+        usage:
+          $ref: "#/components/schemas/Usage"
+          description: Only on the final chunk when `stream_options.include_usage` is set.
+
+    # ---- completions ----
+
+    CompletionRequest:
+      type: object
+      required: [model, prompt]
+      additionalProperties: true
+      description: |
+        `top_p`, `presence_penalty`, `frequency_penalty`, `seed`, `stop`, `logprobs`,
+        `top_logprobs`, `prompt_cache_key` and `user` are read like on
+        `/v1/chat/completions`.
+      properties:
+        model: { $ref: "#/components/schemas/ModelField" }
+        prompt:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+              description: Joined with newlines into a single prompt.
+        stream: { type: boolean, default: false }
+        stream_options:
+          type: object
+          properties:
+            include_usage: { type: boolean, default: false }
+        max_tokens: { type: integer }
+        temperature: { type: number }
+
+    CompletionResponse:
+      type: object
+      properties:
+        id: { type: string, description: "`cmpl-<id>`" }
+        object: { type: string, const: text_completion }
+        created: { type: integer }
+        model: { type: string }
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer, const: 0 }
+              text: { type: string }
+              logprobs: { $ref: "#/components/schemas/Logprobs" }
+              finish_reason:
+                type: [string, "null"]
+                enum: [stop, length, tool_calls, content_filter, null]
+        usage: { $ref: "#/components/schemas/Usage" }
+
+    # ---- responses ----
+
+    ResponsesRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: true
+      properties:
+        model: { $ref: "#/components/schemas/ModelField" }
+        input:
+          oneOf:
+            - type: string
+              description: A single user message.
+            - type: array
+              items: { $ref: "#/components/schemas/ResponsesInputItem" }
+        instructions:
+          type: string
+          description: Per-request system instructions; never persisted into a stored conversation.
+        previous_response_id:
+          type: string
+          description: |
+            Continue the stored conversation from an earlier response id (pipeline
+            targets). Send only the new `input`. Unknown or expired ids fail the
+            response with `previous_response_not_found`.
+        store:
+          type: boolean
+          default: true
+          description: Persist this response for later continuation (pipeline targets).
+        stream: { type: boolean, default: false }
+        max_output_tokens: { type: integer }
+        temperature: { type: number }
+        top_p: { type: number }
+        tools:
+          type: array
+          description: Flat Responses shape (`{type, name, description, parameters}`) or the nested Chat Completions shape.
+          items: { type: object }
+        reasoning_effort: { $ref: "#/components/schemas/ReasoningEffort" }
+        reasoning:
+          type: object
+          properties:
+            effort: { $ref: "#/components/schemas/ReasoningEffort" }
+        prompt_cache_key: { type: string }
+        user: { type: string }
+
+    ResponsesInputItem:
+      oneOf:
+        - type: string
+          description: A user message.
+        - title: Message
+          type: object
+          properties:
+            role:
+              type: string
+              description: "`system`, `developer`, `user`, `assistant` or `tool`."
+            content:
+              oneOf:
+                - type: string
+                - type: array
+                  items:
+                    type: object
+                    description: "`input_text`, `output_text`, `text`, `input_image` (bare or `{url}` `image_url`) or `input_audio`."
+        - title: FunctionCall
+          type: object
+          properties:
+            type: { type: string, const: function_call }
+            call_id: { type: string }
+            name: { type: string }
+            arguments: { type: string }
+        - title: FunctionCallOutput
+          type: object
+          properties:
+            type: { type: string, const: function_call_output }
+            call_id: { type: string }
+            output: { type: string }
+
+    ResponsesResponse:
+      type: object
+      properties:
+        id: { type: string, description: "`resp_<hex>` (pipeline) or `resp-<created>` (direct model)." }
+        object: { type: string, const: response }
+        status: { type: string, enum: [completed, failed] }
+        created_at: { type: integer }
+        model: { type: string }
+        error:
+          type: object
+          description: Only when `status` is `failed`.
+          properties:
+            code: { type: string, enum: [previous_response_not_found, server_error] }
+            message: { type: string }
+        output:
+          type: array
+          items:
+            oneOf:
+              - title: ReasoningItem
+                type: object
+                properties:
+                  type: { type: string, const: reasoning }
+                  id: { type: string }
+                  summary:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string, const: summary_text }
+                        text: { type: string }
+              - title: MessageItem
+                type: object
+                properties:
+                  type: { type: string, const: message }
+                  id: { type: string }
+                  role: { type: string, const: assistant }
+                  status: { type: string, enum: [completed, incomplete] }
+                  content:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string, const: output_text }
+                        text: { type: string }
+              - title: FunctionCallItem
+                type: object
+                properties:
+                  type: { type: string, const: function_call }
+                  id: { type: string }
+                  call_id: { type: string }
+                  name: { type: string }
+                  arguments: { type: string }
+                  status: { type: string, const: completed }
+        usage:
+          type: object
+          properties:
+            input_tokens: { type: integer }
+            output_tokens: { type: integer }
+            total_tokens: { type: integer }
+
+    ResponsesStreamEvent:
+      type: object
+      description: |
+        Typed SSE event. `type` is one of the `response.*` events listed on the
+        operation, or `gravitee.progress` (see `GraviteeProgressEvent`).
+        `response.completed` and `response.failed` embed the full response object
+        under `response`. Delta events carry `item_id`, `output_index`,
+        `content_index` or `summary_index`, and `delta` or `text`.
+      required: [type, sequence_number]
+      properties:
+        type: { type: string }
+        sequence_number: { type: integer }
+      additionalProperties: true
+
+    GraviteeProgressEvent:
+      type: object
+      description: |
+        Vendor extension event (`type: "gravitee.progress"`) emitted on the
+        Responses stream when a pipeline's engine-managed todo plan changes.
+        Never emitted on Chat Completions.
+      required: [type, sequence_number, todos, completed, total]
+      properties:
+        type: { type: string, const: gravitee.progress }
+        sequence_number: { type: integer }
+        step_id:
+          type: string
+          description: The pipeline step that produced the update.
+        todos:
+          type: array
+          items:
+            type: object
+            required: [id, title, status]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              status: { type: string, enum: [pending, in_progress, done] }
+              proof: { type: string, description: Evidence expected for completion; absent when none. }
+        completed: { type: integer }
+        total: { type: integer }
+        text:
+          type: string
+          description: "Preformatted plan, one line per item: `[x]` done, `[>]` in progress, `[ ]` pending."

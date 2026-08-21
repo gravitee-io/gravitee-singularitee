@@ -16,10 +16,10 @@
 
 # gpt-oss-20b · vLLM backend
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/vllm/gpt-oss-20b.yaml
 #
-# MoE 21B (32 experts), 131k context. Ships PRE-QUANTIZED (MXFP4) — leave
+# MoE 21B (32 experts), 131k context. Ships PRE-QUANTIZED (MXFP4): leave
 # `quantization` unset so vLLM reads it from the checkpoint's own
 # quantization_config rather than being told something that contradicts it.
 # The VRAM pre-flight reads those 4-bit weights correctly.
@@ -28,7 +28,7 @@
 #   you use the -vllm-cuda image, which bundles it:
 #     ./run-server.sh --workspace examples/vllm/gpt-oss-20b.yaml   -Dvllm4j.venv=/path/to/.venv
 #
-# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each loads its own
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM: each loads its own
 # native CUDA bindings. One backend per server, composed over gRPC.
 
 workspace:
@@ -42,7 +42,7 @@ workspace:
       # The repo ships the same weights three times: the sharded safetensors
       # vLLM loads (13.8 GB), original/model.safetensors (another 13.8 GB), and
       # metal/model.bin for Apple's runtime (13.7 GB). The .bin is already
-      # skipped — safetensors is the preferred format — but original/ is
+      # skipped (safetensors is the preferred format) but original/ is
       # safetensors too, so without this the download is 27.5 GB for a 13.8 GB
       # model.
       download:
@@ -69,12 +69,12 @@ workspace:
             output_field: agent.output
             # Harmony renders "Reasoning: <effort>" into the system block from this
             # variable (low | medium | high; the template defaults to medium when
-            # unset). Set explicitly so the knob is visible — lower it for latency,
+            # unset). Set explicitly so the knob is visible: lower it for latency,
             # raise it for harder tasks. Step context merges into the Jinja root, so
             # this is just a template variable; models that don't read it ignore it.
             context:
               # medium, not low: at low this model writes malformed JSON for tool
-              # arguments often enough to break agent flows — mismatched brackets,
+              # arguments often enough to break agent flows, mismatched brackets,
               # one edit split across two objects, stray trailing punctuation. The
               # extra reasoning tokens cost latency; a rejected tool call costs the
               # whole turn.
@@ -88,7 +88,7 @@ workspace:
               # Every run-anchored form, exactly like tool_open: a chained transition
               # (analysis straight into a commentary preamble) emits
               # <|end|><|start|>assistant<|channel|>commentary<|message|> as ONE run,
-              # and a marker anchored at <|channel|> can never match it — the whole
+              # and a marker anchored at <|channel|> can never match it, the whole
               # header leaked into the stream as raw text.
               reasoning_open:
                 - "<|end|><|start|>assistant<|channel|>analysis<|message|>"
@@ -108,12 +108,12 @@ workspace:
                 # The bare header, for the turn that FOLLOWS a tool call: that
                 # generation starts fresh with no analysis span open, and the model
                 # still prefixes its reply with it. A close marker reaching the
-                # answer channel is stray syntax, so it is suppressed there too —
+                # answer channel is stray syntax, so it is suppressed there too,
                 # otherwise the reply reads "<|channel|>final<|message|>DONE".
                 - "<|channel|>final<|message|>"
                 # Bare terminator, as a safety net: when <|end|> is followed by
                 # something no marker anticipates, the short close settles and only
-                # the genuinely unknown remainder shows — instead of the whole
+                # the genuinely unknown remainder shows, instead of the whole
                 # buffered header. Longest match keeps the folded forms winning.
                 - "<|end|>"
               # BOTH header orders occur in practice. Observed live:
@@ -121,8 +121,8 @@ workspace:
               # the channel segment BEFORE to=functions; the form without it shows up too.
               # Listing only one leaks the other's entire header into the answer as visible
               # syntax. The <|end|>/<|call|>-prefixed forms matter because a run that leaves
-              # the analysis channel for a tool call starts at that terminator — nothing
-              # else consumes it — so a marker anchored at <|channel|> can never match there.
+              # the analysis channel for a tool call starts at that terminator, nothing
+              # else consumes it, so a marker anchored at <|channel|> can never match there.
               tool_open:
                 - "<|end|><|start|>assistant<|channel|>commentary to=functions."
                 - "<|end|><|start|>assistant<|channel|>analysis to=functions."

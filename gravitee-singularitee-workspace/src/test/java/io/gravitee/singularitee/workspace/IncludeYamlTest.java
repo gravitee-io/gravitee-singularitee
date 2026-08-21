@@ -32,7 +32,7 @@ class IncludeYamlTest {
 
   @Test
   void loads_and_merges_include_files(@TempDir Path tmp) throws IOException {
-    // Loader resolves models/ and pipelines/ relative to workspace dir — create subdirs
+    // Loader resolves models/ and pipelines/ relative to workspace dir; create subdirs
     Path modelsDir = Files.createDirectories(tmp.resolve("models"));
     Path pipelinesDir = Files.createDirectories(tmp.resolve("pipelines"));
 

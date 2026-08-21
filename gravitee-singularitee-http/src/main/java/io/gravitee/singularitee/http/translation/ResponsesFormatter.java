@@ -68,20 +68,21 @@ public final class ResponsesFormatter {
    * follows as a {@code message} item:
    *
    * <pre>
-   * response.created → response.in_progress
-   *   [→ output_item.added(reasoning) → reasoning_summary_part.added
-   *      → reasoning_summary_text.delta* → reasoning_summary_text.done
-   *      → reasoning_summary_part.done → output_item.done(reasoning)]
-   *   → output_item.added(message) → content_part.added → output_text.delta*
-   *   → output_text.done → content_part.done → output_item.done(message)
-   * → response.completed   (embeds the assembled output)
+   * response.created -> response.in_progress
+   *   [-> output_item.added(reasoning) -> reasoning_summary_part.added
+   *      -> reasoning_summary_text.delta* -> reasoning_summary_text.done
+   *      -> reasoning_summary_part.done -> output_item.done(reasoning)]
+   *   -> output_item.added(message) -> content_part.added -> output_text.delta*
+   *   -> output_text.done -> content_part.done -> output_item.done(message)
+   * -> response.completed   (embeds the assembled output)
    * </pre>
    *
-   * <p>The Responses protocol terminates on {@code response.completed} — there is <strong>no</strong>
+   * <p>The Responses protocol terminates on {@code response.completed}; there is <strong>no</strong>
    * {@code [DONE]} sentinel (that is a Chat Completions convention). {@code created_at} is a Unix
    * timestamp in seconds.
    *
-   * @param responseIdOverride stable response id (stored-conversation continuation); null = derive from epoch
+   * @param responseIdOverride stable response id (stored-conversation continuation); {@code null}
+   *     derives one from the epoch
    */
   public static Flowable<ServerEvent> responsesStreamEvents(
     Flowable<TokenMessage> tokenStream,
@@ -148,7 +149,7 @@ public final class ResponsesFormatter {
           onFinal.accept(token);
         }
         // Any terminal failure (previous_response_not_found, guard block) must
-        // surface as response.failed — even after partial output, which a
+        // surface as response.failed, even after partial output, which a
         // "completed" would misreport as a successful answer. Open items are
         // closed first (partial message as "incomplete") so SDK state machines
         // unwind cleanly before the terminal event.
@@ -219,7 +220,7 @@ public final class ResponsesFormatter {
         return Flowable.fromIterable(events);
       }
 
-      // Reasoning (THINKING) tokens → a reasoning output item at output_index 0.
+      // Reasoning (THINKING) tokens become a reasoning output item at output_index 0.
       if (token.reasoning() != null) {
         if (reasoningOpen.compareAndSet(false, true)) {
           events.add(
@@ -234,8 +235,8 @@ public final class ResponsesFormatter {
         return Flowable.fromIterable(events);
       }
 
-      // Content tokens → the message item (output_index 1 when reasoning preceded it, else 0).
-      // Stray TOOL-channel deltas degrade to content here (fail-open — the buffered variant
+      // Content tokens feed the message item (output_index 1 when reasoning preceded it, else 0).
+      // Stray TOOL-channel deltas degrade to content here (fail-open; the buffered variant
       // handles tool-aware requests).
       String contentDelta = token.tool() != null ? token.tool() : token.token();
       if (contentDelta != null && !contentDelta.isEmpty()) {
@@ -268,7 +269,8 @@ public final class ResponsesFormatter {
    * Buffers all tokens, then emits Responses API SSE events. If the model produced tool calls,
    * emits {@code function_call} items instead of {@code output_text.delta}.
    *
-   * @param responseIdOverride stable response id (stored-conversation continuation); null = derive from epoch
+   * @param responseIdOverride stable response id (stored-conversation continuation); {@code null}
+   *     derives one from the epoch
    */
   public static Flowable<ServerEvent> responsesBufferedStreamEvents(
     Flowable<TokenMessage> tokenStream,
@@ -279,8 +281,8 @@ public final class ResponsesFormatter {
   ) {
     // Buffering must not swallow the PROGRESS side-channel: gravitee.progress
     // events stream through LIVE (a plan update the client sees only after the
-    // turn ends is useless), while everything else accumulates as before. The
-    // sequence counter is shared so numbering stays monotonic across both.
+    // turn ends is useless), while everything else accumulates. The sequence
+    // counter is shared so numbering stays monotonic across both.
     return Flowable.defer(() -> {
       SequenceAccumulator accumulator = new SequenceAccumulator();
       AtomicLong seq = new AtomicLong(0);
@@ -292,7 +294,7 @@ public final class ResponsesFormatter {
       return tokenStream
         .concatMap(t -> {
           if (t.progress() != null) {
-            // The header pair must precede ANY outbound event — a live progress
+            // The header pair must precede ANY outbound event: a live progress
             // or reasoning event before response.created violates the lifecycle.
             List<ServerEvent> live = new ArrayList<>(3);
             addHeaderPair(live, headerEmitted, seq, responseId, accumulator.created(), modelName);
@@ -391,7 +393,7 @@ public final class ResponsesFormatter {
 
     addHeaderPair(events, headerEmitted, seq, responseId, created, modelName);
 
-    // Any terminal failure surfaces as response.failed — even after partial
+    // Any terminal failure surfaces as response.failed, even after partial
     // output, which a "completed" would misreport as a successful answer. A
     // live-streamed reasoning item is closed first so SDK state machines
     // unwind cleanly; the failed response embeds the partial output.
@@ -433,15 +435,14 @@ public final class ResponsesFormatter {
         if (narration != null) {
           emitBufferedTextItem(events, seq, created, narration, itemBase);
         }
-        // The narration message item occupies the next index — the calls
+        // The narration message item occupies the next index; the calls
         // shift up so SDK item state machines never collide on an index.
         int indexBase = itemBase + (narration != null ? 1 : 0);
         for (int i = 0; i < toolCalls.size(); i++) {
           ParsedToolCall tc = toolCalls.get(i);
           // Full item lifecycle, not just arguments.done: stock Responses
           // SDKs assemble the response from output_item.added/done events
-          // and render NOTHING when a call arrives without them (observed
-          // live with an agent harness on /v1/responses).
+          // and render nothing when a call arrives without them.
           events.add(
             outputItemEvent(
               "response.output_item.added",
@@ -477,7 +478,7 @@ public final class ResponsesFormatter {
       }
     }
 
-    // response.completed embeds the assembled output (no [DONE] — that is a Chat convention).
+    // response.completed embeds the assembled output (no [DONE]; that is a Chat convention).
     ObjectNode completed = responsesObject(responseId, "completed", created, modelName);
     ArrayNode output = completed.putArray("output");
     buildOutputItems(output, accumulator, toolCalls, created);
@@ -490,7 +491,8 @@ public final class ResponsesFormatter {
    * Builds a non-streaming OpenAI Responses API response: a {@code "response"} object with
    * {@code output} items and {@code usage} input/output token counts.
    *
-   * @param responseIdOverride stable response id (stored-conversation continuation); null = derive from epoch
+   * @param responseIdOverride stable response id (stored-conversation continuation); {@code null}
+   *     derives one from the epoch
    */
   public static ObjectNode buildResponsesResponse(
     String modelName,
@@ -506,7 +508,7 @@ public final class ResponsesFormatter {
     response.put("model", modelName);
 
     // A FAILED event (e.g. previous_response_not_found, guard block) renders as
-    // the OpenAI failed-response shape — even after partial output, which a
+    // the OpenAI failed-response shape, even after partial output, which a
     // "completed" would misreport as a successful answer. Whatever partial
     // output exists is attached (reasoning item, "incomplete" message).
     if (accumulator.guardMessage() != null) {
@@ -534,8 +536,8 @@ public final class ResponsesFormatter {
 
   /**
    * Assembles the final {@code output} array shared by the buffered-stream and non-streaming
-   * paths: reasoning item, then narration → function_call items (or the fail-open text), or the
-   * plain content message.
+   * paths: reasoning item, then narration followed by function_call items (or the fail-open
+   * text), or the plain content message.
    */
   private static void buildOutputItems(
     ArrayNode output,

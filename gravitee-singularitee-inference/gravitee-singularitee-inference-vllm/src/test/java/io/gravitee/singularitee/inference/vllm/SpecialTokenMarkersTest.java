@@ -26,10 +26,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>vLLM deletes special tokens by default, so a Harmony workspace whose tags
  * are {@code <|channel|>analysis<|message|>} would have the FSM searching for
- * markers the text no longer contains — the reasoning then leaks into the answer
- * with its markers dissolved into bare words ("analysisWe need to..."). Getting
- * it wrong the other way is not free either: preserving special tokens for a
- * dialect that does not use them surfaces the model's terminal tokens
+ * markers the text no longer contains, and the reasoning would leak into the
+ * answer. The other direction is not free either: preserving special tokens for
+ * a dialect that does not use them surfaces the model's terminal tokens
  * ({@code <|return|>}, {@code <|endoftext|>}) in the reply.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -57,7 +56,7 @@ class SpecialTokenMarkersTest {
   @Test
   void an_alternative_opening_marker_is_enough() {
     // Harmony opens the tool channel two ways, and the second one lives in
-    // openAlternatives — checking only the primary marker would miss it.
+    // openAlternatives; checking only the primary marker would miss it.
     TagConfig tools = new TagConfig(
       "plain-open",
       "plain-close",

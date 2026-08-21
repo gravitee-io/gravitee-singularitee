@@ -35,13 +35,13 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Tests verify:
  * <ol>
- *   <li><b>Graceful failure</b> — invalid/null paths never throw, always
+ *   <li><b>Graceful failure</b>: invalid/null paths never throw, always
  *       return {@code unknown()} regardless of GPU/CPU/RPC mode.</li>
- *   <li><b>CPU mode</b> — {@code nGpuLayers=0} exercises the CPU memory
+ *   <li><b>CPU mode</b>: {@code nGpuLayers=0} exercises the CPU memory
  *       path with no safety margin.</li>
- *   <li><b>RPC mode</b> — unreachable RPC servers return {@code unknown()}
+ *   <li><b>RPC mode</b>: unreachable RPC servers return {@code unknown()}
  *       gracefully.</li>
- *   <li><b>Contract properties</b> — when estimation succeeds (native libs
+ *   <li><b>Contract properties</b>: when estimation succeeds (native libs
  *       loaded + device present), the result has correct flags and non-zero values.</li>
  * </ol>
  */
@@ -53,11 +53,11 @@ class LlamaMemoryEstimatorTest {
   private static final int DEFAULT_N_SEQ_MAX = 1;
 
   @Nested
-  @DisplayName("Graceful failure — GPU mode (always passes, no native libs needed)")
+  @DisplayName("Graceful failure: GPU mode (always passes, no native libs needed)")
   class GracefulFailureGpu {
 
     @Test
-    @DisplayName("nonexistent model path returns unknown() — never throws")
+    @DisplayName("nonexistent model path returns unknown(), never throws")
     void nonexistent_model_path_returns_unknown() {
       MemoryEstimate result = LlamaMemoryEstimator.estimate(
         NONEXISTENT,
@@ -71,7 +71,7 @@ class LlamaMemoryEstimatorTest {
     }
 
     @Test
-    @DisplayName("null model path returns unknown() — never throws")
+    @DisplayName("null model path returns unknown(), never throws")
     void null_model_path_returns_unknown() {
       MemoryEstimate result = LlamaMemoryEstimator.estimate(
         null,
@@ -128,11 +128,11 @@ class LlamaMemoryEstimatorTest {
   }
 
   @Nested
-  @DisplayName("Graceful failure — CPU mode (nGpuLayers=0)")
+  @DisplayName("Graceful failure: CPU mode (nGpuLayers=0)")
   class GracefulFailureCpu {
 
     @Test
-    @DisplayName("nGpuLayers=0 with nonexistent model returns unknown() — never throws")
+    @DisplayName("nGpuLayers=0 with nonexistent model returns unknown(), never throws")
     void zero_gpu_layers_nonexistent_returns_unknown() {
       MemoryEstimate result = LlamaMemoryEstimator.estimate(
         NONEXISTENT,
@@ -146,7 +146,7 @@ class LlamaMemoryEstimatorTest {
     }
 
     @Test
-    @DisplayName("nGpuLayers=0 with null model returns unknown() — never throws")
+    @DisplayName("nGpuLayers=0 with null model returns unknown(), never throws")
     void zero_gpu_layers_null_returns_unknown() {
       MemoryEstimate result = LlamaMemoryEstimator.estimate(
         null,
@@ -188,9 +188,7 @@ class LlamaMemoryEstimatorTest {
     }
 
     @Test
-    @DisplayName(
-      "negative nGpuLayers treated as CPU mode — returns unknown() for nonexistent model"
-    )
+    @DisplayName("negative nGpuLayers treated as CPU mode, returns unknown() for nonexistent model")
     void negative_gpu_layers_returns_unknown() {
       MemoryEstimate result = LlamaMemoryEstimator.estimate(
         NONEXISTENT,
@@ -205,11 +203,11 @@ class LlamaMemoryEstimatorTest {
   }
 
   @Nested
-  @DisplayName("Graceful failure — RPC mode (rpcServers configured)")
+  @DisplayName("Graceful failure: RPC mode (rpcServers configured)")
   class GracefulFailureRpc {
 
     @Test
-    @DisplayName("nonexistent model with RPC servers returns unknown() — never throws")
+    @DisplayName("nonexistent model with RPC servers returns unknown(), never throws")
     void rpc_nonexistent_model_returns_unknown() {
       MemoryEstimate result = LlamaMemoryEstimator.estimate(
         NONEXISTENT,
@@ -224,7 +222,7 @@ class LlamaMemoryEstimatorTest {
     }
 
     @Test
-    @DisplayName("null model with RPC servers returns unknown() — never throws")
+    @DisplayName("null model with RPC servers returns unknown(), never throws")
     void rpc_null_model_returns_unknown() {
       MemoryEstimate result = LlamaMemoryEstimator.estimate(
         null,

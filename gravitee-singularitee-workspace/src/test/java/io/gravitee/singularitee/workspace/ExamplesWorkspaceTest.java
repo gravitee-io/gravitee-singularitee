@@ -32,7 +32,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * <p>The examples are documentation people copy from: a typo in a step type, a
  * model config key or an {@code includes} path is a broken example, and nothing
  * else in the build reads these files. This walks them all and fails on the first
- * one that does not parse — including the {@code modular/} server and client
+ * one that does not parse, including the {@code modular/} server and client
  * configs, whose {@code includes} are resolved for real against the models/,
  * pipelines/ and templates/ subdirectories.
  *
@@ -41,7 +41,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class ExamplesWorkspaceTest {
 
-  /** Model/pipeline fragments — only meaningful when pulled in by an includes: block. */
+  /** Model/pipeline fragments, only meaningful when pulled in by an includes: block. */
   private static final String FRAGMENTS = "examples/modular/models";
 
   private static final String FRAGMENT_PIPELINES = "examples/modular/pipelines";
@@ -80,7 +80,7 @@ class ExamplesWorkspaceTest {
    *
    * <p>These are excluded from {@link #standaloneWorkspaces()} because they
    * declare no pipeline, so they are only ever exercised through whichever
-   * server file happens to include them — which means a fragment nobody
+   * server file happens to include them, which means a fragment nobody
    * currently includes is completely untested. They are documentation people
    * swap in by hand, so each is loaded here on its own.
    */
@@ -108,7 +108,7 @@ class ExamplesWorkspaceTest {
     // quietly shadow something.
     assertThat(declared).as("%s should declare exactly one model", yaml).isEqualTo(1);
     assertThat(requests.pipelines())
-      .as("%s is a model fragment — pipelines belong in modular/pipelines/", yaml)
+      .as("%s is a model fragment; pipelines belong in modular/pipelines/", yaml)
       .isEmpty();
   }
 
@@ -123,7 +123,7 @@ class ExamplesWorkspaceTest {
       requests.pipelines().isEmpty() &&
       requests.remoteModels().isEmpty();
     assertThat(publishesNothing)
-      .as("%s declares neither a model nor a pipeline — it would publish nothing", yaml)
+      .as("%s declares neither a model nor a pipeline; it would publish nothing", yaml)
       .isFalse();
   }
 
@@ -156,7 +156,7 @@ class ExamplesWorkspaceTest {
       io.gravitee.singularitee.protocol.RoutingStrategy.ROUTING_STRATEGY_EMBEDDING_KNN
     );
 
-    // embedding_knn routes on reference sentences — without them there is nothing to match against.
+    // embedding_knn routes on reference sentences; without them there is nothing to match against.
     var route = routeStepOf("pipelines/embedding-router.yaml");
     assertThat(route.getRouteConfig().getRulesList()).allSatisfy(rule ->
       assertThat(rule.getSentencesList()).isNotEmpty()
@@ -194,7 +194,7 @@ class ExamplesWorkspaceTest {
       .toList();
 
     assertThat(found)
-      .as("examples/ layout changed — update the README table alongside it")
+      .as("examples/ layout changed; update the README table alongside it")
       .contains("llama", "vllm", "classifier", "embedding", "reranker", "pipelines", "modular");
   }
 
@@ -202,7 +202,7 @@ class ExamplesWorkspaceTest {
   void harmony_workspaces_declare_a_re_enterable_reasoning_channel() throws IOException {
     // gpt-oss opens analysis and commentary, and re-enters them within one
     // generation. Drop either half and the header leaks into the answer as raw
-    // text — the failure this configuration exists to prevent.
+    // text, the failure this configuration exists to prevent.
     for (String file : List.of(
       "llama/gpt-oss-20b.yaml",
       "vllm/gpt-oss-20b.yaml",

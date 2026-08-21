@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Server-side conversation state for the OpenAI Responses continuation model
  * ({@code previous_response_id} / {@code store}): the transcript a pipeline
- * built — internal tool turns included — plus the todo plan, stored under the
+ * built (internal tool turns included) plus the todo plan, stored under the
  * response id so the next turn resumes with server-curated history instead of
  * client-replayed messages.
  *
@@ -109,7 +109,7 @@ public final class ConversationStore
       try {
         role = ChatRole.valueOf(t.role());
       } catch (IllegalArgumentException e) {
-        LOGGER.warn("Stored conversation carries unknown role '{}' — skipping turn", t.role());
+        LOGGER.warn("Stored conversation carries unknown role '{}', skipping turn", t.role());
         continue;
       }
       List<ChatTurn.ToolCallTurn> calls = t.toolCalls() == null

@@ -15,11 +15,11 @@
 #
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Server — vLLM GPTQ generation backend (:9091)
+# Server: vLLM GPTQ generation backend (:9091)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Hosts ONE generation model under logical id "llm" (Qwen3-0.6B GPTQ-Int8) plus
-# the plain infer pipeline. Linux/CUDA only — requires the vLLM virtualenv.
+# the plain infer pipeline. Linux/CUDA only: requires the vLLM virtualenv.
 #
 # Launch (port via -Dgrpc.port; vLLM venv via -Dvllm4j.venv):
 #   java -Dgrpc.port=9091 -Dvllm4j.venv=~/.venv-gravitee-ai/.venv \

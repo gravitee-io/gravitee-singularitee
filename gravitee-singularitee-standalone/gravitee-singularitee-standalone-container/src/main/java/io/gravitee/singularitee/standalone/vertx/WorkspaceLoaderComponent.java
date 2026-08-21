@@ -39,10 +39,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Lifecycle component that loads workspace YAML at startup.
+ * Lifecycle component that loads the workspace YAML at startup.
  *
- * <p>Reads {@code ai.workspace.path} from {@code gravitee.yml} and publishes
- * all declared models and pipelines before the gRPC server opens.
+ * <p>Reads {@code ai.workspace.path} from {@code gravitee.yml}, loads local models
+ * sequentially, registers remote proxies and pipelines, then marks the server ready. Runs
+ * after the servers have bound, so the process answers {@code /health} during the load. A
+ * model or pipeline that fails to load is logged at WARN and skipped; startup continues.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -61,6 +63,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
   /** gRPC clients created for remote endpoints. Held so they can be closed on stop. */
   private Map<String, SingulariteeClient> remoteClients = Map.of();
 
+  /** Creates the component; no I/O happens until {@code start()}. */
   public WorkspaceLoaderComponent(
     Configuration configuration,
     GraviteeModelServiceImpl modelService,
@@ -103,11 +106,11 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       return;
     }
 
-    // ── Local models (GPU-bound, loaded sequentially) ─────────────────────
+    // Local models (GPU-bound, loaded sequentially)
     int total = ws.models().size();
     int loaded = 0;
     for (var req : ws.models()) {
-      LOGGER.info("Loading models {} — {}", progressBar(loaded, total), req.modelName());
+      LOGGER.info("Loading models {} {}", progressBar(loaded, total), req.modelName());
       try {
         var resolvedId = modelService
           .loadAndRegisterModel(req)
@@ -124,7 +127,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       LOGGER.info("Models loaded {}", progressBar(loaded, total));
     }
 
-    // ── Remote models (gRPC proxies) ──────────────────────────────────────
+    // Remote models (gRPC proxies)
     remoteClients = buildRemoteClients(ws.remotes(), configuration);
 
     for (var modelDef : ws.remoteModels()) {
@@ -139,14 +142,14 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       }
     }
 
-    // ── Client-local models (pure-Java engines — regex / composite) ──
+    // Client-local models (pure-Java engines: regex, composite)
     io.gravitee.singularitee.engine.remote.ClientLocalModelRegistrar.register(
       ws.clientLocalModels(),
       modelService.modelRegistry(),
       modelService::registerPrebuiltModel
     );
 
-    // ── Pipelines ─────────────────────────────────────────────────────────
+    // Pipelines
     for (var pipeline : ws.pipelines()) {
       try {
         String resolvedId = pipelineRegistry.register(pipeline);
@@ -164,11 +167,11 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       }
     }
 
-    // ── Wire remote sub-pipeline callbacks ─────────────────────────────────
+    // Remote sub-pipeline callbacks
     var remoteCallbacks = buildRemotePipelineCallbacks(remoteClients);
     stepExecutorFactory.setSubPipelineCallbacks(pipelineExecutor, remoteCallbacks);
 
-    // ── Warm up KNN reference embeddings ──────────────────────────────────
+    // KNN reference embeddings
     for (var pipeline : ws.pipelines()) {
       try {
         stepExecutorFactory.rxWarmupEmbeddings(pipeline).blockingAwait();
@@ -190,7 +193,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       remoteClients.size()
     );
 
-    // Models + pipelines are loaded — the server is now ready to serve inference.
+    // Models and pipelines are loaded; the server may now serve inference.
     readinessState.markReady();
   }
 
@@ -221,9 +224,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     remoteClients = Map.of();
   }
 
-  // -----------------------------------------------------------------------
   // Remote model helpers
-  // -----------------------------------------------------------------------
 
   private static Map<String, SingulariteeClient> buildRemoteClients(
     Map<String, WorkspaceDefinition.RemoteEndpoint> remotes,
@@ -250,7 +251,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       );
       if (ep.hasCredentials() && !ep.effectiveSsl()) {
         LOGGER.warn(
-          "Remote '{}' sends Basic credentials over plaintext — set ssl: true unless {} is loopback",
+          "Remote '{}' sends Basic credentials over plaintext; set ssl: true unless {} is loopback",
           entry.getKey(),
           ep.host()
         );
@@ -264,7 +265,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
           ep.hasCredentials() ? ep.username() : null,
           ep.hasCredentials() ? ep.password() : null,
           ep.effectiveSsl(),
-          // Certificates come from grpc.client.ssl.* — the workspace only says which
+          // Certificates come from grpc.client.ssl.*; the workspace only says which
           // endpoints are secured, never where the key material lives.
           ep.effectiveSsl() ? tls : null
         )
@@ -291,23 +292,12 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       );
     }
 
-    // NOTE: we deliberately do NOT call client.getModel() synchronously here.
-    //
-    // Eagerly probing the remote at YAML-load time couples workspace startup
-    // to the remote server's availability: if the remote is still booting or
-    // briefly unreachable, the local process would skip every remote model
-    // and silently leave pipelines referencing them broken until restart.
-    //
-    // Instead we register the engine unconditionally. The engine is lazy —
-    // it only opens an RPC when a pipeline step actually invokes it (see
-    // RemoteTextGenEngine#rxAddSequence etc.). Transient failures surface
-    // at call time as a clean per-request error, and the very next pipeline
-    // invocation retries against a (now-healthy) remote with no restart.
-    //
-    // Chat-template metadata (template/bos/eos) is fetched by the engine
-    // itself via an async, self-healing GetModel probe — never hardcode it
-    // to null here: a null template silently degrades every INFER step to
-    // template-less prompts (no ChatML scaffolding, no enable_thinking).
+    // No synchronous getModel() probe here: it would couple startup to the remote's
+    // availability and drop every remote model until restart when the remote is still
+    // booting. The engine is registered unconditionally and lazy; it opens an RPC only when
+    // a step invokes it, so a transient failure is a per-request error and the next call
+    // retries. Chat-template metadata is fetched by the engine through its own async GetModel
+    // probe; a null template here would silently degrade every infer step to raw prompts.
     var modelType = io.gravitee.singularitee.workspace.ModelType.parse(modelDef.type());
     ModelEngine engine = switch (modelType) {
       case REMOTE_LLM -> new RemoteTextGenEngine(client, modelDef.id());
@@ -327,7 +317,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     );
 
     LOGGER.info(
-      "Workspace remote model registered (lazy — no probe): id={}, type={}, server={}",
+      "Workspace remote model registered (lazy, no probe): id={}, type={}, server={}",
       modelDef.id(),
       modelDef.type(),
       serverId

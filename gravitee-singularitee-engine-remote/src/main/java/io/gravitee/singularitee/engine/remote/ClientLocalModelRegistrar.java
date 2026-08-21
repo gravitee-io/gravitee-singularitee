@@ -47,7 +47,7 @@ import org.slf4j.LoggerFactory;
  *       registered first.</li>
  *   <li>Composite engines ({@code composite_classifier}) are built second,
  *       resolving each of their declared sub-model IDs against the registry
- *       — so composite references to simple engines (and even to other
+ *       so composite references to simple engines (and even to other
  *       composites declared earlier) always succeed.</li>
  * </ol>
  *
@@ -62,7 +62,7 @@ public final class ClientLocalModelRegistrar {
    * Callback used to hand a freshly-built engine to the caller's preferred
    * registration mechanism (direct {@code ModelRegistry.register(...)} on the
    * client, {@code GraviteeModelServiceImpl.registerPrebuiltModel(...)} on
-   * the server — both end up in the same {@link ModelRegistry}).
+   * the server; both end up in the same {@link ModelRegistry}).
    */
   @FunctionalInterface
   public interface Registrar {
@@ -105,7 +105,7 @@ public final class ClientLocalModelRegistrar {
   ) {
     if (models == null || models.isEmpty()) return;
 
-    // Pass 1 — simple engines (regex)
+    // Pass 1: simple engines (regex)
     List<ClientLocalModelData> composites = new ArrayList<>();
     for (ClientLocalModelData data : models) {
       ModelDefinition def = data.definition();
@@ -156,7 +156,7 @@ public final class ClientLocalModelRegistrar {
       }
     }
 
-    // Pass 2 — composites (reference already-registered delegates)
+    // Pass 2: composites (reference already-registered delegates)
     for (ClientLocalModelData data : composites) {
       ModelDefinition def = data.definition();
       try {
@@ -172,7 +172,7 @@ public final class ClientLocalModelRegistrar {
           Optional<ModelRegistry.ModelEntry> entry = registry.get(delegateId);
           if (entry.isEmpty()) {
             LOGGER.warn(
-              "composite_classifier '{}': delegate '{}' not registered — skipping composite",
+              "composite_classifier '{}': delegate '{}' not registered, skipping composite",
               def.id(),
               delegateId
             );
@@ -183,7 +183,7 @@ public final class ClientLocalModelRegistrar {
             delegates.add(ce);
           } else {
             LOGGER.warn(
-              "composite_classifier '{}': delegate '{}' is not a ClassifierEngine (type={}) — skipping composite",
+              "composite_classifier '{}': delegate '{}' is not a ClassifierEngine (type={}), skipping composite",
               def.id(),
               delegateId,
               entry.get().engine().type()

@@ -14,16 +14,16 @@
 # limitations under the License.
 #
 
-# Pipeline — tool router: shortlist the caller's tools with a zero-shot classifier
+# Pipeline: tool router: shortlist the caller's tools with a zero-shot classifier
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/pipelines/tool-router.yaml
 #
-#   select_tools ──→ agent
+#   select_tools -> agent
 #
-# THE PROBLEM: an agent with 60 tools pays for all 60 schemas in every prompt —
+# THE PROBLEM: an agent with 60 tools pays for all 60 schemas in every prompt,
 # thousands of tokens of JSON before the user's question is even read, on every
-# turn — and a small model's accuracy degrades as the tool list grows.
+# turn, and a small model's accuracy degrades as the tool list grows.
 #
 # THE FIX: the `tool_select` step classifies the LAST USER MESSAGE against the
 # tools THE CALLER SENT on this request. Nothing is configured ahead of time: each
@@ -35,12 +35,12 @@
 #
 # Two behaviours worth knowing:
 #   - Every batch electing none_of_these (a plain conversational turn) leaves the
-#     shortlist EMPTY and injects no tools at all — `always_include` is unioned in
+#     shortlist EMPTY and injects no tools at all, `always_include` is unioned in
 #     only when the shortlist is non-empty, so chit-chat stays clean.
 #   - A failed classify call fails OPEN: that batch's tools are all included.
 #     Degraded routing beats a silently tool-less agent.
 #
-# Try it — send several tools and watch only the relevant one get injected:
+# Try it: send several tools and watch only the relevant one get injected:
 #   curl localhost:8080/v1/chat/completions -H 'content-type: application/json' \
 #     -d '{"model":"tool-router","messages":[{"role":"user","content":"What is the weather in Paris?"}],
 #          "tools":[{"type":"function","function":{"name":"get_weather","description":"Get the current weather for a city."}},
@@ -91,7 +91,7 @@ workspace:
             # always_include: [ "read_file" ]
             #
             # Also rewrite each SELECTED tool's description down to its condensed
-            # form before injecting it — saves tokens twice over.
+            # form before injecting it, saves tokens twice over.
             trim_descriptions: true
 
         - id: agent

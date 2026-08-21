@@ -16,7 +16,7 @@
 
 # Qwen3-VL-2B-Instruct · vision (multimodal)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/qwen3-vl-2b.yaml
 #
 # The ONLY difference from a text-only model is `mmproj_path`, the vision
@@ -29,7 +29,7 @@
 # /v1/models reports this model as `"input_modalities": ["text", "image"]` and an
 # audio clip sent to it is refused with `unsupported_modality`.
 #
-# Send an image (base64 or data URL — remote http(s) URLs are rejected with 400):
+# Send an image (base64 or data URL, remote http(s) URLs are rejected with 400):
 #   {"model":"llm","messages":[{"role":"user","content":[
 #     {"type":"text","text":"What is in this image?"},
 #     {"type":"image_url","image_url":{"url":"data:image/png;base64,<...>"}}]}]}

@@ -32,26 +32,26 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Centralises the context composition that every executor needs when
  * resolving Jinja2 templates in step configuration (prompts, guard messages,
- * raw templates), so every step type renders against the same variables —
+ * raw templates), so every step type renders against the same variables;
  * partial per-executor copies drift and silently render empty prompts.
  *
  * <p>The standard Jinja2 context exposes:
  * <ul>
- *   <li>{@code prompt} — the raw user input (from {@link PipelineContext#KEY_PROMPT})</li>
- *   <li>{@code system} — the system message from the original request, if any</li>
- *   <li>{@code history} — the full conversation formatted as "role: content" lines</li>
- *   <li>{@code messages} — the original request turns as {@code [{role, content}]}</li>
- *   <li>{@code generated_messages} — assistant outputs from pipeline steps, in
+ *   <li>{@code prompt}: the raw user input (from {@link PipelineContext#KEY_PROMPT})</li>
+ *   <li>{@code system}: the system message from the original request, if any</li>
+ *   <li>{@code history}: the full conversation formatted as "role: content" lines</li>
+ *   <li>{@code messages}: the original request turns as {@code [{role, content}]}</li>
+ *   <li>{@code generated_messages}: assistant outputs from pipeline steps, in
  *       execution order, as {@code [{role, content, step}]}. Preserves every
  *       CoT loop iteration (unlike {@code step_id.output} which keeps only
  *       the latest).</li>
- *   <li>{@code verdicts} — guard verdicts, in execution order, as
+ *   <li>{@code verdicts}: guard verdicts, in execution order, as
  *       {@code [{verdict, details, step}]}. Kept separate from
  *       {@code generated_messages} so templates can distinguish
  *       conversation content from safety metadata.</li>
- *   <li>{@code step_id.field} — nested maps of every step output key
+ *   <li>{@code step_id.field}: nested maps of every step output key
  *       (e.g. {@code generate.output}, {@code input_guard.verdict}).
- *       These are the latest values — a CoT loop that reruns a step
+ *       These are the latest values; a CoT loop that reruns a step
  *       overwrites the entry on each iteration.</li>
  * </ul>
  *
@@ -83,7 +83,7 @@ public final class JinjaContextHelper {
     ctx.put("generated_messages", buildGeneratedMessages(pctx));
     ctx.put("verdicts", buildVerdicts(pctx));
     // The request's declared tool names, so corrective templates (loopback_message)
-    // can enumerate what is legal — e.g. steering a model off a hallucinated built-in.
+    // can enumerate what is legal, e.g. steering a model off a hallucinated built-in.
     ctx.put(
       "tool_names",
       pctx
@@ -99,11 +99,11 @@ public final class JinjaContextHelper {
     // {% for t in todos %}[{{ t.status }}] {{ t.title }}{% endfor %}
     // MUST come after buildStepOutputContext: the mirrored condition fields
     // (todos.total/completed/remaining) nest into a map under the same "todos"
-    // key and would otherwise replace the list — templates then iterate three
+    // key and would otherwise replace the list; templates then iterate three
     // key STRINGS instead of the items and the model never sees its plan.
     ctx.put("todos", buildTodos(pctx));
 
-    // Plan-level constraints (locked user decisions from set_todos) — a
+    // Plan-level constraints (locked user decisions from set_todos), a
     // distinct top-level key on purpose: a "todos."-prefixed scalar would be
     // nested under "todos" by buildStepOutputContext and clobbered above.
     ctx.put("constraints", pctx.todoConstraints() == null ? "" : pctx.todoConstraints());
@@ -151,8 +151,8 @@ public final class JinjaContextHelper {
   /**
    * Returns the conversation turns as a list of Jinja-shaped maps
    * ({@code [{role, content}, ...]}), synthesized from
-   * {@link PipelineContext#messages()} or — if no structured messages were
-   * provided — from a bare prompt as a single user turn.
+   * {@link PipelineContext#messages()} or, if no structured messages were
+   * provided, from a bare prompt as a single user turn.
    */
   public static List<Map<String, Object>> buildMessages(PipelineContext pctx) {
     if (pctx.messages() != null && !pctx.messages().isEmpty()) {
@@ -181,7 +181,7 @@ public final class JinjaContextHelper {
    *
    * <p>Thinking blocks ({@code <think>…</think>}) are stripped from the
    * content before adding it to the context. Reasoning tokens are internal
-   * model state and must never leak into downstream template variables —
+   * model state and must never leak into downstream template variables;
    * regardless of whether the originating step had {@code strip_thinking}
    * enabled. This is a framework-level guarantee: {@code generated_messages}
    * always exposes the clean answer, not the raw output.
@@ -227,7 +227,7 @@ public final class JinjaContextHelper {
       sb.append(text, pos, openIdx);
       int closeIdx = text.indexOf(close, openIdx + open.length());
       if (closeIdx < 0) {
-        // Unclosed <think> — drop everything from here to end.
+        // Unclosed <think>: drop everything from here to end.
         break;
       }
       pos = closeIdx + close.length();
@@ -282,8 +282,8 @@ public final class JinjaContextHelper {
 
   /**
    * Populates the {@code step_id.field} step-output maps as nested values
-   * in the given context (e.g. {@code "generate.output"} → {@code generate = { output: "..." }}).
-   * Step ids are used as-is — the YAML loader validates that they are legal
+   * in the given context (e.g. {@code "generate.output"} -> {@code generate = { output: "..." }}).
+   * Step ids are used as-is; the YAML loader validates that they are legal
    * Jinja2 identifiers.
    */
   public static void buildStepOutputContext(PipelineContext pctx, Map<String, Object> ctx) {
@@ -332,7 +332,7 @@ public final class JinjaContextHelper {
         ("true".equalsIgnoreCase(s) || "false".equalsIgnoreCase(s))
       ) {
         LOGGER.warn(
-          "Step context variable '{}' is the STRING \"{}\", not a boolean — " +
+          "Step context variable '{}' is the STRING \"{}\", not a boolean; " +
             "Jinja2 'is true'/'is false' tests will not match it (e.g. Qwen3's " +
             "enable_thinking guard). Unquote the value in the workspace YAML.",
           e.getKey(),
@@ -375,7 +375,7 @@ public final class JinjaContextHelper {
   /**
    * Converts a Java {@link Map} to a protobuf {@link Struct}, recursively
    * handling nested maps and lists. Inverse of {@link #structToMap}. Booleans
-   * stay booleans — important for template flags like {@code enable_thinking}
+   * stay booleans, important for template flags like {@code enable_thinking}
    * whose Jinja2 {@code is false} test is a strict boolean-identity check.
    */
   public static Struct mapToStruct(Map<String, Object> map) {

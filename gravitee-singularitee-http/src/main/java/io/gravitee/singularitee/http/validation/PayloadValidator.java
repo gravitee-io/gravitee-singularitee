@@ -31,6 +31,7 @@ import java.util.Set;
  * Validates inbound request payloads against per-endpoint JSON schemas (Draft 2020-12) loaded once
  * from {@code /llm-schemas.json}. Schemas are intentionally lenient ({@code additionalProperties}
  * allowed) so SDK-added fields don't break requests; they enforce required fields, types and enums.
+ * The singleton is immutable after construction and safe to share across event loops.
  */
 public final class PayloadValidator {
 

@@ -21,21 +21,18 @@ import io.gravitee.singularitee.workspace.ModelLoadRequest;
 /**
  * Creates a {@link ModelEngine} from a {@link ModelLoadRequest}.
  *
- * This is the only factory interface that code outside the adapter package is
- * allowed to reference. The concrete implementations each know about exactly
- * one external inference library; no external type ever leaks through this interface.
- *
- * The architectural boundary is enforced by package structure: only the sub-packages
- * of adapter may import gravitee-inference-* types.
+ * <p>This is the only factory interface that code outside the adapter package may reference.
+ * Each implementation knows about exactly one inference library; no library type leaks
+ * through this interface. Only the sub-packages of {@code adapter} may import
+ * {@code gravitee-inference-*} types.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
 public interface ModelEngineFactory {
   /**
-   * Creates and returns a model engine configured from the load request.
-   * The engine is returned before it is started — the ModelRegistry is responsible
-   * for starting text-gen engines.
+   * Creates a model engine configured from the load request.
+   * The engine is returned before it is started: the model registry starts text-gen engines.
    *
    * @param request the model load request from the workspace loader
    * @return a new model engine, ready to be started or used directly

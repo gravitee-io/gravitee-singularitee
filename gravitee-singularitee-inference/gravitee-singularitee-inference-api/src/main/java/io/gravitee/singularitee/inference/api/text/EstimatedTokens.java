@@ -20,7 +20,7 @@ package io.gravitee.singularitee.inference.api.text;
  * their own (regex, composite) or none exposed (gliner4j).
  *
  * <p>Estimates ~one token per {@value #CHARS_PER_TOKEN} characters. It is a
- * budgeting heuristic, not an exact count — its purpose is to let every engine
+ * budgeting heuristic, not an exact count; its purpose is to let every engine
  * express and enforce chunking budgets in the <em>same unit (tokens)</em>, so a
  * composite budget and its delegates' budgets are comparable even when only the
  * model-backed engines have a real tokenizer.
@@ -48,7 +48,7 @@ public final class EstimatedTokens {
    * evenly across the piece (≈ every {@value #CHARS_PER_TOKEN} characters). The array
    * length equals {@link #estimateTokens} (so it doubles as the token counter used to
    * measure a piece against a budget), the offsets are strictly increasing, and the
-   * last one is the piece length — they are the last-resort cut points the splitter
+   * last one is the piece length. They are the last-resort cut points the splitter
    * only reaches for a long boundary-free run.
    *
    * <p>Suitable as a {@link RecursiveTextSplitter.TokenBoundaries}.

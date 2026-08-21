@@ -53,13 +53,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Engine adapter for vLLM backend.
- * Bridges the Gravitee {@link io.gravitee.singularitee.inference.api.EngineAdapter} abstraction
- * with the vLLM4J {@link VllmEngine} and {@link VllmIterator}.
+ * Engine adapter for the vLLM backend.
  *
- * <p>Unlike llama.cpp which uses a native batch iterator, vLLM manages its own
- * continuous batching via the Python engine. This adapter drives the VllmIterator
- * which calls {@code engine.step()} and extracts per-token deltas.
+ * <p>Bridges the inference API's {@code EngineAdapter} contract with the vLLM4j
+ * {@link VllmEngine} and {@link VllmIterator}. vLLM runs its own continuous
+ * batching inside the Python engine; this adapter drives the iterator, which
+ * calls {@code engine.step()} and extracts per-token deltas.
+ *
+ * <p>Constructing an instance initialises the CPython runtime and loads the
+ * model; the instance is not thread-safe and is owned by a single
+ * {@link BatchEngine}.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -76,8 +79,8 @@ public class EngineAdapter
   private static final Logger LOGGER = LoggerFactory.getLogger(EngineAdapter.class);
 
   /**
-   * Fallback budget when the context window is unknown — generous enough that a
-   * reasoning model can finish, unlike vLLM's own default of 16.
+   * Fallback budget when the context window is unknown: large enough that a
+   * reasoning model can finish (vLLM's own default is 16).
    */
   private static final int DEFAULT_MAX_TOKENS = 4096;
 
@@ -96,12 +99,20 @@ public class EngineAdapter
   /** Buffer for the latest output from the iterator. */
   private final AtomicReference<VllmOutput> currentOutput = new AtomicReference<>();
 
+  /**
+   * Builds the vLLM engine from {@code config}.
+   *
+   * <p>Applies platform and GPU gating, initialises the CPython runtime, runs the
+   * VRAM pre-flight, then constructs the engine. Throws
+   * {@link InsufficientVramException} when the pre-flight fails under
+   * {@code memory_check: fail}, or when the weights alone exceed the budget.
+   */
   public EngineAdapter(VllmConfig config) {
     VllmEngineBuilder builder = VllmEngine.builder().dtype(resolveDtype(config.dtype()));
 
     // The weights are fetched in Java before we get here, so point vLLM at the
-    // directory rather than a repo id — that keeps the download on one code path
-    // and one cache, and lets the engine load with no network at all.
+    // directory rather than a repo id: one download path, one cache, and no
+    // network needed at load time.
     if (config.modelPath() != null) {
       builder.modelPath(config.modelPath());
     } else {
@@ -119,25 +130,16 @@ public class EngineAdapter
     if (config.quantization() != null) builder.quantization(config.quantization());
     if (config.swapSpace() > 0) builder.swapSpace(config.swapSpace());
     if (config.seed() != null) builder.seed(config.seed());
-    // Unlike the other booleans this one is three-valued, because a backend can
-    // need it OFF: vllm-metal's paged-attention runtime loses the RequestState
-    // for cached requests and falls back to emitting token id 0 as a placeholder,
-    // so generation silently produces nothing until the window fills.
+    // Three-valued, unlike the other booleans, because a backend can need it OFF.
+    // vllm-metal's paged-attention runtime loses the RequestState for cached
+    // requests and answers every decode step with placeholder token id 0, so
+    // generation produces nothing until the window fills. On Metal an unconfigured
+    // workspace gets it turned off before the interpreter starts; an explicit value
+    // always wins. LoRA is the exception: that backend serves LoRA only from the
+    // paged path (LLMEngine.from_engine_args: LoRA on Metal requires paged attention).
     //
-    // Nobody should have to know that to run a workspace on a Mac, so an
-    // unconfigured workspace gets it turned off on Metal rather than inheriting
-    // vLLM's on-by-default. An explicit value in the workspace always wins —
-    // including an explicit true, which is how you re-test the upstream fix.
-    // Metal's paged-attention runtime loses the RequestState for cached requests
-    // and answers every decode step with placeholder token id 0 — generation looks
-    // alive, produces nothing, and runs until the context window fills. Turn it off
-    // there, before the interpreter starts, unless the workspace wants LoRA, which
-    // that backend serves only from the paged path:
-    //   LLMEngine.from_engine_args(): LoRA on Metal requires paged attention.
-    //
-    // This lives here rather than in vLLM4j because it is a policy call about which
-    // broken-ness to accept, and because the library must stay usable by callers who
-    // need LoRA — its own integration suite is one of them.
+    // This is a policy choice, so it lives here rather than in vLLM4j, which must
+    // stay usable by callers that need LoRA.
     if (PlatformResolver.backend() == VllmBackend.METAL && !config.enableLora()) {
       PythonRuntime.setEnv("VLLM_METAL_USE_PAGED_ATTENTION", "0");
     }
@@ -151,20 +153,12 @@ public class EngineAdapter
       );
       builder.enablePrefixCaching(false);
     }
-    // Only ever turn it ON, like every other boolean here.
-    //
-    // The proto field is a plain bool, so "the workspace never mentioned
-    // enable_chunked_prefill" arrives as false — indistinguishable from someone
-    // asking for it to be off. Forwarding that unconditionally turned a default
-    // into an explicit disable on every workspace, and vLLM says what that costs:
-    //   WARNING [arg_utils.py] This model does not officially support disabling
-    //   chunked prefill. Disabling this manually may cause the engine to crash
-    //   or produce incorrect outputs.
-    // gpt-oss-20b is such a model — half its layers are sliding-window attention
-    // — and the engine segfaulted shortly after startup on an A100.
-    //
-    // Left unset, vLLM picks its own default (on, for V1), which is what an
-    // unconfigured workspace means.
+    // Only ever turn it ON, like every other boolean here. The proto field is a
+    // plain bool, so an unset enable_chunked_prefill arrives as false and cannot
+    // be told apart from an explicit disable. Forwarding false would disable
+    // chunked prefill on models that do not support running without it (vLLM
+    // warns the engine may crash or produce incorrect output). Left unset, vLLM
+    // picks its own default.
     if (config.enableChunkedPrefill()) builder.enableChunkedPrefill(true);
     if (config.kvCacheDtype() != null) builder.kvCacheDtype(config.kvCacheDtype());
     if (config.enableLora()) {
@@ -175,7 +169,7 @@ public class EngineAdapter
     if (config.venvPath() != null) builder.venvPath(config.venvPath());
     if (config.enableSleepMode() != null) builder.enableSleepMode(config.enableSleepMode());
 
-    // Distributed inference. These arrive as plain configuration — resolving
+    // Distributed inference. These arrive as plain configuration; resolving
     // them from the environment is the server's job, not this library's.
     if (config.tensorParallelSize() > 0) builder.tensorParallelSize(config.tensorParallelSize());
     if (config.pipelineParallelSize() > 0) builder.pipelineParallelSize(
@@ -191,10 +185,10 @@ public class EngineAdapter
     }
 
     // Pre-Ampere cards cannot run FlashInfer's sampler, and vLLM's sampler
-    // imports the FlashInfer backend unconditionally unless this says otherwise
-    // — so on such a card the engine fails to start with either a JIT build
-    // error (package present) or ModuleNotFoundError (package removed, which is
-    // what scripts/setup-venv.sh does since the attention selector only skips
+    // imports the FlashInfer backend unconditionally unless this says otherwise,
+    // so on such a card the engine fails to start with either a JIT build error
+    // (package present) or ModuleNotFoundError (package removed, which is what
+    // scripts/setup-venv.sh does since the attention selector only skips
     // FlashInfer when it is not importable).
     //
     // Set before the vLLM import below: vllm.envs snapshots this at first read.
@@ -202,7 +196,7 @@ public class EngineAdapter
       PythonRuntime.setEnv("VLLM_USE_FLASHINFER_SAMPLER", "0");
       boolean pinnedAttention = pinTritonAttention();
       LOGGER.info(
-        "Compute capability {} is pre-Ampere — disabling the FlashInfer sampler{}",
+        "Compute capability {} is pre-Ampere: disabling the FlashInfer sampler{}",
         GpuCapability.lowest().orElse(0),
         pinnedAttention ? " and pinning the Triton attention backend" : ""
       );
@@ -225,8 +219,8 @@ public class EngineAdapter
    *
    * <p>Detected from the marker text rather than from a per-model flag: a
    * workspace that writes {@code <|channel|>analysis<|message|>} has already
-   * said which dialect it speaks, and asking it to repeat that in a second
-   * setting is a way to get the two out of step.
+   * named its dialect, and a second setting could drift from it. Accepts
+   * {@code null}.
    */
   static boolean needsSpecialTokens(TagConfig tags) {
     if (tags == null || !tags.isConfigured()) {
@@ -243,17 +237,16 @@ public class EngineAdapter
   /**
    * Pins the attention backend to Triton on a pre-Ampere GPU.
    *
-   * <p>vLLM auto-selects FlashInfer there — FLASH_ATTN requires sm_80+, and
-   * FlashInfer's own {@code supports_compute_capability()} optimistically claims
-   * Turing support — but its kernels either fail to JIT-build against the CUDA 13
+   * <p>vLLM auto-selects FlashInfer there (FLASH_ATTN requires sm_80+, and
+   * FlashInfer's own {@code supports_compute_capability()} claims Turing
+   * support), but its kernels either fail to JIT-build against the CUDA 13
    * toolchain they pull in, or fail at runtime with "BatchPrefillWithPagedKVCache
    * failed with error invalid argument".
    *
    * <p>vLLM 0.23 dropped the attention-backend environment variable, so this goes
-   * through vLLM4j, which forwards this system property to the engine arg. That
-   * is why the fix belongs here and not in the venv: the alternative — deleting
-   * flashinfer so vLLM stops offering it — is a change to a shared environment
-   * that also costs performance the day that venv meets an Ampere card.
+   * through vLLM4j, which forwards the system property to the engine arg. Removing
+   * flashinfer from the venv instead would change a shared environment and cost
+   * performance on an Ampere card.
    *
    * @return {@code true} if this call pinned the backend; {@code false} when an
    *         explicit property or {@code VLLM4J_ATTENTION_BACKEND} already chose
@@ -274,13 +267,12 @@ public class EngineAdapter
    * Resolves {@code dtype: auto} to {@code float16} on a pre-Ampere GPU.
    *
    * <p>"auto" means "whatever the checkpoint says", and current checkpoints say
-   * {@code bfloat16} — which compute capability &lt; 8.0 does not implement, so
-   * vLLM rejects the load outright. Every workspace would otherwise need
-   * {@code dtype: float16} spelled out to run on such a card, including the
-   * shipped examples.
+   * {@code bfloat16}, which compute capability &lt; 8.0 does not implement, so
+   * vLLM rejects the load outright. Without this, every workspace would need
+   * {@code dtype: float16} spelled out to run on such a card.
    *
-   * <p>An explicit {@code dtype:} is always honoured: someone who wrote
-   * {@code bfloat16} deserves vLLM's error, not a silent substitution.
+   * <p>An explicit {@code dtype:} is always honoured, including {@code bfloat16}:
+   * vLLM then reports the error rather than a silent substitution.
    */
   private static String resolveDtype(String configured) {
     boolean auto =
@@ -300,10 +292,12 @@ public class EngineAdapter
     return engine.getChatTemplate();
   }
 
+  /** Beginning-of-sequence token text as declared by the tokenizer. */
   public String bosToken() {
     return engine.getBosToken();
   }
 
+  /** End-of-sequence token text as declared by the tokenizer. */
   public String eosToken() {
     return engine.getEosToken();
   }
@@ -319,9 +313,12 @@ public class EngineAdapter
   }
 
   /**
-   * Tokenizes with the model's own tokenizer.
+   * Counts tokens with the model's own tokenizer.
    *
-   * @return the exact token count, or -1 when it cannot be determined
+   * <p>Takes the GIL for the round-trip; not for use on the per-token hot path.
+   *
+   * @return the exact token count, 0 for empty input, or -1 when it cannot be
+   *         determined
    */
   public int countTokens(String text) {
     if (text == null || text.isEmpty()) {
@@ -335,6 +332,10 @@ public class EngineAdapter
     }
   }
 
+  /**
+   * VRAM pre-flight according to {@code memoryCheckPolicy}. Must run after the
+   * CPython runtime is initialised, since the GPU query takes the GIL.
+   */
   private static void runMemoryCheck(VllmConfig config) {
     MemoryCheckPolicy policy = config.memoryCheckPolicy();
     if (policy == null || policy == MemoryCheckPolicy.DISABLED) {
@@ -361,7 +362,7 @@ public class EngineAdapter
     );
     if (estimate.isUnknown()) {
       LOGGER.warn(
-        "Memory pre-flight for model {}: skipped — could not determine the model shape " +
+        "Memory pre-flight for model {}: skipped, could not determine the model shape " +
           "or query CUDA memory. Set total_params/bytes_per_param explicitly to force a check.",
         config.model()
       );
@@ -375,14 +376,14 @@ public class EngineAdapter
       throw new InsufficientVramException(config.model(), estimate);
     }
 
-    // WARN means "the estimate says it is tight, proceed anyway" — reasonable,
-    // since the KV-cache half of the estimate is approximate. The weights are
-    // not: their size comes from the checkpoint and vLLM must hold all of them
-    // at once, so a budget that cannot even cover the weights is a certain
-    // failure and there is nothing for WARN to be optimistic about.
+    // WARN means "the estimate says it is tight, proceed anyway", which is
+    // reasonable for the approximate KV-cache half of the estimate. The weights
+    // are not approximate: their size comes from the checkpoint and vLLM must
+    // hold all of them at once, so a budget that cannot cover the weights is a
+    // certain failure.
     //
-    // Reported here rather than left to the engine because vLLM's own error —
-    // "No available memory for the cache blocks" — names neither the budget, nor
+    // Reported here rather than left to the engine because vLLM's own error,
+    // "No available memory for the cache blocks", names neither the budget, nor
     // the weights, nor the setting that produced it.
     double weightsGb = weightsGb(shape);
     if (weightsExceedBudget(weightsGb, estimate)) {
@@ -409,7 +410,7 @@ public class EngineAdapter
   }
 
   /**
-   * Whether the weights alone overflow the budget — the deterministic part of an
+   * Whether the weights alone overflow the budget, the deterministic part of an
    * otherwise approximate estimate. Guards against the unknown sentinel, whose
    * zeroed figures would otherwise read as "nothing fits".
    */
@@ -538,10 +539,9 @@ public class EngineAdapter
    * <p>Priority:
    * <ol>
    *   <li>User-configured {@code maxModelLen} (explicit override).</li>
-   *   <li>{@code max_position_embeddings} from the model's {@code config.json}
-   *       — the maximum sequence length the model's positional encoding supports.
-   *       This is what vLLM uses as default context length when no override is
-   *       provided.</li>
+   *   <li>{@code max_position_embeddings} from the model's {@code config.json}:
+   *       the maximum sequence length the positional encoding supports, and
+   *       vLLM's default context length when no override is provided.</li>
    *   <li>Fallback to {@code 4096} if neither is available.</li>
    * </ol>
    */
@@ -558,7 +558,7 @@ public class EngineAdapter
   @Override
   public VllmSequenceState createSequenceState(int internalId, VllmRequest request)
     throws Exception {
-    // Prompt must be pre-rendered by the caller — this adapter does not template.
+    // Prompt must be pre-rendered by the caller: this adapter does not template.
     String prompt = request.prompt();
     MultiModalData multiModalData = null;
 
@@ -568,13 +568,13 @@ public class EngineAdapter
 
     if (prompt == null || prompt.isBlank()) {
       LOGGER.error(
-        "Cannot create sequence state: prompt is empty for internalId {} — vLLM requires a pre-rendered prompt",
+        "Cannot create sequence state: prompt is empty for internalId {}, vLLM requires a pre-rendered prompt",
         internalId
       );
       return null;
     }
 
-    // Build SamplingParams — the engine's arena outlives every request
+    // The engine's arena outlives every request, so SamplingParams can live in it.
     SamplingParams sp = new SamplingParams(engine.arena());
     if (request.temperature() != null) sp.temperature(request.temperature());
     sp.maxTokens(resolveMaxTokens(request));
@@ -586,18 +586,15 @@ public class EngineAdapter
 
     // Keep the markers the tag FSM below is about to look for.
     //
-    // Harmony-style dialects delimit channels with *special* tokens —
-    // <|channel|>analysis<|message|>, <|start|>assistant, <|call|> — and vLLM
-    // deletes those during detokenization by default (skip_special_tokens=True).
-    // The FSM then searches for markers the text no longer contains, nothing
-    // matches, and the model's reasoning leaks into the answer with the markers
-    // dissolved into bare words:
-    //     analysisWe need to explain project.assistantcommentary to=functions...
+    // Harmony delimits channels with special tokens (<|channel|>analysis<|message|>,
+    // <|start|>assistant, <|call|>) and vLLM drops those during detokenization by
+    // default (skip_special_tokens=True). The FSM would then search for markers
+    // the text no longer contains and the reasoning would leak into the answer.
     //
     // Conditional rather than always-off: for a dialect whose markers are
     // ordinary text (Qwen's <think>), preserving special tokens would instead
     // surface the model's terminal tokens (<|return|>, <|endoftext|>) in the
-    // answer. Each model gets what its own markers require.
+    // answer.
     if (needsSpecialTokens(request.reasoningTags()) || needsSpecialTokens(request.toolTags())) {
       sp.skipSpecialTokens(false);
     }
@@ -605,12 +602,11 @@ public class EngineAdapter
     // Always create a ConversationState so token counts (prompt, answer,
     // reasoning, tools) are tracked even without reasoning/tool tags.
     ConversationState conversationState = new ConversationState();
-    // Every configured marker, opening and closing, not just the primaries. A dialect may open
-    // a channel more than one way (Harmony opens tool calls on both the commentary and analysis
-    // channels) and leave it more than one way (reasoning reaches the final channel after
-    // <|end|> when answering directly, after <|call|> when a tool call intervened). The
-    // workspace already carries them all — the YAML accepts a list for each — so taking only the
-    // primary here silently dropped configuration the file was allowed to express.
+    // Every configured marker, opening and closing, not just the primaries: a
+    // dialect may open a channel more than one way (Harmony opens tool calls on
+    // both the commentary and analysis channels) and leave it more than one way
+    // (after <|end|> when answering directly, after <|call|> when a tool call
+    // intervened).
     if (request.reasoningTags() != null && request.reasoningTags().isConfigured()) {
       conversationState.reasoning(
         request.reasoningTags().allOpenTokens(),
@@ -663,16 +659,14 @@ public class EngineAdapter
    * Resolves the completion budget for a request.
    *
    * <p>Leaving this to vLLM is not an option: its {@code SamplingParams}
-   * default is <strong>16 tokens</strong>, which silently truncates every
-   * request that does not name a limit. On a thinking model the entire budget
-   * disappears inside the reasoning block, so the caller gets empty content and
-   * {@code finish_reason=length} — which looks like the model failing rather
-   * than a default being applied.
+   * default is 16 tokens, which silently truncates every request that does not
+   * name a limit. On a thinking model the entire budget disappears inside the
+   * reasoning block, so the caller gets empty content and
+   * {@code finish_reason=length}.
    *
    * <p>llama.cpp treats "unset" as "whatever is left in the context window"
-   * ({@code Model.availableForCompletion}), so the same workspace behaves
-   * completely differently across the two backends. This matches that: unset
-   * means the rest of the window, and an explicit value is clamped to it.
+   * ({@code Model.availableForCompletion}); this matches it: unset means the
+   * rest of the window, and an explicit value is clamped to it.
    *
    * @return the token budget to hand vLLM
    */
@@ -704,7 +698,7 @@ public class EngineAdapter
     return available > 0 ? available : DEFAULT_MAX_TOKENS;
   }
 
-  /** Context window, read once — it cannot change for the life of the engine. */
+  /** Context window, read once; it cannot change for the life of the engine. */
   private int contextWindow() {
     int cached = contextWindow;
     if (cached < 0) {
@@ -809,7 +803,7 @@ public class EngineAdapter
       return null;
     }
     // The FSM classifies every generated token from the reasoning/tool tags on
-    // the request, and it suppresses the tags themselves — so, exactly as on
+    // the request, and it suppresses the tags themselves, so, exactly as on
     // llama.cpp, this classification is the only signal downstream has. It is
     // also the only one that survives a <think>-prefilled prompt, where the
     // open tag never appears in the generated text at all.
@@ -854,25 +848,19 @@ public class EngineAdapter
         LOGGER.debug("Error closing sampling params: {}", e.getMessage());
       }
     }
-    // Note: we do NOT call engine.freeCache() here. vLLM manages its own
-    // KV cache internally — calling torch.cuda.synchronize() + empty_cache()
-    // after every request destroys pipeline overlap, forces expensive
-    // cudaMalloc round-trips, and can race with vLLM's background engine_core
-    // loop that manages block allocation/deallocation asynchronously.
+    // Deliberately no engine.freeCache() here. vLLM manages its own KV cache:
+    // torch.cuda.synchronize() + empty_cache() after every request destroys
+    // pipeline overlap, forces cudaMalloc round-trips, and can race with vLLM's
+    // background engine_core loop that allocates and frees blocks asynchronously.
   }
 
   /**
-   * Performs aggressive memory maintenance suitable for periodic scheduling.
+   * Runs heavier GPU memory maintenance, intended for periodic scheduling
+   * (every 60-300 seconds) in low-memory deployments.
    *
-   * <p>Call this method periodically (e.g., every 60-300 seconds) to trigger
-   * heavier-weight cleanup including multiple garbage collection passes.
-   * Useful when operating the gateway in low-memory environments or when
-   * gradual memory growth is observed despite per-sequence flushing.
-   *
-   * <p>Does NOT restart the engine or release model weights, only cleans up
-   * temporary allocations and breaks circular references in the Python runtime.
-   *
-   * <p>Best-effort — silently ignores errors.
+   * <p>Does not restart the engine or release model weights; it only frees
+   * temporary allocations and breaks reference cycles in the Python runtime.
+   * Best-effort: errors are logged and swallowed.
    */
   public void performMemoryMaintenance() {
     try {
@@ -900,15 +888,12 @@ public class EngineAdapter
   /**
    * Extracts multimodal data (images, audio) from chat messages.
    *
-   * <p>Iterates over all messages, collecting any {@link ImageContent} or
-   * {@link AudioContent} media items. The base64-encoded data is decoded
-   * to raw bytes and added to a {@link MultiModalData} object.
+   * <p>Collects every {@link ImageContent} and {@link AudioContent} item, decodes
+   * the base64 payload and adds the bytes to a {@link MultiModalData}. The chat
+   * template is responsible for the placeholder tokens in the rendered prompt;
+   * this method only handles the binary data. Undecodable items are logged and
+   * skipped.
    *
-   * <p>For VLMs (e.g. Qwen2.5-VL, LLaVA), the chat template handles
-   * inserting the appropriate placeholder tokens ({@code <image>}, etc.)
-   * into the rendered prompt. This method only handles the binary data.
-   *
-   * @param messages the parsed chat messages with optional media
    * @return a populated {@link MultiModalData}, or {@code null} if no media found
    */
   private static MultiModalData extractMultiModalData(
@@ -944,9 +929,11 @@ public class EngineAdapter
   }
 
   /**
-   * Per-sequence state for vLLM.
-   * Tracks the request ID, sampling params, conversation state for token classification,
-   * and timing information for performance metrics.
+   * Per-sequence state for vLLM: request id, sampling params, conversation state
+   * for token classification, and timing for performance metrics.
+   *
+   * <p>Owned by the adapter; the engine thread is the only writer of the
+   * mutable fields.
    */
   public static class VllmSequenceState {
 

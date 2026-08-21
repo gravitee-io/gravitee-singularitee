@@ -15,24 +15,24 @@
 #
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Client — MULTI-SERVER routing (safety :9092  +  llama.cpp :9090)
+# Client: MULTI-SERVER routing (safety :9092  +  llama.cpp :9090)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # One client, two servers. The GLiNER intent classifier lives on the safety
 # server; the persona generation branches run on the llama.cpp server:
-#   - "router" classifier ──→ safety   server (:9092)
-#   - "llm" generation     ──→ llamacpp server (:9090)
+#   - "router" classifier -> safety   server (:9092)
+#   - "llm" generation     -> llamacpp server (:9090)
 #
-#   route @safety ──→ [ respond_code | respond_cooking | respond_finance | respond_general ] @llamacpp
+#   route @safety -> [ respond_code | respond_cooking | respond_finance | respond_general ] @llamacpp
 #
 # Point "llm" at :9091 / :9093 to route to a vLLM server instead.
 #
 # Prerequisites: server-safety.yaml on :9092 AND server-llamacpp.yaml on :9090.
 #
 # Launch:
-#   java io.gravitee.singularitee.cli.Main \
-#        --workspace examples/modular/client-routing.yaml \
-#        --pipeline routing-pipeline
+#   GRAVITEE_GRPC_PORT=9190 ./run-server.sh --port 8180 --workspace examples/modular/client-routing.yaml
+#   curl -s localhost:8180/v1/chat/completions -H 'content-type: application/json' \
+#        -d '{"model":"routing-pipeline","messages":[{"role":"user","content":"hello"}]}'
 
 workspace:
   name: client-routing

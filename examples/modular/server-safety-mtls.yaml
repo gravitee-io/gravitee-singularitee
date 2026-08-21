@@ -14,19 +14,19 @@
 # limitations under the License.
 #
 
-# mTLS example, part 1 of 2 — the CALLEE.
+# mTLS example, part 1 of 2: the CALLEE.
 #
 # Publishes the safety classifiers and demands a client certificate. Its peer is
 # examples/modular/server-llm-mtls.yaml, which reaches it over mutual TLS.
 #
-#   task certs             # once — mints a throwaway CA + server/client certificates
+#   task certs             # once, mints a throwaway CA + server/client certificates
 #   task run:mtls-safety   # this file, gRPC 9092 / HTTP 8092
 #   task run:mtls-llm      # the caller, in a second shell
 #   task mtls-check        # confirms an anonymous caller is refused
 #
 # TLS is node configuration, not workspace content: this file declares only what to
 # publish, while `task run:mtls-safety` supplies the certificates as GRAVITEE_GRPC_SSL_*
-# variables. clientAuth REQUIRED is what makes the connection MUTUAL — with it unset
+# variables. clientAuth REQUIRED is what makes the connection MUTUAL; with it unset
 # this would be ordinary one-way TLS, and any caller could connect.
 
 workspace:

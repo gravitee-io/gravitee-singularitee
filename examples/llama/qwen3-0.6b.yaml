@@ -16,7 +16,7 @@
 
 # Qwen3-0.6B · the reference model
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/qwen3-0.6b.yaml
 #
 # THE default across the examples: every pipeline in examples/pipelines/ binds
@@ -56,7 +56,7 @@ workspace:
             model_id: llm
             output_field: agent.output
             # Qwen3 is a hybrid thinking model. The chat template renders an empty
-            # <think></think> prefill when enable_thinking is false — a deterministic
+            # <think></think> prefill when enable_thinking is false, a deterministic
             # bypass, unlike the "/no_think" prompt hack. Flip to true for reasoning.
             context:
               enable_thinking: false

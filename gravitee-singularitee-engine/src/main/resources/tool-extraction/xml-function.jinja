@@ -2,8 +2,8 @@
   Qwen3.5-style XML tool-call dialect:
     <function=NAME><parameter=KEY>VALUE</parameter>...</function>
 
-  All parameter values are untyped strings (trimmed, like the legacy parser),
-  so every argument is flagged coercible — the client coerces them to their
+  All parameter values are untyped strings (trimmed), so every argument is
+  flagged coercible: the client coerces them to their
   declared JSON-schema types.
 -#}
 {%- set fns = output | regex_findall('(?s)<function=([^>]+)>(.*?)</function>') -%}

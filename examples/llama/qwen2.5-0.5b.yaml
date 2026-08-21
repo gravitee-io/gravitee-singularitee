@@ -16,7 +16,7 @@
 
 # Qwen2.5-0.5B-Instruct · background tasks
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/qwen2.5-0.5b.yaml
 #
 # One model (id: llm) and one pipeline (id: agent), so the same client config and
@@ -26,7 +26,7 @@
 # n_ctx is PER SEQUENCE: total KV allocated is n_ctx * n_seq_max.
 # Small model for title generation and summaries, so background jobs never touch
 # the main model's KV slot. Pre-thinking family: it cannot emit reasoning by
-# construction — preferable to a small Qwen3, which ignores enable_thinking:
+# construction, preferable to a small Qwen3, which ignores enable_thinking:
 # false unreliably. NOT for tool loops: 0.5B tool-call JSON is unreliable.
 
 workspace:

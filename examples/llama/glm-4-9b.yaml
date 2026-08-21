@@ -16,7 +16,7 @@
 
 # GLM-4-9B-0414 · markerless tool dialect
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/glm-4-9b.yaml
 #
 # One model (id: llm) and one pipeline (id: agent), so the same client config and
@@ -24,10 +24,10 @@
 # model live in docs/models/README.md.
 #
 # n_ctx is PER SEQUENCE: total KV allocated is n_ctx * n_seq_max.
-# Dense 9B, MIT. No tool markers: a call IS the whole message — function name on
+# Dense 9B, MIT. No tool markers: a call IS the whole message, function name on
 # the first line, JSON arguments after. glm-name-json first-line tool-name
 # matching keeps false positives near zero. Both tested GGUF conversions have
-# incomplete EOG lists, so the model may role-play past its tool call — the
+# incomplete EOG lists, so the model may role-play past its tool call, the
 # extraction template cuts at the first turn marker. Keep sampling modest.
 # Same dialect applies to GLM-4-32B-0414.
 
@@ -66,7 +66,7 @@ workspace:
               # GLM ends a tool call by emitting <|observation|> and expects the runtime to
               # supply the result. The GGUF does not flag it end-of-generation, so without a
               # stop string the model runs straight past it and writes the observation itself
-              # — a fabricated tool result, indistinguishable from a real one downstream.
+              # i.e. a fabricated tool result, indistinguishable from a real one downstream.
               # <|user|> is the same hazard for the next turn.
               stop:
                 - "<|observation|>"

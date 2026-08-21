@@ -15,7 +15,7 @@
 #
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Client — single server, chain-of-thought (llama.cpp, :9090)
+# Client: single server, chain-of-thought (llama.cpp, :9090)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Runs the chain-of-thought loop locally, proxying "llm" to the llama.cpp server.
@@ -24,8 +24,9 @@
 # Prerequisite: server-llamacpp.yaml running on :9090.
 #
 # Launch:
-#   java io.gravitee.singularitee.cli.Main \
-#        --workspace examples/modular/client-cot.yaml --pipeline cot-pipeline
+#   GRAVITEE_GRPC_PORT=9190 ./run-server.sh --port 8180 --workspace examples/modular/client-cot.yaml
+#   curl -s localhost:8180/v1/chat/completions -H 'content-type: application/json' \
+#        -d '{"model":"cot-pipeline","messages":[{"role":"user","content":"hello"}]}'
 
 workspace:
   name: client-cot

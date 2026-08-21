@@ -18,8 +18,8 @@ package io.gravitee.singularitee.workspace.config;
 /**
  * GLiNER4j zero-shot NER configuration.
  *
- * <p>Plain configuration, never on the wire — converted from the former proto
- * message with identical semantics (zero / empty = default).
+ * <p>Plain configuration, never on the wire. Numeric zero and empty string mean
+ * "engine default".
  */
 public record GlinerNerConfig(
   String modelDir,
@@ -36,20 +36,22 @@ public record GlinerNerConfig(
     entities = entities == null ? java.util.List.of() : java.util.List.copyOf(entities);
   }
 
-  /** All defaults — what an absent YAML block means. */
+  /** All defaults: what an absent YAML block means. */
   public static GlinerNerConfig getDefaultInstance() {
     return DEFAULT;
   }
 
+  /** Returns a builder with every field at its default. */
   public static Builder newBuilder() {
     return new Builder();
   }
 
-  /** Copy with {@code modelDir} replaced — resolvers rewrite paths after download. */
+  /** Copy with {@code modelDir} replaced; resolvers rewrite paths after download. */
   public GlinerNerConfig withModelDir(String v) {
     return new GlinerNerConfig(v, entities, threshold, variant, tokenCap);
   }
 
+  /** Fluent builder; unset fields keep the engine defaults. */
   public static final class Builder {
 
     private String modelDir = "";

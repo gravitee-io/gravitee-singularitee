@@ -38,7 +38,7 @@ fi
 # ── vLLM virtualenv (vllm image only) ────────────────────────────────────────
 if [ -n "${VLLM4J_VENV:-}" ]; then
   # vLLM4j locates the venv ONLY through the 'vllm4j.venv' system property (or
-  # a .venv beside the CWD / HOME). Exporting VLLM4J_VENV alone is not enough —
+  # a .venv beside the CWD / HOME). Exporting VLLM4J_VENV alone is not enough;
   # it has to reach the JVM as -D, which is what this does.
   case " ${JAVA_OPTS:-} " in
     *" -Dvllm4j.venv="*) : ;; # caller already set it; leave their value alone
@@ -56,14 +56,14 @@ if [ -n "${VLLM4J_VENV:-}" ]; then
   # libjsig FIRST in the chain, and it is not optional here.
   #
   # apache-tvm-ffi (pulled in by xgrammar, which vLLM imports) installs a
-  # SIGSEGV handler from a library constructor — the moment it loads, before
+  # SIGSEGV handler from a library constructor, the moment it loads, before
   # anything can object:
   #     __attribute__((constructor)) void TVMFFIInstallSignalHandler() {
   #       // this may override already installed signal handlers
   #       std::signal(SIGSEGV, TVMFFISegFaultHandler);
   #     }
-  # HotSpot *relies* on SIGSEGV for ordinary work — implicit null checks,
-  # safepoint polling, stack-bang guard pages — and recovers from those faults
+  # HotSpot *relies* on SIGSEGV for ordinary work (implicit null checks,
+  # safepoint polling, stack-bang guard pages) and recovers from those faults
   # in its own handler. Once tvm-ffi replaces it, the next routine JVM segfault
   # reaches TVMFFISegFaultHandler instead, which prints
   #     !!!!!!! Segfault encountered !!!!!!!
@@ -81,7 +81,7 @@ if [ -n "${VLLM4J_VENV:-}" ]; then
     export LD_PRELOAD="${_libjsig}${LD_PRELOAD:+:${LD_PRELOAD}}"
     echo "[cuda-env] libjsig preloaded: ${_libjsig} (JVM keeps its SIGSEGV handler)"
   else
-    echo "[cuda-env] WARNING: libjsig.so not found — a native library may hijack SIGSEGV" >&2
+    echo "[cuda-env] WARNING: libjsig.so not found; a native library may hijack SIGSEGV" >&2
   fi
   unset _libjsig
 

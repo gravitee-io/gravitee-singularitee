@@ -26,6 +26,9 @@ import org.apache.commons.math3.util.FastMath;
 import org.junit.jupiter.api.Test;
 
 /**
+ * {@link MaskAwareSIMDMath} against the scalar reference results, including odd lengths that
+ * exercise the masked final vector.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

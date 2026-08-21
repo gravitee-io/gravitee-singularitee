@@ -18,6 +18,8 @@ package io.gravitee.singularitee.inference.api.service;
 import java.util.Map;
 
 /**
+ * Event-bus message to a model: an action plus its key/value payload.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

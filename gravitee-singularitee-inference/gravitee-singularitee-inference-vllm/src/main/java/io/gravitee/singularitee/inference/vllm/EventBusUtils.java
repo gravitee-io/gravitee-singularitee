@@ -20,11 +20,13 @@ package io.gravitee.singularitee.inference.vllm;
  */
 public final class EventBusUtils {
 
+  /** Root of every address published by this engine. */
   public static final String ADDRESS_PREFIX = "gravitee.inference.vllm";
   private static final String TOKENS_PREFIX = ADDRESS_PREFIX + ".tokens.";
 
   private EventBusUtils() {}
 
+  /** Address on which the tokens of sequence {@code seqId} of {@code streamId} are published. */
   public static String tokensAddress(String streamId, int seqId) {
     return TOKENS_PREFIX + streamId + "." + seqId;
   }

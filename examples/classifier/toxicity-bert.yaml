@@ -16,11 +16,11 @@
 
 # Toxicity detection · distilbert multilingual (ONNX)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/classifier/toxicity-bert.yaml
 #
 # SEQUENCE-level classifier (the whole input gets one label) returning
-# {non-toxic, toxic} — contrast with pii-bert.yaml, which is TOKEN-level and
+# {non-toxic, toxic}, contrast with pii-bert.yaml, which is TOKEN-level and
 # labels individual spans. Multilingual, fine-tuned, CPU-friendly.
 #
 # Classify over HTTP:

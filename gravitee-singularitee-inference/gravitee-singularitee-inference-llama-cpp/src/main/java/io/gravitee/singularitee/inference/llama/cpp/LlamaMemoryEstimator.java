@@ -40,7 +40,7 @@ import java.util.List;
  * <h3>GPU vs CPU vs RPC mode</h3>
  * <ul>
  *   <li><b>RPC mode</b> (when {@code rpcServers} is non-empty): queries remote
- *       GPU memory via {@link RpcMemoryQuery} — direct network calls to each
+ *       GPU memory via {@link RpcMemoryQuery}: direct network calls to each
  *       RPC server without registering them as backends. The bottleneck
  *       (minimum free VRAM across servers) is used as available memory.</li>
  *   <li><b>GPU mode</b> ({@code nGpuLayers > 0}, no RPC): queries local GPU VRAM
@@ -55,39 +55,38 @@ import java.util.List;
  * <p>When a multimodal projection file ({@code mmproj}) is present, its GGUF
  * header is also loaded via {@code noAlloc=true} and its weight size is added
  * to the total memory requirement. The mmproj file contains the vision encoder
- * and vision-language projector weights — typically 200 MB – 2 GB depending
- * on the ViT variant. This ensures VLM models (e.g. LLaVA, Qwen2-VL) get
- * an accurate weight estimate without downloading or allocating any tensors.
+ * and projector weights (typically 200 MB to 2 GB), so multimodal models get an
+ * accurate weight estimate without allocating any tensors.
  *
  * <p>Note: transient activation memory used during vision encoder forward
- * passes is <b>not</b> captured — it is temporary (freed after each image)
+ * passes is <b>not</b> captured: it is temporary (freed after each image)
  * and varies with image resolution. The 10 % GPU safety margin covers typical
  * cases.
  *
  * <h3>LoRA adapter support</h3>
  * <p>When a LoRA adapter file is present, its GGUF header is loaded the same
  * way and its weight size is added to the total. LoRA adapters are typically
- * small (10–200 MB) but are loaded entirely to GPU/RAM. The estimate is exact
+ * small (10 to 200 MB) but are loaded entirely to GPU/RAM. The estimate is exact
  * since the adapter file size is read directly from the GGUF metadata.
  *
  * <h3>Native logging</h3>
  * <p>The metadata-only model load ({@link LlamaModelDims#loadFrom(Path)}) triggers
  * native llama.cpp log output (GGUF header parsing, tensor enumeration, etc.).
- * When a {@link io.gravitee.llama.cpp.LlamaLogLevel} is provided, a scoped
- * {@link io.gravitee.llama.cpp.LlamaLogger} is installed for the duration of the
+ * When a {@link LlamaLogLevel} is provided, a scoped
+ * {@link LlamaLogger} is installed for the duration of the
  * estimate so that the native verbosity matches the model's configured level.
  *
- * <p>Pure computation — on any failure returns {@link MemoryEstimate#unknown()}.
+ * <p>Pure computation: on any failure returns {@link MemoryEstimate#unknown()}.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
 public final class LlamaMemoryEstimator {
 
-  /** GPU safety margin — keep 10 % of VRAM free for driver/OS overhead. */
+  /** GPU safety margin: keep 10 % of VRAM free for driver/OS overhead. */
   private static final double GPU_SAFETY_MARGIN = 0.10;
 
-  /** CPU safety margin — exact (no margin); system RAM is reported accurately by the OS. */
+  /** CPU safety margin: none; system RAM is reported accurately by the OS. */
   private static final double CPU_SAFETY_MARGIN = 0.0;
 
   /** KV-cache bytes per token per layer per head: F16 = 2 bytes, key + value = ×2. */
@@ -158,7 +157,7 @@ public final class LlamaMemoryEstimator {
   }
 
   /**
-   * Convenience overload without log level — native logging uses the default level.
+   * Convenience overload without log level; native logging uses the default level.
    *
    * @see #estimate(Path, Path, Path, int, int, int, List, LlamaLogLevel)
    */
@@ -220,11 +219,11 @@ public final class LlamaMemoryEstimator {
       return estimateGpu(dims, mmprojPath, loraPath, nGpuLayers, totalCtx, gpuMemory);
     }
 
-    // No GPU found — fall back to CPU memory check
+    // No GPU found: fall back to CPU memory check
     return estimateCpu(dims, mmprojPath, loraPath, totalCtx);
   }
 
-  // --- GPU estimation (existing logic) ---
+  // --- GPU estimation ---
 
   private static MemoryEstimate estimateGpu(
     LlamaModelDims dims,

@@ -18,6 +18,8 @@ package io.gravitee.singularitee.inference.api.classifier;
 import java.util.Collection;
 
 /**
+ * All labels a classifier produced for one input.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

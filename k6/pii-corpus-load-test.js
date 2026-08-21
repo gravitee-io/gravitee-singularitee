@@ -23,7 +23,7 @@ import { textSummary } from 'https://jslib.k6.io/k6-summary/0.1.0/index.js';
  * Corpus-driven load + quality test for PII detection (/v1/classify).
  *
  * Replays real ~256-token paragraphs built from gravitee-io/pii-detection-dataset
- * by tools/build_pii_corpus.py — realistic payloads instead of synthetic filler.
+ * by tools/build_pii_corpus.py: realistic payloads instead of synthetic filler.
  * Latency is tagged {expected: pii | clean} so entity-bearing and entity-free
  * paragraphs get separate summary cells (span decoding is per-entity work, so the
  * two can behave differently under load). Detection quality is NOT evaluated here:

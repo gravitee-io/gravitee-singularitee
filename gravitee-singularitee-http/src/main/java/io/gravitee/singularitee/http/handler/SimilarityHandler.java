@@ -29,7 +29,15 @@ import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
 import java.util.List;
 
-/** {@code POST /v1/similarity} — Gravitee text-similarity extension ({@code cross} or {@code zipped}). */
+/**
+ * {@code POST /v1/similarity}: Gravitee text-similarity extension.
+ *
+ * <p>Accepts {@code model}, {@code input} and {@code candidates} (string or array of strings)
+ * and {@code mode}: {@code cross} (default, one score row per input) or {@code zipped}
+ * (pairwise, same length required). Emits 400 {@code invalid_request_error} for a malformed
+ * payload, 400 {@code model_not_found} for an unknown or hidden model, and 500
+ * {@code internal_error} on engine failure.
+ */
 public final class SimilarityHandler implements Handler<RoutingContext> {
 
   private final GraviteeVectorServiceImpl vector;

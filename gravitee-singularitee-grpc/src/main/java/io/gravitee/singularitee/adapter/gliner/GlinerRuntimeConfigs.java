@@ -25,21 +25,21 @@ import org.slf4j.LoggerFactory;
  * {@code GRAVITEE_GLINER_BATCH_*} convention used by the micro-batcher):
  *
  * <ul>
- *   <li>{@code GRAVITEE_GLINER_ENCODER_INTRA_OP_THREADS} — intra-op threads for the encoder and
+ *   <li>{@code GRAVITEE_GLINER_ENCODER_INTRA_OP_THREADS}: intra-op threads for the encoder and
  *       span_rep sessions (gliner4j default: all cores).</li>
- *   <li>{@code GRAVITEE_GLINER_ENCODER_INTER_OP_THREADS} — inter-op threads for the encoder and
+ *   <li>{@code GRAVITEE_GLINER_ENCODER_INTER_OP_THREADS}: inter-op threads for the encoder and
  *       span_rep sessions (gliner4j default: cores/2, min 2).</li>
- *   <li>{@code GRAVITEE_GLINER_SCORING_INTRA_OP_THREADS} — intra-op threads for the
+ *   <li>{@code GRAVITEE_GLINER_SCORING_INTRA_OP_THREADS}: intra-op threads for the
  *       scoring/classifier head sessions (gliner4j default: cores/4, min 2).</li>
- *   <li>{@code GRAVITEE_GLINER_SCORING_INTER_OP_THREADS} — inter-op threads for the
+ *   <li>{@code GRAVITEE_GLINER_SCORING_INTER_OP_THREADS}: inter-op threads for the
  *       scoring/classifier head sessions (gliner4j default: 1).</li>
- *   <li>{@code GRAVITEE_GLINER_ORT_PROFILING_DIR} — when set, every ONNX session writes a
+ *   <li>{@code GRAVITEE_GLINER_ORT_PROFILING_DIR}: when set, every ONNX session writes a
  *       per-node Chrome-trace profiling JSON into this directory on session close (view in
  *       Perfetto). Diagnostic only; leave unset in normal operation.</li>
- *   <li>{@code GRAVITEE_GLINER_ORT_PROFILING_SECONDS} — flush the profiling traces this many
+ *   <li>{@code GRAVITEE_GLINER_ORT_PROFILING_SECONDS}: flush the profiling traces this many
  *       seconds after model load instead of waiting for session close, so they can be pulled
  *       from a running instance (ephemeral filesystems don't survive shutdown).</li>
- *   <li>{@code GRAVITEE_GLINER_EXECUTION_PROVIDER} — overrides the execution provider
+ *   <li>{@code GRAVITEE_GLINER_EXECUTION_PROVIDER}: overrides the execution provider
  *       ({@code cuda}, {@code cpu}, ...); unset keeps the factory default (auto-detect).</li>
  * </ul>
  *
@@ -80,7 +80,7 @@ final class GlinerRuntimeConfigs {
     String profilingDir = System.getenv("GRAVITEE_GLINER_ORT_PROFILING_DIR");
     if (profilingDir != null && !profilingDir.isBlank()) {
       LOGGER.warn(
-        "GLiNER ONNX per-node profiling enabled (GRAVITEE_GLINER_ORT_PROFILING_DIR={}) — diagnostic mode, do not leave on in production",
+        "GLiNER ONNX per-node profiling enabled (GRAVITEE_GLINER_ORT_PROFILING_DIR={}); diagnostic mode, do not leave on in production",
         profilingDir.trim()
       );
       builder.profilingDir(profilingDir.trim());
@@ -101,7 +101,7 @@ final class GlinerRuntimeConfigs {
       builder.executionProvider(resolved);
     }
 
-    // GRAVITEE_GLINER_ALLOW_SPINNING=0/false stops ORT's intra/inter-op pools busy-waiting —
+    // GRAVITEE_GLINER_ALLOW_SPINNING=0/false stops ORT's intra/inter-op pools busy-waiting;
     // drops CPU from a pinned 100% to near the real work when the compute is GPU-bound (CUDA).
     String spinning = System.getenv("GRAVITEE_GLINER_ALLOW_SPINNING");
     if (spinning != null && !spinning.isBlank()) {

@@ -29,7 +29,7 @@ import java.util.List;
  * reranker, classifier, token-embedding). Manages the model lifecycle, context
  * creation, tokenization and batch execution.
  *
- * <p>Architecture-agnostic: handles both encoder (BERT, ModernBERT, Jina) and
+ * <p>Architecture-agnostic: handles both encoder (BERT, ModernBERT) and
  * decoder (Qwen3-Embedding, Qwen3-Reranker) models transparently.
  *
  * @param <INPUT>  the inference input type
@@ -110,7 +110,8 @@ public abstract class LlamaCppInference<INPUT, OUTPUT>
   /**
    * Tokenizes text, packs all tokens into a single batch with all tokens marked as
    * outputs (required for pooling), decodes, and returns the pooled embedding via
-   * {@link LlamaContext#getEmbeddingsSeq(int)}.
+   * {@link LlamaContext#getEmbeddingsSeq(int)}. Clears the KV cache first, so calls must
+   * not overlap on one context.
    */
   protected float[] decodePooled(String text, int seqId) {
     context.clearCache();

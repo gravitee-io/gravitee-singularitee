@@ -23,13 +23,13 @@ import java.util.List;
  *
  * <p>Splits a string into the smallest number of contiguous chunks that each fit within a token
  * budget, preferring the most semantically meaningful boundary available. Separators are tried in
- * priority order (paragraph → line → sentence → clause); a piece that still exceeds the budget is
+ * priority order (paragraph, line, sentence, clause); a piece that still exceeds the budget is
  * recursively broken on the next separator, and adjacent pieces that fit are greedily merged back
  * together so we emit as few chunks as possible.
  *
  * <p>Crucially it does <strong>not</strong> split on single spaces or characters: when no semantic
  * boundary brings a piece under budget (e.g. a long punctuation-free run), the last resort is to
- * cut on whole <em>token</em> boundaries — never inside a word or a word-piece. Token cut points
+ * cut on whole <em>token</em> boundaries, never inside a word or a word-piece. Token cut points
  * are supplied by {@link TokenBoundaries}, which the same function uses to measure pieces, so the
  * splitter stays model-agnostic and unit-testable.
  *
@@ -49,6 +49,7 @@ public final class RecursiveTextSplitter {
    */
   @FunctionalInterface
   public interface TokenBoundaries {
+    /** Exclusive end offset of each token of {@code text}, ascending; empty for no tokens. */
     int[] endOffsets(String text);
   }
 
@@ -77,6 +78,8 @@ public final class RecursiveTextSplitter {
   private final List<String> separators;
 
   /**
+   * Splitter with the default separators.
+   *
    * @param tokens supplies token cut points / counts for candidate pieces (content tokens only)
    * @param budget maximum tokens allowed per chunk; must be strictly positive
    */
@@ -84,6 +87,11 @@ public final class RecursiveTextSplitter {
     this(tokens, budget, DEFAULT_SEPARATORS);
   }
 
+  /**
+   * Splitter with custom separators, tried in list order from coarsest to finest.
+   *
+   * @throws IllegalArgumentException if {@code budget} is not strictly positive
+   */
   public RecursiveTextSplitter(TokenBoundaries tokens, int budget, List<String> separators) {
     if (budget <= 0) {
       throw new IllegalArgumentException("budget must be > 0, was " + budget);

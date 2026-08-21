@@ -79,7 +79,7 @@ class GrpcClientSslConfigTest {
 
     assertThat(tls).isNotNull();
     assertThat(tls.trust()).isInstanceOf(PemTrustOptions.class);
-    assertThat(tls.isMutual()).as("no client certificate — not mutual").isFalse();
+    assertThat(tls.isMutual()).as("no client certificate, not mutual").isFalse();
     assertThat(tls.verifyHostname()).isTrue();
   }
 

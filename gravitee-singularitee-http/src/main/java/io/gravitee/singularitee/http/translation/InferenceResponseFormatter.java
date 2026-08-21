@@ -37,6 +37,7 @@ public final class InferenceResponseFormatter {
   // Chat Completions
   // ═══════════════════════════════════════════════════════════════════════
 
+  /** See {@link ChatCompletionsFormatter#chatStreamEvents}. */
   public static Flowable<ServerEvent> chatStreamEvents(
     Flowable<TokenMessage> tokenStream,
     String modelName,
@@ -46,6 +47,7 @@ public final class InferenceResponseFormatter {
     return ChatCompletionsFormatter.chatStreamEvents(tokenStream, modelName, includeUsage, onFinal);
   }
 
+  /** Tool-holdback streaming without argument coercion (no tool schemas). */
   public static Flowable<ServerEvent> chatStreamEventsWithToolHoldback(
     Flowable<TokenMessage> tokenStream,
     String modelName,
@@ -61,6 +63,7 @@ public final class InferenceResponseFormatter {
     );
   }
 
+  /** See {@link ChatCompletionsFormatter#chatStreamEventsWithToolHoldback}. */
   public static Flowable<ServerEvent> chatStreamEventsWithToolHoldback(
     Flowable<TokenMessage> tokenStream,
     String modelName,
@@ -77,6 +80,7 @@ public final class InferenceResponseFormatter {
     );
   }
 
+  /** See {@link ChatCompletionsFormatter#chatBufferedStreamEvents}. */
   public static Flowable<ServerEvent> chatBufferedStreamEvents(
     Flowable<TokenMessage> tokenStream,
     String modelName,
@@ -93,6 +97,7 @@ public final class InferenceResponseFormatter {
     );
   }
 
+  /** See {@link ChatCompletionsFormatter#buildChatResponse}. */
   public static ObjectNode buildChatResponse(
     String modelName,
     SequenceAccumulator accumulator,
@@ -105,6 +110,7 @@ public final class InferenceResponseFormatter {
   // Legacy Completions
   // ═══════════════════════════════════════════════════════════════════════
 
+  /** See {@link LegacyCompletionsFormatter#completionStreamEvents}. */
   public static Flowable<ServerEvent> completionStreamEvents(
     Flowable<TokenMessage> tokenStream,
     String modelName,
@@ -119,6 +125,7 @@ public final class InferenceResponseFormatter {
     );
   }
 
+  /** See {@link LegacyCompletionsFormatter#buildCompletionResponse}. */
   public static ObjectNode buildCompletionResponse(
     String modelName,
     SequenceAccumulator accumulator
@@ -130,7 +137,12 @@ public final class InferenceResponseFormatter {
   // Responses API
   // ═══════════════════════════════════════════════════════════════════════
 
-  /** @param responseIdOverride stable response id (stored-conversation continuation); null = derive from epoch */
+  /**
+   * See {@link ResponsesFormatter#responsesStreamEvents}.
+   *
+   * @param responseIdOverride stable response id (stored-conversation continuation); {@code null}
+   *     derives one from the epoch
+   */
   public static Flowable<ServerEvent> responsesStreamEvents(
     Flowable<TokenMessage> tokenStream,
     String modelName,
@@ -145,6 +157,7 @@ public final class InferenceResponseFormatter {
     );
   }
 
+  /** Buffered Responses streaming with an epoch-derived response id. */
   public static Flowable<ServerEvent> responsesBufferedStreamEvents(
     Flowable<TokenMessage> tokenStream,
     String modelName,
@@ -160,7 +173,12 @@ public final class InferenceResponseFormatter {
     );
   }
 
-  /** @param responseIdOverride stable response id (stored-conversation continuation); null = derive from epoch */
+  /**
+   * See {@link ResponsesFormatter#responsesBufferedStreamEvents}.
+   *
+   * @param responseIdOverride stable response id (stored-conversation continuation); {@code null}
+   *     derives one from the epoch
+   */
   public static Flowable<ServerEvent> responsesBufferedStreamEvents(
     Flowable<TokenMessage> tokenStream,
     String modelName,
@@ -177,6 +195,7 @@ public final class InferenceResponseFormatter {
     );
   }
 
+  /** Non-streaming Responses object with an epoch-derived response id. */
   public static ObjectNode buildResponsesResponse(
     String modelName,
     SequenceAccumulator accumulator,
@@ -185,7 +204,12 @@ public final class InferenceResponseFormatter {
     return buildResponsesResponse(modelName, accumulator, toolParameterSchemas, null);
   }
 
-  /** @param responseIdOverride stable response id (stored-conversation continuation); null = derive from epoch */
+  /**
+   * See {@link ResponsesFormatter#buildResponsesResponse}.
+   *
+   * @param responseIdOverride stable response id (stored-conversation continuation); {@code null}
+   *     derives one from the epoch
+   */
   public static ObjectNode buildResponsesResponse(
     String modelName,
     SequenceAccumulator accumulator,
@@ -204,10 +228,12 @@ public final class InferenceResponseFormatter {
   // Tool call parsing
   // ═══════════════════════════════════════════════════════════════════════
 
+  /** See {@link ToolCallResolver#parseToolCalls(String)}. */
   public static List<ParsedToolCall> parseToolCalls(String content) {
     return ToolCallResolver.parseToolCalls(content);
   }
 
+  /** See {@link ToolCallResolver#parseToolCalls(String, Map)}. */
   public static List<ParsedToolCall> parseToolCalls(
     String content,
     Map<String, JsonNode> toolParameterSchemas
@@ -215,6 +241,7 @@ public final class InferenceResponseFormatter {
     return ToolCallResolver.parseToolCalls(content, toolParameterSchemas);
   }
 
+  /** See {@link ToolCallResolver#parseBareToolCalls}. */
   public static List<ParsedToolCall> parseBareToolCalls(
     String toolContent,
     Map<String, JsonNode> toolParameterSchemas
@@ -222,6 +249,7 @@ public final class InferenceResponseFormatter {
     return ToolCallResolver.parseBareToolCalls(toolContent, toolParameterSchemas);
   }
 
+  /** See {@link ToolCallResolver#resolveToolCalls(String, String, Map)}. */
   public static List<ParsedToolCall> resolveToolCalls(
     String toolContent,
     String fullContent,
@@ -230,6 +258,7 @@ public final class InferenceResponseFormatter {
     return ToolCallResolver.resolveToolCalls(toolContent, fullContent, toolParameterSchemas);
   }
 
+  /** See {@link ToolCallResolver#fromWireToolCalls}. */
   public static List<ParsedToolCall> fromWireToolCalls(
     List<WireToolCall> wireToolCalls,
     Map<String, JsonNode> toolParameterSchemas
@@ -237,6 +266,7 @@ public final class InferenceResponseFormatter {
     return ToolCallResolver.fromWireToolCalls(wireToolCalls, toolParameterSchemas);
   }
 
+  /** See {@link ToolCallResolver#toolParameterSchemas}. */
   public static Map<String, JsonNode> toolParameterSchemas(JsonNode tools) {
     return ToolCallResolver.toolParameterSchemas(tools);
   }

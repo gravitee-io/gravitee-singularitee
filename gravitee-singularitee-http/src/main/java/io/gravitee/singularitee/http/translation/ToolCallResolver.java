@@ -29,8 +29,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Extracts structured tool calls from raw model output — wire calls, bare TOOL-channel
- * payloads and legacy tagged text — and applies schema-driven argument coercion.
+ * Extracts structured tool calls from raw model output (wire calls, bare TOOL-channel
+ * payloads and tagged text) and applies schema-driven argument coercion.
  */
 public final class ToolCallResolver {
 
@@ -43,7 +43,7 @@ public final class ToolCallResolver {
 
   /**
    * Argument strings at or below this length (e.g. {@code "{}"}) are too short to prove the
-   * content is the call payload itself — narration containing them is kept.
+   * content is the call payload itself; narration containing them is kept.
    */
   private static final int NARRATION_ARGS_MIN_LENGTH = 5;
 
@@ -62,8 +62,8 @@ public final class ToolCallResolver {
   /**
    * Parses tool calls from raw model output into structured tool calls, each assigned a
    * {@code call_<uuid>} id, by rendering the built-in Jinja extraction templates (chatml-json,
-   * xml-function, gemma-call — see {@code ToolCallExtractor}) in order until one yields calls.
-   * Returns an empty list if nothing extracts (fail-open — the caller surfaces raw text).
+   * xml-function, gemma-call; see {@link ToolCallExtractor}) in order until one yields calls.
+   * Returns an empty list if nothing extracts (fail-open: the caller surfaces raw text).
    */
   public static List<ParsedToolCall> parseToolCalls(String content) {
     return parseToolCalls(content, Map.of());
@@ -87,12 +87,12 @@ public final class ToolCallResolver {
   }
 
   /**
-   * The assistant's NARRATION accompanying tool calls — the visible text a model
-   * writes before calling ("I'll create the engine module now"), which OpenAI
-   * delivers as content alongside tool_calls (Chat) or a message item before the
-   * function_call items (Responses). Returns null when there is none, or when
-   * the text IS the call payload (markerless dialects put the call in the
-   * content — echoing it as narration would duplicate every call as prose).
+   * The assistant's NARRATION accompanying tool calls: the visible text a model
+   * writes before calling ("I'll create the engine module now"), delivered as content
+   * alongside tool_calls (Chat) or as a message item before the function_call items
+   * (Responses). Returns null when there is none, or when the text IS the call payload
+   * (markerless dialects put the call in the content; echoing it as narration would
+   * duplicate every call as prose).
    */
   static String narrationText(SequenceAccumulator accumulator, List<ParsedToolCall> calls) {
     String content = accumulator.content();
@@ -133,10 +133,10 @@ public final class ToolCallResolver {
   /**
    * Resolves tool calls with the channel-signal-first strategy: the BARE tool payload
    * (accumulated from {@code STEP_ROLE_TOOL} deltas, tag markers suppressed engine-side) is
-   * parsed first via {@link #parseBareToolCalls}; when it is empty or unparseable, the legacy
-   * marker-based {@link #parseToolCalls(String, Map)} runs over the full content (older
-   * engines still emit literal tags in the text). Returns an empty list when neither
-   * yields calls — callers fail open by flushing the raw text as content.
+   * parsed first via {@link #parseBareToolCalls}; when it is empty or unparseable, the
+   * marker-based {@link #parseToolCalls(String, Map)} runs over the full content (engines
+   * that emit literal tags in the text). Returns an empty list when neither yields calls;
+   * callers fail open by flushing the raw text as content.
    */
   public static List<ParsedToolCall> resolveToolCalls(
     String toolContent,
@@ -165,8 +165,8 @@ public final class ToolCallResolver {
 
   /**
    * Same as {@link #parseToolCalls(String)}, but coerces string-valued arguments recovered from
-   * untyped dialect text (XML / Gemma flavors — flagged by the extraction template) to their
-   * declared JSON-schema types. {@code toolParameterSchemas} maps function name → the tool's
+   * untyped dialect text (XML / Gemma flavors, flagged by the extraction template) to their
+   * declared JSON-schema types. {@code toolParameterSchemas} maps function name to the tool's
    * {@code parameters} JSON schema (see {@link #toolParameterSchemas(JsonNode)}); an empty map
    * disables coercion. JSON-flavor tool calls already carry native types and are left untouched.
    */
@@ -195,7 +195,7 @@ public final class ToolCallResolver {
   /**
    * Builds a {@link ParsedToolCall} from extracted data, applying schema-driven coercion to the
    * argument names flagged coercible (string values only; unknown types and parse failures keep
-   * the string — fail-open, identical to the legacy XML/Gemma behavior).
+   * the string, fail-open).
    */
   private static ParsedToolCall toParsedToolCall(
     String name,
@@ -273,10 +273,10 @@ public final class ToolCallResolver {
   }
 
   /**
-   * Builds the function-name → {@code parameters} JSON-schema map from a request's {@code tools}
+   * Builds the function-name to {@code parameters} JSON-schema map from a request's {@code tools}
    * array. Accepts both the Chat Completions shape ({@code {type, function: {name, parameters}}})
    * and the Responses shape ({@code {type, name, parameters}}). Returns an empty map when there are
-   * no usable tools (→ no coercion).
+   * no usable tools, which disables coercion.
    */
   public static Map<String, JsonNode> toolParameterSchemas(JsonNode tools) {
     if (tools == null || !tools.isArray() || tools.isEmpty()) {
@@ -299,7 +299,7 @@ public final class ToolCallResolver {
   /**
    * Writes an XML-parsed (string) parameter value into {@code arguments}, coerced to the declared
    * schema type when one exists and the value parses cleanly; otherwise the string is kept as-is
-   * (fail-open). String / unknown / missing types keep the exact legacy string behavior.
+   * (fail-open). String, unknown and missing types keep the string unchanged.
    */
   private static void putCoercedArgument(
     ObjectNode arguments,
@@ -370,8 +370,8 @@ public final class ToolCallResolver {
   }
 
   /**
-   * Length of the longest suffix of {@code text} that is a proper prefix of a tool-markup opener —
-   * the number of trailing chars that must be withheld from streaming.
+   * Length of the longest suffix of {@code text} that is a proper prefix of a tool-markup opener,
+   * i.e. the number of trailing chars that must be withheld from streaming.
    */
   static int toolMarkupHoldbackLength(CharSequence text) {
     String s = text.toString();

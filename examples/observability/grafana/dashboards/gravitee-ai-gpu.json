@@ -2,7 +2,7 @@
   "annotations": { "list": [] },
   "editable": true,
   "graphTooltip": 1,
-  "title": "Singularitee — GPU & Reasoning",
+  "title": "Singularitee - GPU & Reasoning",
   "uid": "gravitee-ai-gpu",
   "tags": ["gravitee", "singularitee", "gpu", "reasoning"],
   "timezone": "browser",
@@ -130,7 +130,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Token throughput — reasoning vs content (tok/s)",
+      "title": "Token throughput - reasoning vs content (tok/s)",
       "id": 5,
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 22 },
@@ -153,7 +153,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Cumulative tokens — reasoning vs content",
+      "title": "Cumulative tokens - reasoning vs content",
       "id": 7,
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 31 },

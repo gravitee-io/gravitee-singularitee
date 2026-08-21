@@ -119,7 +119,7 @@ public final class ClientPipelineExecutor {
    * using the provided Vert.x instance for gRPC clients.
    *
    * <p>When running inside a Gravitee gateway plugin, the gateway's
-   * Vert.x event loop must be used — creating a standalone {@code Vertx.vertx()}
+   * Vert.x event loop must be used: creating a standalone {@code Vertx.vertx()}
    * inside a parent-first classloader environment causes event-loop
    * isolation issues where gRPC response handlers never fire.
    *
@@ -188,7 +188,7 @@ public final class ClientPipelineExecutor {
       registerRemoteModel(modelDef, clients, ws.remotes(), streamRegistry, modelRegistry);
     }
 
-    // 4b. Register client-local models (regex, composite — pure-Java engines)
+    // 4b. Register client-local models (regex, composite: pure-Java engines)
     ClientLocalModelRegistrar.register(
       ws.clientLocalModels(),
       modelRegistry,
@@ -218,11 +218,11 @@ public final class ClientPipelineExecutor {
     var dispatcher = factory.createDispatcher();
     var executor = new PipelineExecutor(pipelineRegistry, dispatcher);
 
-    // 8. Inject callbacks — local + remote
+    // 8. Inject callbacks, local and remote
     // PipelineExecutor now implements PipelineExecutorCallback directly
     factory.setSubPipelineCallbacks(executor, remoteCallbacks);
 
-    // 9. Warm up KNN reference embeddings (blockingAwait safe here — off event loop)
+    // 9. Warm up KNN reference embeddings (blockingAwait is safe here, off the event loop)
     for (var pipeline : ws.pipelines()) {
       try {
         factory.rxWarmupEmbeddings(pipeline).blockingAwait();
@@ -269,7 +269,7 @@ public final class ClientPipelineExecutor {
       );
       if (ep.hasCredentials() && !ep.effectiveSsl()) {
         LOGGER.warn(
-          "Remote '{}' sends Basic credentials over plaintext — set ssl: true unless {} is loopback",
+          "Remote '{}' sends Basic credentials over plaintext; set ssl: true unless {} is loopback",
           entry.getKey(),
           ep.host()
         );
@@ -410,15 +410,13 @@ public final class ClientPipelineExecutor {
   }
 
   // -----------------------------------------------------------------------
-  // Token dispatch (fixes the deadlock bug with remote engines)
+  // Token dispatch
   // -----------------------------------------------------------------------
 
   /**
-   * Creates a token dispatcher that routes tokens from a RemoteTextGenEngine
-   * to any capture streams registered in the stream registry by InferStepExecutor.
-   *
-   * <p>This is the critical fix: without this, the TokenCaptureStream registered
-   * by InferStepExecutor would never receive tokens, and latch.await() would hang.
+   * Creates a token dispatcher that routes tokens from a {@link RemoteTextGenEngine}
+   * to the capture streams registered in {@code streamRegistry} by the infer step.
+   * Without it the capture stream never receives tokens and the step waits forever.
    */
   private static Consumer<ModelEngineToken> buildTokenDispatcher(
     LocalStreamRegistry streamRegistry,

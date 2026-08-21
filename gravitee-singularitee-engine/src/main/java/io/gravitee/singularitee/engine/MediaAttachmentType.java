@@ -22,8 +22,8 @@ package io.gravitee.singularitee.engine;
  *
  * <p>Restricted to what the engines can actually decode: images reach llama.cpp's
  * stb_image (JPEG, PNG, GIF, BMP), audio reaches {@code javax.sound.sampled}
- * (WAV). Formats outside this set were previously accepted and then dropped
- * silently, so the model answered from the text alone.
+ * (WAV). Anything else would be dropped silently and the model would answer
+ * from the text alone, so it is rejected up front.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team

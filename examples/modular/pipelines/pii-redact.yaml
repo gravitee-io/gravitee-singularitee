@@ -14,14 +14,14 @@
 # limitations under the License.
 #
 
-# Pipeline — PII redaction then generation.
+# Pipeline: PII redaction then generation.
 #
-#   pii_guard (redact) ──→ generate
+#   pii_guard (redact) -> generate
 #
 # The "pii" classifier redacts detected spans in the user's prompt; the redacted
 # text is then sent to the "llm" generation model. References two logical model
 # ids: "pii" and "llm". On a multi-server client these live on DIFFERENT servers
-# (pii on the safety server, llm on an LLM server) — the DAG is stitched on the
+# (pii on the safety server, llm on an LLM server), the DAG is stitched on the
 # client, each model call routed over gRPC to its server.
 #
 # Triggers below target the DEFAULT pii backend (pii-bert-onnx, which aggregates

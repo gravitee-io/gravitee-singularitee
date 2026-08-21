@@ -49,7 +49,7 @@ import org.slf4j.LoggerFactory;
  * registry operations.
  *
  * <p>Models are loaded at startup via {@link #loadAndRegisterModel(ModelLoadRequest)}
- * (called by {@code WorkspaceLoaderComponent}) — there is no public gRPC endpoint
+ * (called by {@code WorkspaceLoaderComponent}); there is no public gRPC endpoint
  * to publish models at runtime.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -78,10 +78,12 @@ public class GraviteeModelServiceImpl
     ConcurrentHashMap<Integer, StreamContext>
   > streamsByModel = new ConcurrentHashMap<>();
 
+  /** Live stream contexts of {@code modelId}, keyed by sequence id; null if the model is unknown. */
   public ConcurrentHashMap<Integer, StreamContext> streamsForModel(String modelId) {
     return streamsByModel.get(modelId);
   }
 
+  /** Wires the service to the registry, the per-type engine factories and the weight resolvers. */
   public GraviteeModelServiceImpl(
     Vertx vertx,
     ModelRegistry registry,
@@ -111,7 +113,7 @@ public class GraviteeModelServiceImpl
 
   /**
    * Loads and registers a model engine from a {@link ModelLoadRequest}.
-   * Called at startup by {@code WorkspaceLoaderComponent} — not a gRPC endpoint.
+   * Called at startup by {@code WorkspaceLoaderComponent}; not a gRPC endpoint.
    *
    * @param request the model load request built by the workspace loader
    * @return a {@link Future} emitting the resolved model ID
@@ -174,7 +176,7 @@ public class GraviteeModelServiceImpl
 
   /**
    * Registers a pre-built {@link ModelEngine} along with the publication metadata
-   * its workspace entry declared — the task override, catalogue visibility and
+   * its workspace entry declared: the task override, catalogue visibility and
    * declared input modalities. Remote proxies and pure-Java engines have nothing
    * to interrogate, so the declaration is the only way a workspace can say that
    * the model behind a proxy reads images.
@@ -214,6 +216,11 @@ public class GraviteeModelServiceImpl
   // GetModel
   // ---------------------------------------------------------------------------
 
+  /**
+   * {@code GetModel}: metadata of one loaded model (type, task, visibility, modalities and,
+   * for text-generation engines, the chat template and special tokens). Fails when the id
+   * is unknown.
+   */
   @Override
   public Future<GetModelResponse> getModel(GetModelRequest request) {
     var entryOpt = registry.get(request.getModelId());
@@ -243,6 +250,7 @@ public class GraviteeModelServiceImpl
   // ListModels
   // ---------------------------------------------------------------------------
 
+  /** {@code ListModels}: every loaded model with its metadata. */
   @Override
   public Future<ListModelsResponse> listModels(ListModelsRequest request) {
     var builder = ListModelsResponse.newBuilder();
@@ -336,7 +344,7 @@ public class GraviteeModelServiceImpl
   // ---------------------------------------------------------------------------
 
   private Single<ModelEngine> rxBuildEngine(ModelLoadRequest request, ModelEngineFactory factory) {
-    // llama.cpp text-gen — resolve / download the single GGUF file (blocking, offloaded to IO)
+    // llama.cpp text-gen: resolve / download the single GGUF file (blocking, offloaded to IO)
     if (
       factory instanceof LlamaCppEngineFactory llamaFactory &&
       ggufResolver != null &&
@@ -345,7 +353,7 @@ public class GraviteeModelServiceImpl
     ) {
       return Single.fromCallable(() -> {
         Path resolved = ggufResolver.resolve(request.modelName(), request.modelPath());
-        // mmproj / lora sidecars live in the same HF repo — resolve/download them too,
+        // mmproj / lora sidecars live in the same HF repo; resolve/download them too,
         // otherwise the engine receives bare filenames and fails to load (VLM/ALM, LoRA).
         var cfg = request.llamaCppConfig();
         Path mmproj = cfg.mmprojPath().isEmpty()
@@ -372,7 +380,7 @@ public class GraviteeModelServiceImpl
       }).subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io());
     }
 
-    // llama.cpp embedding — same GGUF resolution path as text-gen
+    // llama.cpp embedding: same GGUF resolution path as text-gen
     if (
       factory instanceof
         io.gravitee.singularitee.adapter.embedding.LlamaCppEmbeddingFactory llamaEmbedFactory &&
@@ -386,7 +394,7 @@ public class GraviteeModelServiceImpl
       }).subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io());
     }
 
-    // llama.cpp reranker — same GGUF resolution path as text-gen
+    // llama.cpp reranker: same GGUF resolution path as text-gen
     if (
       factory instanceof
         io.gravitee.singularitee.adapter.reranker.LlamaCppRerankerFactory llamaRerankerFactory &&
@@ -400,7 +408,7 @@ public class GraviteeModelServiceImpl
       }).subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io());
     }
 
-    // vLLM — download the model in Java first, then hand the engine a directory.
+    // vLLM: download the model in Java first, then hand the engine a directory.
     // Same reason as every other backend: one cache, one download path, and a
     // load that needs no network once warm.
     if (
@@ -413,7 +421,7 @@ public class GraviteeModelServiceImpl
         .map(resolved -> vllmFactory.create(request, resolved));
     }
 
-    // ONNX — resolve / download model, tokenizer, and optional config (fully reactive)
+    // ONNX: resolve / download model, tokenizer, and optional config (fully reactive)
     if (
       (factory instanceof io.gravitee.singularitee.adapter.classifier.OnnxClassifierFactory ||
         factory instanceof io.gravitee.singularitee.adapter.embedding.OnnxEmbeddingFactory ||
@@ -426,7 +434,7 @@ public class GraviteeModelServiceImpl
         .map(factory::create);
     }
 
-    // GLiNER — resolve / download model directory reactively (download stays off the event loop)
+    // GLiNER: resolve / download model directory reactively (download stays off the event loop)
     if (
       (factory instanceof GlinerClassifierFactory || factory instanceof GlinerNerFactory) &&
       glinerResolver != null

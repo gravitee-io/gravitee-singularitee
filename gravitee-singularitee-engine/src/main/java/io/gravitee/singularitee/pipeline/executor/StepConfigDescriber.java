@@ -35,9 +35,9 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>{@link #describe(Object)}: one-line, stripped-down summary with the
  *       identifying fields only (model_id, action, output_field, sizes).
- *       Safe for DEBUG — won't dump multi-KB raw templates.</li>
+ *       Safe for DEBUG: won't dump multi-KB raw templates.</li>
  *   <li>{@link #describeFull(Object)}: complete protobuf TextFormat dump
- *       with a single-line compaction, suitable for TRACE — shows every
+ *       with a single-line compaction, suitable for TRACE: shows every
  *       field including raw_template bodies and message lists.</li>
  * </ul>
  *

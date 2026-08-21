@@ -14,14 +14,14 @@
 # limitations under the License.
 #
 
-# Generation model — Mistral-7B-Instruct-v0.3 (llama.cpp / GGUF)
+# Generation model: Mistral-7B-Instruct-v0.3 (llama.cpp / GGUF)
 #
-# Logical id: "llm" — a larger, higher-quality llama.cpp alternative to the
+# Logical id: "llm", a larger, higher-quality llama.cpp alternative to the
 # default Qwen3-0.6B. Swap it into server-llamacpp.yaml by replacing the
 # include "llama/llm-qwen3-0.6b.yaml" with "llama/llm-mistral-7b.yaml". Because it
 # also declares id "llm", load EXACTLY ONE "llm-*" model file per server.
 #
-# Served by: server-llamacpp.yaml (:9090) — swap-in
+# Served by: server-llamacpp.yaml (:9090), swap-in
 
 workspace:
   models:

@@ -14,20 +14,20 @@
 # limitations under the License.
 #
 
-# mTLS example, part 2 of 2 — the CALLER.
+# mTLS example, part 2 of 2: the CALLER.
 #
 # A full server in its own right: it hosts the LLM locally and reaches the classifiers
 # on server-safety-mtls.yaml over mutual TLS. Unlike the client-*.yaml examples (which
 # run the DAG in a client process via ClientPipelineExecutor), this is server-to-server
-# composition — both processes serve gRPC and HTTP.
+# composition, both processes serve gRPC and HTTP.
 #
-#   task run:mtls-safety   # shell 1 — the callee
-#   task run:mtls-llm      # shell 2 — this file
+#   task run:mtls-safety   # shell 1, the callee
+#   task run:mtls-llm      # shell 2, this file
 #
 # Two independent opt-ins, deliberately:
-#   * `ssl: true` below says THIS endpoint is reached over TLS — a topology fact, so it
+#   * `ssl: true` below says THIS endpoint is reached over TLS, a topology fact, so it
 #     belongs in the workspace.
-#   * grpc.client.ssl.* says WHICH certificates to present — a deployment fact, so it
+#   * grpc.client.ssl.* says WHICH certificates to present, a deployment fact, so it
 #     never appears in a workspace that gets shared or committed. `task run:mtls-llm`
 #     sets it; drop the keystore half and the callee should refuse the connection.
 

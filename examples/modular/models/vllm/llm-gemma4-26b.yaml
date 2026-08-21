@@ -15,12 +15,12 @@
 #
 
 
-# Generation model — Gemma 4 26B (vLLM / vllm4j)
+# Generation model: Gemma 4 26B (vLLM / vllm4j)
 #
 # Logical id: "llm". MoE 26.5B (4B active, 128 experts) with a vision tower, bf16.
-# ~53GB of weights — needs 2 GPUs unless the card is 80GB.
+# ~53GB of weights, needs 2 GPUs unless the card is 80GB.
 #
-# Linux/CUDA only — needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
+# Linux/CUDA only: needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
 # unless you run the -vllm-cuda image, which bundles it.
 #
 # Swap-in for server-vllm-gptq.yaml / server-vllm-awq.yaml: replace the included

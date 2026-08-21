@@ -16,12 +16,10 @@
 package io.gravitee.singularitee.http.translation;
 
 /**
- * A single Server-Sent Event payload: the value of the SSE {@code data:} field —
- * already-serialized JSON for a chunk, or the literal {@code [DONE]} sentinel.
+ * A single Server-Sent Event payload: the value of the SSE {@code data:} field, either
+ * already-serialized JSON for a chunk or the literal {@code [DONE]} sentinel.
  *
- * <p>Defined locally (rather than reusing the gateway's {@code io.gravitee.common.sse}
- * types) so the OpenAI streaming path carries no dependency on the gateway SSE/Buffer
- * stack. The Anthropic streaming denormalizer, which does reuse the gateway state
- * machine, converts to/from this type at its boundary.
+ * <p>Defined locally rather than reusing the gateway SSE types, so the OpenAI streaming path
+ * carries no dependency on the gateway SSE/Buffer stack.
  */
 public record ServerEvent(String data) {}

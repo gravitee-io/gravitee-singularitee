@@ -14,16 +14,16 @@
 # limitations under the License.
 #
 
-# Pipeline — tool-call self-repair loop · gpt-oss-20b (Harmony)
+# Pipeline: tool-call self-repair loop · gpt-oss-20b (Harmony)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/pipelines/tool-repair.yaml
 #
-#   generate ──→ repair_gate ──→ think_gate ──→ done
+#   generate -> repair_gate -> think_gate -> done
 #      ↑______________|_____________|
 #      (repair_gate loops on a failed tool-call parse, max 3;
 #       think_gate loops on all-thinking-no-answer, max 2)
-#      └────────────────────────────────────→ fallback (either loop exhausted)
+#      └──────────────────────────────────-> fallback (either loop exhausted)
 #
 # The wiring runs on the Harmony dialect: the `tags:` blocks
 # fold gpt-oss's chained channel headers into reasoning/tool markers (see
@@ -115,8 +115,8 @@ workspace:
 
         # Gate: loop back into `generate` (with the parse error as a corrective
         # turn) ONLY when the model attempted a tool call and it failed to parse.
-        # tool_parse_failed is "false" for a plain prose answer — e.g. the turn
-        # AFTER a tool result comes back — so normal answers exit immediately;
+        # tool_parse_failed is "false" for a plain prose answer, e.g. the turn
+        # AFTER a tool result comes back, so normal answers exit immediately;
         # gating on tool_parse_ok instead would regenerate every text answer.
         - id: repair_gate
           type: loop
@@ -131,14 +131,14 @@ workspace:
               match_value: "false"
             loopback_message:
               role: user
-              content: "Your previous reply did not contain a valid tool call.{% if generate.attempted_tool %} You called '{{ generate.attempted_tool }}', which is not a declared tool.{% endif %}{% if generate.parse_error %} Parse error: {{ generate.parse_error }}.{% endif %} The ONLY valid tools are: {{ tool_names | join(', ') }}. Reply again with a single valid tool call using exactly one of those declared schemas — no prose, no other tool names."
+              content: "Your previous reply did not contain a valid tool call.{% if generate.attempted_tool %} You called '{{ generate.attempted_tool }}', which is not a declared tool.{% endif %}{% if generate.parse_error %} Parse error: {{ generate.parse_error }}.{% endif %} The ONLY valid tools are: {{ tool_names | join(', ') }}. Reply again with a single valid tool call using exactly one of those declared schemas, no prose, no other tool names."
             # Retries want determinism: near-greedy sampling raises tool-JSON
             # parse success. First attempt keeps the step's own sampling; the
             # override applies on the retry edge only and is cleared on exit.
             retry_sampling_params:
               temperature: 0.2
 
-        # Second gate: catch "stuck reasoning" — the model spent the whole
+        # Second gate: catch "stuck reasoning", the model spent the whole
         # generation thinking (unclosed <think> block, or Harmony analysis
         # channel with no final answer and no tool call). Loop back once with
         # an instruction to answer NOW; the retry sees its own reasoning in
@@ -158,7 +158,7 @@ workspace:
               role: user
               content: "You spent the entire generation reasoning and never produced a final answer or tool call. Conclude NOW: give the final answer (or the tool call) directly, with no further deliberation."
 
-        # Valid call extracted — halt cleanly; generate already streamed.
+        # Valid call extracted: halt cleanly; generate already streamed.
         - id: done
           type: break
           config:
@@ -167,7 +167,7 @@ workspace:
               type: not_empty
               input_field: generate.output
 
-        # Loop exhausted — be honest instead of shipping a malformed call.
+        # Loop exhausted: be honest instead of shipping a malformed call.
         - id: fallback
           type: infer
           role: output

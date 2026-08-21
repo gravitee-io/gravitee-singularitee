@@ -16,7 +16,7 @@
 
 # gpt-oss-20b · Harmony (chained channels)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/gpt-oss-20b.yaml
 #
 # One model (id: llm) and one pipeline (id: agent), so the same client config and
@@ -26,7 +26,7 @@
 # n_ctx is PER SEQUENCE: total KV allocated is n_ctx * n_seq_max.
 # MoE (3.6B active), full+SWA attention, Apache-2.0, native MXFP4 (~12 GB, no
 # quantization loss). Harmony CHAINS channels rather than nesting them: an
-# analysis span ends either into the final answer or straight into a tool call —
+# analysis span ends either into the final answer or straight into a tool call,
 # expressed by folding each continuation header into the corresponding marker.
 # Reasoning effort is set by system-prompt text (e.g. "Reasoning: low"), not a
 # template flag. Identical config works for gpt-oss-120b on larger hardware.
@@ -64,7 +64,7 @@ workspace:
             output_field: agent.output
             context:
               # medium, not low: at low this model writes malformed JSON for tool
-              # arguments often enough to break agent flows — mismatched brackets,
+              # arguments often enough to break agent flows, mismatched brackets,
               # one edit split across two objects, stray trailing punctuation. The
               # extra reasoning tokens cost latency; a rejected tool call costs the
               # whole turn.
@@ -73,7 +73,7 @@ workspace:
               # Every run-anchored form, exactly like tool_open: a chained transition
               # (analysis straight into a commentary preamble) emits
               # <|end|><|start|>assistant<|channel|>commentary<|message|> as ONE run,
-              # and a marker anchored at <|channel|> can never match it — the whole
+              # and a marker anchored at <|channel|> can never match it, the whole
               # header leaked into the stream as raw text.
               reasoning_repeatable: true
               reasoning_open:
@@ -93,12 +93,12 @@ workspace:
                 # The bare header, for the turn that FOLLOWS a tool call: that
                 # generation starts fresh with no analysis span open, and the model
                 # still prefixes its reply with it. A close marker reaching the
-                # answer channel is stray syntax, so it is suppressed there too —
+                # answer channel is stray syntax, so it is suppressed there too,
                 # otherwise the reply reads "<|channel|>final<|message|>DONE".
                 - "<|channel|>final<|message|>"
                 # Bare terminator, as a safety net: when <|end|> is followed by
                 # something no marker anticipates, the short close settles and only
-                # the genuinely unknown remainder shows — instead of the whole
+                # the genuinely unknown remainder shows, instead of the whole
                 # buffered header. Longest match keeps the folded forms winning.
                 - "<|end|>"
               # BOTH header orders occur in practice. Observed live:
@@ -106,8 +106,8 @@ workspace:
               # the channel segment BEFORE to=functions; the form without it shows up too.
               # Listing only one leaks the other's entire header into the answer as visible
               # syntax. The <|end|>/<|call|>-prefixed forms matter because a run that leaves
-              # the analysis channel for a tool call starts at that terminator — nothing
-              # else consumes it — so a marker anchored at <|channel|> can never match there.
+              # the analysis channel for a tool call starts at that terminator, nothing
+              # else consumes it, so a marker anchored at <|channel|> can never match there.
               tool_open:
                 - "<|end|><|start|>assistant<|channel|>commentary to=functions."
                 - "<|end|><|start|>assistant<|channel|>analysis to=functions."

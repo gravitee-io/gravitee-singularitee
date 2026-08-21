@@ -24,19 +24,13 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * Regression tests for {@link AbstractBatchEngine#cancelSequence(int)}.
- *
- * <p>Cancelling an active sequence (client disconnect, context-window guard)
- * must release its slot back to the pool. Before the fix, the cancellation
- * path delegated to {@code finalizeSequence}, which early-returns when the
- * engine reports no finish reason — true for any sequence cancelled before
- * its natural end. The slot was therefore never returned: each cancellation
- * permanently consumed one of {@code maxConcurrentSequences} slots until the
- * engine stopped accepting work entirely.
+ * Tests for {@link AbstractBatchEngine#cancelSequence(int)}: cancelling an active sequence
+ * (client disconnect, context-window guard) must return a final token and release its slot
+ * back to the pool, even though the adapter never reports a finish reason for it.
  */
 class AbstractBatchEngineCancelTest {
 
-  /** Bare generation request — only {@code stop()} is consulted on this path. */
+  /** Bare generation request; only {@code stop()} is consulted on this path. */
   private record FakeRequest(String prompt) implements GenerationRequest {
     @Override
     public Integer maxTokens() {
@@ -102,7 +96,7 @@ class AbstractBatchEngineCancelTest {
 
     @Override
     public Optional<String> getFinishReason(Object state) {
-      return Optional.empty(); // still generating — cancellation case
+      return Optional.empty(); // still generating: cancellation case
     }
 
     @Override
@@ -124,6 +118,7 @@ class AbstractBatchEngineCancelTest {
     public void shutdown() {}
   }
 
+  /** Concrete engine over the fake adapter. */
   private static final class TestEngine
     extends AbstractBatchEngine<Void, FakeRequest, String, Object> {
 
@@ -152,8 +147,7 @@ class AbstractBatchEngineCancelTest {
     // maxConcurrentSequences = 1: sequence 1 takes the only slot. After
     // cancellation, sequence 2 must START (become active) rather than queue.
     // An active sequence is cancellable with a non-null final token; a
-    // queued one is silently dropped (null) — which is what happened before
-    // the fix, because the slot was never returned.
+    // queued one is silently dropped (null).
     var adapter = new FakeAdapter();
     var engine = new TestEngine(BatchEngineConfig.of(1), adapter);
 
@@ -171,9 +165,7 @@ class AbstractBatchEngineCancelTest {
 
   @Test
   void slot_reuse_survives_many_cancellations() {
-    // Each cancel/restart cycle must keep exactly one slot in rotation —
-    // the original leak made the engine unusable after maxConcurrentSequences
-    // cancellations.
+    // Each cancel/restart cycle must keep exactly one slot in rotation.
     var adapter = new FakeAdapter();
     var engine = new TestEngine(BatchEngineConfig.of(1), adapter);
 
@@ -198,7 +190,7 @@ class AbstractBatchEngineCancelTest {
     var engine = new TestEngine(BatchEngineConfig.of(1), adapter);
 
     engine.addSequence(1, new FakeRequest("active"));
-    engine.addSequence(2, new FakeRequest("queued")); // no slot left — goes to pending
+    engine.addSequence(2, new FakeRequest("queued")); // no slot left: goes to pending
 
     assertThat(engine.cancelSequence(2)).isNull(); // dropped from queue
     assertThat(engine.cancelSequence(1)).isNotNull(); // active one cancels
@@ -209,10 +201,9 @@ class AbstractBatchEngineCancelTest {
     // The worker loop holds the lock during each (expensive) batch step and
     // re-acquires it nanoseconds after releasing it. With an UNFAIR lock the
     // loop barges back in before a parked waiter wakes, so cancelSequence
-    // blocks until the generation ends naturally — observed in the field as
-    // "cancel does nothing until the sequence terminates". The fair lock
-    // bounds the wait to ~one batch step. This adapter never finishes on its
-    // own, so without fairness this test times out.
+    // blocks until the generation ends naturally. The fair lock bounds the
+    // wait to about one batch step. This adapter never finishes on its own,
+    // so without fairness this test times out.
     var adapter = new FakeAdapter() {
       @Override
       public Optional<EngineOutput<String, Object>> processNextBatch() {

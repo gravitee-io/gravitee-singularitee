@@ -30,7 +30,7 @@ import io.gravitee.singularitee.inference.api.textgen.TokenChannel;
  * is set, and {@link #performance()} carries the full timing breakdown.
  *
  * @param seqId             server-assigned internal sequence identifier; used as the
- *                          key in the active-stream map — never exposed to callers
+ *                          key in the active-stream map, never exposed to callers
  * @param token             the generated token text (may be {@code null} on the final message)
  * @param index             zero-based index of this token in the generated sequence
  * @param isFinal           {@code true} on the last token of the sequence
@@ -43,7 +43,7 @@ import io.gravitee.singularitee.inference.api.textgen.TokenChannel;
  * @param performance       timing and throughput metrics; {@code null} on non-final tokens
  * @param channel           generation channel of this token as classified by the engine
  *                          at production time; {@code null} means unclassified (ANSWER
- *                          semantics — engines without classification pass {@code null})
+ *                          semantics; engines without classification pass {@code null})
  * @param logprobs          log-probability data for the token position this emission
  *                          resolved; {@code null} unless collection was requested
  *

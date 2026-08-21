@@ -18,7 +18,7 @@
 ARG CUDA_VERSION=12.9.2
 ARG UBUNTU_VERSION=24.04
 
-# Prebuilt llama.cpp CUDA libraries — the slow from-source compile, done once by
+# Prebuilt llama.cpp CUDA libraries: the slow from-source compile, done once by
 # Dockerfile.llama-cuda and reused here. Override with a version-keyed tag; the
 # local default lets `docker build -f Dockerfile.cuda` work after building the
 # base image with Dockerfile.llama-cuda, e.g.:

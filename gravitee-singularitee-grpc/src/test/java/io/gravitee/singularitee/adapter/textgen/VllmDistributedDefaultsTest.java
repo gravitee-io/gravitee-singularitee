@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The layering is the point: the topology is a property of the machine, so a
  * deployment sets it once ({@code ai.vllm.*} / {@code GRAVITEE_*}) and every
- * workspace inherits it — but a model that genuinely needs something else must
+ * workspace inherits it, but a model that genuinely needs something else must
  * still be able to say so. Getting this backwards would either ignore the
  * deployment's setting or make it impossible to override.
  *
@@ -74,7 +74,7 @@ class VllmDistributedDefaultsTest {
 
   @Test
   void a_null_defaults_object_degrades_to_none() {
-    // The no-arg constructor and a null argument must behave identically —
+    // The no-arg constructor and a null argument must behave identically;
     // an engine flavour built without server config must not NPE.
     var factory = new VllmEngineFactory(null);
 

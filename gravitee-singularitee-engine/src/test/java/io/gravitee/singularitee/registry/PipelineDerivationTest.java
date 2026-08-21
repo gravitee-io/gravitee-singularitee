@@ -32,7 +32,7 @@ import io.reactivex.rxjava3.core.Single;
 import org.junit.jupiter.api.Test;
 
 /**
- * What a pipeline advertises — its task and its input modalities — either declared
+ * What a pipeline advertises (its task and its input modalities) is either declared
  * by the workspace or derived: the task from the model behind its output step, the
  * modalities from every model the DAG feeds.
  */

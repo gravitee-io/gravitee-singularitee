@@ -16,6 +16,8 @@
 package io.gravitee.singularitee.inference.api.service;
 
 /**
+ * Verb carried by an {@link InferenceRequest} on the event bus.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

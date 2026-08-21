@@ -22,8 +22,10 @@ import java.util.function.Consumer;
 
 /**
  * Batch inference engine for llama.cpp models.
- * Delegates all complex orchestration to AbstractBatchEngine,
- * focusing only on llama.cpp-specific configuration.
+ *
+ * <p>{@link AbstractBatchEngine} owns slots, queuing, stop strings and streaming; this class
+ * only supplies the llama.cpp {@link EngineAdapter} and exposes model-level lookups
+ * (chat template, special tokens, modalities, token counting) to the service layer.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -99,17 +101,19 @@ public class BatchEngine
   }
 
   /**
-   * Counts the tokens of {@code text} with the model's own tokenizer
-   * (vocab-only — safe on any thread).
+   * Counts the tokens of {@code text} with the model's own tokenizer (vocab-only, safe on any
+   * thread).
    */
   public int countTokens(String text) {
     return engineAdapter.model().countTokens(text);
   }
 
+  /** Text of the vocabulary's BOS token. */
   public String bosToken() {
     return engineAdapter.model().bosToken();
   }
 
+  /** Text of the vocabulary's EOS token. */
   public String eosToken() {
     return engineAdapter.model().eosToken();
   }

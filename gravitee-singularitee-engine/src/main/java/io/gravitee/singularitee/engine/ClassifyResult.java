@@ -23,7 +23,7 @@ package io.gravitee.singularitee.engine;
  * and {@code end} carry the matched span.
  *
  * @param label  the class label
- * @param score  the model confidence for this label (0.0–1.0)
+ * @param score  the model confidence for this label (0.0 to 1.0)
  * @param token  the matched token text for NER results; {@code null} for sequence models
  * @param start  character start offset of the matched span; {@code null} for sequence models
  * @param end    character end offset of the matched span; {@code null} for sequence models

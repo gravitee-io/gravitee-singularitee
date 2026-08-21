@@ -16,6 +16,8 @@
 package io.gravitee.singularitee.inference.api.service;
 
 /**
+ * Wire format of an inference payload, selecting how it is parsed.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

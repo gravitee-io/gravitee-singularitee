@@ -14,10 +14,10 @@
 # limitations under the License.
 #
 
-# PII detector — bert-small PII token classifier (ONNX)
+# PII detector: bert-small PII token classifier (ONNX)
 #
 # Logical id: "pii". Token-level (NER-style) classifier; the guard step redacts
-# detected spans. Cross-platform (ONNX Runtime, CPU) — pairs with any LLM
+# detected spans. Cross-platform (ONNX Runtime, CPU), pairs with any LLM
 # backend. This is the DEFAULT pii backend on server-safety.yaml because its
 # HuggingFace bundle is published and loads out of the box.
 #

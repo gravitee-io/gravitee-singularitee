@@ -14,9 +14,9 @@
 # limitations under the License.
 #
 
-# Pipeline — GLiNER zero-shot semantic routing.
+# Pipeline: GLiNER zero-shot semantic routing.
 #
-#   route ──→ [ respond_code | respond_cooking | respond_finance | respond_general ]
+#   route -> [ respond_code | respond_cooking | respond_finance | respond_general ]
 #
 # The "router" classifier picks a branch from the prompt's intent; each branch
 # is a generation step on the "llm" model with a different persona. References
@@ -25,10 +25,10 @@
 # server, llm on an LLM server), stitched into one DAG on the client.
 #
 # Try:
-#   "How do I implement a binary search tree?"  → respond_code
-#   "What's a good pasta carbonara recipe?"     → respond_cooking
-#   "Should I invest in index funds?"           → respond_finance
-#   "Tell me a joke"                            → respond_general
+#   "How do I implement a binary search tree?"  -> respond_code
+#   "What's a good pasta carbonara recipe?"     -> respond_cooking
+#   "Should I invest in index funds?"           -> respond_finance
+#   "Tell me a joke"                            -> respond_general
 
 workspace:
   pipelines:

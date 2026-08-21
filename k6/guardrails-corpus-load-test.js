@@ -24,7 +24,7 @@ import { textSummary } from 'https://jslib.k6.io/k6-summary/0.1.0/index.js';
  *
  * Unlike classify-load-test.js (synthetic filler text sized in words), this replays
  * real 256-token paragraphs built from the textdetox multilingual toxicity dataset
- * by tools/build_toxicity_corpus.py — realistic multilingual payloads instead of
+ * by tools/build_toxicity_corpus.py: realistic multilingual payloads instead of
  * synthetic filler. Latency is tagged {expected: toxic | clean, lang} for per-cell
  * summary breakdowns. Detection quality is NOT evaluated here: it is a property of
  * model + corpus, not of load, and belongs in an offline eval (the corpus keeps its
@@ -118,7 +118,7 @@ export default function () {
     res,
     {
       'status is 200': r => r.status === 200,
-      // An empty top_label is a valid response (model abstained — no label above
+      // An empty top_label is a valid response (model abstained: no label above
       // threshold); only a missing/malformed body counts as an error.
       'has result': () => typeof topLabel === 'string',
     },

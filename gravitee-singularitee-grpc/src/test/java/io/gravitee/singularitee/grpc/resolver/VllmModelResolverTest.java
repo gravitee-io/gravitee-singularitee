@@ -25,8 +25,8 @@ import org.junit.jupiter.api.Test;
  * File selection for a vLLM model download.
  *
  * <p>What this guards is bandwidth and disk. HuggingFace repositories routinely
- * carry the same weights several times over — a GGUF for llama.cpp, an ONNX
- * export, a legacy PyTorch {@code .bin} beside the safetensors — and taking the
+ * carry the same weights several times over: a GGUF for llama.cpp, an ONNX
+ * export, a legacy PyTorch {@code .bin} beside the safetensors, and taking the
  * lot would multiply a 60GB download for no benefit. Equally, dropping a file
  * vLLM actually needs (a tokenizer, the safetensors index) fails much later,
  * inside the engine, with an error that does not point back here.
@@ -78,7 +78,7 @@ class VllmModelResolverTest {
 
   @Test
   void prefers_safetensors_over_the_legacy_bin() {
-    // Both formats hold the same tensors — taking both doubles the download.
+    // Both formats hold the same tensors; taking both doubles the download.
     var selected = VllmModelResolver.selectFiles(
       Set.of("config.json", "model.safetensors", "pytorch_model.bin")
     );
@@ -144,7 +144,7 @@ class VllmModelResolverTest {
   @Test
   void a_bare_pattern_matches_wherever_the_file_sits() {
     // "*.pth" is written without a directory, but the file it means to catch
-    // lives under original/ — matching on the file name alone is the point.
+    // lives under original/; matching on the file name alone is the point.
     var selected = VllmModelResolver.selectFiles(
       Set.of("config.json", "model.safetensors", "original/consolidated.00.pth"),
       List.of("*.pth")
@@ -219,7 +219,7 @@ class VllmModelResolverTest {
       ".gitattributes"
     );
 
-    // metal/model.bin needs no exclude — .bin loses to safetensors already.
+    // metal/model.bin needs no exclude; .bin loses to safetensors already.
     assertThat(VllmModelResolver.selectFiles(repo)).doesNotContain("metal/model.bin");
     // original/ is safetensors too, so only an exclude can drop it.
     assertThat(VllmModelResolver.selectFiles(repo)).contains("original/model.safetensors");
@@ -227,7 +227,7 @@ class VllmModelResolverTest {
     var selected = VllmModelResolver.selectFiles(repo, List.of("original/*"));
 
     // Exhaustive, not "contains": the risk an exclude carries is dropping
-    // something vLLM needs — a tokenizer file or the safetensors index — and
+    // something vLLM needs (a tokenizer file or the safetensors index) and
     // that failure only surfaces later, inside the engine. Every file the
     // engine loads is listed here, and nothing else is downloaded.
     assertThat(selected).containsExactlyInAnyOrder(

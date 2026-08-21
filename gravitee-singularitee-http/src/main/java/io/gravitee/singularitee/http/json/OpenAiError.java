@@ -34,6 +34,11 @@ public final class OpenAiError {
 
   private OpenAiError() {}
 
+  /**
+   * Serialises one error envelope. {@code message} defaults to empty, {@code type} to
+   * {@code invalid_request_error}; {@code param} and {@code code} are emitted as JSON null when
+   * absent.
+   */
   public static String json(String message, String type, String param, String code) {
     ObjectNode root = MAPPER.createObjectNode();
     ObjectNode error = root.putObject("error");

@@ -79,17 +79,17 @@
              profile flips this to false so the venv is created before those tests. -->
         <vllm.setupVenv.skip>true</vllm.setupVenv.skip>
 
-        <!-- Skip gravitee arch-rules check — Singularitee uses SLF4J directly, not NodeLoggerFactory -->
+        <!-- Skip gravitee arch-rules check: Singularitee uses SLF4J directly, not NodeLoggerFactory -->
         <gravitee.archrules.skip>true</gravitee.archrules.skip>
         <gravitee-kubernetes-client.version>4.0.0-alpha.1</gravitee-kubernetes-client.version>
 
-        <!-- Micrometer — inference metrics (token counters, model-call timers). Not managed by
+        <!-- Micrometer: inference metrics (token counters, model-call timers). Not managed by
              gravitee-bom; pinned to the version gravitee-node/Vert.x resolve (bundled in the
              distribution lib) so the engine/grpc modules converge on the same micrometer-core
              that feeds the Prometheus registry. -->
         <micrometer.version>1.15.10</micrometer.version>
 
-        <!-- JSON Schema validation for HTTP API request payloads (OpenAI/Anthropic/Gemini) -->
+        <!-- JSON Schema validation for OpenAI-compatible HTTP API request payloads -->
         <json-schema-validator.version>1.5.9</json-schema-validator.version>
     </properties>
 
@@ -133,7 +133,7 @@
                 <scope>import</scope>
             </dependency>
 
-            <!-- Micrometer BOM — aligns micrometer-core (engine/grpc) with the
+            <!-- Micrometer BOM: aligns micrometer-core (engine/grpc) with the
                  micrometer-registry-prometheus wired by gravitee-node. -->
             <dependency>
                 <groupId>io.micrometer</groupId>
@@ -488,10 +488,10 @@
                             <!--
                               VllmEngineBuilder.resolveVenv() reads the system property
                               'vllm4j.venv'. We set it from:
-                                1. ${vllm.venv.path}  — set by backend profiles via setup-venv.sh
-                                2. ${env.VLLM_VENV_PATH} — manual env-var override (escape hatch)
+                                1. ${vllm.venv.path}: set by backend profiles via setup-venv.sh
+                                2. ${env.VLLM_VENV_PATH}: manual env-var override (escape hatch)
                               When the env var is unset Maven expands it to the literal string
-                              "${env.VLLM_VENV_PATH}" which is not a valid path — resolveVenv()
+                              "${env.VLLM_VENV_PATH}" which is not a valid path, so resolveVenv()
                               then falls through to check user.dir/.venv and user.home/.venv.
                               The backend profile value always wins when a backend is activated.
                             -->
@@ -505,7 +505,7 @@
         </profile>
 
         <!-- ═══════════════════════════════════════════════════════════════════
-             vLLM backend profiles — install vLLM into the shared venv.
+             vLLM backend profiles: install vLLM into the shared venv.
              Activate alongside vllm-integration:  -Pvllm-integration,metal
              ═══════════════════════════════════════════════════════════════════ -->
 

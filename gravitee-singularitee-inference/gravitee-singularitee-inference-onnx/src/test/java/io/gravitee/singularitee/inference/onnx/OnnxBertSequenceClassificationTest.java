@@ -41,6 +41,8 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
+ * {@link OnnxBertClassifierModel} in sequence mode on a DistilBERT SST-2 head.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -209,7 +211,7 @@ public class OnnxBertSequenceClassificationTest extends OnnxBertBaseTest {
     assertTrue(splits >= 2, "expected the input to split into >= 2 chunks: " + results);
     assertEquals(2L * splits, results.size(), "expected every label on every split: " + results);
 
-    // the headline (max POSITIVE across splits) stays high — what the engine surfaces as top score
+    // the headline (max POSITIVE across splits) stays high: what the engine surfaces as top score
     double maxPositive = results
       .stream()
       .filter(r -> "POSITIVE".equals(r.label()))

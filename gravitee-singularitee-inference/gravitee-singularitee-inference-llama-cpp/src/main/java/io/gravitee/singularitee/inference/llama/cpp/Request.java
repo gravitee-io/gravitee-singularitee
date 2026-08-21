@@ -22,6 +22,14 @@ import io.gravitee.singularitee.inference.api.textgen.TagConfig;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Generation request for the llama.cpp engine.
+ *
+ * <p>Either {@code prompt} (already rendered) or {@code messages} (rendered with the model's
+ * native chat template) drives generation; a non-blank prompt wins. Every sampling field is
+ * nullable and falls back to the engine default. {@code reasoningTags} and {@code toolTags}
+ * classify generated tokens into channels.
+ */
 public record Request(
   String prompt,
   List<io.gravitee.singularitee.inference.api.textgen.ChatMessage> messages,
@@ -66,6 +74,7 @@ public record Request(
     );
   }
 
+  /** Builds a request from a raw payload map keyed by {@link Constants}; tags stay unset. */
   public Request(Map<String, Object> payload) {
     this(
       PayloadParser.stringValue(payload.get(Constants.PROMPT)),
@@ -83,6 +92,7 @@ public record Request(
     );
   }
 
+  /** Whether the request carries at least one chat message. */
   public boolean hasMessages() {
     return messages != null && !messages.isEmpty();
   }

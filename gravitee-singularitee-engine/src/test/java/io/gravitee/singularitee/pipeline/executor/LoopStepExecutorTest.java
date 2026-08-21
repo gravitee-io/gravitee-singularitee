@@ -74,7 +74,7 @@ class LoopStepExecutorTest {
   @Test
   void retry_edge_installs_sampling_override() {
     var pctx = pctx();
-    pctx.set("generate.tool_parse_failed", "true"); // condition not met → loop back
+    pctx.set("generate.tool_parse_failed", "true"); // condition not met -> loop back
 
     String next = executor.execute("gate", config(3), stepContext(pctx)).blockingGet();
 
@@ -87,7 +87,7 @@ class LoopStepExecutorTest {
   void condition_met_exit_clears_override() {
     var pctx = pctx();
     pctx.setRetrySamplingParams(RETRY_SP); // installed by a previous iteration
-    pctx.set("generate.tool_parse_failed", "false"); // condition met → exit
+    pctx.set("generate.tool_parse_failed", "false"); // condition met -> exit
 
     String next = executor.execute("gate", config(3), stepContext(pctx)).blockingGet();
 

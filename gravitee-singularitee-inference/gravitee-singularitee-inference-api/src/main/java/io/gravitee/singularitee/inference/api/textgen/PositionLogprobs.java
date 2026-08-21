@@ -18,8 +18,8 @@ package io.gravitee.singularitee.inference.api.textgen;
 import java.util.List;
 
 /**
- * Log-probability data for one generated token position, engine-agnostic.
- * Mirrors the per-token logprobs object of OpenAI-compatible APIs.
+ * Log-probability data for one generated token position, engine-agnostic; mirrors the
+ * per-token logprobs object of the OpenAI-compatible API.
  *
  * @param chosen the token that was actually sampled at this position
  * @param top    the top-N most likely candidates, sorted by descending

@@ -25,6 +25,7 @@ import io.gravitee.singularitee.inference.api.memory.MemoryCheckPolicy;
 import io.gravitee.singularitee.inference.llama.cpp.ModelConfig;
 import io.gravitee.singularitee.inference.llama.cpp.encoder.LlamaCppEmbeddingModel;
 import io.gravitee.singularitee.inference.math.api.GioMaths;
+import io.gravitee.singularitee.workspace.MemoryCheckPolicyType;
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
 import io.gravitee.singularitee.workspace.config.LlamaCppConfig;
 import io.gravitee.singularitee.workspace.config.LlamaCppEmbeddingConfig;
@@ -35,7 +36,7 @@ import java.nio.file.Path;
  * Creates a llama.cpp-backed {@link LlamaCppEmbeddingEngine} from a
  * {@link ModelLoadRequest}.
  *
- * <p>The GGUF model file is resolved by {@link io.gravitee.singularitee.grpc.resolver.GgufModelResolver}
+ * <p>The GGUF model file is resolved by {@code GgufModelResolver}
  * before this factory is invoked; the resolved path is passed via
  * {@link #create(ModelLoadRequest, Path)}.
  *
@@ -50,6 +51,7 @@ public final class LlamaCppEmbeddingFactory implements ModelEngineFactory {
   private final GioMaths gioMaths;
   private final Vertx vertx;
 
+  /** Creates the factory with the math backend and the Vert.x instance engines schedule on. */
   public LlamaCppEmbeddingFactory(GioMaths gioMaths, Vertx vertx) {
     this.gioMaths = gioMaths;
     this.vertx = vertx;
@@ -100,9 +102,7 @@ public final class LlamaCppEmbeddingFactory implements ModelEngineFactory {
     );
   }
 
-  private static MemoryCheckPolicy toMemoryCheckPolicy(
-    io.gravitee.singularitee.workspace.MemoryCheckPolicyType policy
-  ) {
+  private static MemoryCheckPolicy toMemoryCheckPolicy(MemoryCheckPolicyType policy) {
     if (policy == null) return MemoryCheckPolicy.WARN;
     return switch (policy) {
       case FAIL -> MemoryCheckPolicy.FAIL;

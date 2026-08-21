@@ -28,15 +28,15 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Used by the vLLM path, which has no equivalent of llama.cpp's {@code mtmd}
  * projector to interrogate. A transformers config declares its extra encoders as
- * sibling blocks of the language config — {@code vision_config} for an image
- * tower, {@code audio_config} for an audio one — so their presence is the
+ * sibling blocks of the language config ({@code vision_config} for an image
+ * tower, {@code audio_config} for an audio one), so their presence is the
  * checkpoint's own statement about what it will read.
  *
  * <p>Read here rather than through vLLM4j's {@code ModelIntrospection} for two
  * reasons: that call collapses both into one boolean, so it cannot tell a VLM
  * from an ALM; and it runs only inside the VRAM pre-flight, which is skipped
  * whenever {@code memory_check} is disabled or the workspace supplies its own
- * parameter counts — exactly the hand-tuned deployments. {@code VllmModelResolver}
+ * parameter counts, which is exactly the hand-tuned deployments. {@code VllmModelResolver}
  * already refuses a cache directory that has no {@code config.json}, so by load
  * time the file is local and this costs one small JSON parse.
  *
@@ -55,7 +55,7 @@ final class CheckpointModalities {
    * Returns what the checkpoint in {@code modelDir} accepts as input.
    *
    * <p>Falls back to text-only when the directory is unknown or the config cannot
-   * be read — with a warning, because that answer makes media requests fail the
+   * be read, with a warning, because that answer makes media requests fail the
    * pre-flight, and a silent fallback would look like a model that simply refuses
    * images for no stated reason.
    *
@@ -66,7 +66,7 @@ final class CheckpointModalities {
   static List<String> read(Path modelDir, String modelName) {
     if (modelDir == null) {
       LOGGER.warn(
-        "Model '{}' was not resolved to a local directory — assuming text-only input. " +
+        "Model '{}' was not resolved to a local directory, assuming text-only input. " +
           "Image and audio requests will be refused; declare `modalities:` in the workspace to override.",
         modelName
       );
@@ -76,7 +76,7 @@ final class CheckpointModalities {
     Path config = modelDir.resolve(CONFIG_JSON);
     if (!Files.isRegularFile(config)) {
       LOGGER.warn(
-        "No {} under {} for model '{}' — assuming text-only input. " +
+        "No {} under {} for model '{}', assuming text-only input. " +
           "Image and audio requests will be refused; declare `modalities:` in the workspace to override.",
         CONFIG_JSON,
         modelDir,
@@ -97,7 +97,7 @@ final class CheckpointModalities {
       return modalities;
     } catch (Exception e) {
       LOGGER.warn(
-        "Could not read {} for model '{}' ({}) — assuming text-only input.",
+        "Could not read {} for model '{}' ({}), assuming text-only input.",
         CONFIG_JSON,
         modelName,
         e.getMessage()

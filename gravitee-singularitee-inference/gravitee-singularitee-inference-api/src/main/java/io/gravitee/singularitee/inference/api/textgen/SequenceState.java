@@ -19,10 +19,10 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Internal state for a sequence in the batch engine.
- * Tracks the conversation state, stop sequence buffering, and token counts.
+ * Batch-engine bookkeeping for one running sequence: slot, ids, stop-string buffer, counters
+ * and timing. Accessed only under the engine lock.
  *
- * @param <STATE> Engine-specific sequence state type
+ * @param <STATE> backend sequence state type
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -43,8 +43,8 @@ public class SequenceState<STATE> {
   /** Client cache-affinity key for the KV prefix cache, or {@code null}. */
   String cacheKey;
   /**
-   * Set when a stop string matched. The backend does not know about stop strings — they are
-   * detected here, on the decoded text — so this is the only record that the sequence is over,
+   * Set when a stop string matched. The backend does not know about stop strings (they are
+   * detected here, on the decoded text), so this is the only record that the sequence is over,
    * and the finish reason has to come from it rather than from the engine.
    */
   boolean stopMatched;
@@ -80,19 +80,18 @@ public class SequenceState<STATE> {
     this.stopStrings = stopStrings == null ? List.of() : stopStrings;
     this.maxStopLength = this.stopStrings.stream().mapToInt(String::length).max().orElse(0);
 
-    // Detect token type from first token if possible
-    this.tokenType = String.class; // Default to String, could be overridden
+    this.tokenType = String.class;
   }
 
   @SuppressWarnings("unused")
   final Class<?> tokenType;
 
   /**
-   * Consumes a token and returns the emission result.
-   * Handles stop sequence detection and buffering.
+   * Buffers a decoded token and returns the text safe to emit.
    *
-   * @param token The token to consume
-   * @return The emission result containing text to emit and whether a stop was matched
+   * <p>Text is held back up to the longest stop string so a stop spanning several tokens is
+   * never partially emitted. On a match the text before the stop is returned and the buffer
+   * is cleared.
    */
   TokenEmission consume(String token) {
     if (token == null || token.isEmpty()) {
@@ -117,11 +116,7 @@ public class SequenceState<STATE> {
     return new TokenEmission("", false);
   }
 
-  /**
-   * Flushes any pending buffered tokens.
-   *
-   * @return The pending text buffer
-   */
+  /** Returns and clears whatever text is still held back, for emission at sequence end. */
   String flushPending() {
     if (pending.isEmpty()) {
       return "";
@@ -131,12 +126,7 @@ public class SequenceState<STATE> {
     return output;
   }
 
-  /**
-   * Finds the index of the first stop sequence in the buffer.
-   *
-   * @param buffer The buffer to search
-   * @return The index of the first stop sequence, or -1 if not found
-   */
+  /** Index of the earliest stop string in {@code buffer}, or {@code -1}. */
   private int indexOfStop(StringBuilder buffer) {
     int best = -1;
     for (String stop : stopStrings) {

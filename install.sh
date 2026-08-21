@@ -30,20 +30,20 @@
 #
 # The workspace is a checked-in file: examples/llama/gpt-oss-20b.yaml (MoE, 3.6B active,
 # native MXFP4 ~12 GB with no quantization loss, Harmony tool dialect). One file
-# per validated model lives in examples/ — switch with:
+# per validated model lives in examples/. Switch with:
 #   ./run-server.sh --workspace examples/llama/glm-4-9b.yaml
 #
 # The GGUF is downloaded from HuggingFace by the server itself on first start,
 # into ~/.cache/gravitee-singularitee/models (outside the build tree, so 'mvn clean'
 # does not wipe it). Set HF_TOKEN (https://huggingface.co/settings/tokens):
 # required for gated repos, and authenticated downloads avoid anonymous rate
-# limits — often noticeably faster for multi-GB files.
+# limits, which is often noticeably faster for multi-GB files.
 
 set -euo pipefail
 
 PORT=8080
-# Stable model cache OUTSIDE the maven build tree — the distribution's default models dir
-# lives under target/ and is obliterated by every 'mvn clean'.
+# Stable model cache OUTSIDE the maven build tree: the distribution's default models dir
+# lives under target/ and is wiped by every 'mvn clean'.
 MODELS_DIR="$HOME/.cache/gravitee-singularitee/models"
 # Where llamaj.cpp's loader looks for the native libraries when they are not on
 # LLAMA_CPP_LIB_PATH. Must match the llama.cpp release the llamaj.cpp dependency
@@ -53,7 +53,7 @@ NATIVE_DIR="${NATIVE_DIR:-$HOME/.llama.cpp}"
 DEFAULT_LLAMA_CPP_VERSION="b10276"
 LLAMA_CPP_VERSION="${LLAMA_CPP_VERSION:-$DEFAULT_LLAMA_CPP_VERSION}"
 # SHA-256 of the release archives for the PINNED version above, per host. These are
-# native libraries the JVM loads, so a tampered or truncated download executes as us —
+# native libraries the JVM loads, so a tampered or truncated download executes as us.
 # HTTPS protects the transport, not the artifact. Verified before extraction.
 # Re-pin when bumping LLAMA_CPP_VERSION:
 #   curl -fsSL <url> | shasum -a 256
@@ -139,11 +139,11 @@ else
     elif command -v sha256sum >/dev/null 2>&1; then
       ACTUAL_SHA="$(sha256sum "$TMP_DIR/$ARCHIVE" | awk '{print $1}')"
     else
-      echo "Neither shasum nor sha256sum found — cannot verify the download." >&2
+      echo "Neither shasum nor sha256sum found; cannot verify the download." >&2
       exit 1
     fi
     if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]]; then
-      echo "SHA-256 mismatch for $ARCHIVE — refusing to install." >&2
+      echo "SHA-256 mismatch for $ARCHIVE; refusing to install." >&2
       echo "  expected: $EXPECTED_SHA" >&2
       echo "  actual:   $ACTUAL_SHA" >&2
       echo "The archive was tampered with, truncated, or the pin is stale." >&2
@@ -175,11 +175,11 @@ fi
 
 # ── Build ────────────────────────────────────────────────────────────────────
 if [[ "$SKIP_BUILD" == false ]]; then
-  echo ">> Building (default profile — natives come from $NATIVE_DIR at runtime)"
+  echo ">> Building (default profile; natives come from $NATIVE_DIR at runtime)"
   mvn -f "$REPO_ROOT/pom.xml" clean install -DskipTests
 fi
 if [[ ! -x "$DIST/bin/gravitee.sh" ]]; then
-  echo "Distribution not found at $DIST — run without --skip-build first." >&2
+  echo "Distribution not found at $DIST. Run without --skip-build first." >&2
   exit 1
 fi
 
@@ -227,7 +227,7 @@ Served: OpenAI /v1/chat/completions, /v1/responses, /v1/embeddings, /v1/models.
     }
   }
   then: pi --model singularitee/agent
-  (the file is re-read by /model inside pi — no restart after editing it)
+  (the file is re-read by /model inside pi; no restart after editing it)
 
 ── Anything speaking the OpenAI API (Cline, Continue, SDKs, curl…) ──────────
   base_url: $BASE/v1     api_key: local     model: agent

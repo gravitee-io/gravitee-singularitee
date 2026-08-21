@@ -16,10 +16,10 @@
 
 # Text embeddings · BAAI/bge-small-en-v1.5 (ONNX)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/embedding/bge-small-en.yaml
 #
-# English-only, 384-dim, ~130 MB — roughly a tenth of bge-m3's footprint and
+# English-only, 384-dim, ~130 MB, roughly a tenth of bge-m3's footprint and
 # noticeably faster on CPU. Use it when your corpus is English and latency or
 # memory matters more than multilingual coverage. Same CLS + normalize contract
 # as the rest of the BGE family.

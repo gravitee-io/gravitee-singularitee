@@ -48,7 +48,7 @@ import org.slf4j.LoggerFactory;
  * <p>{@code always_include} semantics: those names are unioned into the
  * shortlist ONLY when the shortlist is non-empty. When ALL batches elected
  * {@code none_of_these} (a purely conversational turn), the shortlist stays
- * EMPTY and {@code always_include} is NOT added — the infer step then injects
+ * EMPTY and {@code always_include} is NOT added; the infer step then injects
  * no tools at all.
  *
  * <p>Linear, non-streaming step: writes
@@ -62,7 +62,7 @@ public final class ToolSelectStepExecutor
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ToolSelectStepExecutor.class);
 
-  /** GLiNER2's 512-token window must fit input + labels — cap the input text. */
+  /** GLiNER2's 512-token window must fit input + labels, so the input text is capped. */
   static final int MAX_INPUT_CHARS = 1500;
 
   static final int DEFAULT_BATCH_SIZE = 4;
@@ -104,13 +104,13 @@ public final class ToolSelectStepExecutor
     PipelineContext pctx = ctx.pipelineContext();
     List<ToolDefinition> tools = pctx.tools();
     if (tools == null || tools.isEmpty()) {
-      LOGGER.debug("ToolSelectStep '{}': no tools on the request — nothing to select", stepId);
+      LOGGER.debug("ToolSelectStep '{}': no tools on the request, nothing to select", stepId);
       return ctx.rxNextStep(stepId);
     }
 
     String text = resolveInput(cfg, pctx);
     if (text == null || text.isBlank()) {
-      LOGGER.debug("ToolSelectStep '{}': empty input text — skipping selection", stepId);
+      LOGGER.debug("ToolSelectStep '{}': empty input text, skipping selection", stepId);
       return ctx.rxNextStep(stepId);
     }
     final String input = truncate(text, MAX_INPUT_CHARS);
@@ -128,7 +128,7 @@ public final class ToolSelectStepExecutor
         perBatch.forEach(shortlist::addAll);
 
         // always_include is only unioned into a NON-EMPTY shortlist: when every
-        // batch elected none_of_these the turn is conversational — inject nothing.
+        // batch elected none_of_these the turn is conversational, inject nothing.
         if (!shortlist.isEmpty()) {
           for (String name : cfg.getAlwaysIncludeList()) {
             if (tools.stream().anyMatch(t -> t.getName().equals(name))) {
@@ -191,7 +191,7 @@ public final class ToolSelectStepExecutor
       // flaky classifier never hides tools from the model.
       .onErrorReturn(err -> {
         LOGGER.warn(
-          "ToolSelectStep '{}': classify call failed for batch {} — failing open: {}",
+          "ToolSelectStep '{}': classify call failed for batch {}, failing open: {}",
           stepId,
           batchNames,
           err.toString()
@@ -222,7 +222,7 @@ public final class ToolSelectStepExecutor
   /**
    * Condenses a tool description into a short classifier label description:
    * either through the configured Jinja2 {@code label_template} (context:
-   * {@code tool} map with name/description), or the built-in default — the
+   * {@code tool} map with name/description), or the built-in default: the
    * first sentence of the description, trimmed and capped at 160 chars.
    */
   String condenseDescription(ToolSelectStepConfig cfg, ToolDefinition tool) {
@@ -237,7 +237,7 @@ public final class ToolSelectStepExecutor
           .strip();
       } catch (RuntimeException e) {
         LOGGER.warn(
-          "tool_select: label_template render failed for tool '{}' — using default: {}",
+          "tool_select: label_template render failed for tool '{}', using default: {}",
           tool.getName(),
           e.toString()
         );
@@ -282,7 +282,7 @@ public final class ToolSelectStepExecutor
           .strip();
       } catch (RuntimeException e) {
         LOGGER.warn(
-          "tool_select: description_template render failed for tool '{}' — using default: {}",
+          "tool_select: description_template render failed for tool '{}', using default: {}",
           tool.getName(),
           e.toString()
         );

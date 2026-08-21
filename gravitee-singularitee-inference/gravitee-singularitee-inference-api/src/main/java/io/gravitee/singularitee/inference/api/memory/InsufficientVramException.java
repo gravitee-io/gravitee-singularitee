@@ -29,6 +29,7 @@ public class InsufficientVramException extends RuntimeException {
 
   private final MemoryEstimate estimate;
 
+  /** Builds the message from {@link MemoryEstimate#toHumanReadable()}. */
   public InsufficientVramException(String modelId, MemoryEstimate estimate) {
     super(buildMessage(modelId, estimate));
     this.estimate = estimate;
@@ -39,7 +40,7 @@ public class InsufficientVramException extends RuntimeException {
    * estimate summary.
    *
    * <p>Used where the caller knows something sharper than "the estimate says it
-   * will not fit" — for instance that the weights alone overflow the configured
+   * will not fit", for instance that the weights alone overflow the configured
    * budget, which is certain rather than approximate and points at the exact
    * setting to change.
    */
@@ -48,6 +49,7 @@ public class InsufficientVramException extends RuntimeException {
     this.estimate = estimate;
   }
 
+  /** The estimate that triggered the failure. */
   public MemoryEstimate estimate() {
     return estimate;
   }

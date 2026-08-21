@@ -14,9 +14,9 @@
 # limitations under the License.
 #
 
-# Pipeline — toxicity screening then generation.
+# Pipeline: toxicity screening then generation.
 #
-#   toxicity_guard (reject) ──→ generate
+#   toxicity_guard (reject) -> generate
 #
 # The "toxicity" classifier screens the user's prompt; toxic input is rejected
 # before any generation happens, clean input proceeds to the "llm" model.

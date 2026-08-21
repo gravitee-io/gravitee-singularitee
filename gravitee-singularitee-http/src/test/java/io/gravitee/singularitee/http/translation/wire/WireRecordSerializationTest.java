@@ -99,7 +99,7 @@ class WireRecordSerializationTest {
         "{\"id\":\"t2\",\"title\":\"Parse\",\"status\":\"in_progress\"}," +
         "{\"id\":\"t3\",\"title\":\"Write\",\"status\":\"pending\"}]," +
         "\"completed\":1,\"total\":3," +
-        "\"text\":\"1. [x] Fetch — proof: ls ok\\n2. [>] Parse\\n3. [ ] Write\"}"
+        "\"text\":\"1. [x] Fetch (proof: ls ok)\\n2. [>] Parse\\n3. [ ] Write\"}"
     );
   }
 

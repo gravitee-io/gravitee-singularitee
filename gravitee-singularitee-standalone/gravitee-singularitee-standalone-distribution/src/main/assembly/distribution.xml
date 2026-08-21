@@ -54,7 +54,7 @@
         </fileSet>
     </fileSets>
 
-    <!-- Gravitee JARs → lib/ -->
+    <!-- Gravitee JARs go to lib/ -->
     <dependencySets>
         <dependencySet>
             <outputDirectory>lib</outputDirectory>
@@ -62,7 +62,7 @@
                 <include>io.gravitee.*:*:jar</include>
             </includes>
         </dependencySet>
-        <!-- Third-party JARs → lib/ext/ -->
+        <!-- Third-party JARs go to lib/ext/ -->
         <dependencySet>
             <outputDirectory>lib/ext</outputDirectory>
             <excludes>

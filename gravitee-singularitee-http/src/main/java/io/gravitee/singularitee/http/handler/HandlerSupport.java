@@ -27,7 +27,12 @@ import io.vertx.ext.web.RoutingContext;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Shared parsing / validation / error-mapping helpers for the HTTP API handlers. */
+/**
+ * Shared parsing, validation and error-mapping helpers for the HTTP API handlers.
+ *
+ * <p>Every failure path writes an OpenAI error envelope through {@link JsonResponses} and
+ * signals the caller with {@code null} / {@code false} so the handler can return at once.
+ */
 public final class HandlerSupport {
 
   private HandlerSupport() {}
@@ -71,8 +76,8 @@ public final class HandlerSupport {
    * Extracts the required {@code model} field and rejects it when it names a model
    * the workspace hid.
    *
-   * <p>A hidden model answers exactly like an undeclared one — same 400, same
-   * {@code model_not_found} — so that hiding a model does not leave it discoverable
+   * <p>A hidden model answers exactly like an undeclared one (same 400, same
+   * {@code model_not_found}) so that hiding a model does not leave it discoverable
    * by the shape of the refusal. Ids that are not in the registry at all fall
    * through unchanged: the service below produces the not-found for those, and it
    * knows about surfaces (vectors, classifiers) this check does not.
@@ -93,6 +98,7 @@ public final class HandlerSupport {
     return model;
   }
 
+  /** Writes the 400 {@code model_not_found} envelope for {@code model}. */
   public static void modelNotFound(RoutingContext rc, String model) {
     JsonResponses.writeError(
       rc,
@@ -107,10 +113,11 @@ public final class HandlerSupport {
   /**
    * Rejects a request that attaches media the target cannot read.
    *
-   * <p>Without this the mismatch surfaces from deep inside the engine — a marker
+   * <p>Without this the mismatch surfaces from deep inside the engine (a marker
    * count that does not match the attached bitmaps, or a tokenizer that never saw a
-   * media token — which tells the caller nothing about what to change. Checked
+   * media token), which tells the caller nothing about what to change. Checked
    * after resolution so the answer names the modality and the resolved target.
+   * On rejection writes a 400 {@code unsupported_modality} envelope.
    *
    * @param param the payload field carrying the conversation ({@code messages} or {@code input})
    * @return {@code true} when the request may proceed
@@ -143,6 +150,7 @@ public final class HandlerSupport {
     return true;
   }
 
+  /** Writes a 400 {@code invalid_request_error} envelope pointing at {@code param}. */
   public static void badRequest(RoutingContext rc, String message, String param) {
     JsonResponses.writeError(
       rc,
@@ -189,7 +197,11 @@ public final class HandlerSupport {
     return false;
   }
 
-  /** Maps a service {@code Future} failure to the appropriate OpenAI error envelope + status. */
+  /**
+   * Maps a service {@code Future} failure to an OpenAI error envelope and status: unknown model
+   * to 400 {@code model_not_found}, wrong model kind to 400 {@code unsupported_model}, anything
+   * else to 500 {@code internal_error}.
+   */
   public static void mapServiceError(RoutingContext rc, Throwable err) {
     String msg = err.getMessage() == null ? "Internal error" : err.getMessage();
     if (msg.startsWith("Model not found")) {

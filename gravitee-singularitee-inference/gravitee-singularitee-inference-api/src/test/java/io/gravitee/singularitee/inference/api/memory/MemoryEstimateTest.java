@@ -22,6 +22,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+/** Tests for the {@link MemoryEstimate} factories, sentinel and summary line. */
 class MemoryEstimateTest {
 
   private static final double GB = 1024.0 * 1024.0 * 1024.0;

@@ -62,10 +62,12 @@ public final class GlinerModelResolver {
   private final HuggingFaceModelDownloader downloader;
   private final Path cacheDir;
 
+  /** HuggingFace access with an optional token and the default cache directory. */
   public GlinerModelResolver(Vertx vertx, String hfToken) {
     this(new HuggingFaceModelDownloader(vertx, hfToken), DEFAULT_CACHE_DIR);
   }
 
+  /** Full control over the downloader and cache directory (used by tests). */
   public GlinerModelResolver(HuggingFaceModelDownloader downloader, Path cacheDir) {
     this.downloader = downloader;
     this.cacheDir = cacheDir;
@@ -163,7 +165,7 @@ public final class GlinerModelResolver {
   }
 
   /**
-   * Resolves a model directory: local → cached → download from HuggingFace. Fully reactive — the
+   * Resolves a model directory: local, then cached, then download from HuggingFace. Fully reactive: the
    * Vert.x event loop is never blocked, so download progress logging ticks normally.
    */
   private Single<Path> resolveModelDir(

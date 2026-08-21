@@ -30,6 +30,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
+ * {@link OnnxBertFillMaskInference} on bert-base-uncased.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

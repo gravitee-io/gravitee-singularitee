@@ -18,6 +18,8 @@ package io.gravitee.singularitee.inference.onnx.bert.classifier;
 import io.gravitee.singularitee.inference.onnx.FloatTensor;
 
 /**
+ * Token-classification logits as a flat {@code [batch][seqLen][numLabels]} tensor.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

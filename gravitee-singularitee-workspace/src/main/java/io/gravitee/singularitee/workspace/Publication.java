@@ -19,8 +19,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Validates the publication metadata a workspace entry may declare — {@code task:}
- * and {@code modalities:} — against the closed sets the wire and the OpenAPI schema
+ * Validates the publication metadata a workspace entry may declare ({@code task:}
+ * and {@code modalities:}) against the closed sets the wire and the OpenAPI schema
  * promise.
  *
  * <p>Both are free-form strings in YAML, and the loader is the only place that sees
@@ -60,7 +60,7 @@ public final class Publication {
     if (task == null || task.isBlank()) return "";
     if (!TASKS.contains(task)) {
       throw new IllegalArgumentException(
-        "'" + entryId + "' declares unknown task '" + task + "' — expected one of " + sorted(TASKS)
+        "'" + entryId + "' declares unknown task '" + task + "', expected one of " + sorted(TASKS)
       );
     }
     return task;
@@ -80,7 +80,7 @@ public final class Publication {
             entryId +
             "' declares unknown modality '" +
             modality +
-            "' — expected a subset of " +
+            "', expected a subset of " +
             sorted(MODALITIES)
         );
       }

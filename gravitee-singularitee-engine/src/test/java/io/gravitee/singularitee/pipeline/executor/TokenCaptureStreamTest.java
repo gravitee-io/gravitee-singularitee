@@ -365,7 +365,7 @@ class TokenCaptureStreamTest {
 
   @Test
   void long_leading_content_disables_thinking_detection() {
-    // Past the allowance the output is real content — a later literal <think> stays literal.
+    // Past the allowance the output is real content; a later literal <think> stays literal.
     var r = runStripping("This is a long normal answer mentioning ", "<think>", " literally");
     assertThat(r.forwarded).isEqualTo("This is a long normal answer mentioning <think> literally");
   }
@@ -414,7 +414,7 @@ class TokenCaptureStreamTest {
     // because Qwen small models sometimes echo the tag in their answers.
     // The trailing </think> is stripped as a stray close (PASSTHROUGH
     // always strips </think>), so the output contains "<think>y" with no
-    // close. This is the documented trade-off — stray </think> is
+    // close. This is the documented trade-off: stray </think> is
     // considered noise (Qwen emits them at end-of-generation), and the
     // rare cost of eating a legitimate literal </think> in prose is
     // acceptable.
@@ -487,7 +487,7 @@ class TokenCaptureStreamTest {
 
   @Test
   void short_output_after_thinking_block() {
-    // Output "untos" after a thinking block — the short 5-char tail must flush.
+    // Output "untos" after a thinking block; the short 5-char tail must flush.
     var r = runStripping("<think>", "reason", "</think>\n\n", "untos");
     assertThat(r.accumulator).isEqualTo("untos");
   }
@@ -495,7 +495,7 @@ class TokenCaptureStreamTest {
   @Test
   void trailing_partial_tag_prefix_dropped_at_end() {
     // If the output ENDS with a truncated tag (e.g. "<thi" with nothing
-    // after), it can only be a reasoning tag cut off by max_tokens — under
+    // after), it can only be a reasoning tag cut off by max_tokens; under
     // strip_thinking it is never legitimate content and must be dropped.
     // (Field case: Qwen3-0.6B on French re-echoes think tags as plain text
     // and max_tokens truncates the close tag to "</thin".)
@@ -522,7 +522,7 @@ class TokenCaptureStreamTest {
   @Test
   void mid_stream_partial_tag_lookalike_still_flushes() {
     // A "<thi" that is followed by MORE non-tag content is genuine prose and
-    // must be preserved — only a *terminal* tag prefix is dropped.
+    // must be preserved; only a *terminal* tag prefix is dropped.
     var r = runStripping("a <thi", "ng happened");
     assertThat(r.accumulator).isEqualTo("a <thing happened");
   }
@@ -562,7 +562,7 @@ class TokenCaptureStreamTest {
   @Test
   void pending_buffer_fully_flushed_after_thinking_block() {
     // After exiting a thinking block, a short response shorter than maxTagLen
-    // (8 chars) must flush completely at end-of-stream — this is where the
+    // (8 chars) must flush completely at end-of-stream; this is where the
     // tail-buffer bug manifests.
     var r = runStripping("<think>", "stuff", "</think>", "\n", "untos");
     assertThat(r.accumulator).isEqualTo("untos");
@@ -625,7 +625,7 @@ class TokenCaptureStreamTest {
     // Wire: two separated fluxes, tag markers excluded.
     assertThat(r.thinkingFlux).isEqualTo("raisonnement interne");
     assertThat(r.outputFlux).isEqualTo("Bonjour !");
-    // Data plane: raw text untouched (tags included) — step outputs and
+    // Data plane: raw text untouched (tags included); step outputs and
     // CoT loops behave exactly as without any thinking handling.
     assertThat(r.accumulator).isEqualTo("<think>raisonnement interne</think>\n\nBonjour !");
   }
@@ -680,7 +680,7 @@ class TokenCaptureStreamTest {
   void dead_downstream_never_prevents_completion() {
     // Client disconnected mid-stream: every downstream write throws. The
     // capture stream must swallow the failure, keep accumulating, and STILL
-    // complete its emitter at end() — otherwise the step's Completable
+    // complete its emitter at end(), otherwise the step's Completable
     // never finishes and the server-side pipeline hangs forever.
     var accumulator = new StringBuilder();
     var deadDownstream = new WriteStream<InferResponse>() {
@@ -750,7 +750,7 @@ class TokenCaptureStreamTest {
 
   @Test
   void route_long_think_block_streams_incrementally() {
-    // Reasoning must reach the downstream while the block is still open —
+    // Reasoning must reach the downstream while the block is still open;
     // not in a single burst at close-tag time.
     var accumulator = new StringBuilder();
     var downstream = new CapturingDownstream();
@@ -953,7 +953,7 @@ class TokenCaptureStreamTest {
   }
 
   @Test
-  void legacy_tagged_tool_text_flows_as_output_and_tool_output_is_empty() {
+  void tagged_tool_text_flows_as_output_and_tool_output_is_empty() {
     // Engines that still emit literal markers: the tagged block stays plain
     // output text (parsed downstream by the HTTP layer's regexes).
     var accumulator = new StringBuilder();
@@ -1052,7 +1052,7 @@ class TokenCaptureStreamTest {
 
   @Test
   void classified_thinking_followed_by_tool_span_is_not_unclosed() {
-    // A tool call is a productive outcome — reasoning that ends in a call is fine.
+    // A tool call is a productive outcome; reasoning that ends in a call is fine.
     var stream = newStream(
       new StringBuilder(),
       new CapturingDownstream(),

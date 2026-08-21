@@ -24,8 +24,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * Round-trip tests for {@link ConversationStore}: the transcript — tool
- * call/result pairs included — and the todo plan must survive storage intact,
+ * Round-trip tests for {@link ConversationStore}: the transcript (tool
+ * call/result pairs included) and the todo plan must survive storage intact,
  * since the next turn's prompt is rebuilt from them.
  */
 class ConversationStoreTest {
@@ -84,7 +84,7 @@ class ConversationStoreTest {
   @Test
   void a_completion_proof_survives_stored_conversation_and_session_round_trips() {
     // Both stores persist plans through the SessionTodo DTO; a proof lost in
-    // this mapping is lost across turns — and the proof is the only durable
+    // this mapping is lost across turns, and the proof is the only durable
     // record of an internal work step's result.
     var done = new PipelineContext.TodoItem("1", "spring haiku", TodoStatus.DONE, "full verse");
     var viaSession = TodoSessionStore.toTodoItems(TodoSessionStore.toSessionTodos(List.of(done)));

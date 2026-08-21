@@ -16,11 +16,11 @@
 
 # Qwen3-4B AWQ 4-bit · vLLM backend
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/vllm/qwen3-awq.yaml
 #
 # ⚠ Linux + CUDA only, requires -Dvllm4j.venv=/path/to/.venv (scripts/setup-venv.sh).
-# ⚠ WORK IN PROGRESS — see the note in qwen3-gptq.yaml.
+# ⚠ WORK IN PROGRESS, see the note in qwen3-gptq.yaml.
 #
 # 4-bit AWQ: ~4x memory reduction vs bfloat16, 10-20% faster than GPTQ at the
 # same bit-width. Fits a 4B model where the GPTQ-Int8 0.6B config would not pay off.

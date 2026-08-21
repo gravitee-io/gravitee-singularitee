@@ -37,26 +37,36 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Abstract base class for batch inference engines.
- * Provides thread-safe sequence management, automatic queuing, stop sequence detection,
- * and token streaming. Engine-specific logic is delegated to an {@link EngineAdapter}.
+ * Backend-agnostic half of a text-generation engine: a single worker thread that drives an
+ * {@link EngineAdapter} and owns everything around it.
  *
- * <p>This class handles all the complex orchestration:
+ * <p>Owned here, so adapters never reimplement it:
  * <ul>
- *   <li>Thread-safe sequence addition, removal, and cancellation</li>
- *   <li>Automatic slot allocation and pending queue management</li>
- *   <li>Stop sequence detection with buffering</li>
- *   <li>Performance tracking and metrics collection</li>
- *   <li>Proper resource cleanup and shutdown</li>
+ *   <li>Slots: {@code maxConcurrentSequences} internal ids handed to the adapter as
+ *       {@code internalId}; a slot is released only after the adapter's state is removed.</li>
+ *   <li>Queuing: requests beyond the free slots wait in a FIFO bounded by
+ *       {@code queueCapacity}; duplicates of a live or queued external id are ignored.</li>
+ *   <li>Cancellation: {@link #cancelSequence} removes a queued request silently or, for a
+ *       running one, detaches it from the adapter and returns a {@code cancelled} final token
+ *       for the caller to emit.</li>
+ *   <li>Stop strings: matched on decoded text with lookahead buffering, so a stop string that
+ *       spans several tokens is never partially emitted. The backend does not see the stop and
+ *       keeps reporting "generating"; the engine finalizes the sequence itself.</li>
+ *   <li>Streaming: every {@link InferenceToken} is built under the lock and handed to the
+ *       consumer after the lock is released; the final token carries counters and timings.</li>
+ *   <li>Degenerate-run and stall detection, and the cross-request KV prefix cache
+ *       ({@link SlotCache}) when enabled.</li>
  * </ul>
  *
- * <p>Implementers only need to provide an {@link EngineAdapter} that handles
- * the actual engine-specific operations.</p>
+ * <p>Threading: one fair {@link ReentrantLock} serializes the worker loop with
+ * {@link #addSequence} and {@link #cancelSequence}. Every adapter call happens under it.
+ * The token consumer is invoked outside it, on the worker thread (or on the caller thread for
+ * immediate rejections and cancellations).
  *
- * @param <CONFIG> Engine configuration type
- * @param <REQUEST> Generation request type
- * @param <TOKEN> Token type
- * @param <STATE> Engine-specific sequence state type
+ * @param <CONFIG> engine configuration type
+ * @param <REQUEST> generation request type
+ * @param <TOKEN> token type emitted by the backend
+ * @param <STATE> per-sequence backend state
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -73,7 +83,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
   /**
    * Cross-request KV prefix cache bookkeeping, or {@code null} when disabled by
    * configuration. Even when non-null it is bypassed per request whenever the
-   * adapter cannot tokenize the prompt ({@code tokenizePrompt} returns null —
+   * adapter cannot tokenize the prompt ({@code tokenizePrompt} returns null:
    * backend without server-side caching, or a media request). All access is
    * under {@link #lock}.
    */
@@ -84,7 +94,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
    * while doing all the expensive native decoding inside the critical
    * section. With an unfair lock the loop barges back in before a parked
    * waiter can wake, starving {@link #cancelSequence} and
-   * {@link #addSequence} until the loop parks on {@link #hasWork} — i.e.
+   * {@link #addSequence} until the loop parks on {@link #hasWork}, that is,
    * until every running generation has finished naturally. Fair FIFO
    * handoff bounds their wait to a single batch step (~one token); the
    * fairness overhead is negligible next to the per-iteration decode cost.
@@ -96,12 +106,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
   private ExecutorService executor;
   private Future<?> workerFuture;
 
-  /**
-   * Creates a new batch engine with custom configuration.
-   *
-   * @param engineConfig The engine configuration
-   * @param adapter The engine adapter
-   */
+  /** Creates an engine over {@code adapter}; call {@link #start} before adding sequences. */
   protected AbstractBatchEngine(
     BatchEngineConfig engineConfig,
     EngineAdapter<CONFIG, REQUEST, TOKEN, STATE> adapter
@@ -118,11 +123,11 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
   }
 
   /**
-   * Starts the engine with a token consumer.
+   * Starts the worker thread.
    *
-   * @param tokenConsumer Callback for receiving generated tokens
+   * @param tokenConsumer receives every generated token, final tokens included; invoked outside
+   *                      the engine lock
    * @throws IllegalStateException if already started
-   * @throws NullPointerException if tokenConsumer is null
    */
   public void start(Consumer<InferenceToken<TOKEN>> tokenConsumer) {
     Objects.requireNonNull(tokenConsumer, "tokenConsumer is required");
@@ -143,26 +148,22 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
   }
 
   /**
-   * Adds a sequence to be processed.
-   *
-   * <p>If no slots are available, the sequence is queued automatically.
-   * If the pending queue is full, the sequence is rejected.</p>
-   *
-   * @param seqId External sequence ID (client-facing)
-   * @param request The generation request
-   * @throws IllegalStateException if pending queue is full
+   * Submits a sequence without a cache-affinity key; see {@link #addSequence(int, GenerationRequest, String)}.
    */
   public void addSequence(int seqId, REQUEST request) {
     addSequence(seqId, request, null);
   }
 
   /**
-   * Adds a sequence with an optional client cache-affinity key.
+   * Submits a sequence: it starts immediately when a slot is free, otherwise it is queued.
    *
-   * @param seqId External sequence ID (client-facing)
-   * @param request The generation request
-   * @param cacheKey Cache-affinity key for the KV prefix cache, or {@code null}
-   * @throws IllegalStateException if pending queue is full
+   * <p>A duplicate {@code seqId} (already running or queued) is ignored. A prompt that does not
+   * fit the context is rejected with a {@code length_prompt} final token, emitted on the caller
+   * thread.
+   *
+   * @param seqId client-facing sequence id, unique among live sequences
+   * @param cacheKey affinity key for the KV prefix cache, or {@code null}
+   * @throws IllegalStateException if the pending queue is full
    */
   public void addSequence(int seqId, REQUEST request, String cacheKey) {
     Objects.requireNonNull(request, "request is required");
@@ -202,10 +203,10 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
   }
 
   /**
-   * Cancels a sequence.
+   * Cancels a queued or running sequence and frees its slot.
    *
-   * @param seqId External sequence ID
-   * @return The final token if the sequence was active, null otherwise
+   * @return a {@code cancelled} final token for the caller to emit if the sequence was running,
+   *         {@code null} if it was only queued, unknown or already finished
    */
   public InferenceToken<TOKEN> cancelSequence(int seqId) {
     lock.lock();
@@ -224,11 +225,9 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       SequenceState<STATE> state = sequences.get(internalId);
       if (state != null && adapter.getFinishReason(state.engineState).isEmpty()) {
         releaseSequence(state);
-        // finalizeSequence() would early-return here: a cancelled sequence
-        // has no engine finish reason, so it would never release the slot —
-        // each cancellation would permanently leak one slot out of
-        // maxConcurrentSequences until the engine stops accepting work.
-        // Finalize the cancellation explicitly instead.
+        // finalizeSequence() would early-return here: a cancelled sequence has
+        // no engine finish reason, so it would never release the slot and each
+        // cancellation would leak one slot permanently.
         return finalizeCancelled(state);
       }
       return null;
@@ -249,7 +248,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
    */
   private void failAllSequences(List<InferenceToken<TOKEN>> out) {
     LOGGER.error(
-      "Backend stalled — failing {} in-flight sequence(s) {}: generation was cut short",
+      "Backend stalled, failing {} in-flight sequence(s) {}: generation was cut short",
       sequences.size(),
       sequences
         .values()
@@ -309,9 +308,9 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
   /**
    * Finalizes a sequence cancelled before its natural end (client disconnect,
    * context-window guard): cleans up engine state, releases the tracking maps
-   * and — critically — returns the slot to {@link #availableSlots} so new
-   * sequences can start. The native state was already removed by the caller
-   * via {@code adapter.removeSequence}.
+   * and returns the slot to {@link #availableSlots} so new sequences can start.
+   * The native state was already removed by the caller via
+   * {@code adapter.removeSequence}.
    *
    * @return a final token with finish reason {@code "cancelled"}, or
    *         {@code null} if the sequence already emitted its final token
@@ -354,9 +353,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     return token;
   }
 
-  /**
-   * Main worker loop that processes sequences.
-   */
+  /** Worker loop: one adapter step per iteration, tokens emitted after the lock is released. */
   private void runLoop() {
     while (running.get()) {
       // Tokens produced this iteration. Built while holding the lock, emitted
@@ -419,9 +416,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     return t.length() > LOG_EXCERPT_LENGTH ? t.substring(0, LOG_EXCERPT_LENGTH) + "…" : t;
   }
 
-  /**
-   * Processes a token output for a sequence.
-   */
+  /** Runs one produced token through stop matching and degenerate-run detection, staging output. */
   private void processOutput(
     SequenceState<STATE> state,
     TOKEN token,
@@ -443,11 +438,11 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     String tokenText = token.toString();
     TokenEmission emission = state.consume(tokenText);
 
-    // Degenerate-run guard: a sequence emitting the SAME token text
-    // back-to-back hundreds of times is stuck (escape-inflation spirals,
-    // sampler loops) and will never recover — cut it instead of burning to
-    // the token cap. The threshold is far above legitimate runs (ASCII-art
-    // rulers, padding) which stay in the low tens.
+    // Degenerate-run guard: a sequence emitting the same token text back-to-back
+    // hundreds of times is stuck (escape-inflation spirals, sampler loops) and
+    // will never recover; cut it instead of burning to the token cap. The
+    // threshold is far above legitimate runs (rulers, padding), which stay in
+    // the low tens.
     String emitted = emission.text();
     if (!emitted.isEmpty()) {
       if (emitted.equals(state.lastEmittedText)) {
@@ -458,7 +453,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       }
       if (state.identicalRun >= DEGENERATE_RUN_LIMIT) {
         LOGGER.warn(
-          "seq={} degenerate run: token {} repeated {}x — cutting generation",
+          "seq={} degenerate run: token {} repeated {}x, cutting generation",
           state.externalId,
           sanitizeForLog(emitted),
           state.identicalRun
@@ -490,7 +485,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     }
 
     // A stop string matched: the sequence is over, and this is the only place that knows it.
-    // The final token MUST be staged here — dropping it leaves the stream open forever, because
+    // The final token must be staged here. Dropping it leaves the stream open forever, because
     // releasing the sequence stops the backend from ever reporting a finish reason of its own.
     if (emission.stopMatched()) {
       state.stopMatched = true;
@@ -501,9 +496,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     }
   }
 
-  /**
-   * Emits final tokens for completed sequences.
-   */
+  /** Stages final tokens for every sequence the backend reports as finished. */
   private void emitFinals(List<InferenceToken<TOKEN>> out) {
     for (var entry : sequences.entrySet()) {
       SequenceState<STATE> state = entry.getValue();
@@ -511,9 +504,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     }
   }
 
-  /**
-   * Stages the final token for a sequence if it's finished.
-   */
+  /** Flushes buffered text and stages the final token if the sequence is finished. */
   private void emitFinalIfNeeded(SequenceState<STATE> state, List<InferenceToken<TOKEN>> out) {
     if (state == null || state.finalSent) {
       return;
@@ -547,9 +538,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     return state.stopMatched ? Optional.of("stop") : adapter.getFinishReason(state.engineState);
   }
 
-  /**
-   * Finalizes a sequence and cleans up resources.
-   */
+  /** Releases a finished sequence (adapter, maps, slot) and builds its final token. */
   private InferenceToken<TOKEN> finalizeSequence(SequenceState<STATE> state) {
     if (state == null || state.finalSent) {
       return null;
@@ -614,9 +603,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     return token;
   }
 
-  /**
-   * Starts a sequence for processing.
-   */
+  /** Assigns a slot (prefix-cache aware when enabled) and creates the adapter state. */
   private void startSequence(int seqId, REQUEST request, String cacheKey) {
     if (availableSlots.isEmpty()) {
       pending.addLast(new QueuedSequence<>(seqId, request, cacheKey));
@@ -635,7 +622,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       try {
         promptTokens = adapter.tokenizePrompt(request);
       } catch (Exception e) {
-        LOGGER.warn("tokenizePrompt failed — bypassing prompt cache: {}", e.getMessage());
+        LOGGER.warn("tokenizePrompt failed, bypassing prompt cache: {}", e.getMessage());
       }
       if (promptTokens != null) {
         promptTokenCount = promptTokens.length;
@@ -650,7 +637,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
           availableSlots.remove(internalId);
           if (selection.requiresCopy()) {
             // The prefix lives on a slot that is still generating. Republish it onto
-            // ours — cells are shared, not copied — and correct the slot cache to
+            // ours (cells are shared, not copied) and correct the slot cache to
             // whatever was actually shared, so a concurrent acquire cannot claim rows
             // this slot does not hold.
             int copied = 0;
@@ -663,7 +650,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
               );
             } catch (Exception e) {
               LOGGER.warn(
-                "copyKvPrefix({} -> {}) failed — cold prefill: {}",
+                "copyKvPrefix({} -> {}) failed, cold prefill: {}",
                 selection.donorSlot(),
                 internalId,
                 e.getMessage()
@@ -713,7 +700,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
         state.perfBaseline = adapter.buildPerformance(engineState);
       } catch (RuntimeException e) {
         // Without a baseline this request reports lifetime-cumulative timings.
-        LOGGER.warn("perf baseline unavailable — timings will be cumulative: {}", e.getMessage());
+        LOGGER.warn("perf baseline unavailable, timings will be cumulative: {}", e.getMessage());
       }
       sequences.put(internalId, state);
       externalToInternal.put(seqId, internalId);
@@ -741,7 +728,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       slotCache.publish(state.conversationId, adapter.committedTokens(state.engineState));
     } catch (Exception e) {
       LOGGER.warn(
-        "committedTokens({}) failed — slot will not donate: {}",
+        "committedTokens({}) failed, slot will not donate: {}",
         state.conversationId,
         e.getMessage()
       );
@@ -783,7 +770,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       }
     } catch (Exception e) {
       LOGGER.warn(
-        "Failed to retain KV for slot {} — invalidating: {}",
+        "Failed to retain KV for slot {}, invalidating: {}",
         state.conversationId,
         e.getMessage()
       );
@@ -800,9 +787,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     }
   }
 
-  /**
-   * Starts the next pending sequence if a slot is available.
-   */
+  /** Starts the head of the pending queue if a slot is free. */
   private void startNextPending() {
     if (pending.isEmpty() || availableSlots.isEmpty()) {
       return;
@@ -813,9 +798,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     }
   }
 
-  /**
-   * Removes a sequence from the pending queue.
-   */
+  /** Removes a queued sequence; {@code true} if it was queued. */
   private boolean removePending(int seqId) {
     var iterator = pending.iterator();
     while (iterator.hasNext()) {
@@ -827,23 +810,17 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     return false;
   }
 
-  /**
-   * Checks if a sequence ID is in the pending queue.
-   */
+  /** Whether an external id is waiting in the pending queue. */
   private boolean containsPending(int seqId) {
     return pending.stream().anyMatch(q -> q.seqId() == seqId);
   }
 
-  /**
-   * Builds a length-failed token (emitted by the caller, outside the lock).
-   */
+  /** Builds the {@code length_prompt} rejection token (emitted by the caller, outside the lock). */
   private InferenceToken<TOKEN> buildLengthToken(int seqId, int promptTokens) {
     return new InferenceToken<>(seqId, null, 0, true, "length_prompt", promptTokens, 0, 0, 0, null);
   }
 
-  /**
-   * Builds an inference token.
-   */
+  /** Builds a streamed token, stamping channel and logprobs on non-final tokens. */
   @SuppressWarnings("unchecked")
   private InferenceToken<TOKEN> buildToken(
     SequenceState<STATE> state,
@@ -855,15 +832,14 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     if (state.tokenType == String.class) {
       token = (TOKEN) text;
     } else {
-      // For non-string token types, you'd need to implement custom conversion
+      // Only String tokens are materialized; other token types carry no text payload.
       token = null;
     }
 
     var finishReason = adapter.getFinishReason(state.engineState);
-    // Stamp the engine's per-token generation channel (reasoning / answer /
-    // tool) read at production time. Caveat: under MTP fused rounds the
-    // engine state may have advanced past earlier buffered tokens of the
-    // same round, so boundary tokens can be off by one round — acceptable.
+    // Channel is read at production time. Under fused multi-token rounds the
+    // engine state may already be past earlier buffered tokens of the same
+    // round, so boundary tokens can be off by one round; accepted.
     TokenChannel channel = isFinal ? null : adapter.channelOf(state.engineState);
     return new InferenceToken<>(
       state.externalId,
@@ -881,9 +857,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     );
   }
 
-  /**
-   * Safely emits a token to the consumer.
-   */
+  /** Hands a token to the consumer registered in {@link #start}, if any. */
   private void emitToken(InferenceToken<TOKEN> token) {
     Consumer<InferenceToken<TOKEN>> consumer = this.tokenConsumer;
     if (consumer != null) {
@@ -891,9 +865,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     }
   }
 
-  /**
-   * Updates token counts from the engine state.
-   */
+  /** Refreshes the sequence counters from the adapter. */
   private void updateTokenCounts(SequenceState<STATE> state) {
     var counts = adapter.getTokenCounts(state.engineState);
     state.inputTokens = counts.inputTokens();

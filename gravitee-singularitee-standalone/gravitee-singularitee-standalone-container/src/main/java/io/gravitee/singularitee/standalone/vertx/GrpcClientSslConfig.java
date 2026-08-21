@@ -25,7 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Reads the {@code grpc.client.ssl.*} block — the outbound counterpart of {@code grpc.ssl.*}.
+ * Reads the {@code grpc.client.ssl.*} block, the outbound counterpart of {@code grpc.ssl.*}.
  *
  * <p>{@code grpc.ssl} is what this server <em>presents and demands</em> of callers;
  * {@code grpc.client.ssl} is what it presents when it <em>calls another server</em> through a
@@ -43,15 +43,15 @@ import org.slf4j.LoggerFactory;
  *         type: PEM                     # PEM | JKS | PKCS12
  *         path: /certs/ca.crt
  *         password: changeit            # JKS/PKCS12 only
- *       keystore:                       # our own identity — this is what makes it mTLS
+ *       keystore:                       # our own identity; this is what makes it mTLS
  *         type: PEM
  *         path: /certs/client.crt
  *         keyPath: /certs/client.key    # PEM only
  *         password: changeit            # JKS/PKCS12 only
  * }</pre>
  *
- * <p>Returns {@code null} when nothing is configured, which leaves the JVM default trust
- * store in charge — right for a publicly-trusted certificate, not for a private CA.
+ * <p>{@link #from} returns {@code null} when nothing is configured, which leaves the JVM
+ * default trust store in charge: right for a publicly-trusted certificate, not for a private CA.
  */
 final class GrpcClientSslConfig {
 
@@ -60,6 +60,12 @@ final class GrpcClientSslConfig {
 
   private GrpcClientSslConfig() {}
 
+  /**
+   * Builds the outbound TLS options from configuration.
+   *
+   * @return the options, or {@code null} when no truststore, keystore or {@code trustAll} is set
+   * @throws IllegalArgumentException on an unknown store type or a PEM keystore without {@code keyPath}
+   */
   static ClientTlsOptions from(Configuration env) {
     boolean trustAll = env.getProperty(PREFIX + ".trustAll", Boolean.class, false);
     boolean verifyHostname = env.getProperty(PREFIX + ".verifyHostname", Boolean.class, true);
@@ -71,7 +77,7 @@ final class GrpcClientSslConfig {
     }
     if (trustAll) {
       LOGGER.warn(
-        "{}.trustAll is enabled — server certificates are not verified. Development only.",
+        "{}.trustAll is enabled: server certificates are not verified. Development only.",
         PREFIX
       );
     }

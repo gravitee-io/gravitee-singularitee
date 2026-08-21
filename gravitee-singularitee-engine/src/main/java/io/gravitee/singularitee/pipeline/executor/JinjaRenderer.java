@@ -24,8 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Single rendering service shared by every pipeline step executor.
  *
- * <p>Owns the two process-lifetime Jinja4j resources — the {@link Environment}
- * and the compiled-{@link Template} cache — so that executors don't each need
+ * <p>Owns the two process-lifetime Jinja4j resources, the {@link Environment}
+ * and the compiled-{@link Template} cache, so that executors don't each need
  * their own copy. Template strings are keyed by their source so compiling the
  * same template twice is skipped; {@link Template} instances are immutable
  * compiled ASTs that are safe to share across threads.
@@ -57,7 +57,7 @@ public final class JinjaRenderer {
 
   /**
    * Creates a renderer with a caller-supplied environment. The caller owns
-   * the environment — the renderer does not mutate it.
+   * the environment; the renderer does not mutate it.
    */
   public JinjaRenderer(Environment env) {
     this.env = env;

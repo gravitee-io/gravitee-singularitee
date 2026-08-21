@@ -25,10 +25,10 @@
 #                Default: examples/llama/qwen3-0.6b.yaml
 #   --port       HTTP port (default 8080)
 #   --venv       Python venv holding vLLM. Only needed for vllm workspaces, and
-#                auto-detected from $VLLM_VENV or ~/.venv-gravitee-ai/.venv —
+#                auto-detected from $VLLM_VENV or ~/.venv-gravitee-ai/.venv;
 #                pass this to point somewhere else. See scripts/setup-venv.sh.
 #   --debug      TRACE-log every rendered prompt: you see EXACTLY what clients
-#                (pi, OpenCode, curl, ...) send — system prompt, history, tools —
+#                (pi, OpenCode, curl, ...) send (system prompt, history, tools)
 #                as the model receives it after template rendering.
 #   --list       Print every runnable example workspace and exit.
 #
@@ -43,7 +43,7 @@
 #   ./run-server.sh --workspace examples/embedding/bge-m3.yaml      # embeddings only
 #
 # Model weights download from HuggingFace on first start (into the shared cache
-# below) — the first run of a new workspace is slow, later ones are not.
+# below), so the first run of a new workspace is slow and later ones are not.
 
 set -euo pipefail
 
@@ -59,15 +59,15 @@ list_examples() {
     [[ -d "$REPO_ROOT/examples/$dir" ]] || continue
     echo
     case "$dir" in
-      llama)      echo "  llama/       llama.cpp GGUF models — cross-platform, the default backend" ;;
-      vllm)       echo "  vllm/        vLLM models — Linux/CUDA only, venv auto-detected (work in progress)" ;;
+      llama)      echo "  llama/       llama.cpp GGUF models: cross-platform, the default backend" ;;
+      vllm)       echo "  vllm/        vLLM models: Linux/CUDA only, venv auto-detected (work in progress)" ;;
       classifier) echo "  classifier/  PII / toxicity / guardrails / intent classifiers" ;;
       embedding)  echo "  embedding/   embedding models for retrieval and KNN routing" ;;
       reranker)   echo "  reranker/    cross-encoder rerankers" ;;
       pipelines)  echo "  pipelines/   multi-step pipelines (guards, routers, chain-of-thought)" ;;
       modular)    echo "  modular/     includes-based composition: server-*.yaml / client-*.yaml" ;;
     esac
-    # Only the top level of modular/ is runnable — models/ and pipelines/ under it
+    # Only the top level of modular/ is runnable; models/ and pipelines/ under it
     # are fragments that exist to be included, not loaded on their own.
     find "$REPO_ROOT/examples/$dir" -maxdepth 1 -name '*.yaml' | sort |
       sed "s|$REPO_ROOT/|    |"
@@ -93,7 +93,7 @@ if [[ ! -f "$WORKSPACE" ]]; then
   exit 1
 fi
 # Relative paths are fine on the command line, but the server resolves this from
-# its own working directory — hand it an absolute path.
+# its own working directory, so hand it an absolute path.
 WORKSPACE="$(cd "$(dirname "$WORKSPACE")" && pwd)/$(basename "$WORKSPACE")"
 
 # Fragments under modular/models|pipelines|templates declare no entry point of
@@ -107,10 +107,10 @@ case "$WORKSPACE" in
 esac
 
 DIST="$REPO_ROOT/gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution"
-[[ -x "$DIST/bin/gravitee.sh" ]] || { echo "Distribution not built — run ./install.sh first." >&2; exit 1; }
+[[ -x "$DIST/bin/gravitee.sh" ]] || { echo "Distribution not built. Run ./install.sh first." >&2; exit 1; }
 
 # gravitee-node re-loads logback programmatically from $GRAVITEE_HOME/config/logback.xml,
-# so a -Dlogback.configurationFile override does not stick — toggle the dist file itself
+# so a -Dlogback.configurationFile override does not stick; toggle the dist file itself
 # (a build artifact, regenerated on rebuild).
 LOGBACK="$DIST/config/logback.xml"
 sed_i() { if [[ "$(uname -s)" == "Darwin" ]]; then sed -i '' "$@"; else sed -i "$@"; fi; }
@@ -140,7 +140,7 @@ NATIVE_DIR="${NATIVE_DIR:-$HOME/.llama.cpp}"
 # --venv or $VLLM_VENV override the location.
 JAVA_OPTS="${JAVA_OPTS:-}"
 # Three ways a workspace can be a vLLM one: it declares the type directly, it
-# lives in examples/vllm/, or — the case that is easy to miss — it is a modular
+# lives in examples/vllm/, or (the case that is easy to miss) it is a modular
 # server whose "type: vllm" sits in an included fragment (includes.models:
 # "vllm/llm-*.yaml") rather than in the file itself.
 if grep -qE '^[[:space:]]*type:[[:space:]]*vllm[[:space:]]*$' "$WORKSPACE" 2>/dev/null \
@@ -163,11 +163,11 @@ if grep -qE '^[[:space:]]*type:[[:space:]]*vllm[[:space:]]*$' "$WORKSPACE" 2>/de
   # Preloading libpython forces RTLD_GLOBAL. docker/cuda/cuda-env.sh does the
   # same for the container path; this is the host equivalent.
   # `|| true` on every lookup: under `set -euo pipefail` a no-match `ls` fails the
-  # pipeline and kills the script outright — which is precisely the venv layout
+  # pipeline and kills the script outright, which is precisely the venv layout
   # the fallback below exists to handle.
   LIBPYTHON="$(ls "$VLLM_VENV"/lib/libpython3*.so* 2>/dev/null | head -1 || true)"
   if [[ -z "$LIBPYTHON" ]]; then
-    # A uv venv carries no libpython of its own — it lives with the interpreter
+    # A uv venv carries no libpython of its own; it lives with the interpreter
     # that pyvenv.cfg's `home` points at (which is <prefix>/bin).
     PY_HOME="$(sed -n 's/^home[[:space:]]*=[[:space:]]*//p' "$VLLM_VENV/pyvenv.cfg" 2>/dev/null | head -1 || true)"
     if [[ -n "$PY_HOME" ]]; then
@@ -190,14 +190,14 @@ if grep -qE '^[[:space:]]*type:[[:space:]]*vllm[[:space:]]*$' "$WORKSPACE" 2>/de
     export LD_PRELOAD="$LIBPYTHON${LD_PRELOAD:+:$LD_PRELOAD}"
     echo ">> libpython: $LIBPYTHON (preloaded)"
   else
-    echo ">> WARNING: no libpython found for $VLLM_VENV — the model load will fail" >&2
+    echo ">> WARNING: no libpython found for $VLLM_VENV; the model load will fail" >&2
     echo "   with 'undefined symbol: PyByteArray_Type'. Set LD_PRELOAD yourself." >&2
   fi
 
   # Prepended last so it ends up FIRST in LD_PRELOAD, ahead of libpython.
   if [[ -n "$LIBJSIG" ]]; then
     export LD_PRELOAD="$LIBJSIG${LD_PRELOAD:+:$LD_PRELOAD}"
-    echo ">> libjsig:   $LIBJSIG (preloaded — JVM keeps its SIGSEGV handler)"
+    echo ">> libjsig:   $LIBJSIG (preloaded so the JVM keeps its SIGSEGV handler)"
   else
     echo ">> WARNING: libjsig.so not found; a native library may hijack SIGSEGV" >&2
   fi

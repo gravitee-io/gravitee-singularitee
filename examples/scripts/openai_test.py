@@ -5,8 +5,8 @@ Exercises chat completions (stream + non-stream) and the Responses API
 reasoning items), and the streamed event types.
 
 Works against either:
-  * Singularitee's native HTTP API   — BASE_URL=http://localhost:8080/v1
-  * the Gravitee gateway (llm-proxy)  — BASE_URL=http://localhost:8082/<api>/v1
+  * Singularitee's native HTTP API:   BASE_URL=http://localhost:8080/v1
+  * the Gravitee gateway (llm-proxy):  BASE_URL=http://localhost:8082/<api>/v1
 
 Setup:
     python3 -m venv .venv && .venv/bin/pip install openai
@@ -53,7 +53,7 @@ print("models   =", ids)
 MODEL = os.environ.get("MODEL") or ("llm" if "llm" in ids else (ids[0] if ids else "llm"))
 print("model    =", MODEL)
 
-# ── 1. chat.completions — non-streaming ──────────────────────────────────
+# ── 1. chat.completions, non-streaming ──────────────────────────────────
 section("chat.completions (non-stream)")
 try:
     r = client.chat.completions.create(
@@ -68,7 +68,7 @@ try:
 except Exception:  # noqa: BLE001
     traceback.print_exc()
 
-# ── 2. chat.completions — streaming ──────────────────────────────────────
+# ── 2. chat.completions, streaming ──────────────────────────────────────
 section("chat.completions (stream)")
 try:
     acc = ""
@@ -87,7 +87,7 @@ try:
 except Exception:  # noqa: BLE001
     traceback.print_exc()
 
-# ── 3. responses — non-streaming ─────────────────────────────────────────
+# ── 3. responses, non-streaming ─────────────────────────────────────────
 section("responses (non-stream)")
 try:
     resp = client.responses.create(model=MODEL, input="Name two primary colors.")
@@ -101,7 +101,7 @@ try:
 except Exception:  # noqa: BLE001
     traceback.print_exc()
 
-# ── 4. responses — streaming ─────────────────────────────────────────────
+# ── 4. responses, streaming ─────────────────────────────────────────────
 section("responses (stream)")
 try:
     acc = ""

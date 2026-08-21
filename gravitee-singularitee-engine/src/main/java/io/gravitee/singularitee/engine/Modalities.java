@@ -15,13 +15,14 @@
  */
 package io.gravitee.singularitee.engine;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Input modality slugs exposed in {@code GetModelResponse.input_modalities}.
  *
  * <p>Answers what a model will <em>accept</em>, which is a different question from
- * {@link ModelTasks} — that one says which endpoint the model belongs on. A
+ * {@link ModelTasks}, which says which endpoint the model belongs on. A
  * vision-language model and a text-only model are both {@code text-generation}:
  * they serve the same endpoint and differ only in what they will read. Folding
  * modality into the task slug would break the routing contract the slug exists
@@ -38,10 +39,10 @@ public final class Modalities {
   /** Plain text input. Every model accepts it. */
   public static final String TEXT = "text";
 
-  /** Still images — OpenAI `image_url` / `input_image` content parts. */
+  /** Still images ({@code image_url} / {@code input_image} content parts). */
   public static final String IMAGE = "image";
 
-  /** Audio clips — OpenAI `input_audio` content parts. */
+  /** Audio clips ({@code input_audio} content parts). */
   public static final String AUDIO = "audio";
 
   /** The default for a model that reads nothing but text. */
@@ -49,14 +50,14 @@ public final class Modalities {
 
   /**
    * Builds the modality list for a backend that reports its projector capabilities.
-   * Order is stable — text first, then image, then audio — so the value is
+   * Order is stable (text, then image, then audio) so the value is
    * comparable across responses.
    */
   public static List<String> of(boolean vision, boolean audio) {
     if (!vision && !audio) {
       return TEXT_ONLY;
     }
-    var modalities = new java.util.ArrayList<String>(3);
+    var modalities = new ArrayList<String>(3);
     modalities.add(TEXT);
     if (vision) modalities.add(IMAGE);
     if (audio) modalities.add(AUDIO);

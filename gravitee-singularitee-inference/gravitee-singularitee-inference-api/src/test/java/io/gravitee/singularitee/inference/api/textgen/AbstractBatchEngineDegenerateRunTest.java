@@ -40,6 +40,7 @@ class AbstractBatchEngineDegenerateRunTest {
   /** Identical consecutive emissions before the engine cuts the sequence. */
   private static final int DEGENERATE_RUN_LIMIT = 256;
 
+  /** Request carrying the token script the adapter will replay. */
   private record FakeRequest(String prompt, List<String> tokens) implements GenerationRequest {
     @Override
     public Integer maxTokens() {
@@ -151,6 +152,7 @@ class AbstractBatchEngineDegenerateRunTest {
     public void shutdown() {}
   }
 
+  /** Concrete engine over the scripted adapter. */
   private static final class TestEngine
     extends AbstractBatchEngine<Void, FakeRequest, String, ScriptedAdapter.Gen> {
 
@@ -198,7 +200,7 @@ class AbstractBatchEngineDegenerateRunTest {
       .isEqualTo("stop");
 
     // The token whose emission reaches the limit is dropped, so exactly
-    // DEGENERATE_RUN_LIMIT - 1 copies were streamed — never the full script.
+    // DEGENERATE_RUN_LIMIT - 1 copies were streamed, never the full script.
     long streamed = received
       .stream()
       .filter(t -> !t.isFinal())

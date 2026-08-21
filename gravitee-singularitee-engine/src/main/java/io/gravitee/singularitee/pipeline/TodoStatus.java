@@ -19,7 +19,7 @@ package io.gravitee.singularitee.pipeline;
  * Lifecycle state of one engine-managed todo item.
  *
  * <p>The wire representation ({@link #wireName()}) is the lowercase string
- * used at every serialization boundary — the proto {@code TodoItem.status},
+ * used at every serialization boundary: the proto {@code TodoItem.status},
  * the session/conversation cache DTOs and tool-call JSON. Inside the engine
  * the enum is the single source of truth.
  *

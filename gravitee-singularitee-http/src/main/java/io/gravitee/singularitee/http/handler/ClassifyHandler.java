@@ -31,8 +31,13 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * {@code POST /v1/classify} — Gravitee classification extension. Supports fixed-label classifiers,
- * token-level NER spans, and GLiNER zero-shot via a caller-supplied {@code labels} array.
+ * {@code POST /v1/classify}: Gravitee classification extension.
+ *
+ * <p>Accepts {@code model}, {@code input} (string or array of strings) and an optional
+ * {@code labels} array of {@code {name, description}} for zero-shot classifiers. Supports
+ * fixed-label classifiers, token-level NER spans and GLiNER zero-shot. Emits 400
+ * {@code invalid_request_error} for a malformed payload, 400 {@code model_not_found} for an
+ * unknown or hidden model, and 500 {@code internal_error} on engine failure.
  */
 public final class ClassifyHandler implements Handler<RoutingContext> {
 

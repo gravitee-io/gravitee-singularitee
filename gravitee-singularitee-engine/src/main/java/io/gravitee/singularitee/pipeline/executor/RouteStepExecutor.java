@@ -57,7 +57,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
   /**
    * Upper bound on cached reference-embedding entries: one entry per KNN route
    * step, so this is a safety valve against unbounded workspaces rather than a
-   * working-set size — far more steps than any deployment declares.
+   * working-set size; it is far more steps than any deployment declares.
    */
   private static final int MAX_CACHED_ROUTE_STEPS = 10_000;
 
@@ -65,7 +65,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
 
   /**
    * KNN reference embeddings, keyed {@code pipelineId:stepId}. Backed by the
-   * node {@link Cache} when a manager is wired (pluggable — distributed
+   * node {@link Cache} when a manager is wired (pluggable; distributed
    * backends avoid re-embedding per node); a plain map otherwise (client-side
    * executor, tests).
    */
@@ -80,17 +80,22 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
   /**
    * One reference embedding. Serializable so it can live in a distributed node
    * cache. NOTE: as a record over a {@code float[]}, {@code equals}/{@code hashCode}
-   * use array identity, not content — never use instances as map keys or compare
+   * use array identity, not content; never use instances as map keys or compare
    * them for value equality.
    */
   record RuleEmbedding(String label, float[] embedding) implements Serializable {
     private static final long serialVersionUID = 1L;
   }
 
+  /** Creates an executor with a process-local KNN embedding cache. */
   public RouteStepExecutor(StepExecutionContext execContext) {
     this(execContext, null);
   }
 
+  /**
+   * Creates an executor whose KNN reference embeddings live in the node cache when
+   * {@code cacheManager} is non-null, in a plain map otherwise.
+   */
   public RouteStepExecutor(StepExecutionContext execContext, CacheManager cacheManager) {
     this.execContext = execContext;
     if (cacheManager == null) {
@@ -143,7 +148,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
       var entryOpt = execContext.lookupModel(cfg.getModelId());
       if (entryOpt.isEmpty()) {
         LOGGER.warn(
-          "Warmup: embedding model '{}' not found for KNN route step '{}' — skipping",
+          "Warmup: embedding model '{}' not found for KNN route step '{}', skipping",
           cfg.getModelId(),
           step.getStepId()
         );
@@ -151,7 +156,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
       }
       if (!(entryOpt.get().engine() instanceof EmbeddingEngine ee)) {
         LOGGER.warn(
-          "Warmup: model '{}' is not an EmbeddingEngine for KNN route step '{}' — skipping",
+          "Warmup: model '{}' is not an EmbeddingEngine for KNN route step '{}', skipping",
           cfg.getModelId(),
           step.getStepId()
         );
@@ -199,7 +204,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
         if (rule.getLabel().equals(resolvedLabel)) {
           pctx.set(stepId + ".matched", "true");
           LOGGER.debug(
-            "RouteStep '{}': label='{}' → step '{}'",
+            "RouteStep '{}': label='{}' -> step '{}'",
             stepId,
             resolvedLabel,
             rule.getNextStepId()
@@ -210,7 +215,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
       pctx.set(stepId + ".matched", "false");
       String defaultStep = cfg.getDefaultStepId();
       LOGGER.debug(
-        "RouteStep '{}': no rule matched label='{}' → default step '{}'",
+        "RouteStep '{}': no rule matched label='{}' -> default step '{}'",
         stepId,
         resolvedLabel,
         defaultStep
@@ -276,7 +281,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
     // The input text (typically from a prior LLM judge step) is the label itself.
     // Normalize: trim whitespace, strip quotes, and lowercase for fuzzy matching.
     String normalized = text.strip().toLowerCase(Locale.ROOT);
-    // Strip surrounding quotes if present (e.g. "tool use request" → tool use request)
+    // Strip surrounding quotes if present (e.g. "tool use request" becomes tool use request)
     if (
       normalized.length() >= 2 &&
       ((normalized.startsWith("\"") && normalized.endsWith("\"")) ||
@@ -329,7 +334,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
       ? cacheKey(ctx.pipeline().getPipelineId(), stepId)
       : stepId;
 
-    // Check cache first — if populated (by warmup), no async embedding needed
+    // Check cache first: if populated (by warmup), no async embedding needed
     List<RuleEmbedding> cached = embeddingCache.get(cacheKey);
     if (cached != null) {
       return ee
@@ -337,7 +342,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig> {
         .map(resp -> findNearestLabel(resp.embedding(), cached, cfg));
     }
 
-    // Cache miss — compute reference embeddings reactively, then embed the query
+    // Cache miss: compute reference embeddings reactively, then embed the query
     return rxComputeRuleEmbeddings(cfg, ee)
       .doOnSuccess(embeddings -> embeddingCache.put(cacheKey, embeddings))
       .flatMap(references ->

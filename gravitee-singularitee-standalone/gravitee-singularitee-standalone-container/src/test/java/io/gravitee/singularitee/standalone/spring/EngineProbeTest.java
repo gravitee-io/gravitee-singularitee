@@ -32,11 +32,9 @@ import org.junit.jupiter.api.Test;
  * <p>The failure mode these tests exist for is silent and severe: a probe
  * naming a class that does not exist makes {@code isPresent} return
  * {@code false} forever, so the engine is quietly dropped from <em>every</em>
- * flavour — including the full one — and the only symptom is "no factory for
- * model type" at workspace-load time, far from the cause. Package names do move
- * (gliner4j's runtime lives under {@code io.gravitee.lab.gliner4j}, not
- * {@code io.gravitee.ai.gliner4j}, despite the Maven groupId), so this must be
- * checked rather than assumed.
+ * flavour, including the full one, and the only symptom is "no factory for
+ * model type" at workspace-load time, far from the cause. A library's package
+ * name need not follow its Maven groupId, so this is checked rather than assumed.
  *
  * <p>The test module has every engine on its classpath, which is what makes it
  * the right place to assert that all four resolve.
@@ -52,7 +50,7 @@ class EngineProbeTest {
       assertThat(isPresent(probe))
         .as(
           "Probe '%s' does not resolve. The engine it guards would be silently " +
-            "dropped from every distribution flavour — fix the class name or the dependency.",
+            "dropped from every distribution flavour; fix the class name or the dependency.",
           probe
         )
         .isTrue();

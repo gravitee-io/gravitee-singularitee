@@ -27,11 +27,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Workspace mapping of the vLLM multi-GPU topology.
  *
- * <p>These settings used to be reachable only through JVM system properties
- * read inside the inference library, which meant a workspace could not describe
- * the topology a model needs — a problem for any checkpoint too large for one
- * card. They are now ordinary config, and "unset" has to stay genuinely unset
- * so the server can layer its own defaults underneath.
+ * <p>A workspace describes the topology a model needs (any checkpoint too large
+ * for one card), and "unset" has to stay genuinely unset so the server can layer
+ * its own defaults underneath.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -91,7 +89,7 @@ class VllmDistributedYamlTest {
   @Test
   void unset_stays_unset(@TempDir Path tmp) throws IOException {
     // Zero and empty are what the factory tests to decide whether the
-    // server-wide default applies — if the loader invented a 1 here, a
+    // server-wide default applies; if the loader invented a 1 here, a
     // deployment-level GRAVITEE_AI_VLLM_TENSORPARALLELSIZE could never win.
     var config = load(tmp);
 

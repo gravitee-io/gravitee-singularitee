@@ -109,6 +109,7 @@ public final class ConditionEvaluatorFactory {
       ScoreResolver.resolveScore(value, context, inputField) < threshold;
   }
 
+  /** Returns an evaluator that never matches, for unparseable or unsupported conditions. */
   public static ContextAwareConditionEvaluator forScoreFalse() {
     return (__, ___, ____) -> false;
   }

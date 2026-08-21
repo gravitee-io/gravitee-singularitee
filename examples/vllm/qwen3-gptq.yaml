@@ -16,12 +16,12 @@
 
 # Qwen3-0.6B GPTQ-Int8 · vLLM backend
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/vllm/qwen3-gptq.yaml
 #
 # ⚠ Linux + CUDA only, and requires the vLLM virtualenv on the JVM command line:
 #     -Dvllm4j.venv=/path/to/.venv        (see scripts/setup-venv.sh)
-#   vLLM is NOT baked into the Docker images — it runs from a host venv.
+#   vLLM is NOT baked into the Docker images, it runs from a host venv.
 #
 # ⚠ WORK IN PROGRESS. The vLLM backend is less exercised than llama.cpp: treat
 #   these two files as a starting point, not a tuned production config. Prefer
@@ -29,7 +29,7 @@
 #   continuous batching on CUDA.
 #
 # 8-bit GPTQ: ~2x memory reduction vs bfloat16, near-lossless quality.
-# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each engine loads its
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM, each engine loads its
 # own native CUDA bindings. One backend per server, composed over gRPC.
 
 workspace:

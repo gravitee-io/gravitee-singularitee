@@ -31,13 +31,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * Everything a step executor needs from the outside world, packed into one object.
  *
  * <p>Avoids passing 5+ parameters through every {@link StepExecutor#execute} call.
- * Each executor picks what it needs — simple steps ignore the response stream,
+ * Each executor picks what it needs: simple steps ignore the response stream,
  * streaming steps use it.
  *
  * <p>The {@code tracer}/{@code metrics}/{@code pipelineSpan}/{@code activeStepSpan}
  * fields carry the (server-side) OpenTelemetry + Micrometer instrumentation seam.
  * They are all {@code null}/no-op when the pipeline runs without a tracer (client-side
- * {@code ClientPipelineExecutor}, CLI, unit tests) — see the compact constructor.
+ * {@code ClientPipelineExecutor}, CLI, unit tests); see the compact constructor.
  *
  * @param pipelineContext the shared scratchpad for inter-step communication
  * @param pipeline        the pipeline definition (for edge lookup)
@@ -65,6 +65,7 @@ public record StepContext(
   AtomicReference<Span> activeStepSpan,
   PipelineStep currentStep
 ) {
+  /** Creates a context with no current step; {@link #withStep} sets it per dispatch. */
   public StepContext(
     PipelineContext pipelineContext,
     Pipeline pipeline,

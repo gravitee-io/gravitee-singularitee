@@ -57,7 +57,7 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Logging — BOM marks these as 'provided', override to 'runtime' for distribution -->
+        <!-- Logging: the BOM marks these 'provided'; override to 'runtime' for the distribution -->
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
@@ -78,7 +78,7 @@
     <!--
         Distribution flavour. The default carries every engine, which is what
         local development and ./run-server.sh expect. CI overrides it per image
-        so each one ships only the engine it runs — see the dist-* profiles.
+        so each one ships only the engine it runs; see the dist-* profiles.
     -->
     <properties>
         <distribution.descriptor>src/main/assembly/distribution.xml</distribution.descriptor>
@@ -88,9 +88,9 @@
         <!--
             Per-engine flavours. Each keeps the same finalName so the Dockerfiles
             can all copy target/distribution/ without knowing which flavour ran:
-                mvn package -Pdist-onnx     → ONNX Runtime + GLiNER only
-                mvn package -Pdist-llama    → llama.cpp only
-                mvn package -Pdist-vllm     → vLLM only
+                mvn package -Pdist-onnx     ONNX Runtime + GLiNER only
+                mvn package -Pdist-llama    llama.cpp only
+                mvn package -Pdist-vllm     vLLM only
         -->
         <profile>
             <id>dist-onnx</id>

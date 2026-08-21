@@ -18,6 +18,8 @@ package io.gravitee.singularitee.inference.api;
 import java.util.List;
 
 /**
+ * Base class of a loaded model that maps one input to one output (classifier, embedder, reranker).
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -29,11 +31,14 @@ public abstract class InferenceModel<CONFIG, INPUT, OUTPUT> {
     this.config = config;
   }
 
+  /** Runs inference on a single input. */
   public abstract OUTPUT infer(INPUT input);
 
+  /** Runs {@link #infer} on each input in order; engines override this to batch. */
   public List<OUTPUT> inferAll(List<INPUT> input) {
     return input.stream().map(this::infer).toList();
   }
 
+  /** Releases the model's native resources; the instance is unusable afterwards. */
   public abstract void close();
 }

@@ -18,8 +18,8 @@ package io.gravitee.singularitee.workspace.config;
 /**
  * ONNX cross-encoder reranker configuration.
  *
- * <p>Plain configuration, never on the wire — converted from the former proto
- * message with identical semantics (zero / empty = default).
+ * <p>Plain configuration, never on the wire. Numeric zero and empty string mean
+ * "engine default".
  */
 public record OnnxRerankerConfig(
   String modelPath,
@@ -37,30 +37,32 @@ public record OnnxRerankerConfig(
     scoring = scoring == null ? "" : scoring;
   }
 
-  /** All defaults — what an absent YAML block means. */
+  /** All defaults: what an absent YAML block means. */
   public static OnnxRerankerConfig getDefaultInstance() {
     return DEFAULT;
   }
 
+  /** Returns a builder with every field at its default. */
   public static Builder newBuilder() {
     return new Builder();
   }
 
-  /** Copy with {@code modelPath} replaced — resolvers rewrite paths after download. */
+  /** Copy with {@code modelPath} replaced; resolvers rewrite paths after download. */
   public OnnxRerankerConfig withModelPath(String v) {
     return new OnnxRerankerConfig(v, tokenizerPath, configJsonPath, maxSequenceLength, scoring);
   }
 
-  /** Copy with {@code tokenizerPath} replaced — resolvers rewrite paths after download. */
+  /** Copy with {@code tokenizerPath} replaced; resolvers rewrite paths after download. */
   public OnnxRerankerConfig withTokenizerPath(String v) {
     return new OnnxRerankerConfig(modelPath, v, configJsonPath, maxSequenceLength, scoring);
   }
 
-  /** Copy with {@code configJsonPath} replaced — resolvers rewrite paths after download. */
+  /** Copy with {@code configJsonPath} replaced; resolvers rewrite paths after download. */
   public OnnxRerankerConfig withConfigJsonPath(String v) {
     return new OnnxRerankerConfig(modelPath, tokenizerPath, v, maxSequenceLength, scoring);
   }
 
+  /** Fluent builder; unset fields keep the engine defaults. */
   public static final class Builder {
 
     private String modelPath = "";

@@ -33,8 +33,7 @@ class ToolMarkerResidueTest {
     return TagConfig.newBuilder().setOpenTag(open).setCloseTag(close).build();
   }
 
-  // ── harmony (gpt-oss) ─────────────────────────────────────────────────────
-
+  // harmony (gpt-oss)
   private static final TagConfig HARMONY_TAGS = TagConfig.newBuilder()
     .setOpenTag("<|end|><|start|>assistant<|channel|>commentary to=functions.")
     .setCloseTag("<|call|>")
@@ -61,8 +60,7 @@ class ToolMarkerResidueTest {
     assertThat(harmony.isPresent(PROSE, HARMONY_TAGS)).isFalse();
   }
 
-  // ── chatml-json (Qwen3) ───────────────────────────────────────────────────
-
+  // chatml-json (Qwen3)
   private static final TagConfig CHATML_TAGS = tags("<tool_call>", "</tool_call>");
 
   @Test
@@ -80,8 +78,7 @@ class ToolMarkerResidueTest {
     assertThat(chatml.isPresent("<|channel|>functions.bash<|message|>{}", CHATML_TAGS)).isFalse();
   }
 
-  // ── xml-function (Qwen3.5) ────────────────────────────────────────────────
-
+  // xml-function (Qwen3.5)
   private static final TagConfig XML_TAGS = tags("<function=", "</function>");
 
   @Test
@@ -95,8 +92,7 @@ class ToolMarkerResidueTest {
     assertThat(xml.isPresent("<tool_call>{\"name\":\"bash\"}", XML_TAGS)).isFalse();
   }
 
-  // ── gemma-call ────────────────────────────────────────────────────────────
-
+  // gemma-call
   private static final TagConfig GEMMA_TAGS = tags("<|tool_call>", "<tool_call|>");
 
   @Test
@@ -108,21 +104,19 @@ class ToolMarkerResidueTest {
     assertThat(gemma.isPresent("<function=bash>", GEMMA_TAGS)).isFalse();
   }
 
-  // ── glm-name-json (marker-less) ───────────────────────────────────────────
-
+  // glm-name-json (marker-less)
   @Test
   void markerless_dialects_never_flag_anything() {
     var glm = ToolMarkerResidues.forTemplate("glm-name-json");
 
-    // No tags configured — there is no machinery to leak; the whole message
+    // No tags configured: there is no machinery to leak; the whole message
     // IS the call format, so nothing here can be residue.
     TagConfig none = TagConfig.getDefaultInstance();
     assertThat(glm.isPresent("bash\n{\"command\":\"ls\"}", none)).isFalse();
     assertThat(glm.isPresent(PROSE, none)).isFalse();
   }
 
-  // ── resolution ────────────────────────────────────────────────────────────
-
+  // resolution
   @Test
   void unknown_and_custom_templates_get_the_verbatim_tag_baseline() {
     var custom = ToolMarkerResidues.forTemplate("my-custom-template");

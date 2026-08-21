@@ -17,7 +17,7 @@
 
 -->
 <!--
-    ONNX flavour — ONNX Runtime and GLiNER only.
+    ONNX flavour: ONNX Runtime and GLiNER only.
 
     Drops llama.cpp and vLLM. Their factories are simply not registered at
     startup (SingulariteeConfiguration probes the classpath), so a workspace
@@ -51,7 +51,7 @@
                 <exclude>io.gravitee.singularitee.inference:gravitee-singularitee-inference-vllm</exclude>
             </excludes>
         </dependencySet>
-        <!-- Third-party JARs → lib/ext/ -->
+        <!-- Third-party JARs go to lib/ext/ -->
         <dependencySet>
             <outputDirectory>lib/ext</outputDirectory>
             <excludes>

@@ -28,8 +28,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Buffered Responses stream lifecycle: the {@code response.created} / {@code response.in_progress}
- * header pair must precede every other event — including live progress and reasoning side-channel
- * events — and the final output items must carry the full wire shape (ids, status, annotations).
+ * header pair must precede every other event, including live progress and reasoning side-channel
+ * events, and the final output items must carry the full wire shape (ids, status, annotations).
  */
 class ResponsesBufferedHeaderOrderingTest {
 

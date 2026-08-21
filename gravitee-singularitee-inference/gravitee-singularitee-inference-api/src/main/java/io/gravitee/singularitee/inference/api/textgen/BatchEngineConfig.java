@@ -16,15 +16,14 @@
 package io.gravitee.singularitee.inference.api.textgen;
 
 /**
- * Configuration for batch inference engine.
- * Defines the capacity and operational parameters.
+ * Capacity settings of an {@link AbstractBatchEngine}.
  *
- * @param maxConcurrentSequences Maximum number of sequences that can be processed simultaneously
- * @param queueCapacity Maximum number of pending sequences that can wait
- * @param enableAutoStart Whether to automatically start pending sequences when slots become available
- * @param promptCache Whether to enable the cross-request KV prefix cache (effective only when the
- *                    adapter supports it — see {@code EngineAdapter.tokenizePrompt})
- * @param promptCacheMinTokens Minimum shared-prefix length (tokens) required to prefer a warm slot
+ * @param maxConcurrentSequences number of slots, i.e. sequences decoded concurrently
+ * @param queueCapacity maximum pending sequences waiting for a slot
+ * @param enableAutoStart whether a pending sequence starts as soon as a slot frees up
+ * @param promptCache whether to enable the cross-request KV prefix cache (effective only when the
+ *                    adapter implements {@code EngineAdapter.tokenizePrompt})
+ * @param promptCacheMinTokens minimum shared-prefix length (tokens) required to prefer a warm slot
  *                             over a cold one when no cache key matches
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -48,7 +47,7 @@ public record BatchEngineConfig(
     }
   }
 
-  /** Compatibility constructor — prompt cache disabled. */
+  /** Creates a configuration with the prompt cache disabled. */
   public BatchEngineConfig(int maxConcurrentSequences, int queueCapacity, boolean enableAutoStart) {
     this(
       maxConcurrentSequences,
@@ -70,14 +69,17 @@ public record BatchEngineConfig(
     );
   }
 
+  /** Eight slots, a queue of 100, auto-start on, prompt cache off. */
   public static BatchEngineConfig defaults() {
     return new BatchEngineConfig(8, 100, true);
   }
 
+  /** {@code maxConcurrentSequences} slots with the default queue of 100 and auto-start on. */
   public static BatchEngineConfig of(int maxConcurrentSequences) {
     return new BatchEngineConfig(maxConcurrentSequences, 100, true);
   }
 
+  /** Given slots and queue capacity, auto-start on, prompt cache off. */
   public static BatchEngineConfig of(int maxConcurrentSequences, int queueCapacity) {
     return new BatchEngineConfig(maxConcurrentSequences, queueCapacity, true);
   }

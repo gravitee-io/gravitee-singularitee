@@ -15,12 +15,12 @@
 #
 
 
-# Generation model — gpt-oss-20b (vLLM / vllm4j)
+# Generation model: gpt-oss-20b (vLLM / vllm4j)
 #
 # Logical id: "llm". MoE 21B (32 experts), 131k context. Ships pre-quantized (MXFP4), so
-# `quantization` is deliberately left unset — vLLM reads it from the checkpoint.
+# `quantization` is deliberately left unset, vLLM reads it from the checkpoint.
 #
-# Linux/CUDA only — needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
+# Linux/CUDA only: needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
 # unless you run the -vllm-cuda image, which bundles it.
 #
 # Swap-in for server-vllm-gptq.yaml / server-vllm-awq.yaml: replace the included

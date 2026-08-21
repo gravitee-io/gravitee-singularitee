@@ -16,6 +16,10 @@
 package io.gravitee.singularitee.inference.onnx.bert.classifier;
 
 /**
+ * Sequence-classification logits as {@code [batch][numLabels]} rows.
+ *
+ * Equality is identity: the array payload is never compared.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

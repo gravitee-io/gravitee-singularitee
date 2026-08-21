@@ -15,6 +15,7 @@
  */
 package io.gravitee.singularitee.inference.api.textgen;
 
+/** Author of a chat message, with its chat-template label. */
 public enum Role {
   ASSISTANT("assistant"),
   SYSTEM("system"),
@@ -26,6 +27,7 @@ public enum Role {
     this.label = label;
   }
 
+  /** Lower-case label used in chat templates. */
   public String getLabel() {
     return label;
   }

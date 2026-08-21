@@ -39,7 +39,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # Corpus builders — run before the corpus-driven load tests:
+  # Corpus builders; run before the corpus-driven load tests:
   #   docker compose run --rm corpus-builder build_toxicity_corpus.py --split train
   #   docker compose run --rm corpus-builder build_pii_corpus.py --per-lang 200
   corpus-builder:

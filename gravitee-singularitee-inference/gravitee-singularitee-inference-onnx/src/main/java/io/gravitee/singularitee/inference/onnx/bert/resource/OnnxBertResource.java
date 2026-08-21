@@ -19,6 +19,9 @@ import io.gravitee.singularitee.inference.onnx.OnnxResource;
 import java.nio.file.Path;
 
 /**
+ * Files of a BERT-family ONNX model: the graph, its {@code tokenizer.json}, and an optional
+ * {@code config.json} ({@code null} when absent; it supplies {@code id2label} for classifiers).
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

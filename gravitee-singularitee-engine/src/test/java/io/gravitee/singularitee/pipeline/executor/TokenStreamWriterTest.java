@@ -48,7 +48,7 @@ import org.junit.jupiter.api.Test;
  * (the engine side) and a fake {@link WriteStream} (the client side), asserting the reactive
  * streaming behaviour shared by the direct and pipeline paths: in-order CREATED / DELTA /
  * COMPLETED events written on the Vert.x context, real write-queue backpressure (no progress
- * while the queue is full), and overflow → cancel-sequence + terminal FAILED.
+ * while the queue is full), and overflow -> cancel-sequence + terminal FAILED.
  */
 class TokenStreamWriterTest {
 
@@ -127,18 +127,18 @@ class TokenStreamWriterTest {
 
     context.runOnContext(v -> {
       engine.processor.onNext(token(5, "a", false, null)); // first delta
-      engine.processor.onNext(token(5, null, true, "stop")); // final — must NOT be pulled while full
+      engine.processor.onNext(token(5, null, true, "stop")); // final, must NOT be pulled while full
       engine.processor.onComplete();
     });
 
     // While the queue is full, exactly CREATED + first delta are written and the stream
-    // is NOT ended — the subscriber stops pulling instead of buffering without bound.
+    // is NOT ended; the subscriber stops pulling instead of buffering without bound.
     awaitUntil(() -> stream.written.size() == 2);
     Thread.sleep(150);
     assertEquals(2, stream.written.size(), "no further writes while the queue is full");
     assertNull(stream.ended, "stream must not end while back-pressured");
 
-    // Draining resumes demand → the final token flows and the stream completes.
+    // Draining resumes demand -> the final token flows and the stream completes.
     context.runOnContext(v -> stream.drain());
     assertTrue(stream.endLatch.await(5, TimeUnit.SECONDS), "stream should end after drain");
     assertEquals(ResponseEventType.RESPONSE_EVENT_TYPE_COMPLETED, stream.ended.getEventType());

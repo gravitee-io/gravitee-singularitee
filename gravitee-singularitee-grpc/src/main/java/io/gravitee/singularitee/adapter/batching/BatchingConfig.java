@@ -15,6 +15,8 @@
  */
 package io.gravitee.singularitee.adapter.batching;
 
+import java.util.List;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,16 +26,16 @@ import org.slf4j.LoggerFactory;
  * engines):
  *
  * <ul>
- *   <li>{@code <prefix>_MAX} — max items fused into one batched GPU run (default
+ *   <li>{@code <prefix>_MAX}: max items fused into one batched GPU run (default
  *       {@value #DEFAULT_MAX_BATCH}).</li>
- *   <li>{@code <prefix>_MAX_TOKENS} — max summed estimated tokens per batch (default
+ *   <li>{@code <prefix>_MAX_TOKENS}: max summed estimated tokens per batch (default
  *       {@value #DEFAULT_MAX_BATCH_TOKENS}). Bounds worst-case batch wall time: the encoder pads
  *       every batch item to the longest sequence, so a count-only cap lets one full batch of
  *       max-size items monopolise the device.</li>
- *   <li>{@code <prefix>_BUCKET_TOKENS} — short/long bucket boundary (default
+ *   <li>{@code <prefix>_BUCKET_TOKENS}: short/long bucket boundary (default
  *       {@value #DEFAULT_BUCKET_TOKENS}). Items at or below it never share a batch with longer
  *       ones, so short requests don't pay the long items' padded-attention cost.</li>
- *   <li>{@code <prefix>_LINGER_MS} — how long the batcher waits for a batch to fill before
+ *   <li>{@code <prefix>_LINGER_MS}: how long the batcher waits for a batch to fill before
  *       dispatching (default {@value #DEFAULT_LINGER_MS} ms). Bounds the added latency under light
  *       load; under heavy load the batch fills well before this elapses.</li>
  * </ul>
@@ -69,8 +71,8 @@ public final class BatchingConfig {
 
   /**
    * Reads the four knobs from the environment under {@code prefix} (e.g.
-   * {@code "GRAVITEE_ONNX_BATCH"} → {@code GRAVITEE_ONNX_BATCH_MAX}, …), falling back to the
-   * defaults above.
+   * {@code "GRAVITEE_ONNX_BATCH"} reads {@code GRAVITEE_ONNX_BATCH_MAX} and so on), falling back
+   * to the defaults above.
    */
   public static BatchingConfig fromEnv(String prefix) {
     return new BatchingConfig(
@@ -98,10 +100,7 @@ public final class BatchingConfig {
   }
 
   /** Builds a {@link MicroBatcher} shaped by this config. */
-  public <I, O> MicroBatcher<I, O> newBatcher(
-    String name,
-    java.util.function.Function<java.util.List<I>, java.util.List<O>> batchFn
-  ) {
+  public <I, O> MicroBatcher<I, O> newBatcher(String name, Function<List<I>, List<O>> batchFn) {
     return new MicroBatcher<>(
       name,
       maxBatchSize,

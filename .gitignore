@@ -15,14 +15,14 @@ dependency-reduced-pom.xml
 **/*.env
 .env
 
-# Maven settings written by CI from $MAVEN_SETTINGS — repository credentials.
+# Maven settings written by CI from $MAVEN_SETTINGS: repository credentials.
 # The release job restores it into the working tree; must never be committable.
 .gravitee.settings.xml
 
 # Server logs
 logs/
 
-# Production values (may contain secrets — never commit)
+# Production values (may contain secrets: never commit)
 prod/
 .claude
 **/__pycache__/**
@@ -31,7 +31,7 @@ prod/
 k6/data/
 k6/reports/
 
-# Dev certificates from scripts/gen-dev-certs.sh — never commit key material
+# Dev certificates from scripts/gen-dev-certs.sh: never commit key material
 certs/
 
 # macOS finder metadata

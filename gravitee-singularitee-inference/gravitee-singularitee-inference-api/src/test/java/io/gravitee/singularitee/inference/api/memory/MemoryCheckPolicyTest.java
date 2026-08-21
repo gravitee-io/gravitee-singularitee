@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+/** Tests for the {@link MemoryCheckPolicy} enum. */
 class MemoryCheckPolicyTest {
 
   @Test

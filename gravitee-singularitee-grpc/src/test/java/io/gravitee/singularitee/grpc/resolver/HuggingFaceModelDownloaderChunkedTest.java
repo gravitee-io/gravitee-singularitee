@@ -43,7 +43,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Exercises the hf_transfer-style chunked download path against a local stub of the
  * HuggingFace hub ({@code localhost}) redirecting to a "CDN" ({@code 127.0.0.1}, same
- * server, different authority — so Authorization stripping is observable).
+ * server, different authority, so Authorization stripping is observable).
  */
 class HuggingFaceModelDownloaderChunkedTest {
 
@@ -159,7 +159,7 @@ class HuggingFaceModelDownloaderChunkedTest {
           shortBodiesServed.computeIfAbsent(range, k -> new AtomicInteger()).incrementAndGet() <=
           shortBodiesPerChunk));
     if (serveShort) {
-      // A 206 whose body carries fewer bytes than the Range asked for — a
+      // A 206 whose body carries fewer bytes than the Range asked for, a
       // truncated connection the client can only detect by counting bytes.
       byte[] truncated = new byte[(int) (end - start + 1) / 2];
       System.arraycopy(payload, (int) start, truncated, 0, truncated.length);
@@ -343,7 +343,7 @@ class HuggingFaceModelDownloaderChunkedTest {
 
   /**
    * Runs a scenario with an {@code RxJavaPlugins} error handler installed and asserts no
-   * uncaught error reached it — chunk chains disposed by a sibling's fail-fast failure must
+   * uncaught error reached it: chunk chains disposed by a sibling's fail-fast failure must
    * drop their late errors, not throw them at the global handler.
    */
   private <T> T withUncaughtCapture(Supplier<T> scenario) {

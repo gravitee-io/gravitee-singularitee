@@ -44,7 +44,7 @@
             <artifactId>gravitee-singularitee-engine</artifactId>
         </dependency>
 
-        <!-- Gravitee Node API — OpenTelemetry Tracer / Span / InternalRequest used to
+        <!-- Gravitee Node API: OpenTelemetry Tracer / Span / InternalRequest used to
              open per-RPC child spans in the service layer. -->
         <dependency>
             <groupId>io.gravitee.node</groupId>
@@ -63,7 +63,7 @@
             <artifactId>gravitee-singularitee-engine-remote</artifactId>
         </dependency>
 
-        <!-- Inference engines (vendored, formerly io.gravitee.inference) -->
+        <!-- Inference engines (vendored) -->
         <dependency>
             <groupId>io.gravitee.singularitee.inference</groupId>
             <artifactId>gravitee-singularitee-inference-api</artifactId>

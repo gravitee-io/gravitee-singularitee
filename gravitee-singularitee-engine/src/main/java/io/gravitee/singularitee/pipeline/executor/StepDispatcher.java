@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * Dispatches step execution to the appropriate {@link StepExecutor} handler.
  *
  * <p>Returns a {@link Maybe} emitting the next step ID, allowing the
- * {@link io.gravitee.singularitee.pipeline.PipelineExecutor} to build a fully
+ * {@code PipelineExecutor} to build a fully
  * reactive DAG walk via {@code flatMapCompletable}.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -47,6 +47,7 @@ public class StepDispatcher {
 
   private final Map<StepType, StepExecutor<?>> handlers;
 
+  /** Creates a dispatcher over a copy of {@code handlers}, keyed by step type. */
   public StepDispatcher(Map<StepType, StepExecutor<?>> handlers) {
     this.handlers = new EnumMap<>(handlers);
   }
@@ -62,7 +63,7 @@ public class StepDispatcher {
     StepExecutor<?> handler = handlers.get(step.getType());
     if (handler == null) {
       LOGGER.warn(
-        "No handler registered for step type {} — skipping '{}'",
+        "No handler registered for step type {}, skipping '{}'",
         step.getType(),
         step.getStepId()
       );
@@ -149,17 +150,17 @@ public class StepDispatcher {
       config != null ? config.getClass().getSimpleName() : "null"
     );
 
-    // One-line compact config summary — safe at DEBUG even for big raw_templates
+    // One-line compact config summary, safe at DEBUG even for big raw_templates
     // (reports size hint rather than dumping the body).
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("Step '{}': config {}", stepId, StepConfigDescriber.describe(config));
     }
-    // Full protobuf dump — only at TRACE.
+    // Full protobuf dump, only at TRACE.
     if (LOGGER.isTraceEnabled()) {
       LOGGER.trace("Step '{}': full config {}", stepId, StepConfigDescriber.describeFull(config));
     }
 
-    // Pre-execution context snapshot — see what the step has access to.
+    // Pre-execution context snapshot: see what the step has access to.
     Set<String> fieldsBefore = null;
     int generatedBefore = 0;
     int verdictsBefore = 0;

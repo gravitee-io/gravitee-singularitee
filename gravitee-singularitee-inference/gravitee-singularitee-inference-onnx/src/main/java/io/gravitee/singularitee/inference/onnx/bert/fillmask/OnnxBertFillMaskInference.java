@@ -29,6 +29,12 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
+ * Masked-language-model head over ONNX Runtime: predicts the token at the first
+ * {@code [MASK]} position.
+ *
+ * Returns the five most probable decoded tokens, best first. Inputs without a mask token are
+ * not supported.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -55,6 +61,7 @@ public class OnnxBertFillMaskInference
       .toList();
   }
 
+  /** Top-5 predictions for the masked position of row {@code batchInput} in {@code encodingResults}. */
   public List<FillMaskResult<String>> fillMask(
     String input,
     EncodingResults encodingResults,

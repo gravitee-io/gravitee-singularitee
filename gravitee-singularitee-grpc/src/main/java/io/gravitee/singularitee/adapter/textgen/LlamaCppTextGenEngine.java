@@ -16,19 +16,20 @@
 package io.gravitee.singularitee.adapter.textgen;
 
 import io.gravitee.llama.cpp.ConversationState;
+import io.gravitee.singularitee.engine.Modalities;
 import io.gravitee.singularitee.engine.ModelEngineType;
+import io.gravitee.singularitee.engine.TextGenEngine;
 import io.gravitee.singularitee.engine.TextGenRequest;
 import io.gravitee.singularitee.inference.llama.cpp.BatchEngine;
 import io.gravitee.singularitee.inference.llama.cpp.ModelConfig;
 import io.gravitee.singularitee.inference.llama.cpp.Request;
+import java.util.List;
 
 /**
- * {@link io.gravitee.singularitee.engine.TextGenEngine} backed by a llama.cpp
- * {@link BatchEngine}.
+ * {@link TextGenEngine} backed by a llama.cpp {@link BatchEngine}.
  *
- * <p>This class — together with {@link LlamaCppEngineFactory} — is the
- * <strong>only</strong> place in the project that may import
- * {@code gravitee-inference-llama-cpp} types.
+ * <p>This class and {@link LlamaCppEngineFactory} are the <strong>only</strong> places in the
+ * project that may import {@code gravitee-inference-llama-cpp} types.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -61,7 +62,7 @@ public final class LlamaCppTextGenEngine
   }
 
   @Override
-  public java.util.List<String> specialTokenTexts() {
+  public List<String> specialTokenTexts() {
     return delegate.specialTokenTexts();
   }
 
@@ -84,11 +85,8 @@ public final class LlamaCppTextGenEngine
    * without guessing from the model name.
    */
   @Override
-  public java.util.List<String> inputModalities() {
-    return io.gravitee.singularitee.engine.Modalities.of(
-      delegate.supportsVision(),
-      delegate.supportsAudio()
-    );
+  public List<String> inputModalities() {
+    return Modalities.of(delegate.supportsVision(), delegate.supportsAudio());
   }
 
   @Override

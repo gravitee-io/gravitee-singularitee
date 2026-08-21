@@ -23,16 +23,16 @@
 #   ./scripts/gen-dev-certs.sh [--out DIR] [--days N]
 #
 #   --out   where to write (default: ./certs, gitignored)
-#   --days  validity (default: 30 — short on purpose, these are disposable)
+#   --days  validity (default: 30; short on purpose, these are disposable)
 #
 # Produces:
 #   ca.crt / ca.key          the dev CA, trusted by BOTH sides
-#   server.crt / server.key  what the callee presents        → grpc.ssl.keystore
-#   client.crt / client.key  what the caller presents        → grpc.client.ssl.keystore
+#   server.crt / server.key  what the callee presents        -> grpc.ssl.keystore
+#   client.crt / client.key  what the caller presents        -> grpc.client.ssl.keystore
 #
 # Why three certificates and not one: mTLS only means something when caller and
 # callee have DISTINCT identities. Reusing the server's key for the client would
-# authenticate — it chains to the same CA — while making the two indistinguishable,
+# authenticate (it chains to the same CA) while making the two indistinguishable,
 # so neither can be authorised or revoked separately.
 #
 # The server cert carries SAN localhost + 127.0.0.1 because the client verifies the
@@ -77,7 +77,7 @@ issue() { # name, subject, san
 }
 
 issue server "/CN=localhost" "subjectAltName=DNS:localhost,IP:127.0.0.1"
-# The client is verified by identity, not hostname — no SAN needed, but it must be
+# The client is verified by identity, not hostname; no SAN needed, but it must be
 # marked for client authentication or strict servers reject it.
 issue client "/CN=singularitee-client" "extendedKeyUsage=clientAuth"
 
@@ -90,7 +90,7 @@ openssl pkcs12 -export -out server.p12 -inkey server.key -in server.crt -certfil
 openssl pkcs12 -export -out client.p12 -inkey client.key -in client.crt -certfile ca.crt \
   -passout "pass:$P12_PASSWORD" 2>/dev/null
 # Truststore: the CA alone, no private key. Built with keytool, NOT
-# `openssl pkcs12 -nokeys` — Java's PKCS12 provider reads zero entries from
+# `openssl pkcs12 -nokeys`: Java's PKCS12 provider reads zero entries from
 # openssl's cert-only bundles, which silently yields an EMPTY truststore
 # (anonymous callers then fail one way, legitimate ones another).
 rm -f ca.p12

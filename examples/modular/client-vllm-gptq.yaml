@@ -15,7 +15,7 @@
 #
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Client — single server (vLLM GPTQ, :9091)
+# Client: single server (vLLM GPTQ, :9091)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Runs the infer pipeline locally and proxies "llm" to the vLLM GPTQ server.
@@ -23,8 +23,9 @@
 # Prerequisite: server-vllm-gptq.yaml running on :9091.
 #
 # Launch:
-#   java io.gravitee.singularitee.cli.Main \
-#        --workspace examples/modular/client-vllm-gptq.yaml --pipeline-id infer-pipeline
+#   GRAVITEE_GRPC_PORT=9190 ./run-server.sh --port 8180 --workspace examples/modular/client-vllm-gptq.yaml
+#   curl -s localhost:8180/v1/chat/completions -H 'content-type: application/json' \
+#        -d '{"model":"infer-pipeline","messages":[{"role":"user","content":"hello"}]}'
 
 workspace:
   name: client-vllm-gptq

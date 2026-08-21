@@ -15,13 +15,13 @@
 #
 
 
-# Generation model — Qwen3-VL-2B (vLLM / vllm4j)
+# Generation model: Qwen3-VL-2B (vLLM / vllm4j)
 #
-# Logical id: "llm". VISION model, dense 2.1B + vision tower. No mmproj to configure — unlike
+# Logical id: "llm". VISION model, dense 2.1B + vision tower. No mmproj to configure, unlike
 # llama.cpp, the vision tower is inside the checkpoint. Image tokens are charged
 # against max_model_len, so keep it generous relative to the text you send.
 #
-# Linux/CUDA only — needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
+# Linux/CUDA only: needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
 # unless you run the -vllm-cuda image, which bundles it.
 #
 # Swap-in for server-vllm-gptq.yaml / server-vllm-awq.yaml: replace the included

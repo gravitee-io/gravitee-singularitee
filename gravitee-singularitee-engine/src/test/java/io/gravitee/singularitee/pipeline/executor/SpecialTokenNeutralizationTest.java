@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Neutralising a model's special tokens in caller-supplied message text.
  *
- * <p>Prompts are tokenized with special-token parsing on — the chat template's own scaffolding has
+ * <p>Prompts are tokenized with special-token parsing on; the chat template's own scaffolding has
  * to become real control tokens. The same pass covers message text, so an unescaped
  * {@code <|channel|>} inside a message is tokenized as the control token and forges conversation
  * structure from inside a message. Observed in practice: an agent quoting Harmony-handling source.
@@ -105,7 +105,7 @@ class SpecialTokenNeutralizationTest {
     assertThat(neutralizeSpecialTokens(messages, List.of())).isSameAs(messages);
   }
 
-  /** Non-Harmony dialects are covered too — the list comes from the model's own vocabulary. */
+  /** Non-Harmony dialects are covered too; the list comes from the model's own vocabulary. */
   @Test
   void other_dialects_are_covered() {
     assertThat(escapeSpecials("a <start_of_turn> b", List.of("<start_of_turn>"))).isEqualTo(
@@ -178,7 +178,7 @@ class SpecialTokenNeutralizationTest {
 
   @Test
   void a_clean_nested_structure_is_returned_unchanged() {
-    // No allocation on the common path — the deep walk must not copy what it did not modify.
+    // No allocation on the common path; the deep walk must not copy what it did not modify.
     var message = Map.<String, Object>of(
       "role",
       "assistant",

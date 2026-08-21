@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
  * All engine calls are fully non-blocking: the engine schedules ONNX work on a worker thread
  * via {@code subscribeOn(blockingScheduler)} and delivers results back on the event loop via
  * {@code observeOn(eventLoopScheduler)}. The {@link Future} bridge uses a plain {@link Promise}
- * whose {@code complete/fail} callbacks run on the event loop — no {@code CompletionStage},
+ * whose {@code complete/fail} callbacks run on the event loop: no {@code CompletionStage},
  * no context capture needed.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -50,6 +50,7 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
   private final io.gravitee.singularitee.inference.math.api.GioMaths gioMaths;
   private final ServiceInstrumentation instrumentation;
 
+  /** Wires the service to the model registry, the math kernels, tracer and metrics. */
   public GraviteeVectorServiceImpl(
     Vertx vertx,
     ModelRegistry registry,
@@ -66,6 +67,7 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
   // Embed (single text)
   // ---------------------------------------------------------------------------
 
+  /** {@code Embed}: one text to one vector. Fails when the model is unknown or not an embedder. */
   @Override
   public Future<EmbedResponse> embed(EmbedRequest request) {
     return instrumentation.traceUnary("ai.embed", "embed", request.getModelId(), () -> {
@@ -102,6 +104,7 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
   // Embed batch
   // ---------------------------------------------------------------------------
 
+  /** {@code EmbedBatch}: several texts to vectors. Same failure contract as {@link #embed}. */
   @Override
   public Future<EmbedBatchResponse> embedBatch(EmbedBatchRequest request) {
     return instrumentation.traceUnary("ai.embed.batch", "embed", request.getModelId(), () -> {
@@ -144,6 +147,7 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
   // Cosine similarity
   // ---------------------------------------------------------------------------
 
+  /** {@code CosineSimilarity}: cosine of two caller-supplied vectors; no model involved. */
   @Override
   public Future<CosineSimilarityResponse> cosineSimilarity(CosineSimilarityRequest request) {
     try {
@@ -160,6 +164,7 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
   // Rank (top-k nearest neighbours)
   // ---------------------------------------------------------------------------
 
+  /** {@code Rank}: top-k nearest candidate vectors to a query vector; no model involved. */
   @Override
   public Future<RankResponse> rank(RankRequest request) {
     try {
@@ -193,6 +198,10 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
   // Text similarity (high-level: text in, scores out)
   // ---------------------------------------------------------------------------
 
+  /**
+   * {@code TextSimilarity}: embeds the query and candidates with an embedding model and
+   * scores them by cosine. Fails when the model is unknown or not an embedder.
+   */
   @Override
   public Future<TextSimilarityResponse> textSimilarity(TextSimilarityRequest request) {
     return instrumentation.traceUnary("ai.text_similarity", "embed", request.getModelId(), () ->
@@ -260,6 +269,11 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
   // Text rerank (high-level: query + documents in, ranked results out)
   // ---------------------------------------------------------------------------
 
+  /**
+   * {@code TextRerank}: scores query/document pairs with a reranker model (or by embedding
+   * cosine when the model is an embedder) and returns them ranked. Fails when the model is
+   * unknown or neither a reranker nor an embedder.
+   */
   @Override
   public Future<TextRerankResponse> textRerank(TextRerankRequest request) {
     return instrumentation.traceUnary("ai.text_rerank", "rerank", request.getModelId(), () ->

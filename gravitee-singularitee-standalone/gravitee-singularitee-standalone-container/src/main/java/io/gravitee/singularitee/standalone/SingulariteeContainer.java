@@ -23,6 +23,9 @@ import io.gravitee.singularitee.standalone.spring.UtilsConfiguration;
 import java.util.List;
 
 /**
+ * Spring-based gravitee-node container that registers Singularitee's configuration classes
+ * and drops the Kubernetes ones, which this product does not use.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

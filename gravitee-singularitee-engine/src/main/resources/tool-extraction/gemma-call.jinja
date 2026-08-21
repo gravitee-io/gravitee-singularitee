@@ -5,7 +5,7 @@
     call:NAME{...}call:NAME2{...}
 
   <|"|>-delimited values are literal strings (they may contain commas, braces,
-  brackets and newlines) and are emitted verbatim as JSON strings — never
+  brackets and newlines) and are emitted verbatim as JSON strings, never
   coerced. Bare values run to the next top-level comma (arrays/objects nest one
   level, <|"|> regions inside them are opaque); nested <|"|> delimiters are
   normalized to JSON quotes and the argument is flagged coercible so the client

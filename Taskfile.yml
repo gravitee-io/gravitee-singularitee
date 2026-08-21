@@ -22,12 +22,12 @@
 #   task run:qwen VLLM=1  the same model on vLLM instead of llama.cpp
 #   task vision           (in another shell) drive the vision demo
 #
-# VLLM=1 swaps examples/llama/<model>.yaml for its examples/vllm/ twin — same
+# VLLM=1 swaps examples/llama/<model>.yaml for its examples/vllm/ twin: same
 # model, same 'agent' pipeline, so every demo task works unchanged. Linux/CUDA
 # only, and it needs the venv from scripts/setup-venv.sh (run-server.sh finds it
 # at ~/.venv-gravitee-ai/.venv, or set VLLM_VENV to point elsewhere).
 #
-# Server tasks are FOREGROUND and block until Ctrl-C — that is deliberate, you
+# Server tasks are FOREGROUND and block until Ctrl-C, deliberately: you
 # want the logs. Demo tasks talk to an already-running server, so they go in a
 # second shell.
 
@@ -63,7 +63,7 @@ tasks:
       - mvn -o -pl gravitee-singularitee-workspace test -Dtest=ExamplesWorkspaceTest
 
   install:
-    desc: First-time setup — natives, build, then run (wraps ./install.sh)
+    desc: First-time setup (natives, build, then run; wraps ./install.sh)
     cmds:
       - ./install.sh --port {{.PORT}}
 
@@ -80,7 +80,7 @@ tasks:
       - ./run-server.sh --port {{.PORT}} --workspace {{.CLI_ARGS}}
 
   run:qwen:
-    desc: 'Qwen3-0.6B — the reference model, small and fast. VLLM=1 for the vLLM twin'
+    desc: 'Qwen3-0.6B, the reference model, small and fast. VLLM=1 for the vLLM twin'
     vars:
       # Per-task, not global: a global var is resolved before CLI variables are
       # merged, so `task run:qwen VLLM=1` would silently stay on llama.cpp.
@@ -89,7 +89,7 @@ tasks:
       - ./run-server.sh --port {{.PORT}} --workspace examples/{{.ENGINE}}/qwen3-0.6b.yaml
 
   run:gpt-oss:
-    desc: 'gpt-oss-20b — MoE, Harmony dialect (~12 GB download). VLLM=1 for the vLLM twin'
+    desc: 'gpt-oss-20b: MoE, Harmony dialect (~12 GB download). VLLM=1 for the vLLM twin'
     vars:
       # Per-task, not global: a global var is resolved before CLI variables are
       # merged, so `task run:qwen VLLM=1` would silently stay on llama.cpp.
@@ -98,7 +98,7 @@ tasks:
       - ./run-server.sh --port {{.PORT}} --workspace examples/{{.ENGINE}}/gpt-oss-20b.yaml
 
   run:gpt-oss-mac:
-    desc: 'gpt-oss-20b on vLLM + Metal — smaller window and KV so it fits unified memory'
+    desc: 'gpt-oss-20b on vLLM + Metal: smaller window and KV so it fits unified memory'
     cmds:
       # The vLLM defaults in the shared file are sized for an 80 GB CUDA card:
       # 131072 tokens of context is 6 GiB of KV per sequence, and 0.85 of a Mac's
@@ -108,7 +108,7 @@ tasks:
       - ./run-server.sh --port {{.PORT}} --workspace examples/vllm/gpt-oss-20b-mac.yaml
 
   run:vision:
-    desc: 'Qwen3-VL-2B — vision model, serves the `task vision` demo. VLLM=1 for the vLLM twin'
+    desc: 'Qwen3-VL-2B, vision model, serves the `task vision` demo. VLLM=1 for the vLLM twin'
     vars:
       # Per-task, not global: a global var is resolved before CLI variables are
       # merged, so `task run:qwen VLLM=1` would silently stay on llama.cpp.
@@ -117,12 +117,12 @@ tasks:
       - ./run-server.sh --port {{.PORT}} --workspace examples/{{.ENGINE}}/qwen3-vl-2b.yaml
 
   run:audio:
-    desc: Voxtral-3B — audio model, serves the `task audio` demo (llama.cpp only)
+    desc: Voxtral-3B, audio model, serves the `task audio` demo (llama.cpp only)
     cmds:
       # No vLLM twin: audio was explicitly out of scope for the vLLM backend.
       - |
         if [ -n "{{.VLLM}}" ]; then
-          echo "run:audio has no vLLM equivalent — Voxtral is served by llama.cpp only." >&2
+          echo "run:audio has no vLLM equivalent; Voxtral is served by llama.cpp only." >&2
           exit 1
         fi
       - ./run-server.sh --port {{.PORT}} --workspace examples/llama/voxtral-3b.yaml
@@ -157,10 +157,10 @@ tasks:
   # Server-to-server composition over mutual TLS. TLS is node configuration, so the
   # certificates are passed as GRAVITEE_* variables here rather than in the workspace.
   #
-  #   task certs                 # once — mints a throwaway CA + server/client certs
-  #   task run:mtls-safety       # shell 1 — the callee, demands a client certificate
-  #   task run:mtls-llm          # shell 2 — the caller, presents one
-  #   task mtls-check            # shell 3 — proves the callee refuses an anonymous caller
+  #   task certs                 # once: mints a throwaway CA + server/client certs
+  #   task run:mtls-safety       # shell 1: the callee, demands a client certificate
+  #   task run:mtls-llm          # shell 2: the caller, presents one
+  #   task mtls-check            # shell 3: proves the callee refuses an anonymous caller
   certs:
     desc: Mint throwaway dev certificates for the mTLS example (certs/, gitignored)
     cmds:
@@ -170,7 +170,7 @@ tasks:
     desc: 'mTLS callee: safety classifiers on gRPC 9092, clientAuth REQUIRED'
     preconditions:
       - sh: test -f certs/server.p12
-        msg: "No certificates — run 'task certs' first"
+        msg: "No certificates. Run 'task certs' first"
     env:
       GRAVITEE_GRPC_SECURED: true
       GRAVITEE_GRPC_SSL_CLIENTAUTH: REQUIRED
@@ -188,7 +188,7 @@ tasks:
     desc: 'mTLS caller: LLM locally, classifiers over mutual TLS (needs run:mtls-safety)'
     preconditions:
       - sh: test -f certs/client.p12
-        msg: "No certificates — run 'task certs' first"
+        msg: "No certificates. Run 'task certs' first"
     env:
       GRAVITEE_GRPC_CLIENT_SSL_TRUSTSTORE_TYPE: PKCS12
       GRAVITEE_GRPC_CLIENT_SSL_TRUSTSTORE_PATH: '{{.ROOT_DIR}}/certs/ca.p12'
@@ -204,7 +204,7 @@ tasks:
     silent: true
     cmds:
       - |
-        echo "1. classify through the caller (proxied over mutual TLS — expect PII entities):"
+        echo "1. classify through the caller (proxied over mutual TLS; expect PII entities):"
         curl -s -m 20 http://localhost:8080/v1/classify -H 'content-type: application/json' \
           -d '{"model":"pii","input":"My email is john@example.com"}' | head -c 300
         echo; echo
@@ -214,7 +214,7 @@ tasks:
 
   # ── pipelines ──────────────────────────────────────────────────────────────
   run:guard:
-    desc: 'Pipeline: toxicity reject → PII redact → generate'
+    desc: 'Pipeline: toxicity reject -> PII redact -> generate'
     cmds:
       - ./run-server.sh --port {{.PORT}} --workspace examples/pipelines/guard.yaml
 
@@ -245,7 +245,7 @@ tasks:
 
   # ── demos (need a server already running) ──────────────────────────────────
   vision:
-    desc: Webcam → vision model at ~600ms/frame, overlaid on the feed (needs run:vision)
+    desc: Webcam -> vision model at ~600ms/frame, overlaid on the feed (needs run:vision)
     summary: |
       Live vision demo. Start the server first, in another shell:
 
@@ -259,7 +259,7 @@ tasks:
       your terminal the first time.
 
       Sends ONE frame every 600ms by default, and only ever keeps one request in
-      flight — if the model is slower than that, ticks are dropped rather than
+      flight; if the model is slower than that, ticks are dropped rather than
       queued, and the HUD shows the achieved rate plus the dropped count.
 
       Tunables: INTERVAL=0.6 (0 = manual SPACE only), MAX_TOKENS=48, IMG_WIDTH=448,
@@ -271,7 +271,7 @@ tasks:
       BASE_URL: '{{.BASE_URL}}'
 
   audio:
-    desc: Push-to-talk mic → audio model (needs run:audio)
+    desc: Push-to-talk mic -> audio model (needs run:audio)
     summary: |
       Push-to-talk demo. Start the server first, in another shell:
 
@@ -322,7 +322,7 @@ tasks:
       - |
         if ! curl -sf -o /dev/null {{.BASE_URL}}/models; then
           echo "No server answering on {{.BASE_URL}}." >&2
-          echo "Start one in another shell first — e.g. 'task run:qwen', or" >&2
+          echo "Start one in another shell first, e.g. 'task run:qwen', or" >&2
           echo "'task run:vision' / 'task run:audio' for the multimodal demos." >&2
           exit 1
         fi

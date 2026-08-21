@@ -23,8 +23,8 @@ import java.util.Set;
 /**
  * Reads which input modalities an incoming request actually carries.
  *
- * <p>Scans the conversation only — {@code messages} on Chat Completions,
- * {@code input} on Responses — rather than the whole payload, so a tool schema
+ * <p>Scans the conversation only ({@code messages} on Chat Completions,
+ * {@code input} on Responses) rather than the whole payload, so a tool schema
  * that happens to contain the word {@code image_url} cannot be mistaken for an
  * attached image.
  *
@@ -41,8 +41,8 @@ public final class RequestModalities {
 
   /**
    * Returns the media modalities present in the request, never including
-   * {@link Modalities#TEXT} — the caller is asking "what beyond text is attached
-   * here", and text needs no permission.
+   * {@link Modalities#TEXT}: the caller is asking what beyond text is attached,
+   * and text needs no permission.
    */
   public static Set<String> of(JsonNode payload) {
     Set<String> found = new LinkedHashSet<>(2);

@@ -18,8 +18,8 @@ package io.gravitee.singularitee.workspace.config;
 /**
  * ONNX BERT classifier configuration.
  *
- * <p>Plain configuration, never on the wire — converted from the former proto
- * message with identical semantics (zero / empty = default).
+ * <p>Plain configuration, never on the wire. Numeric zero and empty string mean
+ * "engine default".
  */
 public record OnnxClassifierConfig(
   String modelPath,
@@ -39,16 +39,17 @@ public record OnnxClassifierConfig(
     labels = labels == null ? java.util.List.of() : java.util.List.copyOf(labels);
   }
 
-  /** All defaults — what an absent YAML block means. */
+  /** All defaults: what an absent YAML block means. */
   public static OnnxClassifierConfig getDefaultInstance() {
     return DEFAULT;
   }
 
+  /** Returns a builder with every field at its default. */
   public static Builder newBuilder() {
     return new Builder();
   }
 
-  /** Copy with {@code modelPath} replaced — resolvers rewrite paths after download. */
+  /** Copy with {@code modelPath} replaced; resolvers rewrite paths after download. */
   public OnnxClassifierConfig withModelPath(String v) {
     return new OnnxClassifierConfig(
       v,
@@ -60,7 +61,7 @@ public record OnnxClassifierConfig(
     );
   }
 
-  /** Copy with {@code tokenizerPath} replaced — resolvers rewrite paths after download. */
+  /** Copy with {@code tokenizerPath} replaced; resolvers rewrite paths after download. */
   public OnnxClassifierConfig withTokenizerPath(String v) {
     return new OnnxClassifierConfig(
       modelPath,
@@ -72,7 +73,7 @@ public record OnnxClassifierConfig(
     );
   }
 
-  /** Copy with {@code configJsonPath} replaced — resolvers rewrite paths after download. */
+  /** Copy with {@code configJsonPath} replaced; resolvers rewrite paths after download. */
   public OnnxClassifierConfig withConfigJsonPath(String v) {
     return new OnnxClassifierConfig(
       modelPath,
@@ -84,6 +85,7 @@ public record OnnxClassifierConfig(
     );
   }
 
+  /** Fluent builder; unset fields keep the engine defaults. */
   public static final class Builder {
 
     private String modelPath = "";

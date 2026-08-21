@@ -26,6 +26,14 @@ import jdk.incubator.vector.VectorSpecies;
 import org.apache.commons.math3.util.FastMath;
 
 /**
+ * {@link GioMaths} on the Vector API for CPUs with hardware masking (AVX-512, SVE).
+ *
+ * Every load, store and lane-wise operation carries the {@code indexInRange} mask, so the
+ * final partial vector is handled in the same iteration instead of a scalar tail. On hardware
+ * without native masks the JVM emulates them, which is slower than
+ * {@link LoopBoundSIMDMath}; {@code SIMDMathFactory} picks between the two. Stateless; use
+ * {@link #INSTANCE}.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -35,6 +43,7 @@ public class MaskAwareSIMDMath implements GioMaths {
 
   private MaskAwareSIMDMath() {}
 
+  /** Shared stateless instance. */
   public static final GioMaths INSTANCE = new MaskAwareSIMDMath();
 
   @Override
@@ -145,7 +154,7 @@ public class MaskAwareSIMDMath implements GioMaths {
     for (int i = 0; i < vector.length; i += SPECIES.length()) {
       var mask = SPECIES.indexInRange(i, vector.length);
       var v = FloatVector.fromArray(SPECIES, vector, i, mask);
-      // 1 / (1 + exp(-x)) — the -x form stays finite for large +x (exp(-x) → 0).
+      // 1 / (1 + exp(-x)): the -x form stays finite for large positive x (exp(-x) tends to 0).
       var negExp = v.mul(-1.0f).lanewise(VectorOperators.EXP, mask);
       one.div(one.add(negExp)).intoArray(result, i, mask);
     }

@@ -16,7 +16,7 @@
 
 # Gemma 4 12B (QAT) · channel markers · long context
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/gemma4-12b.yaml
 #
 # One model (id: llm) and one pipeline (id: agent), so the same client config and
@@ -25,11 +25,11 @@
 #
 # n_ctx is PER SEQUENCE: total KV allocated is n_ctx * n_seq_max.
 # Dense 12B, sliding-window attention, Gemma license. Same architecture and same
-# chat template as the 26B-A4B example — this file exists for CONTEXT: ~8 GB of
+# chat template as the 26B-A4B example, this file exists for CONTEXT: ~8 GB of
 # weights instead of ~13 GB leaves the headroom the full-size SWA cache needs.
 # The model itself supports 262144; the ceiling is memory, not the model. 48
 # layers (vs the 26B's 30) means MORE cache per token, so do not assume the win
-# scales with the weight saving — raise n_ctx and watch RSS before committing to
+# scales with the weight saving, raise n_ctx and watch RSS before committing to
 # a value. Being dense, it decodes slower than the 4B-active MoE.
 
 workspace:

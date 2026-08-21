@@ -16,6 +16,10 @@
 package io.gravitee.singularitee.inference.onnx;
 
 /**
+ * Base configuration of an ONNX model: the {@link OnnxResource} that locates its files.
+ *
+ * Subclasses add the model-family settings (tokenizer, labels, pooling, math kernels).
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

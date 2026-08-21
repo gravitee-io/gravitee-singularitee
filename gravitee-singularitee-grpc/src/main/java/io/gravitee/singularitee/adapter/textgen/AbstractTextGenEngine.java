@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -59,11 +60,7 @@ import org.slf4j.LoggerFactory;
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-abstract sealed class AbstractTextGenEngine<
-  CFG,
-  REQ extends io.gravitee.singularitee.inference.api.textgen.GenerationRequest,
-  STATE
->
+abstract sealed class AbstractTextGenEngine<CFG, REQ extends GenerationRequest, STATE>
   implements TextGenEngine
   permits LlamaCppTextGenEngine, VllmTextGenEngine {
 
@@ -98,7 +95,7 @@ abstract sealed class AbstractTextGenEngine<
   /**
    * Per-sequence reactive token streams, keyed by seqId. Present only while a caller
    * has an active {@link #rxStream} subscription for that sequence; when present, tokens
-   * are routed to the processor instead of the legacy {@code start(...)} consumer.
+   * are routed to the processor instead of the {@code start(...)} consumer.
    */
   private final ConcurrentHashMap<Integer, FlowableProcessor<ModelEngineToken>> streams =
     new ConcurrentHashMap<>();
@@ -108,8 +105,9 @@ abstract sealed class AbstractTextGenEngine<
    * issuing the cancel/synthetic-final more than once when several tokens for
    * the same sequence cross the threshold before the cancel takes effect.
    */
-  private final java.util.Set<Integer> contextStoppedSequences = ConcurrentHashMap.newKeySet();
+  private final Set<Integer> contextStoppedSequences = ConcurrentHashMap.newKeySet();
 
+  /** Wraps {@code delegate}; call {@link #start(Consumer)} before adding sequences. */
   protected AbstractTextGenEngine(AbstractBatchEngine<CFG, REQ, String, STATE> delegate) {
     this.delegate = delegate;
   }
@@ -121,7 +119,7 @@ abstract sealed class AbstractTextGenEngine<
       int seqId = localToken.seqId();
 
       // Route to the per-sequence reactive stream when one is subscribed (the direct
-      // gRPC path), otherwise to the legacy callback (the pipeline path, until migrated).
+      // gRPC path), otherwise to the start(...) callback (the pipeline path).
       FlowableProcessor<ModelEngineToken> processor = streams.get(seqId);
       Consumer<ModelEngineToken> sink = processor != null ? processor::onNext : tokenConsumer;
 
@@ -169,7 +167,7 @@ abstract sealed class AbstractTextGenEngine<
         capacity,
         () ->
           LOGGER.warn(
-            "Sequence {} token-stream buffer overflowed ({} tokens) — consumer too slow; cancelling",
+            "Sequence {} token-stream buffer overflowed ({} tokens): consumer too slow; cancelling",
             seqId,
             capacity
           ),
@@ -208,7 +206,7 @@ abstract sealed class AbstractTextGenEngine<
       return; // another token already triggered the stop for this sequence
     }
     LOGGER.warn(
-      "Sequence {} reached {}% of the {}-token context window ({} prompt + {} completion) — stopping generation",
+      "Sequence {} reached {}% of the {}-token context window ({} prompt + {} completion); stopping generation",
       trigger.seqId(),
       (int) (CONTEXT_STOP_RATIO * 100),
       contextSize(),
@@ -252,7 +250,7 @@ abstract sealed class AbstractTextGenEngine<
       return Completable.error(e);
     }
     // Disposing the subscription (pipeline cancelled, client disconnected)
-    // must stop native generation too — otherwise an orphaned sequence keeps
+    // must stop native generation too, otherwise an orphaned sequence keeps
     // burning compute until max_tokens. cancelSequence() is guarded by the
     // pendingSequences map, so a dispose that races (or follows) normal
     // completion is a no-op.
@@ -263,41 +261,25 @@ abstract sealed class AbstractTextGenEngine<
    * Cancels a running sequence: stops native generation, releases the
    * pending-completion subject (so any reactive chain awaiting the sequence
    * finishes), and clears guard state. Safe to call for already-finished or
-   * unknown sequence ids — the {@link #pendingSequences} guard makes it a
+   * unknown sequence ids: the {@link #pendingSequences} guard makes it a
    * no-op then.
    */
   @Override
   public void cancelSequence(int seqId) {
     CompletableSubject subject = pendingSequences.remove(seqId);
     if (subject == null) {
-      return; // already finished or never started — nothing to cancel
+      return; // already finished or never started: nothing to cancel
     }
     contextStoppedSequences.remove(seqId);
     try {
       delegate.cancelSequence(seqId);
-      LOGGER.warn("Sequence {} cancelled — generation stopped before completion", seqId);
+      LOGGER.warn("Sequence {} cancelled: generation stopped before completion", seqId);
     } catch (RuntimeException e) {
       LOGGER.warn("cancelSequence({}) failed on engine: {}", seqId, e.getMessage());
     }
     subject.onComplete();
   }
 
-  /**
-   * Ensures the request carries a rendered prompt when the caller supplied
-   * messages only. This is the direct-model path (no pipeline executor to
-   * pre-render); we apply the model's own chat template via Jinja4j so that
-   * llama.cpp and vLLM produce identical outputs for identical inputs.
-   *
-   * <p>If the request already has a non-blank prompt, it is returned unchanged:
-   * the pipeline executor has authority and its rendered output wins. The
-   * {@code messages} list is retained either way for downstream multimodal
-   * media extraction.
-   *
-   * <p>If no chat template is available (model has none, or reading it fails)
-   * we log once and hand the request to the engine as-is — llama.cpp's native
-   * {@code LlamaTemplate.applyTemplate} will then fall back to its own
-   * template application (see {@code Model.promptFor}).
-   */
   /**
    * Trims the request's chat history to this engine's context window (see
    * {@link ChatWindowTrimmer}). No-op when the engine does not report a
@@ -330,7 +312,7 @@ abstract sealed class AbstractTextGenEngine<
       return request;
     }
     LOGGER.info(
-      "Direct-model path: trimmed {}→{} messages to fit context budget {}",
+      "Direct-model path: trimmed {} -> {} messages to fit context budget {}",
       request.messages().size(),
       trimmed.size(),
       ctx
@@ -354,6 +336,21 @@ abstract sealed class AbstractTextGenEngine<
     );
   }
 
+  /**
+   * Ensures the request carries a rendered prompt when the caller supplied
+   * messages only. This is the direct-model path (no pipeline executor to
+   * pre-render); the model's own chat template is applied via Jinja4j so that
+   * llama.cpp and vLLM produce identical outputs for identical inputs.
+   *
+   * <p>If the request already has a non-blank prompt, it is returned unchanged:
+   * the pipeline executor has authority and its rendered output wins. The
+   * {@code messages} list is retained either way for downstream multimodal
+   * media extraction.
+   *
+   * <p>If no chat template is available (model has none, or reading it fails)
+   * the request goes to the engine as-is and llama.cpp's native template
+   * application takes over (see {@code Model.promptFor}).
+   */
   private TextGenRequest maybePreRender(TextGenRequest request) {
     if (request.prompt() != null && !request.prompt().isBlank()) {
       return request;
@@ -362,8 +359,8 @@ abstract sealed class AbstractTextGenEngine<
       return request;
     }
 
-    // Context-window history trimming (direct path — no pipeline executor,
-    // hence no config surface: always on when the engine knows its window).
+    // Context-window history trimming (direct path: no pipeline executor,
+    // hence no config surface; always on when the engine knows its window).
     // Runs before rendering so the rendered prompt AND the retained messages
     // (multimodal media extraction) agree; media-carrying turns are preserved
     // exactly (kept whole, never content-truncated).
@@ -371,9 +368,7 @@ abstract sealed class AbstractTextGenEngine<
 
     String template = chatTemplateString();
     if (template == null || template.isBlank()) {
-      LOGGER.debug(
-        "No chat template available on engine — letting engine handle messages natively"
-      );
+      LOGGER.debug("No chat template available on engine; letting engine handle messages natively");
       return request;
     }
 
@@ -401,10 +396,10 @@ abstract sealed class AbstractTextGenEngine<
       rendered = RENDERER.render(template, toChatMessages(renderMessages), null, true, extras);
     } catch (RuntimeException e) {
       // ERROR, not warn: the native fallback ignores template_context
-      // (enable_thinking etc.) and may scaffold the prompt differently —
-      // silent degradation here has already cost one demo.
+      // (enable_thinking etc.) and may scaffold the prompt differently, so
+      // silent degradation would be hard to diagnose.
       LOGGER.error(
-        "Failed to render chat template via Jinja4j — falling back to native engine handling " +
+        "Failed to render chat template via Jinja4j; falling back to native engine handling " +
           "(template_context variables will be IGNORED)",
         e
       );
@@ -497,7 +492,7 @@ abstract sealed class AbstractTextGenEngine<
   protected abstract REQ toEngineRequest(TextGenRequest request);
 
   // ------------------------------------------------------------------
-  // Shared proto→library mapping helpers (package-private)
+  // Shared local-to-library mapping helpers (package-private)
   // ------------------------------------------------------------------
 
   /**
@@ -528,11 +523,13 @@ abstract sealed class AbstractTextGenEngine<
       .toList();
   }
 
+  /** Converts local chat turns to library messages; {@code null} in, {@code null} out. */
   static List<ChatMessage> toChatMessages(List<ChatTurn> turns) {
     if (turns == null) return null;
     return turns.stream().map(AbstractTextGenEngine::toChatMessage).toList();
   }
 
+  /** Converts one local chat turn, including its media attachments, to a library message. */
   static ChatMessage toChatMessage(ChatTurn turn) {
     var role = switch (turn.role()) {
       case SYSTEM -> Role.SYSTEM;
@@ -559,6 +556,7 @@ abstract sealed class AbstractTextGenEngine<
     return isImage ? new ImageContent(mt, m.data()) : new AudioContent(mt, m.data());
   }
 
+  /** Maps a local attachment type onto the library media type. */
   static MediaType toLibraryMediaType(MediaAttachmentType type) {
     return switch (type) {
       case IMAGE_JPEG -> MediaType.IMAGE_JPEG;
@@ -570,11 +568,10 @@ abstract sealed class AbstractTextGenEngine<
     };
   }
 
-  static io.gravitee.singularitee.inference.api.textgen.TagConfig toLibraryTagConfig(
-    io.gravitee.singularitee.inference.api.textgen.TagConfig config
-  ) {
+  /** Normalises an absent or unconfigured tag config to an empty {@link TagConfig}. */
+  static TagConfig toLibraryTagConfig(TagConfig config) {
     if (config == null || !config.isConfigured()) {
-      return new io.gravitee.singularitee.inference.api.textgen.TagConfig(null, null);
+      return new TagConfig(null, null);
     }
     return config;
   }

@@ -58,11 +58,10 @@ public record InferencePerformance(
   }
 
   /**
-   * Returns this snapshot minus a baseline: llama.cpp perf counters accumulate
-   * for the CONTEXT's lifetime, so a raw read reports every request ever served
-   * — a client computing tokens/second from it sees numbers drifting toward the
-   * lifetime average. Subtracting the sequence-start snapshot yields the
-   * per-request figures. Clamped at zero (a backend may reset counters).
+   * Returns this snapshot minus a baseline. Backend perf counters accumulate for
+   * the context's lifetime, so a raw read reports every request ever served;
+   * subtracting the sequence-start snapshot yields the per-request figures.
+   * Clamped at zero (a backend may reset counters).
    */
   public InferencePerformance minus(InferencePerformance baseline) {
     if (baseline == null) {

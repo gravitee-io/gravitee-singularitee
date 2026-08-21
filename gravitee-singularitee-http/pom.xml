@@ -29,7 +29,7 @@
     <artifactId>gravitee-singularitee-http</artifactId>
 
     <name>Gravitee.io - Singularitee - HTTP API</name>
-    <description>Native OpenAI/Anthropic/Gemini-compatible HTTP/JSON API over Singularitee engines and pipelines</description>
+    <description>OpenAI-compatible HTTP/JSON API over Singularitee engines and pipelines</description>
 
     <dependencies>
         <!-- Internal protocol (proto messages: InferRequest, InferResponse, ChatMessageList, ...) -->

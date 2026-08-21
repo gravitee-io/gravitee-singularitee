@@ -16,6 +16,8 @@
 package io.gravitee.singularitee.inference.onnx.bert.fillmask;
 
 /**
+ * One fill-mask candidate: a token id or decoded string with its softmax probability.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

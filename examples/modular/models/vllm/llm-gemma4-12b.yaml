@@ -15,12 +15,12 @@
 #
 
 
-# Generation model — Gemma 4 12B (vLLM / vllm4j)
+# Generation model: Gemma 4 12B (vLLM / vllm4j)
 #
-# Logical id: "llm". Dense 12B, bf16. A VISION model despite the name — it carries a vision
+# Logical id: "llm". Dense 12B, bf16. A VISION model despite the name, it carries a vision
 # tower, so it also serves the multimodal pipelines.
 #
-# Linux/CUDA only — needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
+# Linux/CUDA only: needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
 # unless you run the -vllm-cuda image, which bundles it.
 #
 # Swap-in for server-vllm-gptq.yaml / server-vllm-awq.yaml: replace the included

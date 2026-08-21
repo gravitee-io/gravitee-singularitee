@@ -35,7 +35,7 @@ import java.util.stream.Stream;
  * step output), publishes the tri-state {@code tool_parse_failed} /
  * {@code tool_parse_ok} signal fields that drive repair loops, flags leaked
  * tool-marker residue, and handles markerless dialects. Extraction is
- * fail-open — the raw text has already been forwarded/stored, so a failed
+ * fail-open: the raw text has already been forwarded/stored, so a failed
  * parse never fails the step.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -91,7 +91,7 @@ final class ToolCallOutcomeRecorder {
       }
     } else if (hasToolMarkerResidue(stepOutput, cfg)) {
       // The model hallucinated tool-call syntax the tag machine could not
-      // recognize — a form with no legal shape, so enumerating tag variants
+      // recognize, a form with no legal shape, so enumerating tag variants
       // cannot cover it. Leaked special tokens are never a valid answer:
       // flag a failed attempt so a heal/repair loop retries instead of the
       // raw markers leaking to the client as prose.
@@ -152,7 +152,7 @@ final class ToolCallOutcomeRecorder {
   /**
    * Whether an UNCAPTURED generation contains tool-call marker debris. Only
    * meaningful for marker-based dialects (a configured {@code tool_open}).
-   * Marker derivation is dialect-owned — see {@link ToolMarkerResidues}:
+   * Marker derivation is dialect-owned (see {@link ToolMarkerResidues}):
    * leaked dialect machinery in the final text means the model attempted a
    * call in a form the tags did not recognize, never a valid answer.
    */
@@ -173,11 +173,11 @@ final class ToolCallOutcomeRecorder {
    * with a plain {@code stop}, and the step explicitly configures an extraction template,
    * attempt extraction on the step's final output text: a non-empty result turns the response
    * into tool calls exactly as a captured span would (finish {@code tool_calls}); an empty
-   * result leaves the response untouched. Built-ins are never tried speculatively here — only
+   * result leaves the response untouched. Built-ins are never tried speculatively here; only
    * an explicit template opts a step in.
    *
    * <p>A configured {@code tool_open} tag disqualifies the step outright. Having an explicit
-   * extraction template does not make a dialect markerless — a marker-based dialect may declare
+   * extraction template does not make a dialect markerless: a marker-based dialect may declare
    * one because its captured span needs custom parsing. For a marker-based dialect the absence
    * of a span IS the answer: the model made no call. Running markerless extraction over its
    * prose instead lets a name-shaped regex manufacture a call from the first word of ordinary
@@ -219,7 +219,7 @@ final class ToolCallOutcomeRecorder {
   /**
    * Publishes the outcome of a tool-call extraction attempt as pipeline context fields, so
    * {@code loop}/{@code break} conditions and {@code loopback_message} templates can drive a
-   * repair loop off a malformed call — the extraction itself stays fail-open.
+   * repair loop off a malformed call; the extraction itself stays fail-open.
    */
   static void setToolSignalFields(
     PipelineContext pctx,
@@ -257,7 +257,7 @@ final class ToolCallOutcomeRecorder {
    * {@code <tool_call>...</tool_call>}). This keeps the step output / appended
    * assistant turn identical to what tag-emitting engines produce, so chat
    * templates re-render prior tool calls correctly on later turns of a tool loop.
-   * Empty tool payload (legacy tagged-text engines) returns {@code text} untouched.
+   * An empty tool payload (tagged-text engines) returns {@code text} untouched.
    */
   static String withReWrappedToolCalls(String text, String toolPayload, InferStepConfig cfg) {
     if (toolPayload == null || toolPayload.isEmpty()) {
@@ -303,7 +303,7 @@ final class ToolCallOutcomeRecorder {
         ToolCall.newBuilder()
           // The id is born HERE, server-side: the client answers with this id
           // in function_call_output, and the stored conversation must replay
-          // the call under the SAME id — a differing id pairs the tool result
+          // the call under the SAME id; a differing id pairs the tool result
           // with the wrong call on the next turn.
           .setId("call_" + UUID.randomUUID().toString().replace("-", ""))
           .setName(c.name())

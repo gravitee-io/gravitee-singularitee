@@ -15,7 +15,7 @@
 #
 
 #
-# Isolated workspace — pii-ner only (GLiNER2 Pii-Multi, onnx_fp16 variant).
+# Isolated workspace: pii-ner only (GLiNER2 Pii-Multi, onnx_fp16 variant).
 # Single-model target for the corpus-driven perf runs (pii-corpus-load-test.js).
 #
 #   GRAVITEE_AI_WORKSPACE_PATH=/path/to/workspace-pii-ner.yaml
@@ -26,7 +26,7 @@ workspace:
   name: pii-ner-fp16
 
   models:
-    # GLiNER2 Pii-Multi — full 42-type schema. Lower threshold favours recall.
+    # GLiNER2 Pii-Multi, full 42-type schema. Lower threshold favours recall.
     - id: pii-ner
       type: gliner_ner
       name: gravitee-io/gliner4j-gliner2-privacy-filter-PII-multi

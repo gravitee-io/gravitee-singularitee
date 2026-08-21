@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
  * persistence to {@link PipelineRegistry}.
  *
  * <p>Pipelines are registered at startup by {@code WorkspaceLoaderComponent} via
- * {@link PipelineRegistry#register(Pipeline)} directly — there is no public gRPC
+ * {@link PipelineRegistry#register(Pipeline)} directly; there is no public gRPC
  * endpoint to publish pipelines at runtime.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -40,6 +40,7 @@ public class GraviteePipelineServiceImpl extends GraviteePipelineServiceGrpcServ
 
   private final PipelineRegistry registry;
 
+  /** Serves pipelines from {@code registry}. */
   public GraviteePipelineServiceImpl(PipelineRegistry registry) {
     this.registry = registry;
   }
@@ -48,6 +49,7 @@ public class GraviteePipelineServiceImpl extends GraviteePipelineServiceGrpcServ
   // GetPipeline
   // ---------------------------------------------------------------------------
 
+  /** {@code GetPipeline}: definition and status of one pipeline; fails when the id is unknown. */
   @Override
   public Future<GetPipelineResponse> getPipeline(GetPipelineRequest request) {
     var entryOpt = registry.get(request.getPipelineId());
@@ -67,6 +69,7 @@ public class GraviteePipelineServiceImpl extends GraviteePipelineServiceGrpcServ
   // ListPipelines
   // ---------------------------------------------------------------------------
 
+  /** {@code ListPipelines}: every registered pipeline with its status. */
   @Override
   public Future<ListPipelinesResponse> listPipelines(ListPipelinesRequest request) {
     var builder = ListPipelinesResponse.newBuilder();

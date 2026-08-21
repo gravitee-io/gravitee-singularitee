@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 
-# Pipeline — plain single-step generation.
+# Pipeline: plain single-step generation.
 #
 # References the generation model by its logical id "llm", so it runs unchanged
 # on every backend (llama.cpp, vLLM GPTQ, vLLM AWQ) and on every client whose

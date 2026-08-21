@@ -16,10 +16,10 @@
 
 # Qwen3-VL-2B · vLLM backend
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/vllm/qwen3-vl-2b.yaml
 #
-# VISION model — the vLLM counterpart of examples/llama/qwen3-vl-2b.yaml.
+# VISION model, the vLLM counterpart of examples/llama/qwen3-vl-2b.yaml.
 #
 # Unlike llama.cpp there is no mmproj file to point at: vLLM loads the vision
 # tower from the same checkpoint, so there is nothing extra to configure. Images
@@ -27,14 +27,14 @@
 # chat template inserts the placeholder tokens.
 #
 # Dense 2.1B + vision tower, 262144-token positional encoding capped to 32768
-# here — image tokens are charged against the same window, and a single 1024x1024
+# here, image tokens are charged against the same window, and a single 1024x1024
 # image is worth well over a thousand of them.
 #
 # ⚠ Linux + CUDA only. vLLM runs from a host venv (scripts/setup-venv.sh) unless
 #   you use the -vllm-cuda image, which bundles it:
 #     ./run-server.sh --workspace examples/vllm/qwen3-vl-2b.yaml   -Dvllm4j.venv=/path/to/.venv
 #
-# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each loads its own
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM: each loads its own
 # native CUDA bindings. One backend per server, composed over gRPC.
 
 workspace:

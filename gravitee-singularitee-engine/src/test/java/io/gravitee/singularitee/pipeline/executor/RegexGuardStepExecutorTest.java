@@ -81,7 +81,7 @@ class RegexGuardStepExecutorTest {
     assertThat(pctx.isHalted()).isFalse();
   }
 
-  // ── REJECT / WARN — trigger mode ──────────────────────────────────────────
+  // REJECT / WARN: trigger mode
 
   @Nested
   class TriggerMode {
@@ -117,7 +117,7 @@ class RegexGuardStepExecutorTest {
     void matchWritesContextVariables() {
       var pctx = contextWith("My card 4111-1111-1111-1111");
       var ctx = stepContext(pctx);
-      // Free-form name with a space — no Java identifier restriction
+      // Free-form name with a space; no Java identifier restriction
       var cfg = RegexGuardStepConfig.newBuilder()
         .setAction(GuardAction.GUARD_ACTION_WARN)
         .addPatterns(entry("Credit Card", "\\b\\d{4}[\\s\\-]\\d{4}[\\s\\-]\\d{4}[\\s\\-]\\d{4}\\b"))
@@ -133,7 +133,7 @@ class RegexGuardStepExecutorTest {
     @Test
     void firstMatchingPatternIsReported() {
       // SSN pattern listed first, credit-card listed second.
-      // Input matches credit card only → P1 fires.
+      // Input matches credit card only -> P1 fires.
       var pctx = contextWith("Card: 4111-1111-1111-1111");
       var ctx = stepContext(pctx);
       var cfg = RegexGuardStepConfig.newBuilder()
@@ -151,7 +151,7 @@ class RegexGuardStepExecutorTest {
     void freeFormNameWithDashes() {
       var pctx = contextWith("IBAN: GB29NWBK60161331926819");
       var ctx = stepContext(pctx);
-      // Name contains a dash — valid because users never write group syntax
+      // Name contains a dash; valid because users never write group syntax
       var cfg = RegexGuardStepConfig.newBuilder()
         .setAction(GuardAction.GUARD_ACTION_WARN)
         .addPatterns(entry("Bank-IBAN", "[A-Z]{2}\\d{2}[A-Z0-9]{4}\\d{7}([A-Z0-9]?){0,16}"))
@@ -271,7 +271,7 @@ class RegexGuardStepExecutorTest {
 
     @Test
     void overlappingSpans_mergedIntoSingleReplacement() {
-      // Two identical patterns both match the same text — merged into one span
+      // Two identical patterns both match the same text; merged into one span
       var pctx = contextWith("SSN: 123-45-6789");
       var ctx = stepContext(pctx);
       var cfg = RegexGuardStepConfig.newBuilder()

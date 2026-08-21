@@ -20,7 +20,7 @@ import io.gravitee.singularitee.protocol.TagConfig;
 /**
  * Detects tool-call marker RESIDUE: fragments whose presence in a step's final
  * (uncaptured) output mean the model attempted a call in a form the tag machine
- * did not recognize — hallucinated or mutated syntax, never a valid answer.
+ * did not recognize: hallucinated or mutated syntax, never a valid answer.
  *
  * <p>One implementation per dialect, resolved by
  * {@link ToolMarkerResidues#forTemplate(String)} from the same template name as

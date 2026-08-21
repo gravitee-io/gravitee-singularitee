@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine;
 
 import io.gravitee.singularitee.protocol.ToolDefinition;
 import io.gravitee.singularitee.protocol.ToolParameterDef;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,7 +74,7 @@ public final class ToolDefinitionConverter {
 
   private static Map<String, Object> toJsonSchemaParameters(List<ToolParameterDef> params) {
     Map<String, Object> properties = new LinkedHashMap<>();
-    List<String> required = new java.util.ArrayList<>();
+    List<String> required = new ArrayList<>();
 
     for (ToolParameterDef p : params) {
       Map<String, Object> prop = new LinkedHashMap<>();

@@ -46,8 +46,8 @@ import org.junit.jupiter.api.Test;
  * started, so slot assignment (and therefore round-robin order) is fixed and the
  * worker never observes a partially-populated batch. Completion is awaited on the
  * emitted-token stream rather than on wall-clock sleeps, and the "auto-start
- * disabled" case is proven by the adapter's sequence-creation count — never by a
- * timed wait — so there are no races.
+ * disabled" case is proven by the adapter's sequence-creation count, never by a
+ * timed wait, so there are no races.
  */
 class AbstractBatchEngineSchedulingTest {
 
@@ -200,6 +200,7 @@ class AbstractBatchEngineSchedulingTest {
     public void shutdown() {}
   }
 
+  /** Concrete engine over the scripted adapter. */
   private static final class TestEngine
     extends AbstractBatchEngine<Void, FakeRequest, String, ScriptedAdapter.Gen> {
 
@@ -286,7 +287,7 @@ class AbstractBatchEngineSchedulingTest {
     }
 
     @Test
-    @DisplayName("duplicate seqId is ignored — consumes neither a slot nor a queue entry")
+    @DisplayName("duplicate seqId is ignored: consumes neither a slot nor a queue entry")
     void duplicate_seqId_is_ignored() {
       // 1 slot + 1 queue entry. Without de-dup the duplicate adds would fill the
       // queue and make the *second distinct* sequence overflow.
@@ -458,11 +459,10 @@ class AbstractBatchEngineSchedulingTest {
   class StopStrings {
 
     /**
-     * Stop strings are matched here, on decoded text — the backend knows nothing about them and
-     * goes on reporting "still generating". The final token therefore has to be produced by the
-     * stop-match path itself. When it was not, the sequence was detached from the backend (so no
-     * finish reason could ever arrive) while the stream stayed open: the client hung until it
-     * timed out, with a complete answer already sitting in its buffer.
+     * Stop strings are matched on decoded text; the backend knows nothing about them and goes on
+     * reporting "still generating". The final token therefore has to be produced by the
+     * stop-match path itself, otherwise the sequence is detached from the backend (so no finish
+     * reason can ever arrive) while the stream stays open.
      */
     @Test
     @DisplayName("a matched stop string ends the stream with a final 'stop' token")

@@ -74,14 +74,17 @@ public final class OnnxModelResolver {
   private final HuggingFaceModelDownloader downloader;
   private final Path cacheDir;
 
+  /** Anonymous HuggingFace access and the default cache directory. */
   public OnnxModelResolver(Vertx vertx) {
     this(new HuggingFaceModelDownloader(vertx), DEFAULT_CACHE_DIR);
   }
 
+  /** HuggingFace access with an optional token and the default cache directory. */
   public OnnxModelResolver(Vertx vertx, String hfToken) {
     this(new HuggingFaceModelDownloader(vertx, hfToken), DEFAULT_CACHE_DIR);
   }
 
+  /** Full control over the downloader and cache directory (used by tests). */
   public OnnxModelResolver(HuggingFaceModelDownloader downloader, Path cacheDir) {
     this.downloader = downloader;
     this.cacheDir = cacheDir;
@@ -319,7 +322,7 @@ public final class OnnxModelResolver {
       return Single.just(cached.toAbsolutePath());
     }
 
-    // 3. Download from HuggingFace — download all sibling files in the same directory
+    // 3. Download from HuggingFace: download all sibling files in the same directory
     LOGGER.info("Downloading ONNX file [{}] from repository [{}]", filePath, modelName);
 
     // Determine the directory prefix (e.g. "onnx/layer-22/" for "onnx/layer-22/model.onnx")
@@ -333,7 +336,7 @@ public final class OnnxModelResolver {
       .flatMap(repoFiles -> {
         // Collect all files sharing the same directory prefix, minus anything
         // download.exclude: rules out. The requested file itself is never
-        // excluded — a pattern that swept it up would turn a working model
+        // excluded; a pattern that swept it up would turn a working model
         // definition into a failed load rather than a smaller download.
         List<String> filesToDownload = repoFiles
           .stream()
@@ -376,13 +379,13 @@ public final class OnnxModelResolver {
   /**
    * Resolves the tokenizer path, which may be either:
    * <ul>
-   *   <li>An absolute local directory that already exists → use as-is.</li>
-   *   <li>A single tokenizer file (e.g. {@code tokenizer.json}) → download that file,
+   *   <li>An absolute local directory that already exists: use as-is.</li>
+   *   <li>A single tokenizer file (e.g. {@code tokenizer.json}): download that file,
    *       return its parent directory.</li>
-   *   <li>A directory prefix in the HF repo (e.g. {@code "tokenizer/"}) → download
+   *   <li>A directory prefix in the HF repo (e.g. {@code "tokenizer/"}): download
    *       every file under that prefix, return the local directory.</li>
    *   <li>A bare {@code "."} or empty prefix meaning all tokenizer files are at the
-   *       repo root → download all well-known tokenizer filenames.</li>
+   *       repo root: download all well-known tokenizer filenames.</li>
    * </ul>
    *
    * <p>The returned path is always a local directory containing all tokenizer files.
@@ -408,9 +411,9 @@ public final class OnnxModelResolver {
       return Single.just(local.toAbsolutePath());
     }
 
-    // 2. Already a local file — return its parent directory
+    // 2. Already a local file: return its parent directory
     if (Files.isRegularFile(local)) {
-      LOGGER.info("Tokenizer is a local file: {} — using parent directory", local.toAbsolutePath());
+      LOGGER.info("Tokenizer is a local file: {}, using parent directory", local.toAbsolutePath());
       return Single.just(local.getParent().toAbsolutePath());
     }
 
@@ -421,7 +424,7 @@ public final class OnnxModelResolver {
       return Single.just(cachedDir.toAbsolutePath());
     }
 
-    // 4. Download from HuggingFace — list the repo and grab all tokenizer files
+    // 4. Download from HuggingFace: list the repo and grab all tokenizer files
     LOGGER.info("Resolving tokenizer [{}] from repository [{}]", tokenizerPath, modelName);
 
     String normalizedPrefix = tokenizerPath.endsWith("/") ? tokenizerPath : tokenizerPath + "/";
@@ -432,7 +435,7 @@ public final class OnnxModelResolver {
       .listRepoFiles(modelName)
       .flatMap(repoFiles -> {
         // Collect files that match the tokenizer prefix or are well-known tokenizer
-        // files, minus anything download.exclude: rules out — except tokenizerPath
+        // files, minus anything download.exclude: rules out, except tokenizerPath
         // itself, which was named explicitly and is always fetched.
         List<String> tokenizerFiles = repoFiles
           .stream()

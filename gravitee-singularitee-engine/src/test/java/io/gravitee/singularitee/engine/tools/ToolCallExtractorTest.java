@@ -25,9 +25,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 /**
- * Template-driven tool-call extraction: the built-in dialect templates must accept exactly what
- * the legacy hand-coded parsers accepted (these expectations are ported from the former HTTP-layer
- * dialect tests), plus inline custom templates and fail-open behavior.
+ * Template-driven tool-call extraction: what each built-in dialect template accepts, plus inline
+ * custom templates and fail-open behavior.
  */
 class ToolCallExtractorTest {
 
@@ -318,7 +317,7 @@ class ToolCallExtractorTest {
       assertThat(notJson.calls()).isEmpty();
       assertThat(notJson.error()).isNotBlank();
 
-      // No recognizable call is not an error — plain fail-open.
+      // No recognizable call is not an error: plain fail-open.
       var noCall = ToolCallExtractor.extractResult("plain prose", List.of(), null);
       assertThat(noCall.calls()).isEmpty();
       assertThat(noCall.error()).isNull();
@@ -367,7 +366,7 @@ class ToolCallExtractorTest {
 
     @Test
     void plainProseAnswerYieldsNoCalls() {
-      assertThat(glm("Sure — I sent the email to a@b.com for you.")).isEmpty();
+      assertThat(glm("Sure, I sent the email to a@b.com for you.")).isEmpty();
       assertThat(glm("Here is what I found:\nParis is sunny today.")).isEmpty();
     }
 
@@ -392,7 +391,7 @@ class ToolCallExtractorTest {
     void aCallAfterAnInlineTurnMarkerIsFound() {
       // Observed: the model explains itself, emits its own turn marker as text, then calls.
       // Keeping the text BEFORE the marker drops the call and the turn ends as a plain answer
-      // — indistinguishable, downstream, from the model having chosen not to call anything.
+      // indistinguishable, downstream, from the model having chosen not to call anything.
       var calls = glm("Let's send it:<|assistant|>send_email\n{\"to\":\"a@b.com\"}");
       assertThat(calls).hasSize(1);
       assertThat(calls.getFirst().name()).isEqualTo("send_email");

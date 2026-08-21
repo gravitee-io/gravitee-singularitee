@@ -27,6 +27,16 @@ import javax.sound.sampled.UnsupportedAudioFileException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * A loaded llama.cpp model with its decode context and optional sidecars.
+ *
+ * <p>Owns the native handles (model, context, vocab, tokenizer, optional mtmd / MTP / draft /
+ * EAGLE3 contexts) in a single {@code Arena.ofAuto()}; {@link #close()} frees them explicitly.
+ * Tokenization and prompt rendering are vocab-only and safe on any thread; decoding goes
+ * through the {@link BatchIterator} returned by {@link #newBatchIterator()} and must stay on
+ * one thread. {@code nCtx} in {@link ModelConfig} is per sequence; the native context is
+ * allocated for {@code nCtx * nSeqMax} (see {@link #totalContext(int, int)}).
+ */
 public final class Model implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Model.class);
@@ -55,8 +65,8 @@ public final class Model implements AutoCloseable {
   /**
    * Registers the compute backends (CPU/CUDA/…) from the native library directory. Idempotent.
    *
-   * <p>Must run before any model file is opened — including the memory pre-flight estimate
-   * ({@code LlamaModelDims.loadFrom}) — because llama.cpp requires at least one backend device to
+   * <p>Must run before any model file is opened, including the memory pre-flight estimate
+   * ({@code LlamaModelDims.loadFrom}): llama.cpp requires at least one backend device to
    * load a model, otherwise it fails with "no backends are loaded".
    */
   static void loadAllBackends() {
@@ -108,10 +118,16 @@ public final class Model implements AutoCloseable {
   private final float eogRampStart;
   private final float eogRampMaxBias;
 
-  // Memoized chat template string — read once from GGUF metadata.
+  // Memoized chat template string, read once from GGUF metadata.
   private volatile String chatTemplateString;
   private volatile boolean chatTemplateResolved;
 
+  /**
+   * Loads the model, its context and every configured sidecar.
+   *
+   * @throws LlamaException when MTP is requested on a model without an MTP head, without the
+   *     nextn native API, or with an {@code n_batch} too small for fused verification
+   */
   public Model(ModelConfig config) {
     ensureBackendInitialized();
     this.arena = Arena.ofAuto();
@@ -129,10 +145,9 @@ public final class Model implements AutoCloseable {
       }
     }
 
-    // When using RPC, skip ggml_backend_load_all_from_path — loading all backends
+    // When using RPC, skip ggml_backend_load_all_from_path: loading all backends
     // (CPU, Metal, RPC plugin) from the library directory can interfere with
     // explicit RPC server registration via ggml_backend_rpc_add_server.
-    // This matches the behavior of Main.java in llamaj.cpp.
     if (!config.hasRpcServers()) {
       loadAllBackends();
     }
@@ -337,6 +352,7 @@ public final class Model implements AutoCloseable {
     }
   }
 
+  /** Creates the iterator that decodes every live conversation of this context in batches. */
   public BatchIterator newBatchIterator() {
     return new BatchIterator(arena, context, mtmdContext);
   }
@@ -382,12 +398,12 @@ public final class Model implements AutoCloseable {
     return mtmdContext;
   }
 
-  /** Returns the chat template from GGUF metadata, or {@code null}. */
   /** Every string this model's vocabulary parses as a special token (cached by LlamaVocab). */
   public java.util.List<String> specialTokenTexts() {
     return vocab.specialTokenTexts();
   }
 
+  /** Returns the chat template from GGUF metadata, or {@code null}. */
   public String chatTemplateString() {
     if (!chatTemplateResolved) {
       synchronized (this) {
@@ -410,14 +426,17 @@ public final class Model implements AutoCloseable {
     return context.getMemory();
   }
 
+  /** Text of the vocabulary's BOS token. */
   public String bosToken() {
     return vocab.bosTokenText();
   }
 
+  /** Text of the vocabulary's EOS token. */
   public String eosToken() {
     return vocab.eosTokenText();
   }
 
+  /** Creates a conversation in slot {@code seqId} with no prefix reuse; see the 4-arg overload. */
   public ConversationState newConversation(int seqId, Request request) {
     return newConversation(seqId, request, 0, null);
   }
@@ -426,8 +445,13 @@ public final class Model implements AutoCloseable {
    * Creates a conversation that may reuse the first {@code reusePrefixTokens} prompt tokens
    * already KV-resident in this sequence slot (cross-request prefix cache).
    *
-   * <p>Media requests never reuse a prefix and never retain KV — the media chunks are
+   * <p>Media requests never reuse a prefix and never retain KV: the media chunks are
    * evaluated through the mtmd path and {@code committedTokens()} only covers the text path.
+   *
+   * <p>The returned state owns a native sampler and any decoded media; the adapter frees them
+   * in {@code cleanupSequenceState}.
+   *
+   * @throws LlamaException when the prompt does not leave room for at least one token
    *
    * @param seqId the slot / sequence id
    * @param request the generation request
@@ -535,7 +559,7 @@ public final class Model implements AutoCloseable {
   /**
    * Speculative config for a request: an explicit workspace draft temperature wins; otherwise the
    * request's sampling is applied with the same defaults as {@link #samplerFor} (temperature 0.7,
-   * top_p 0.9) — under speculative decoding the per-request sampler is bypassed, and defaulting to
+   * top_p 0.9); under speculative decoding the per-request sampler is bypassed, and defaulting to
    * greedy here makes penalty-free models loop. A request must ask for {@code temperature: 0}
    * explicitly to get greedy decoding. Penalties are not representable under speculative decoding
    * (rejection sampling is exact only for memoryless samplers) and are silently ignored.
@@ -555,6 +579,10 @@ public final class Model implements AutoCloseable {
       .withSeed(request.seed() != null ? request.seed() : 42);
   }
 
+  /**
+   * Builds the native sampler chain for a request (greedy when temperature is 0). The caller
+   * owns the returned sampler and must free it.
+   */
   public LlamaSampler samplerFor(Request request) {
     float temperature = request.temperature() != null ? request.temperature() : 0.7f;
     float topP = request.topP() != null ? request.topP() : 0.9f;
@@ -573,6 +601,7 @@ public final class Model implements AutoCloseable {
       .seed(seed);
   }
 
+  /** The prompt text to decode: the pre-rendered prompt, else the native chat template output. */
   public String promptFor(Request request) {
     // Pre-rendered prompt takes precedence over native template application.
     if (request.prompt() != null && !request.prompt().isBlank()) {
@@ -585,6 +614,7 @@ public final class Model implements AutoCloseable {
     return "";
   }
 
+  /** Prompt token count against this slot's per-sequence context budget. */
   public PromptStats promptStats(Request request) {
     Objects.requireNonNull(request, "request is required");
     return promptStats(promptFor(request));
@@ -603,10 +633,8 @@ public final class Model implements AutoCloseable {
    * by every sequence, and {@link #perSequenceContext()} divides it back out. Scaling here is what
    * makes a slot actually receive what was configured.
    *
-   * <p>{@link LlamaMemoryEstimator} already assumed these semantics — it budgets VRAM for
-   * {@code nCtx * nSeqMax} tokens — so before this the pre-flight estimate and the real allocation
-   * disagreed by a factor of {@code nSeqMax} in opposite directions: the default 4096 with 8
-   * sequences budgeted for 32768 tokens, allocated 4096, and gave each request 512.
+   * <p>{@link LlamaMemoryEstimator} budgets VRAM for {@code nCtx * nSeqMax} tokens; the
+   * allocation must agree with it.
    *
    * @param perSequenceCtx configured per-sequence context, or {@code 0} to defer to the model's
    *                       trained context (passed through unchanged)
@@ -656,19 +684,9 @@ public final class Model implements AutoCloseable {
   }
 
   /**
-   * Builds a list of MtmdMedia from chat messages containing image/audio content.
-   * Media is extracted in message order, matching the media markers inserted in buildChatPrompt.
+   * Builds the list of {@link MtmdMedia} from chat messages, in message order.
    *
-   * <p>Uses {@link Base64#getMimeDecoder()} instead of {@link Base64#getDecoder()} to tolerate
-   * whitespace and line breaks in base64 data, matching the permissive behavior of the reference
-   * llama.cpp server's custom base64 decoder.</p>
-   *
-   * <p><strong>Resource Management:</strong> This method acquires native memory resources via
-   * {@link MtmdImage#fromBytesNative} and {@link MtmdAudio#fromBytes}. On exception, all
-   * successfully created media objects are automatically freed to prevent memory leaks.</p>
-   *
-   * @deprecated Use {@link #processMediaContent(List)} instead - provides unified processing
-   *             with better performance and consistent error handling.
+   * @deprecated Use {@link #processMediaContent(List)}.
    */
   @Deprecated(since = "1.0", forRemoval = false)
   private List<MtmdMedia> buildMedia(
@@ -677,12 +695,7 @@ public final class Model implements AutoCloseable {
     return processMediaContent(messages).media();
   }
 
-  /**
-   * Safely frees all media resources in the list.
-   * Continues cleanup even if individual free() calls fail.
-   *
-   * @param mediaList the list of media resources to free
-   */
+  /** Frees every media resource in the list, continuing past individual failures. */
   private void cleanupMedia(List<MtmdMedia> mediaList) {
     for (MtmdMedia media : mediaList) {
       try {
@@ -690,23 +703,17 @@ public final class Model implements AutoCloseable {
           media.free();
         }
       } catch (Exception cleanupException) {
-        // Log but continue cleanup to prevent cascading failures
-        // Note: Logger is not available in Model class, so this is silent for now
-        // Production code should inject a logger or use System.err as fallback
+        // Keep freeing the remaining media; one failed free must not leak the rest.
       }
     }
   }
 
   /**
-   * Processes media content from chat messages in a single pass.
-   * This replaces the previous dual-loop pattern where media was checked twice
-   * (once for prompt markers, once for building media list).
+   * Decodes the media of the given messages in one pass, in message order.
    *
-   * <p>Returns both the prompt suffix with media markers and the processed media objects.
-   * On exception, all successfully created media objects are automatically freed.</p>
-   *
-   * @param messages the chat messages containing media content
-   * @return MediaInfo with prompt suffix and media list
+   * <p>Returns the prompt suffix (one media marker per attachment) together with the native
+   * media objects. Base64 is decoded with the MIME decoder so whitespace and line breaks are
+   * tolerated. On exception every media object created so far is freed.
    */
   private MediaInfo processMediaContent(
     List<io.gravitee.singularitee.inference.api.textgen.ChatMessage> messages
@@ -718,7 +725,6 @@ public final class Model implements AutoCloseable {
       for (var message : messages) {
         if (!message.hasMedia()) continue;
 
-        // Single loop with unified type checking - eliminates redundant instanceof calls
         for (var content : message.media()) {
           try {
             if (
@@ -753,7 +759,7 @@ public final class Model implements AutoCloseable {
 
   /**
    * Counts the tokens of an arbitrary piece of text with the model's own
-   * tokenizer (vocab-only — safe on any thread). Used for context-window
+   * tokenizer (vocab-only, safe on any thread). Used for context-window
    * budgeting (chat history trimming) where an exact count beats estimation.
    *
    * @param text the text to tokenize
@@ -784,7 +790,7 @@ public final class Model implements AutoCloseable {
     );
   }
 
-  /** Tokenizes a rendered prompt to its token ids (vocab-only — safe on any thread). */
+  /** Tokenizes a rendered prompt to its token ids (vocab-only, safe on any thread). */
   public int[] tokenizeToIds(String prompt) {
     try (Arena promptArena = Arena.ofConfined()) {
       var response = tokenizer.tokenize(promptArena, prompt);
@@ -797,16 +803,15 @@ public final class Model implements AutoCloseable {
     }
   }
 
+  /** Prompt size against the per-sequence context budget. */
   public record PromptStats(int promptTokens, int contextTokens) {
+    /** Tokens left for generation after the prompt, never negative. */
     public int availableForCompletion() {
       return Math.max(0, contextTokens - promptTokens);
     }
   }
 
-  /**
-   * Encapsulates the result of media content processing.
-   * Contains both the prompt suffix with media markers and the processed media list.
-   */
+  /** Prompt suffix carrying the media markers plus the decoded media, in order. */
   private record MediaInfo(String promptSuffix, List<MtmdMedia> media) {}
 
   private Role toRole(io.gravitee.singularitee.inference.api.textgen.Role role) {

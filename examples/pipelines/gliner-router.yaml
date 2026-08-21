@@ -14,14 +14,14 @@
 # limitations under the License.
 #
 
-# Pipeline — GLiNER router: zero-shot intent classification, then a persona branch
+# Pipeline: GLiNER router: zero-shot intent classification, then a persona branch
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/pipelines/gliner-router.yaml
 #
-#   route ──→ [ respond_code | respond_cooking | respond_finance | respond_general ]
+#   route -> [ respond_code | respond_cooking | respond_finance | respond_general ]
 #
-# `strategy: classifier` — the classifier's TOP LABEL selects the branch. Matching
+# `strategy: classifier`, the classifier's TOP LABEL selects the branch. Matching
 # is exact string equality, so every rules[].label below MUST appear verbatim in
 # the model's labels[].name. That is the most common way to get a router that
 # silently always takes the default branch.
@@ -30,10 +30,10 @@
 # a classifier is the right tool when your routes are a small, named, stable set.
 #
 # Try:
-#   "How do I implement a binary search tree?"  → respond_code
-#   "What's a good pasta carbonara recipe?"     → respond_cooking
-#   "Should I invest in index funds?"           → respond_finance
-#   "Tell me a joke"                            → respond_general
+#   "How do I implement a binary search tree?"  -> respond_code
+#   "What's a good pasta carbonara recipe?"     -> respond_cooking
+#   "Should I invest in index funds?"           -> respond_finance
+#   "Tell me a joke"                            -> respond_general
 
 workspace:
   name: gliner-router

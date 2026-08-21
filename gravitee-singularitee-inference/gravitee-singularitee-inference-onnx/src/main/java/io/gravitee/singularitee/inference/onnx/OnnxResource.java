@@ -18,6 +18,8 @@ package io.gravitee.singularitee.inference.onnx;
 import java.nio.file.Path;
 
 /**
+ * On-disk location of an ONNX model file; subclasses add the companion files a family needs.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

@@ -70,12 +70,13 @@ final class GlinerChunking {
     return sum;
   }
 
-  /** Per-chunk text budget (tokens) = cap − label-prompt estimate, floored. */
+  /** Per-chunk text budget in tokens: cap minus the label-prompt estimate, floored. */
   static int textBudget(int tokenCap, Collection<String> labelNames) {
     int cap = tokenCap > 0 ? tokenCap : DEFAULT_TOKEN_CAP;
     return Math.max(MIN_TEXT_BUDGET, cap - estimatePromptTokens(labelNames));
   }
 
+  /** Splitter sized to {@code textBudgetTokens}, cutting on estimated token boundaries. */
   static RecursiveTextSplitter splitter(int textBudgetTokens) {
     return new RecursiveTextSplitter(GlinerChunking::estimatedTokenEndOffsets, textBudgetTokens);
   }

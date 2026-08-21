@@ -15,7 +15,7 @@
 #
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Client — single server (llama.cpp, :9090)
+# Client: single server (llama.cpp, :9090)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Runs the pipelines locally and proxies the "llm" model to the llama.cpp server.
@@ -24,9 +24,10 @@
 # Prerequisite: server-llamacpp.yaml running on :9090.
 #
 # Launch:
-#   java io.gravitee.singularitee.cli.Main \
-#        --workspace examples/modular/client-llamacpp.yaml --pipeline-id infer-pipeline
-#   (or --pipeline-id tool-calling)
+#   GRAVITEE_GRPC_PORT=9190 ./run-server.sh --port 8180 --workspace examples/modular/client-llamacpp.yaml
+#   curl -s localhost:8180/v1/chat/completions -H 'content-type: application/json' \
+#        -d '{"model":"infer-pipeline","messages":[{"role":"user","content":"hello"}]}'
+#   (or "model":"tool-calling")
 
 workspace:
   name: client-llamacpp

@@ -16,24 +16,26 @@
 package io.gravitee.singularitee.inference.api.textgen;
 
 /**
- * Represents a single token emitted by an inference engine.
- * Designed to be engine-agnostic while providing all necessary metadata.
+ * One token streamed by a batch engine, or the final marker of a sequence.
  *
- * @param <T> The token type (e.g., String for text tokens)
- * @param seqId The external sequence identifier
- * @param token The token content
- * @param index The token index in the sequence
- * @param isFinal Whether this is the final token for the sequence
- * @param finishReason The reason the sequence finished (if final)
- * @param promptTokens Number of prompt tokens processed
- * @param completionTokens Number of completion tokens generated
- * @param reasoningTokens Number of reasoning tokens (if supported)
- * @param toolTokens Number of tool call tokens (if supported)
- * @param performance Optional performance metrics
- * @param channel Generation channel of this token as classified by the engine;
- *                {@code null} means unclassified (ANSWER semantics)
- * @param logprobs Log-probability data for the token position this emission
- *                 resolved; {@code null} unless collection was requested
+ * <p>A final token ({@code isFinal}) carries no text, always has a {@code finishReason}, and
+ * holds the closing counters and timings. Non-final tokens carry text plus the running counters.
+ *
+ * @param <T> token type ({@link String} for text tokens)
+ * @param seqId external sequence id
+ * @param token token content, {@code null} on the final token
+ * @param index position of the token in the sequence
+ * @param isFinal whether this closes the sequence
+ * @param finishReason why the sequence ended; required when final
+ * @param promptTokens prompt tokens processed so far
+ * @param completionTokens completion tokens generated so far
+ * @param reasoningTokens completion tokens on the reasoning channel ({@code 0} if untracked)
+ * @param toolTokens completion tokens on the tool-call channel ({@code 0} if untracked)
+ * @param performance per-request timings, set on the final token when the backend reports them
+ * @param channel generation channel as classified by the engine; {@code null} means unclassified
+ *                (answer semantics)
+ * @param logprobs log-probabilities for this position; {@code null} unless collection was
+ *                 requested
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -51,7 +53,7 @@ public record InferenceToken<T>(
   TokenChannel channel,
   PositionLogprobs logprobs
 ) {
-  /** Compatibility constructor for engines that do not collect logprobs: logprobs = null. */
+  /** Token without logprobs. */
   public InferenceToken(
     int seqId,
     T token,
@@ -81,7 +83,7 @@ public record InferenceToken<T>(
     );
   }
 
-  /** Compatibility constructor for engines that do not classify tokens: channel = null. */
+  /** Token without channel or logprobs. */
   public InferenceToken(
     int seqId,
     T token,

@@ -27,8 +27,11 @@ import java.util.Set;
  */
 public final class TodoTools {
 
+  /** Replaces the plan. */
   public static final String SET_TODOS = "set_todos";
+  /** Marks one item done. */
   public static final String COMPLETE_TODO = "complete_todo";
+  /** Pauses the run for user input. */
   public static final String ASK_USER = "ask_user";
 
   /** Names of the tools the server owns; used to partition extracted calls. */
@@ -38,7 +41,7 @@ public final class TodoTools {
    * Server tools a CLIENT may take over by declaring a tool of the same name:
    * the server then passes the call through as a normal function_call (the
    * client's schema is what the model sees) instead of executing it. Plan
-   * state tools are never delegable — a client may not own the todo list.
+   * state tools are never delegable; a client may not own the todo list.
    */
   public static final Set<String> DELEGABLE = Set.of(ASK_USER);
 

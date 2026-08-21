@@ -21,7 +21,7 @@ package io.gravitee.singularitee.inference.api.textgen;
  * driven by the reasoning / tool-call tags configured on the request).
  *
  * <p>A {@code null} channel on an emitted token means "unclassified" and is
- * treated as {@link #ANSWER} by downstream consumers — engines that do not
+ * treated as {@link #ANSWER} by downstream consumers; engines that do not
  * classify tokens (e.g. vLLM) simply pass {@code null}.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)

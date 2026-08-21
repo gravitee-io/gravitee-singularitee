@@ -43,6 +43,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
+ * {@link OnnxBertEmbeddingModel} on all-MiniLM-L6-v2 across the three {@link GioMaths} kernels.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -146,8 +148,7 @@ public class OnnxBertEmbeddingInferenceTest extends OnnxBertBaseTest {
   @Test
   public void must_embed_across_multiple_partitions_when_input_exceeds_partition_size() {
     // Force a tiny partition so a normal sentence (9 content tokens) spans several windows,
-    // exercising the chunked [CLS] window [SEP] path. The previous implementation re-ran the
-    // model on the whole input once per partition and left trailing null partitions.
+    // exercising the chunked [CLS] window [SEP] path.
     var smallPartitionConfig = new OnnxBertConfig(
       ONNX_BERT_RESOURCE,
       NativeMath.INSTANCE,
@@ -197,7 +198,7 @@ public class OnnxBertEmbeddingInferenceTest extends OnnxBertBaseTest {
 
   @Test
   public void encodePooled_and_combine_must_match_infer() {
-    // Tiny budget so the input splits into several chunks — the batch entry points must
+    // Tiny budget so the input splits into several chunks: the batch entry points must
     // reproduce infer()'s vector exactly (same encodeAll + pool + weighted-combine path).
     var smallPartitionConfig = new OnnxBertConfig(
       ONNX_BERT_RESOURCE,

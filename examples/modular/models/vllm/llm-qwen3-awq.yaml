@@ -14,10 +14,10 @@
 # limitations under the License.
 #
 
-# Generation model — Qwen3-4B AWQ 4-bit (vLLM / vllm4j)
+# Generation model: Qwen3-4B AWQ 4-bit (vLLM / vllm4j)
 #
 # Logical id: "llm". 4-bit AWQ quantization, ~4x memory reduction vs bfloat16,
-# 10-20% faster than GPTQ at the same bit-width. Linux/CUDA only — requires the
+# 10-20% faster than GPTQ at the same bit-width. Linux/CUDA only: requires the
 # vLLM virtualenv: -Dvllm4j.venv=/path/to/.venv
 #
 # Served by: server-vllm-awq.yaml (:9093)

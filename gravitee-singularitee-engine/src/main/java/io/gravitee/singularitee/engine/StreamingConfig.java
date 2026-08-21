@@ -22,8 +22,7 @@ package io.gravitee.singularitee.engine;
  * number of generated tokens a single (slow) client may fall behind before its stream
  * is cancelled rather than buffered without bound. It is a server policy, not a model
  * attribute, so it lives here as a process-wide value shared by the local and remote
- * text-gen engines — mirroring how {@code OnnxInference} holds its static thread-count
- * tuning. The value is read on each new stream, so setting it during context startup
+ * text-gen engines. The value is read on each new stream, so setting it during context startup
  * (before any request) is sufficient.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -32,7 +31,7 @@ package io.gravitee.singularitee.engine;
 public final class StreamingConfig {
 
   /**
-   * Default per-sequence token buffer depth — a few seconds of generation, enough to
+   * Default per-sequence token buffer depth: a few seconds of generation, enough to
    * absorb event-loop jitter and TLS write bursts, small enough to bound memory per
    * stream to tens of KB.
    */

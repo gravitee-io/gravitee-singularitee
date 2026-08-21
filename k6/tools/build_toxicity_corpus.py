@@ -94,7 +94,7 @@ def main() -> None:
                 total += s[1]
             if n_toxic and not chosen:
                 if toxic:
-                    toxic.popleft()  # front seed alone can never fit — discard it
+                    toxic.popleft()  # front seed alone can never fit; discard it
                 return None
             seeds = set(chosen)
             skipped = []
@@ -110,7 +110,7 @@ def main() -> None:
                 return None  # pool exhausted for this language
             rng.shuffle(chosen)
             # joining retokenizes differently than the per-sentence sum (merges across
-            # boundaries, especially for unspaced scripts) — trim clean sentences until
+            # boundaries, especially for unspaced scripts); trim clean sentences until
             # the real paragraph token count fits the window
             text = " ".join(t for t, _ in chosen)
             real = ntok(text)

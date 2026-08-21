@@ -16,7 +16,7 @@
 
 # Qwen3.6-35B-A3B · runs fast, NOT supported for agent serving
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/qwen3.6-35b.yaml
 #
 # One model (id: llm) and one pipeline (id: agent), so the same client config and
@@ -28,7 +28,7 @@
 # Hybrid/linear attention: it CANNOT rewind state, so cross-request prefix caching
 # reports reuse while every warm turn silently re-prefills. Fine for one-shot
 # completions, unsuitable for agent loops. Verify on the log that a warm turn's
-# ttft agrees with its reused_prefix — here it will not.
+# ttft agrees with its reused_prefix, here it will not.
 # Same caveat: Qwen3-Next, Kimi-Linear, Granite-4.0-H, Falcon-H1, LFM2
 # (also non-permissive), Nemotron-Nano-v2.
 # It DOES have a NextN head (nextn_predict_layers=1), so mtp: true enables

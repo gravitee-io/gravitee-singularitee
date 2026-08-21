@@ -39,15 +39,15 @@ import org.slf4j.LoggerFactory;
 /**
  * gRPC client for Singularitee.
  *
- * <p>Uses the Vert.x-native gRPC client and the generated Vert.x stubs — no
+ * <p>Uses the Vert.x-native gRPC client and the generated Vert.x stubs; no
  * grpc-java/Netty runtime involved.
  *
  * <p>Exposes three groups of operations:
  * <ul>
- *   <li><b>Model queries</b> — get, list models</li>
- *   <li><b>Pipeline queries</b> — get, list pipelines</li>
- *   <li><b>Inference</b> — direct model inference and pipeline DAG execution</li>
- *   <li><b>Vector</b> — embed, batch embed, cosine similarity, rank</li>
+ *   <li><b>Model queries</b>: get, list models</li>
+ *   <li><b>Pipeline queries</b>: get, list pipelines</li>
+ *   <li><b>Inference</b>: direct model inference and pipeline DAG execution</li>
+ *   <li><b>Vector</b>: embed, batch embed, cosine similarity, rank</li>
  * </ul>
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -60,7 +60,7 @@ public final class SingulariteeClient implements AutoCloseable {
   /**
    * Fail-fast TCP connect timeout (ms) used when the remote host is down or
    * unreachable. The HTTP/2 pool will retry transparently on the next RPC once
-   * the remote comes back — we just want each attempt to return quickly
+   * the remote comes back; each attempt should just each attempt to return quickly
    * instead of hanging on half-open connections.
    */
   private static final int DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
@@ -77,7 +77,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * NATs, load-balancers, and cloud firewalls from silently dropping idle
    * HTTP/2 connections. Without this, an established connection that has been
    * quiet for more than the NAT timeout (typically 30-60 s) will be torn down
-   * mid-side — the client only discovers this on the next RPC attempt, which
+   * mid-side. The client only discovers this on the next RPC attempt, which
    * then surfaces as a confusing GOAWAY or RST error rather than a clean reconnect.
    *
    * <p>Pass {@code -1} to the constructor to disable the timeout entirely and
@@ -88,7 +88,7 @@ public final class SingulariteeClient implements AutoCloseable {
   /**
    * Base unit (ms) for the Fibonacci backoff sequence. The nth retry waits
    * {@code fib(n) * RETRY_BASE_DELAY_MS} ms, so the sequence is:
-   * 200 ms, 200 ms, 400 ms, 600 ms, 1 000 ms, 1 600 ms, …
+   * 200 ms, 200 ms, 400 ms, 600 ms, 1 000 ms, 1 600 ms, and so on.
    */
   private static final long RETRY_BASE_DELAY_MS = 200;
 
@@ -101,7 +101,7 @@ public final class SingulariteeClient implements AutoCloseable {
 
   /**
    * Hard cap (ms) on the total time spent across all retry attempts.
-   * Retries are otherwise indefinite — this timeout is what terminates the
+   * Retries are otherwise indefinite; this timeout is what terminates the
    * retry loop, giving upstream callers a {@link java.util.concurrent.TimeoutException}
    * instead of an indefinite hang.
    *
@@ -167,7 +167,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * Creates a new client connected to Singularitee at the given host and port,
    * with a configurable HTTP/2 keep-alive timeout.
    *
-   * <p>Pass {@code -1} to disable the timeout entirely — connections are kept
+   * <p>Pass {@code -1} to disable the timeout entirely; connections are kept
    * alive indefinitely (equivalent to Vert.x's default behaviour of never
    * closing idle HTTP/2 connections due to inactivity).
    *
@@ -284,7 +284,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * HTTP/2 keep-alive timeout.
    *
    * <p>Pass {@code -1} for {@code http2KeepAliveTimeout} to disable the timeout
-   * entirely — connections are kept alive indefinitely.
+   * entirely; connections are kept alive indefinitely.
    * The provided Vert.x instance is <em>not</em> closed when {@link #close()} is called.
    *
    * @param vertx                  the Vert.x instance
@@ -415,7 +415,7 @@ public final class SingulariteeClient implements AutoCloseable {
       .setConnectTimeout(DEFAULT_CONNECT_TIMEOUT_MS)
       .setIdleTimeout(DEFAULT_IDLE_TIMEOUT_SECONDS)
       .setHttp2ClearTextUpgrade(false);
-    // TLS mode: ALPN is required so the TLS handshake negotiates HTTP/2 —
+    // TLS mode: ALPN is required so the TLS handshake negotiates HTTP/2;
     // without it, TLS-terminating edges downgrade to
     // HTTP/1.1 and gRPC framing breaks.
     if (ssl) {
@@ -436,7 +436,7 @@ public final class SingulariteeClient implements AutoCloseable {
         httpOptions.setVerifyHost(tls.verifyHostname());
       }
     }
-    // A value of -1 means "always keep alive" — no timeout is set, and Vert.x's
+    // A value of -1 means "always keep alive": no timeout is set, and Vert.x's
     // default behaviour (never closing idle HTTP/2 connections) is preserved.
     // Any other value is applied directly as the keep-alive ping interval (seconds).
     if (http2KeepAliveTimeout != -1) {
@@ -683,13 +683,13 @@ public final class SingulariteeClient implements AutoCloseable {
    * Returns {@code true} for errors that are safe to retry:
    * <ul>
    *   <li>TCP connection refused / network unreachable ({@link ConnectException})</li>
-   *   <li>HTTP/2 stream reset ({@link StreamResetException}) — indicates a GOAWAY or RST_STREAM
+   *   <li>HTTP/2 stream reset ({@link StreamResetException}): a GOAWAY or RST_STREAM
    *       sent by the server, which happens on graceful server restart</li>
-   *   <li>{@link GrpcErrorException} with status {@code UNAVAILABLE} — the only gRPC-level
+   *   <li>{@link GrpcErrorException} with status {@code UNAVAILABLE}: the only gRPC-level
    *       status that is unambiguously transient (connection-level, not request-level)</li>
    * </ul>
    *
-   * Non-retryable statuses (INVALID_ARGUMENT, NOT_FOUND, UNIMPLEMENTED, PERMISSION_DENIED, …)
+   * Non-retryable statuses (INVALID_ARGUMENT, NOT_FOUND, UNIMPLEMENTED, PERMISSION_DENIED, and so on)
    * represent permanent request errors and must propagate immediately to the caller.
    */
   static boolean isRetryable(Throwable t) {
@@ -702,7 +702,7 @@ public final class SingulariteeClient implements AutoCloseable {
     if (t instanceof GrpcErrorException gee) {
       return gee.status() == GrpcStatus.UNAVAILABLE;
     }
-    // Unwrap one level — Vert.x sometimes wraps the real cause in a VertxException
+    // Unwrap one level: Vert.x sometimes wraps the real cause in a VertxException
     Throwable cause = t.getCause();
     if (cause != null && cause != t) {
       return isRetryable(cause);
@@ -717,7 +717,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * {@link #OVERALL_RETRY_TIMEOUT_MS} timeout is what terminates the loop).
    * The delay between attempts follows the Fibonacci sequence scaled by
    * {@link #RETRY_BASE_DELAY_MS}, capped at {@link #RETRY_MAX_DELAY_MS}:
-   * 200 ms, 200 ms, 400 ms, 600 ms, 1 000 ms, … up to 30 s.
+   * 200 ms, 200 ms, 400 ms, 600 ms, 1 000 ms, and so on up to 30 s.
    * Any non-retryable error propagates immediately without waiting.
    */
   private static Function<Flowable<Throwable>, Publisher<?>> retryPolicy() {
@@ -749,7 +749,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * <ul>
    *   <li>Only the connection-establishment phase (i.e. the {@link io.vertx.core.Future}
    *       itself) is retried. Once the first {@link InferResponse} item has been
-   *       emitted the stream is considered live and will not be retried — re-issuing
+   *       emitted the stream is considered live and will not be retried; re-issuing
    *       the full request mid-stream is not idempotent.</li>
    *   <li>The same Fibonacci-backoff policy used for unary calls governs the retry
    *       schedule (indefinite retries on retryable errors only).</li>
@@ -810,7 +810,7 @@ public final class SingulariteeClient implements AutoCloseable {
     return attempt
       .retryWhen(errors ->
         errors.flatMap(error -> {
-          // Never retry after the stream has started delivering items — the
+          // Never retry after the stream has started delivering items: the
           // request is no longer idempotent at that point.
           if (hasReceivedItem.get() || !isRetryable(error)) {
             return Flowable.error(

@@ -25,6 +25,13 @@ import jdk.incubator.vector.VectorSpecies;
 import org.apache.commons.math3.util.FastMath;
 
 /**
+ * {@link GioMaths} on the Vector API for CPUs without masked loads (AVX2, NEON).
+ *
+ * Each kernel runs full-width lanes up to {@code SPECIES.loopBound(length)} and finishes the
+ * remaining {@code length % laneCount} elements with a scalar tail loop, so no masked
+ * operation is ever issued. {@code SPECIES_PREFERRED} picks the widest shape the JVM can
+ * vectorize on the host. Stateless; use {@link #INSTANCE}.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -34,6 +41,7 @@ public class LoopBoundSIMDMath implements GioMaths {
 
   private LoopBoundSIMDMath() {}
 
+  /** Shared stateless instance. */
   public static final GioMaths INSTANCE = new LoopBoundSIMDMath();
 
   @Override
@@ -183,7 +191,7 @@ public class LoopBoundSIMDMath implements GioMaths {
     int i = 0;
     for (; i < SPECIES.loopBound(vector.length); i += SPECIES.length()) {
       var v = FloatVector.fromArray(SPECIES, vector, i);
-      // 1 / (1 + exp(-x)) — the -x form stays finite for large +x (exp(-x) → 0).
+      // 1 / (1 + exp(-x)): the -x form stays finite for large positive x (exp(-x) tends to 0).
       var negExp = v.mul(-1.0f).lanewise(VectorOperators.EXP);
       one.div(one.add(negExp)).intoArray(result, i);
     }

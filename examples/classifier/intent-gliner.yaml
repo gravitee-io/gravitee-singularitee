@@ -16,11 +16,11 @@
 
 # Intent classification · GLiNER zero-shot (semantic router model)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/classifier/intent-gliner.yaml
 #
 # ZERO-SHOT intent labels: edit the list to change the routes without retraining.
-# This is the classifier behind examples/pipelines/gliner-router.yaml — there, the
+# This is the classifier behind examples/pipelines/gliner-router.yaml, there, the
 # route step's rules[].label values must match these labels[].name EXACTLY
 # (matching is string equality against the top label).
 #

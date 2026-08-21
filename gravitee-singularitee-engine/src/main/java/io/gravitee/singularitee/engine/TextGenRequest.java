@@ -26,10 +26,10 @@ import java.util.Map;
  * When both are present, {@code prompt} takes precedence (pre-rendered by Jinja4j);
  * {@code messages} is retained for multimodal media extraction only.
  *
- * <p>All sampling parameters are optional — {@code null} means «use engine default».
+ * <p>All sampling parameters are optional; {@code null} means use the engine default.
  *
  * @param prompt            rendered prompt string (from Jinja4j chat template or raw template)
- * @param messages          structured chat turns — multimodal media extraction when
+ * @param messages          structured chat turns; multimodal media extraction when
  *                          {@code prompt} is set; the payload for engine-side chat
  *                          template rendering when {@code prompt} is {@code null}
  * @param maxTokens         maximum tokens to generate; {@code null} = engine default

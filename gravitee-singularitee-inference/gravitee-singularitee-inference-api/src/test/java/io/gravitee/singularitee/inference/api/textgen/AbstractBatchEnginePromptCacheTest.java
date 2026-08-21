@@ -26,11 +26,12 @@ import org.junit.jupiter.api.Test;
 /**
  * Tests for the cross-request KV prefix cache wiring in {@link AbstractBatchEngine}:
  * reuse-offset propagation into {@code createSequenceState}, KV release on both
- * the finalize and cancel paths, and full bypass for adapters that don't
+ * the finalize and cancel paths, and full bypass for adapters that do not
  * support server-side caching.
  */
 class AbstractBatchEnginePromptCacheTest {
 
+  /** Bare generation request; the prompt doubles as the token sequence. */
   private record FakeRequest(String prompt) implements GenerationRequest {
     @Override
     public Integer maxTokens() {
@@ -130,7 +131,7 @@ class AbstractBatchEnginePromptCacheTest {
 
     @Override
     public Optional<String> getFinishReason(Object state) {
-      return Optional.empty(); // never finishes on its own — cancel drives release
+      return Optional.empty(); // never finishes on its own: cancel drives release
     }
 
     @Override
@@ -150,6 +151,7 @@ class AbstractBatchEnginePromptCacheTest {
     public void shutdown() {}
   }
 
+  /** Concrete engine over a test adapter. */
   private static final class TestEngine
     extends AbstractBatchEngine<Void, FakeRequest, String, Object> {
 
@@ -172,11 +174,11 @@ class AbstractBatchEnginePromptCacheTest {
     engine.addSequence(1, new FakeRequest(prompt), "alice");
     assertThat(adapter.creations).containsExactly(new CachingAdapter.Creation(0, 0));
 
-    // Finish (cancel) — slot released WARM with the committed tokens.
+    // Finish (cancel): slot released WARM with the committed tokens.
     engine.cancelSequence(1);
     assertThat(adapter.removals).containsExactly(new CachingAdapter.Removal(0, true));
 
-    // Same key + shared prefix → reuse the full prompt LCP.
+    // Same key + shared prefix: reuse the full prompt LCP.
     engine.addSequence(2, new FakeRequest(prompt), "alice");
     assertThat(adapter.creations.get(1).slot()).isZero();
     assertThat(adapter.creations.get(1).reuse()).isEqualTo(prompt.length());
@@ -255,7 +257,7 @@ class AbstractBatchEnginePromptCacheTest {
 
   @Test
   void unsupported_adapter_bypasses_the_cache() {
-    // tokenizePrompt returns null (the interface default) → no acquire, no
+    // tokenizePrompt returns null (the interface default): no acquire, no
     // reuse; release falls back to keepKv=false since committedTokens is null.
     var removals = new ArrayList<Integer>();
     var creations = new ArrayList<Integer>();
@@ -312,7 +314,7 @@ class AbstractBatchEnginePromptCacheTest {
     // Default 2-arg removeSequence delegates to the 1-arg one.
     assertThat(removals).containsExactly(0);
 
-    // Slot came back — a new sequence can start.
+    // Slot came back: a new sequence can start.
     engine.addSequence(2, new FakeRequest("abc"), null);
     assertThat(engine.cancelSequence(2)).isNotNull();
   }

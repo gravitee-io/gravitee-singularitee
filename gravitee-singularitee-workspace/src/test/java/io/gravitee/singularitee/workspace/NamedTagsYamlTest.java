@@ -28,7 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Named tag sets: a workspace-level {@code tags:} list declares reusable
  * reasoning/tool tag blocks by id, and a step's {@code tags:} value may be a
- * bare string referencing one — resolved by the loader so the proto always
+ * bare string referencing one, resolved by the loader so the proto always
  * carries the expanded TagConfig. Inline mappings keep working unchanged.
  */
 class NamedTagsYamlTest {

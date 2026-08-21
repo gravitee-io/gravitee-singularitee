@@ -81,8 +81,13 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HttpApiServerComponent.class);
 
+  /** Configuration prefix: all properties are read from {@code http.*} in gravitee.yml. */
   public static final String HTTP_PREFIX = "http";
+
+  /** Configuration prefix for the optional bearer-token auth block. */
   public static final String AUTH_PREFIX = HTTP_PREFIX + ".auth";
+
+  /** Default HTTP API port. */
   public static final int DEFAULT_HTTP_PORT = 8080;
 
   private final Environment environment;
@@ -103,6 +108,7 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
   private VertxHttpServer vertxHttpServer;
   private HttpServer httpServer;
 
+  /** Creates the component; the tracer is read only, never started or stopped here. */
   public HttpApiServerComponent(
     Environment environment,
     Vertx vertx,
@@ -162,14 +168,14 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
     Router router = Router.router(vertx.getDelegate());
     router.route().handler(BodyHandler.create());
 
-    // Unauthenticated liveness — always 200, before auth and the readiness gate.
+    // Unauthenticated liveness: always 200, before auth and the readiness gate.
     router
       .get("/health")
       .handler(rc ->
         rc.response().setStatusCode(200).putHeader("content-type", "text/plain").end("OK")
       );
 
-    // Readiness gate — until the workspace has loaded its models, service calls get 503.
+    // Readiness gate: until the workspace has loaded its models, service calls get 503.
     router
       .route()
       .handler(rc -> {
@@ -224,7 +230,7 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
 
     if (!authEnabled && !isLoopback(options.getHost())) {
       LOGGER.warn(
-        "Native HTTP API is bound to non-loopback host '{}' without authentication — " +
+        "Native HTTP API is bound to non-loopback host '{}' without authentication; " +
           "set http.auth.enabled=true and configure http.auth.tokens",
         options.getHost()
       );
@@ -286,7 +292,7 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
     if (vertxHttpServer != null) {
       vertxHttpServer.stop();
     }
-    // Tracer lifecycle is owned by GrpcServerComponent — do not stop it here.
+    // Tracer lifecycle is owned by GrpcServerComponent; do not stop it here.
   }
 
   /**

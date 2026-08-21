@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
  * <p>{@code {"role":"assistant","content":null,"tool_calls":[...]}} is the OpenAI-correct shape for
  * a tool-call turn, and it is what a client echoes back from our own responses. Rendering that JSON
  * null as the four characters {@code "null"} puts it in the prompt as the assistant's words; over a
- * long agent session the model reads dozens of turns saying {@code null} and starts emitting it —
+ * long agent session the model reads dozens of turns saying {@code null} and starts emitting it;
  * observed verbatim as {@code <|channel|>final<|message|>null<|end|>}.
  *
  * @author GraviteeSource Team
@@ -45,7 +45,7 @@ class NullContentFilteringTest {
 
   @Test
   void a_null_content_tool_call_turn_is_kept_with_empty_content() throws Exception {
-    // The turn must survive — dropping it erases the fact that the assistant acted, and the model
+    // The turn must survive: dropping it erases the fact that the assistant acted, and the model
     // replays the conversation as an unanswered question and calls the same tool again. What must
     // NOT survive is the JSON null as text.
     var messages = PipelineRequestBuilder.buildChatMessageList(

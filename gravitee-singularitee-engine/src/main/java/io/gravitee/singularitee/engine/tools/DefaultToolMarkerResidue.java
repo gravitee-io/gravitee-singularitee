@@ -23,7 +23,7 @@ import java.util.Set;
 
 /**
  * Dialect-agnostic baseline: the residue markers are the step's configured
- * tool tags, verbatim — an unparsed tag surviving into the final text (e.g. a
+ * tool tags, verbatim: an unparsed tag surviving into the final text (e.g. a
  * leaked chatml {@code <tool_call>}) is machinery, not an answer. Dialect
  * subclasses refine each tag into further markers via {@link #refine(String)}.
  */

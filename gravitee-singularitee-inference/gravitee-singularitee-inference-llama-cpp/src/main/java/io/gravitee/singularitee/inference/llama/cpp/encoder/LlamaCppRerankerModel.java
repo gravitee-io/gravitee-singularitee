@@ -26,7 +26,7 @@ import java.util.List;
 /**
  * llama.cpp-backed cross-encoder reranker model. Scores (query, document) pairs.
  *
- * <p>Supports both encoder (BGE-reranker, Jina-reranker) and decoder (Qwen3-Reranker)
+ * <p>Supports both encoder (BGE-reranker) and decoder (Qwen3-Reranker)
  * architectures. The model must be loaded with {@code poolingType=RANK} in
  * {@link ModelConfig}.
  *
@@ -47,6 +47,10 @@ public class LlamaCppRerankerModel extends LlamaCppInference<RerankPair, RerankT
     this(config, gioMaths, RerankTemplate.PLAIN, null);
   }
 
+  /**
+   * Loads the model. A null {@code template} means plain concatenation; a null {@code scoring}
+   * picks sigmoid for a single-logit head and softmax otherwise.
+   */
   public LlamaCppRerankerModel(
     ModelConfig config,
     GioMaths gioMaths,

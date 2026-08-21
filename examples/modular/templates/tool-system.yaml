@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 
-# Template — tool-calling system prompt (Jinja2)
+# Template: tool-calling system prompt (Jinja2)
 #
 # Referenced by pipelines/tool-calling.yaml via `prompt.template_id: tool-system`.
 # Any workspace that loads a pipeline using this template must also include the

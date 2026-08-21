@@ -24,6 +24,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * Selects the {@link GioMaths} implementation that matches the host CPU.
+ *
+ * Masked SIMD when the CPU reports AVX-512 or SVE, loop-bound SIMD when it reports AVX or
+ * NEON, scalar {@code NativeMath} otherwise. Detection is a one-off read of the CPU feature
+ * flags; call once at startup and share the result.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -31,6 +37,7 @@ public class SIMDMathFactory {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SIMDMathFactory.class);
 
+  /** The best {@link GioMaths} for this CPU; never {@code null}. */
   public static GioMaths gioMaths() {
     if (SIMDUtils.isSIMDSupported()) {
       LOGGER.debug("SIMD supported");

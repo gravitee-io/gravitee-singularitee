@@ -26,8 +26,7 @@ import org.junit.jupiter.api.Test;
 
 class ToolDefinitionConverterTest {
 
-  // ── Null / empty inputs ───────────────────────────────────────────────────
-
+  // Null / empty inputs
   @Nested
   class NullAndEmpty {
 
@@ -42,8 +41,7 @@ class ToolDefinitionConverterTest {
     }
   }
 
-  // ── Single tool, no parameters ────────────────────────────────────────────
-
+  // Single tool, no parameters
   @Nested
   class SingleToolNoParameters {
 
@@ -104,8 +102,7 @@ class ToolDefinitionConverterTest {
     }
   }
 
-  // ── Parameters ────────────────────────────────────────────────────────────
-
+  // Parameters
   @Nested
   class Parameters {
 
@@ -226,8 +223,7 @@ class ToolDefinitionConverterTest {
     }
   }
 
-  // ── Multiple tools ────────────────────────────────────────────────────────
-
+  // Multiple tools
   @Nested
   class MultipleTools {
 
@@ -254,8 +250,7 @@ class ToolDefinitionConverterTest {
     }
   }
 
-  // ── End-to-end OpenAI shape ───────────────────────────────────────────────
-
+  // End-to-end OpenAI shape
   @Nested
   class OpenAiShape {
 

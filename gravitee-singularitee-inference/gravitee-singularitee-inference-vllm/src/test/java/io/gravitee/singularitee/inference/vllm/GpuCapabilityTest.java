@@ -53,7 +53,7 @@ class GpuCapabilityTest {
 
   @Test
   void skips_cards_the_driver_cannot_report() {
-    // nvidia-smi prints [N/A] for some virtualised GPUs — one unreadable card
+    // nvidia-smi prints [N/A] for some virtualised GPUs; one unreadable card
     // must not discard the reading for the rest.
     assertThat(GpuCapability.parse("[N/A]\n7.5")).hasValue(7.5);
   }

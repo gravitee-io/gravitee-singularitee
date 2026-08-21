@@ -24,21 +24,21 @@ import java.util.concurrent.TimeUnit;
  * Micrometer-backed recorder for AI inference metrics.
  *
  * <p>Wraps a (possibly {@code null}) {@link MeterRegistry}. When the registry is
- * {@code null} — metrics disabled, or the engine is used outside the server (CLI,
- * tests) — every {@code record*} call is a cheap no-op. The Prometheus backend is
+ * {@code null} (metrics disabled, or the engine is used outside the server (CLI,
+ * tests), every {@code record*} call is a cheap no-op. The Prometheus backend is
  * never referenced here; the container binds the live registry obtained from
  * {@code io.gravitee.node.monitoring.metrics.Metrics.getDefaultRegistry()}.
  *
  * <p>Meters (Prometheus exposition names):
  * <ul>
- *   <li>{@code ai_<op>_requests_total{model,status}} — RPC request counter (op = infer|classify|embed)</li>
- *   <li>{@code ai_<op>_latency_seconds{model}} — end-to-end RPC latency timer</li>
- *   <li>{@code ai_model_call_seconds{model,op}} — per model-engine call duration timer</li>
- *   <li>{@code ai_tokens_total{model,kind}} — token counter (kind = prompt|completion|reasoning|tool)</li>
+ *   <li>{@code ai_<op>_requests_total{model,status}}: RPC request counter (op = infer|classify|embed)</li>
+ *   <li>{@code ai_<op>_latency_seconds{model}}: end-to-end RPC latency timer</li>
+ *   <li>{@code ai_model_call_seconds{model,op}}: per model-engine call duration timer</li>
+ *   <li>{@code ai_tokens_total{model,kind}}: token counter (kind = prompt|completion|reasoning|tool)</li>
  * </ul>
  *
  * Meter names use Micrometer's dotted convention; the Prometheus registry converts
- * {@code .}→{@code _} and appends {@code _total}/{@code _seconds} suffixes per meter type.
+ * {@code .}->{@code _} and appends {@code _total}/{@code _seconds} suffixes per meter type.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -66,7 +66,7 @@ public final class InferenceMetrics {
     return registry != null;
   }
 
-  /** Counts a top-level RPC request and its outcome — {@code ai_<op>_requests_total{model,status}}. */
+  /** Counts a top-level RPC request and its outcome: {@code ai_<op>_requests_total{model,status}}. */
   public void recordRequest(String op, String model, String status) {
     if (registry == null) return;
     Counter.builder("ai." + op + ".requests")
@@ -77,7 +77,7 @@ public final class InferenceMetrics {
       .increment();
   }
 
-  /** Records end-to-end RPC latency — {@code ai_<op>_latency_seconds{model}}. */
+  /** Records end-to-end RPC latency: {@code ai_<op>_latency_seconds{model}}. */
   public void recordLatency(String op, String model, long durationNanos) {
     if (registry == null) return;
     Timer.builder("ai." + op + ".latency")
@@ -88,7 +88,7 @@ public final class InferenceMetrics {
   }
 
   /**
-   * Counts a pipeline (DAG) RPC and its outcome — {@code ai_pipeline_requests_total{pipeline,status}}.
+   * Counts a pipeline (DAG) RPC and its outcome: {@code ai_pipeline_requests_total{pipeline,status}}.
    * Kept distinct from {@link #recordRequest} so the {@code model} dimension stays reserved for
    * actual model ids and is never conflated with pipeline ids.
    */
@@ -102,7 +102,7 @@ public final class InferenceMetrics {
       .increment();
   }
 
-  /** Records end-to-end pipeline latency — {@code ai_pipeline_latency_seconds{pipeline}}. */
+  /** Records end-to-end pipeline latency: {@code ai_pipeline_latency_seconds{pipeline}}. */
   public void recordPipelineLatency(String pipeline, long durationNanos) {
     if (registry == null) return;
     Timer.builder("ai.pipeline.latency")
@@ -112,7 +112,7 @@ public final class InferenceMetrics {
       .record(durationNanos, TimeUnit.NANOSECONDS);
   }
 
-  /** Records a single model-engine call duration — {@code ai_model_call_seconds{model,op}}. */
+  /** Records a single model-engine call duration: {@code ai_model_call_seconds{model,op}}. */
   public void recordModelCall(String op, String model, long durationNanos) {
     if (registry == null) return;
     Timer.builder("ai.model.call")
@@ -123,7 +123,7 @@ public final class InferenceMetrics {
       .record(durationNanos, TimeUnit.NANOSECONDS);
   }
 
-  /** Counts tokens by kind — {@code ai_tokens_total{model,kind}}. Non-positive counts are skipped. */
+  /** Counts tokens by kind: {@code ai_tokens_total{model,kind}}. Non-positive counts are skipped. */
   public void recordTokens(String model, int prompt, int completion, int reasoning, int tool) {
     if (registry == null) return;
     incrementTokens(model, "prompt", prompt);
@@ -144,7 +144,7 @@ public final class InferenceMetrics {
   }
 
   /**
-   * Counts an infer-step completion by finish reason — {@code ai_finish_reasons_total{model,reason}}.
+   * Counts an infer-step completion by finish reason: {@code ai_finish_reasons_total{model,reason}}.
    * Reasons are the context-field labels ({@code stop}, {@code length}, {@code tool_calls},
    * {@code stalled}, {@code cancelled}, …), so silent truncations become graphable.
    */
@@ -159,7 +159,7 @@ public final class InferenceMetrics {
   }
 
   /**
-   * Counts a detected failure signal — {@code ai_failure_signals_total{source,kind,signal}}.
+   * Counts a detected failure signal: {@code ai_failure_signals_total{source,kind,signal}}.
    * {@code source} is the nearest useful id and {@code kind} says what that id names:
    * {@code model} for engine-level signals ({@code tool_parse_failed},
    * {@code thinking_unclosed}), {@code step} for {@code loop_max_iterations},

@@ -18,50 +18,34 @@ package io.gravitee.singularitee.inference.api.textgen;
 import java.util.List;
 
 /**
- * Interface for generation requests across different inference engines.
- * Provides common interface for generation parameters while allowing engine-specific extensions.
+ * Sampling parameters common to every text-generation backend; engines extend it with their own
+ * fields. Every accessor returns {@code null} when the client left the parameter unset.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
 public interface GenerationRequest {
-  /**
-   * @return The prompt text or null if using messages
-   */
+  /** Rendered prompt text, or {@code null} when the request carries messages instead. */
   String prompt();
 
-  /**
-   * @return Maximum number of tokens to generate, or null for unlimited
-   */
+  /** Maximum tokens to generate, or {@code null} for the engine default. */
   Integer maxTokens();
 
-  /**
-   * @return Temperature for sampling (0.0 to 2.0), or null for default
-   */
+  /** Sampling temperature (0.0 to 2.0), or {@code null} for the engine default. */
   Float temperature();
 
-  /**
-   * @return Top-p sampling parameter (0.0 to 1.0), or null for default
-   */
+  /** Nucleus sampling threshold (0.0 to 1.0), or {@code null} for the engine default. */
   Float topP();
 
-  /**
-   * @return Presence penalty (-2.0 to 2.0), or null for default
-   */
+  /** Presence penalty (-2.0 to 2.0), or {@code null} for the engine default. */
   Float presencePenalty();
 
-  /**
-   * @return Frequency penalty (-2.0 to 2.0), or null for default
-   */
+  /** Frequency penalty (-2.0 to 2.0), or {@code null} for the engine default. */
   Float frequencyPenalty();
 
-  /**
-   * @return List of stop sequences, or null for none
-   */
+  /** Stop strings matched on decoded text by the batch engine, or {@code null} for none. */
   List<String> stop();
 
-  /**
-   * @return Random seed for reproducibility, or null for random
-   */
+  /** Sampling seed for reproducibility, or {@code null} for a random one. */
   Integer seed();
 }

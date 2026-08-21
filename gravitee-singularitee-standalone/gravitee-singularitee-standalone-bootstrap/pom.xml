@@ -31,7 +31,7 @@
     <name>Gravitee.io - Singularitee - Standalone - Bootstrap</name>
     <description>Production entry point: two-level classloader setup (lib/ + lib/ext/) that reflectively loads the container</description>
 
-    <!-- No dependencies — Bootstrap runs in the system classloader before any Gravitee code is loaded -->
+    <!-- No dependencies: Bootstrap runs in the system classloader before any Gravitee code is loaded -->
 
     <build>
         <plugins>
@@ -44,10 +44,9 @@
                 </configuration>
             </plugin>
             <plugin>
-                <!-- bin/gravitee.sh launches this jar with `java -jar` — the manifest
-                     Main-Class is what makes that work ("no main manifest attribute"
-                     otherwise). Bootstrap has no dependencies, so no Class-Path needed:
-                     it builds the lib/ + lib/ext/ classloaders itself at runtime. -->
+                <!-- bin/gravitee.sh launches this jar with `java -jar`, which needs the
+                     manifest Main-Class. No Class-Path: Bootstrap builds the lib/ and
+                     lib/ext/ classloaders itself at runtime. -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <configuration>

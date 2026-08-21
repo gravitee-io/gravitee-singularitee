@@ -24,8 +24,11 @@ import java.util.Map;
 
 /**
  * Generation request for the vLLM engine.
- * Implements {@link GenerationRequest} and adds vLLM-specific tag configuration
- * for reasoning and tool-call detection.
+ *
+ * <p>Implements {@link GenerationRequest} and adds the reasoning and tool-call
+ * tag configuration plus optional LoRA selection. {@code prompt} must already
+ * be rendered; the adapter does not apply a chat template. Every field may be
+ * {@code null}.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -46,6 +49,10 @@ public record VllmRequest(
   String loraName,
   String loraPath
 ) implements GenerationRequest {
+  /**
+   * Builds a request from a raw payload map; tag configs are left {@code null}
+   * for the caller to set.
+   */
   @SuppressWarnings("unchecked")
   public VllmRequest(Map<String, Object> payload) {
     this(
@@ -66,14 +73,17 @@ public record VllmRequest(
     );
   }
 
+  /** Whether chat messages (and therefore possible media) were supplied. */
   public boolean hasMessages() {
     return messages != null && !messages.isEmpty();
   }
 
+  /** Whether tool definitions were supplied. */
   public boolean hasTools() {
     return tools != null && !tools.isEmpty();
   }
 
+  /** Whether a LoRA adapter path was supplied. */
   public boolean hasLora() {
     return loraPath != null && !loraPath.isBlank();
   }

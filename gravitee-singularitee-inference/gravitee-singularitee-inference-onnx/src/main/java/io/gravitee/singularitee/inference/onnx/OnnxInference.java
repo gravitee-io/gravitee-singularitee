@@ -30,6 +30,19 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 
 /**
+ * Base class for models executed by ONNX Runtime: owns the {@link OrtEnvironment} and one
+ * {@link OrtSession}.
+ *
+ * <p>The session is created in the constructor from {@code config.getResource().getModel()},
+ * with the CUDA execution provider when the runtime reports it and the intra-op thread count
+ * from {@code GRAVITEE_ONNX_INTRA_OPS_NUM_THREADS} (default: available processors). A session
+ * is thread-safe for concurrent {@code run} calls; subclasses may share one instance across
+ * request threads. Every {@code OrtSession.Result} and {@code OnnxTensor} a subclass creates
+ * holds native memory and must be closed by its owner; {@link #close()} releases the session
+ * and must not race with in-flight runs.
+ *
+ * <p>An {@link OrtException} at session creation surfaces as {@link IllegalArgumentException}.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -80,6 +93,10 @@ public abstract class OnnxInference<C extends OnnxConfig<?>, I, O> extends Infer
     }
   }
 
+  /**
+   * Closes the session, then the shared environment. Not safe to call while a run is in
+   * progress. Failures surface as {@link RuntimeException}.
+   */
   public void close() {
     try {
       this.session.close();

@@ -16,7 +16,7 @@
 
 # Voxtral-Mini-3B-2507 · audio (multimodal)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/voxtral-3b.yaml
 #
 # Same mechanism as the vision model: `mmproj_path` is the AUDIO projection GGUF.

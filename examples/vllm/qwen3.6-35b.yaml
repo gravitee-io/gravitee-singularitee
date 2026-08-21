@@ -16,11 +16,11 @@
 
 # Qwen3.6-35B · vLLM backend
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/vllm/qwen3.6-35b.yaml
 #
 # MoE 36B (256 experts), 262144-token positional encoding capped here to 131072.
-# Multimodal-capable architecture (Qwen3_5MoeForConditionalGeneration) — see
+# Multimodal-capable architecture (Qwen3_5MoeForConditionalGeneration), see
 # qwen3-vl-2b.yaml for how images are sent. ~72GB of bf16 weights, so
 # tensor_parallel_size 2 at minimum.
 #
@@ -28,7 +28,7 @@
 #   you use the -vllm-cuda image, which bundles it:
 #     ./run-server.sh --workspace examples/vllm/qwen3.6-35b.yaml   -Dvllm4j.venv=/path/to/.venv
 #
-# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each loads its own
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM: each loads its own
 # native CUDA bindings. One backend per server, composed over gRPC.
 
 workspace:

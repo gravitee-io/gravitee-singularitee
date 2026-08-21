@@ -26,6 +26,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.streams.WriteStream;
+import io.vertx.grpc.common.GrpcError;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * Vert.x gRPC service implementation for inference operations.
  *
  * <p>Handles both direct model inference ({@code Infer}) and pipeline DAG execution
- * ({@code InferPipeline}). The pipeline walk is fully reactive — no blocking or
+ * ({@code InferPipeline}). The pipeline walk is fully reactive: no blocking or
  * {@code Schedulers.io()} wrapping needed.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -50,6 +51,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
   private final InferenceMetrics metrics;
   private final ServiceInstrumentation instrumentation;
 
+  /** Wires the service to the model registry, pipeline executor, tracer and metrics. */
   public GraviteeInferenceServiceImpl(
     Vertx vertx,
     ModelRegistry registry,
@@ -65,9 +67,14 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
   }
 
   // ---------------------------------------------------------------------------
-  // Infer (server-streaming — single model)
+  // Infer (server-streaming, single model)
   // ---------------------------------------------------------------------------
 
+  /**
+   * {@code Infer}: streams tokens from one text-generation model. Ends the stream without a
+   * payload (after recording a not-found/error metric) when the model id is unknown or not a
+   * text-generation engine; a client disconnect cancels the sequence.
+   */
   @Override
   public void infer(InferRequest request, WriteStream<InferResponse> response) {
     var entryOpt = registry.get(request.getModelId());
@@ -121,13 +128,13 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
         }
       );
 
-    // Client disconnect (Ctrl+C, closed connection → RST_STREAM): stop the
+    // Client disconnect (Ctrl+C, closed connection, RST_STREAM): stop the
     // generation instead of letting an orphaned sequence burn compute until
     // max_tokens. cancelSequence is idempotent, so a race with normal
     // completion is harmless.
     onClientTermination(response, reason -> {
       LOGGER.warn(
-        "Infer: client stream terminated for model '{}' seq {} — cancelling generation: {}",
+        "Infer: client stream terminated for model '{}' seq {}, cancelling generation: {}",
         request.getModelId(),
         seqId,
         reason
@@ -150,7 +157,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
    *
    * <p>vert.x-grpc routes an HTTP/2 {@code RST_STREAM} (the wire form of a
    * gRPC client cancel) to the {@link io.vertx.grpc.common.GrpcWriteStream}
-   * {@code errorHandler} as a {@link io.vertx.grpc.common.GrpcError} — NOT to
+   * {@code errorHandler} as a {@link GrpcError}, NOT to
    * the plain {@link WriteStream#exceptionHandler}. Both are registered here
    * so the hook fires regardless of how the termination surfaces; an atomic
    * guard keeps it one-shot.
@@ -165,7 +172,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
         action.accept(reason);
       }
     };
-    // errorHandler is only exposed on the implementation base class — there
+    // errorHandler is only exposed on the implementation base class; there
     // is no public-interface hook for GrpcError in vert.x-grpc 5.0.x.
     if (response instanceof io.vertx.grpc.common.impl.GrpcWriteStreamBase<?, ?> gws) {
       gws.errorHandler(err -> once.accept("grpc error " + err));
@@ -174,9 +181,14 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
   }
 
   // ---------------------------------------------------------------------------
-  // InferPipeline (server-streaming — pipeline DAG)
+  // InferPipeline (server-streaming, pipeline DAG)
   // ---------------------------------------------------------------------------
 
+  /**
+   * {@code InferPipeline}: runs a pipeline DAG and streams its output. Ends the stream
+   * without a payload when no {@link PipelineExecutor} is configured; a client disconnect
+   * disposes the execution.
+   */
   @Override
   public void inferPipeline(InferPipelineRequest request, WriteStream<InferResponse> response) {
     if (pipelineExecutor == null) {
@@ -192,7 +204,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
     var callerContext = vertx.getOrCreateContext();
     final long startNanos = System.nanoTime();
 
-    // The pipeline walk is fully reactive — subscribe directly on the caller context.
+    // The pipeline walk is fully reactive: subscribe directly on the caller context.
     // No Schedulers.io() wrapping needed since no step blocks a thread.
     var disposable = pipelineExecutor
       .executePipeline(request, response, callerContext)
@@ -227,10 +239,10 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
     // Client disconnect mid-pipeline: dispose the reactive chain. Disposal
     // propagates down to the running INFER step (its Completable cancellable
     // disposes the engine subscription, whose doOnDispose cancels native
-    // generation — or, for remote engines, cancels the upstream gRPC call).
+    // generation, or for remote engines cancels the upstream gRPC call).
     onClientTermination(response, reason -> {
       LOGGER.warn(
-        "InferPipeline: client stream terminated for pipeline '{}' — cancelling execution: {}",
+        "InferPipeline: client stream terminated for pipeline '{}', cancelling execution: {}",
         request.getPipelineId(),
         reason
       );
@@ -241,9 +253,13 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
   }
 
   // ---------------------------------------------------------------------------
-  // Classify (unary — single classifier model)
+  // Classify (unary, single classifier model)
   // ---------------------------------------------------------------------------
 
+  /**
+   * {@code Classify}: labels one text with a classifier model. Fails the future (a gRPC
+   * error to the caller) when the model id is unknown or not a classifier.
+   */
   @Override
   public Future<io.gravitee.singularitee.protocol.ClassifyResponse> classify(
     io.gravitee.singularitee.protocol.ClassifyRequest request
@@ -309,9 +325,13 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
   }
 
   // ---------------------------------------------------------------------------
-  // ClassifyBatch (unary — batch classification)
+  // ClassifyBatch (unary, batch classification)
   // ---------------------------------------------------------------------------
 
+  /**
+   * {@code ClassifyBatch}: labels several texts in one call. Same failure contract as
+   * {@link #classify}.
+   */
   @Override
   public Future<io.gravitee.singularitee.protocol.ClassifyBatchResponse> classifyBatch(
     io.gravitee.singularitee.protocol.ClassifyBatchRequest request

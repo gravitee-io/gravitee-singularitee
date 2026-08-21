@@ -41,7 +41,7 @@ class CompositeClassifierEngineTest {
         .rxClassify(new ClassifyRequest("Do not kill, SSN 123-45-6789"))
         .blockingGet();
 
-      // Both delegates fired — their results are merged
+      // Both delegates fired: their results are merged
       assertThat(resp.results()).hasSize(2);
       assertThat(resp.allScores()).containsEntry("PROFANITY", 1.0f);
       assertThat(resp.allScores()).containsEntry("SSN", 1.0f);

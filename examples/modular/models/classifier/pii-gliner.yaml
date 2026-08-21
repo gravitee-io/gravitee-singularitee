@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 
-# PII detector — GLiNER2 zero-shot NER, 42 PII types (ONNX) — swap-in
+# PII detector: GLiNER2 zero-shot NER, 42 PII types (ONNX), swap-in
 #
 # Logical id: "pii". A zero-shot alternative to classifier/pii-bert.yaml: entities are
 # supplied at inference time (trim the list below to narrow detection), no

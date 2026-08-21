@@ -42,18 +42,17 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Node implementation for Singularitee.
  *
- * <p>Extends the standard gravitee-node lifecycle with two AI-specific components:
- * <ol>
- *   <li>{@link WorkspaceLoaderComponent} — loads models and pipelines from a workspace YAML before
- *       the gRPC port opens</li>
- *   <li>{@link GrpcServerComponent} — starts the Vert.x gRPC server as the last component</li>
- * </ol>
+ * <p>Extends the standard gravitee-node lifecycle with the inference components, started in
+ * this order: {@link GrpcServerComponent}, {@link HttpApiServerComponent}, then
+ * {@link WorkspaceLoaderComponent}. The servers bind first so {@code /health} answers while
+ * models load; the readiness gate returns {@code 503} until the workspace is in.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
 public class SingulariteeNode extends AbstractNode {
 
+  /** Application id reported to gravitee-node (product name, tracer service name). */
   public static final String APPLICATION_NAME = "gio-singularitee";
 
   @Override
@@ -84,17 +83,13 @@ public class SingulariteeNode extends AbstractNode {
     // and GpuMonitorEventHandler only binds Micrometer gauges (gpu_*) when services.metrics.enabled=true.
     components.add(GpuMonitorEventHandler.class);
     components.add(NodeGpuMonitorService.class);
-    // Start the servers FIRST so they bind and answer /health before any model is loaded.
-    // They listen on their Vert.x event loops while the (blocking) workspace loader pulls in
-    // models afterwards; requests for not-yet-loaded models simply return model_not_found.
+    // Servers start before the workspace loader so they bind and answer /health while the
+    // (blocking) model load runs; service calls get 503 until ReadinessState flips.
     components.add(GrpcServerComponent.class);
 
-    // Native HTTP API (no-op unless http.enabled=true). After gRPC so the shared tracer
-    // (started by GrpcServerComponent) is already running.
+    // No-op unless http.enabled=true. After gRPC so the shared tracer is already started.
     components.add(HttpApiServerComponent.class);
 
-    // Load the workspace (models + pipelines) AFTER the servers are listening, so the server
-    // is reachable (and /health is green) while models load in the background.
     components.add(WorkspaceLoaderComponent.class);
 
     return components;

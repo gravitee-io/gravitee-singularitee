@@ -19,6 +19,12 @@ import oshi.SystemInfo;
 import oshi.hardware.CentralProcessor;
 
 /**
+ * CPU feature probes backing {@link SIMDMathFactory}.
+ *
+ * Architecture is inferred from the processor description (Intel/AMD means x86, anything
+ * containing "arm" means ARM) and features from the OS-reported flag list; unknown
+ * architectures report no SIMD support.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -31,6 +37,7 @@ public class SIMDUtils {
   private static final String SVE = "sve";
   private static final String UNKNOWN = "unknown";
 
+  /** {@code true} when the CPU advertises AVX (x86) or NEON (ARM). */
   public static boolean isSIMDSupported() {
     return switch (getCPUArchitecture()) {
       case X_86 -> checkCPUFeature("avx");
@@ -39,6 +46,7 @@ public class SIMDUtils {
     };
   }
 
+  /** {@code true} when the CPU advertises native vector masks: AVX-512 (x86) or SVE (ARM). */
   public static boolean isSIMDMaskSupported() {
     return switch (getCPUArchitecture().toLowerCase()) {
       case X_86 -> checkCPUFeature(AVX_512);

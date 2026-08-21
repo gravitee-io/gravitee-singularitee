@@ -20,12 +20,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
+ * Renders a Jinja chat template into the prompt string a model receives.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
 public interface ChatTemplateRenderer {
   /**
-   * <p>{@code messages} and {@code tools} are only set when non-null — otherwise
+   * Renders {@code templateString} with the usual chat-template variables.
+   *
+   * <p>{@code messages} and {@code tools} are only set when non-null; otherwise
    * whatever the caller supplied via {@code extraVariables} is kept.
    *
    * @param templateString      the raw template
@@ -43,9 +47,7 @@ public interface ChatTemplateRenderer {
     Map<String, Object> extraVariables
   );
 
-  /**
-   * Convenience overload without extra variables.
-   */
+  /** Renders without extra variables. */
   default String render(
     String templateString,
     List<ChatMessage> messages,
