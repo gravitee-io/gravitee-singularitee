@@ -28,6 +28,7 @@ public record CompletionTokensDetails(
   @JsonProperty("reasoning_tokens") int reasoningTokens,
   @JsonProperty("tool_tokens") int toolTokens
 ) {
+  /** Derives {@code answer_tokens} as the remainder of {@code completionTokens}; null buckets count as 0. */
   public CompletionTokensDetails(int completionTokens, Integer reasoning, Integer tool) {
     this(
       Math.max(

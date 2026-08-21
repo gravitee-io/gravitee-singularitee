@@ -16,7 +16,7 @@
 
 # Qwen3-30B-A3B-Instruct-2507 · ChatML · the reference agent model
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/qwen3-30b.yaml
 #
 # One model (id: llm) and one pipeline (id: agent), so the same client config and
@@ -26,7 +26,7 @@
 # n_ctx is PER SEQUENCE: total KV allocated is n_ctx * n_seq_max.
 # MoE (3B active), plain attention, Apache-2.0. Built-in dialect, nothing to
 # configure. M4 Max: ~95 ms warm TTFT, ~84 tok/s decode (drifting to ~34 tok/s at
-# 30k context — the full-attention depth tax).
+# 30k context, the full-attention depth tax).
 
 workspace:
   name: qwen3-30b
@@ -64,4 +64,4 @@ workspace:
               reasoning_close: "</think>"
               tool_open: "<tool_call>"
               tool_close: "</tool_call>"
-            # extraction: chatml-json built-in (default order) — nothing to set
+            # extraction: chatml-json built-in (default order), nothing to set

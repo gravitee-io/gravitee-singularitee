@@ -28,26 +28,25 @@ import org.slf4j.LoggerFactory;
  * A {@link WriteStream} that accumulates tokens into a {@link StringBuilder}
  * and optionally forwards them to a downstream client stream.
  *
- * <p>With the Responses API event model, this stream receives typed events:
+ * <p>Events received:
  * <ul>
- *   <li>{@code RESPONSE_EVENT_TYPE_CREATED} — ignored (lifecycle managed by PipelineExecutor)</li>
- *   <li>{@code RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA} — text delta to accumulate/forward</li>
- *   <li>{@code RESPONSE_EVENT_TYPE_COMPLETED} — final event with usage (stored as lastResponse)</li>
- *   <li>{@code RESPONSE_EVENT_TYPE_FAILED} — error event</li>
+ *   <li>{@code RESPONSE_EVENT_TYPE_CREATED}: ignored (lifecycle managed by the pipeline executor)</li>
+ *   <li>{@code RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA}: text delta to accumulate/forward</li>
+ *   <li>{@code RESPONSE_EVENT_TYPE_COMPLETED}: final event with usage (stored as lastResponse)</li>
+ *   <li>{@code RESPONSE_EVENT_TYPE_FAILED}: error event</li>
  * </ul>
  *
  * <p>Reasoning handling is controlled by a {@link ThinkingMode}:
  * <ul>
- *   <li>{@link ThinkingMode#NONE} — fully transparent: accumulate and forward
+ *   <li>{@link ThinkingMode#NONE}: fully transparent, accumulate and forward
  *       every delta verbatim, no tag scanning.</li>
- *   <li>{@link ThinkingMode#STRIP} — legacy {@code strip_thinking: true}
- *       behavior: the reasoning block is removed from both the accumulator
- *       and the forwarded stream.</li>
- *   <li>{@link ThinkingMode#ROUTE} — the default for INFER steps: the
- *       reasoning block's content is forwarded on a separate flux tagged
+ *   <li>{@link ThinkingMode#STRIP} ({@code strip_thinking: true}): the reasoning
+ *       block is removed from both the accumulator and the forwarded stream.</li>
+ *   <li>{@link ThinkingMode#ROUTE} (default for INFER steps): the reasoning
+ *       block's content is forwarded on a separate flux tagged
  *       {@link StepRole#STEP_ROLE_THINKING} (tag markers excluded), while the
  *       answer is forwarded with the step's wire role. The accumulator keeps
- *       the RAW text (tags included), byte-identical to {@code NONE} — ROUTE
+ *       the RAW text (tags included), byte-identical to {@code NONE}: ROUTE
  *       changes only the wire presentation, never the data plane, so step
  *       outputs, CoT loops and conversation context are unaffected
  *       ({@link JinjaContextHelper#stripThinking} still sanitises
@@ -61,47 +60,39 @@ import org.slf4j.LoggerFactory;
  * constructor parameters (sourced from the step's {@code reasoning_tags}
  * config).
  *
- * <p>Rationale for the start-anchored design: Qwen-family models (the main
- * consumers of this engine) emit reasoning blocks only at the very beginning
- * of a generation, before any real answer. Small Qwen variants (0.6B, 1.7B)
- * occasionally echo the literal string {@code <think>} inside real prose
- * (e.g. when explaining their classifier rules or the shape of a tool call).
- * If we scanned for {@code <think>} anywhere in the stream, those literal
- * mentions would be mistaken for new thinking blocks and the surrounding
- * content would be silently dropped. By only recognising a reasoning block
- * at the start of the output, mid-stream {@code <think>} is treated as
- * literal text — which is what the user actually wrote.
+ * <p>The design is start-anchored because chat templates place the reasoning
+ * block at the very beginning of a generation, and models sometimes echo the
+ * literal string {@code <think>} inside real prose (e.g. when explaining their
+ * rules or the shape of a tool call). Scanning for {@code <think>} anywhere in
+ * the stream would mistake such mentions for a new thinking block and drop the
+ * surrounding content; recognising a block only at the start keeps a mid-stream
+ * {@code <think>} as literal text.
  *
- * <p>We still strip a stray {@code </think>} anywhere in the stream. Qwen
- * sometimes emits a single closing tag at end-of-generation (even when no
- * opening tag was emitted) because the chat-template pre-fill
- * {@code <think>\n\n</think>\n} conditions it that way. Stripping the stray
- * close is always safe — it's never legitimate content.
+ * <p>A stray {@code </think>} is stripped anywhere in the stream: a chat-template
+ * pre-fill of {@code <think>\n\n</think>\n} conditions models to emit a lone
+ * closing tag at end-of-generation, and a closing tag is never legitimate content.
  *
  * <p>State machine:
  * <pre>
- *   AT_START    — haven't seen a non-whitespace, non-tag character yet.
- *                 Buffers incoming tokens while checking whether the output
- *                 begins with a thinking tag.
- *                   • sees {@code <think>}  → go to SUPPRESSING (strip tag)
- *                   • sees {@code </think>} → strip the stray close,
- *                                             go to PASSTHROUGH
- *                   • sees real content     → flush buffer as content,
- *                                             go to PASSTHROUGH
- *                   • else (whitespace or a partial tag prefix) — keep
- *                     buffering.
+ *   AT_START:    no non-whitespace, non-tag character seen yet.
+ *                Buffers incoming tokens while checking whether the output
+ *                begins with a thinking tag.
+ *                  sees {@code <think>}  -> go to SUPPRESSING (strip tag)
+ *                  sees {@code </think>} -> strip the stray close,
+ *                                           go to PASSTHROUGH
+ *                  sees real content     -> flush buffer as content,
+ *                                           go to PASSTHROUGH
+ *                  else (whitespace or a partial tag prefix): keep buffering.
  *
- *   SUPPRESSING — inside a reasoning block. Tokens are silently dropped
- *                 until {@code </think>} is seen. Content after the close
- *                 tag is fed back into PASSTHROUGH (leading whitespace
- *                 stripped, because Qwen usually emits {@code </think>\n\n}).
+ *   SUPPRESSING: inside a reasoning block. Tokens are silently dropped
+ *                until {@code </think>} is seen. Content after the close
+ *                tag is fed back into PASSTHROUGH (leading whitespace
+ *                stripped, since models usually emit {@code </think>\n\n}).
  *
- *   PASSTHROUGH — normal output mode. Tokens are forwarded as-is, EXCEPT
- *                 that a stray {@code </think>} (which can appear at
- *                 end-of-generation on Qwen) is silently stripped. The
- *                 engine does NOT scan for {@code <think>} here — a
- *                 mid-stream {@code <think>} is treated as literal content
- *                 the model wrote.
+ *   PASSTHROUGH: normal output mode. Tokens are forwarded as-is, EXCEPT
+ *                that a stray {@code </think>} is silently stripped. The
+ *                engine does NOT scan for {@code <think>} here: a
+ *                mid-stream {@code <think>} is literal content the model wrote.
  * </pre>
  *
  * <p>End-of-stream handling:
@@ -120,7 +111,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
 
   /** How reasoning blocks in the generated stream are handled. */
   public enum ThinkingMode {
-    /** No tag scanning — accumulate and forward everything verbatim. */
+    /** No tag scanning: accumulate and forward everything verbatim. */
     NONE,
     /** Remove the reasoning block from both accumulator and wire. */
     STRIP,
@@ -183,7 +174,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    * Small models occasionally emit a few junk characters (":", stray punctuation) before their
    * thinking block. AT_START tolerates up to this many leading characters while waiting for the
    * open tag; the junk is dropped with the tag. Beyond this budget the output is treated as real
-   * content — keeping the start-anchored guarantee that a mid-stream literal {@code <think>} is
+   * content, keeping the start-anchored guarantee that a mid-stream literal {@code <think>} is
    * never mistaken for a new thinking block.
    */
   private static final int LEADING_JUNK_ALLOWANCE = 16;
@@ -199,7 +190,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    * client on the thinking flux (engine-stamped thinking bypasses the tag
    * machine): once one of these markers appears in forwarded thinking, the
    * rest of the generation's thinking is machine territory and stops being
-   * forwarded. Config-driven — no dialect literals here.
+   * forwarded. Config-driven, no dialect literals here.
    */
   private final List<String> thinkingCutMarkers;
 
@@ -237,7 +228,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    * Buffer used in {@link ThinkState#AT_START} and {@link ThinkState#PASSTHROUGH}
    * to hold the tail of incoming content while we check for tag matches
    * that might span token boundaries. Bounded to {@code maxTagLen - 1}
-   * chars after each flush — any older content is safe to emit.
+   * chars after each flush; any older content is safe to emit.
    */
   private final StringBuilder pendingBuffer;
 
@@ -260,7 +251,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    * Collects the BARE tool-call payload from deltas the engine pre-classified as
    * {@link StepRole#STEP_ROLE_TOOL} (tag markers suppressed engine-side, so this text
    * carries no {@code <tool_call>}-style wrappers). Kept separate from the main
-   * accumulator — the step executor re-wraps it with the step's configured tool tags
+   * accumulator; the step executor re-wraps it with the step's configured tool tags
    * to preserve template fidelity for multi-turn tool loops.
    */
   private final StringBuilder toolBuffer = new StringBuilder();
@@ -272,18 +263,18 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    */
   private final StringBuilder answerBuffer = new StringBuilder();
 
-  /** The last response received — carries usage and performance on the completed event. */
+  /** The last response received; carries usage and performance on the completed event. */
   private volatile InferResponse lastResponse;
 
   /**
-   * Set at end-of-stream when the tag machine was still inside a thinking block — the model
+   * Set at end-of-stream when the tag machine was still inside a thinking block: the model
    * opened {@code <think>} and never closed it ("stuck reasoning"). Only meaningful for
    * {@link ThinkingMode#STRIP} / {@link ThinkingMode#ROUTE}; always {@code false} otherwise.
    */
   private volatile boolean thinkingUnclosed;
 
   /**
-   * Engine-classified reasoning was seen ({@code STEP_ROLE_THINKING} deltas — e.g. gpt-oss
+   * Engine-classified reasoning was seen ({@code STEP_ROLE_THINKING} deltas, e.g. gpt-oss
    * Harmony channels, where the tag machine never runs). Together with
    * {@link #sawAnswerContent} this detects the classified-path variant of "stuck reasoning":
    * the whole generation stayed in the analysis channel and never produced an answer or a
@@ -291,13 +282,13 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    */
   private volatile boolean sawClassifiedThinking;
 
-  /** Non-blank answer content (or a tool span — a call is a productive outcome) was seen. */
+  /** Non-blank answer content (or a tool span, since a call is a productive outcome) was seen. */
   private volatile boolean sawAnswerContent;
 
   /**
    * Set when a downstream write fails (typically: the client disconnected
    * mid-stream and the gRPC response is closed). Once set, all further
-   * forwarding is skipped — but accumulation and end-of-stream handling
+   * forwarding is skipped, but accumulation and end-of-stream handling
    * continue, so the step's {@link CompletableEmitter} always completes and
    * the pipeline can never be wedged by a dead client connection.
    */
@@ -365,7 +356,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
 
     // Only process OUTPUT_TEXT_DELTA events for text accumulation.
     // CREATED events are ignored (lifecycle managed externally).
-    // COMPLETED/FAILED events shouldn't arrive via write() — only via end().
+    // COMPLETED/FAILED events shouldn't arrive via write(), only via end().
     if (data.getEventType() != ResponseEventType.RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA) {
       return Future.succeededFuture();
     }
@@ -386,7 +377,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
     }
 
     // Deltas already stamped STEP_ROLE_THINKING by the writer (engine-side
-    // per-token channel classification — e.g. llama.cpp with a <think>-prefilled
+    // per-token channel classification, e.g. llama.cpp with a <think>-prefilled
     // prompt, where no literal open tag ever appears in the text) BYPASS the
     // tag-scanning state machine entirely. The machine stays in place for
     // un-stamped OUTPUT deltas (engines that don't classify) and keeps the
@@ -417,7 +408,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
     }
 
     if (mode == ThinkingMode.NONE) {
-      // Fast path: no thinking handling — accumulate and forward as-is.
+      // Fast path: no thinking handling, accumulate and forward as-is.
       if (!token.isBlank()) {
         sawAnswerContent = true;
       }
@@ -441,7 +432,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
   /**
    * TOOL-classified delta: accumulate the bare payload in {@link #toolBuffer} and
    * forward downstream with the TOOL role preserved (never re-stamped to the step's
-   * wire role — the role IS the tool signal now that markers are suppressed).
+   * wire role; the role IS the tool signal now that markers are suppressed).
    */
   private void handleToolDelta(InferResponse data, String token) {
     sawAnswerContent = true;
@@ -478,7 +469,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
     int closeIdx = buf.indexOf(closeTag);
 
     // A tag only counts as start-anchored when everything before it is junk (whitespace or a few
-    // stray punctuation chars) — real content before a tag makes the tag literal text.
+    // stray punctuation chars); real content before a tag makes the tag literal text.
     if (openIdx > 0 && !isLeadingJunk(buf.substring(0, openIdx))) openIdx = -1;
     if (closeIdx > 0 && !isLeadingJunk(buf.substring(0, closeIdx))) closeIdx = -1;
 
@@ -514,7 +505,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
       return;
     }
 
-    // Prefix diverges — no thinking block here. Flush the buffer as real
+    // Prefix diverges, no thinking block here. Flush the buffer as real
     // content and switch to PASSTHROUGH (where we still watch for stray
     // </think> but ignore new <think>).
     thinkState = ThinkState.PASSTHROUGH;
@@ -592,7 +583,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
   /**
    * PASSTHROUGH: forward content as real output. Still scan for stray
    * {@code </think>} (Qwen sometimes emits one at end-of-generation). Do
-   * NOT scan for {@code <think>} — a mid-stream {@code <think>} is
+   * NOT scan for {@code <think>}; a mid-stream {@code <think>} is
    * treated as literal content the model wrote.
    */
   private void handlePassthrough(InferResponse data, String token) {
@@ -625,10 +616,10 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
 
   /**
    * Flushes a piece of real (non-reasoning) content to the accumulator
-   * (STRIP mode only — ROUTE already accumulated the raw text in
+   * (STRIP mode only; ROUTE already accumulated the raw text in
    * {@link #write}) and the downstream stream. Handles
    * {@link #trimNextFlush}: when set, strips leading whitespace from the
-   * first non-empty flush after a close tag (matches Qwen's
+   * first non-empty flush after a close tag (matches the
    * {@code </think>\n\n<answer>} convention).
    */
   private void flushRealContent(InferResponse data, String text) {
@@ -644,7 +635,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
       if (!out.isEmpty()) {
         trimNextFlush = false;
       } else {
-        // Entire chunk was whitespace — keep trimming on the next one.
+        // Entire chunk was whitespace, keep trimming on the next one.
         return;
       }
     }
@@ -657,7 +648,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
 
   /**
    * Forwards reasoning content on the {@code STEP_ROLE_THINKING} flux
-   * (ROUTE mode). The accumulator is untouched here — the raw text was
+   * (ROUTE mode). The accumulator is untouched here; the raw text was
    * already appended in {@link #write}.
    */
   private void forwardThinking(String text) {
@@ -729,7 +720,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
   /**
    * Writes to the downstream stream, downgrading any failure (e.g. the
    * client closed the connection mid-stream) to a one-time warning. The
-   * write path must never throw back into the engine's token dispatch —
+   * write path must never throw back into the engine's token dispatch;
    * an unhandled exception there orphans this capture stream and leaves
    * the step's emitter permanently incomplete, hanging the pipeline.
    */
@@ -740,7 +731,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
     } catch (RuntimeException e) {
       downstreamFailed = true;
       LOGGER.warn(
-        "Downstream stream write failed (client disconnected?) — " +
+        "Downstream stream write failed (client disconnected?), " +
           "forwarding disabled for the rest of this step, generation continues: {}",
         e.getMessage()
       );
@@ -786,8 +777,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
     if (data != null) {
       lastResponse = data;
 
-      // If the final message is a COMPLETED event that also carries a last delta
-      // (legacy pattern from dispatchToken), extract and process it.
+      // A final message that also carries a last delta is processed like write().
       if (data.getEventType() == ResponseEventType.RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA) {
         String token = data.getResponseOutputTextDelta().getDelta();
         if (!token.isEmpty() && data.getStepRole() == StepRole.STEP_ROLE_TOOL) {
@@ -839,7 +829,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    * content doesn't get lost.
    * <ul>
    *   <li>{@code AT_START} with a non-empty buffer: no tag ever
-   *       materialised — treat the buffer as real content.</li>
+   *       materialised; treat the buffer as real content.</li>
    *   <li>{@code PASSTHROUGH} with a non-empty tail buffer: flush it.</li>
    *   <li>{@code SUPPRESSING}: unclosed {@code <think>}, drop silently
    *       (per the strip_thinking contract).</li>
@@ -848,7 +838,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
   private void flushOnEnd() {
     if (mode == ThinkingMode.NONE) return;
     if (thinkState == ThinkState.AT_START && !pendingBuffer.isEmpty()) {
-      // No tag ever appeared — all buffered content is real (minus a
+      // No tag ever appeared, so all buffered content is real (minus a
       // truncated trailing tag, if any).
       String tail = stripTrailingTagPrefix(pendingBuffer.toString());
       pendingBuffer.setLength(0);
@@ -876,7 +866,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
   /**
    * Strips from the end of the stream's final residual the longest non-empty
    * suffix that is a proper prefix of the close (or open) tag. At
-   * end-of-stream such a suffix can only be a truncated reasoning tag —
+   * end-of-stream such a suffix can only be a truncated reasoning tag;
    * e.g. {@code </thin} left behind when {@code max_tokens} cuts the close
    * tag mid-way. Under {@code strip_thinking} a partial reasoning tag is
    * never legitimate content, so dropping it is always safe. Only applied at
@@ -918,7 +908,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
   public boolean writeQueueFull() {
     // Propagate the real client's backpressure so the per-sequence reactive subscriber
     // upstream stops pulling when the client cannot keep up. A capture that does not
-    // forward (e.g. internal guard steps) is never full — nothing is written to a client.
+    // forward (e.g. internal guard steps) is never full; nothing is written to a client.
     return shouldForward && downstream != null && downstream.writeQueueFull();
   }
 
@@ -943,15 +933,15 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
     return lastResponse;
   }
 
-  /** The answer-channel text alone — reasoning, tool spans and markers excluded. */
+  /** The answer-channel text alone: reasoning, tool spans and markers excluded. */
   public String answerOutput() {
     return answerBuffer.toString();
   }
 
   /**
    * The bare tool-call payload accumulated from {@code STEP_ROLE_TOOL} deltas
-   * (empty when the engine emitted no classified tool span — e.g. legacy engines
-   * that still emit literal tag markers in the text).
+   * (empty when the engine emitted no classified tool span, e.g. engines that
+   * emit literal tag markers in the text).
    */
   public String toolOutput() {
     return toolBuffer.toString();
@@ -960,7 +950,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
   /**
    * Whether the generation ended "stuck reasoning", on either path: the tag machine was
    * still inside an unclosed {@code <think>} block, or engine-classified reasoning
-   * ({@code STEP_ROLE_THINKING} — e.g. Harmony analysis channels) was seen while no answer
+   * ({@code STEP_ROLE_THINKING}, e.g. Harmony analysis channels) was seen while no answer
    * content and no tool span ever materialised. A reliable signal for repair loops and
    * fallbacks.
    */

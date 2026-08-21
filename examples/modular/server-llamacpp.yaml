@@ -15,7 +15,7 @@
 #
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Server — llama.cpp generation backend (:9090)
+# Server: llama.cpp generation backend (:9090)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Hosts ONE generation model under logical id "llm" (Qwen3-0.6B GGUF) plus the
@@ -23,7 +23,7 @@
 # and CPU with no extra runtime.
 #
 # Swap the model: replace the "llama/llm-qwen3-0.6b.yaml" include with
-# "llama/llm-mistral-7b.yaml" (both declare id "llm" — include exactly one).
+# "llama/llm-mistral-7b.yaml" (both declare id "llm", include exactly one).
 #
 # Launch (port via -Dgrpc.port):
 #   java -Dgrpc.port=9090 -Dai.workspace.path=examples/modular/server-llamacpp.yaml \

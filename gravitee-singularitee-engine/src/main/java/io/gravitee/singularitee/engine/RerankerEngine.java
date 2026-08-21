@@ -25,7 +25,7 @@ import io.reactivex.rxjava3.core.Single;
  * (query, doc) pairs with a single batched forward pass, sorts by descending
  * score, applies {@code topK} if set, and emits a {@link RerankResponse}.
  *
- * <p>Unlike an {@link EmbeddingEngine}, a reranker cannot produce embeddings —
+ * <p>Unlike an {@link EmbeddingEngine}, a reranker cannot produce embeddings:
  * the underlying classification head emits scoring logits, not pooled hidden states.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)

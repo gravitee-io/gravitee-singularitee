@@ -20,12 +20,15 @@ import static java.util.Collections.singletonMap;
 import java.util.Map;
 
 /**
+ * Payload and configuration keys shared by the inference engines and their adapters.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
 public final class Constants {
 
-  public static final int MAX_SEQUENCE_LENGTH_DEFAULT_VALUE = 510; // 512 - 2 (special tokens [CLS] and [SEP])
+  /** Default encoder sequence budget: 512 minus the two special tokens [CLS] and [SEP]. */
+  public static final int MAX_SEQUENCE_LENGTH_DEFAULT_VALUE = 510;
 
   private Constants() {}
 

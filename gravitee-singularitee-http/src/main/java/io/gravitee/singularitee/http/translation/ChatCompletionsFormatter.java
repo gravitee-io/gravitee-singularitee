@@ -48,6 +48,11 @@ public final class ChatCompletionsFormatter {
 
   private ChatCompletionsFormatter() {}
 
+  /**
+   * Streams {@code chat.completion.chunk} SSE events live: a role-only delta, then content and
+   * {@code reasoning_content} deltas as they arrive, the finish chunk, an optional usage chunk and
+   * {@code [DONE]}. Tool markup is not held back; see {@link #chatStreamEventsWithToolHoldback}.
+   */
   public static Flowable<ServerEvent> chatStreamEvents(
     Flowable<TokenMessage> tokenStream,
     String modelName,
@@ -71,7 +76,7 @@ public final class ChatCompletionsFormatter {
     String responseId = "chatcmpl-" + created;
     AtomicBoolean roleEmitted = new AtomicBoolean(false);
 
-    // Progress updates are not part of the Chat Completions contract — dropped.
+    // Progress updates are not part of the Chat Completions contract: dropped.
     return tokenStream
       .filter(t -> t.progress() == null)
       .flatMap(token -> {
@@ -186,10 +191,10 @@ public final class ChatCompletionsFormatter {
     // Content not yet emitted: the hold-back tail, or everything after a confirmed opener.
     StringBuilder pending = new StringBuilder();
     // Bare tool payload from TOOL-channel deltas (engines that suppress tag markers). Never
-    // streamed as content — the channel signal replaces the marker-prefix holdback.
+    // streamed as content: the channel signal replaces the marker-prefix holdback.
     StringBuilder toolContent = new StringBuilder();
 
-    // Progress updates are not part of the Chat Completions contract — dropped.
+    // Progress updates are not part of the Chat Completions contract: dropped.
     return tokenStream
       .filter(t -> t.progress() == null)
       .flatMap(token -> {
@@ -236,8 +241,8 @@ public final class ChatCompletionsFormatter {
               )
             );
           } else {
-            // False alarm (or plain stop): flush any withheld tail — and any unparseable bare
-            // tool payload (fail-open) — as ordinary content.
+            // False alarm (or plain stop): flush any withheld tail, plus any unparseable bare
+            // tool payload (fail-open), as ordinary content.
             pending.append(toolContent);
             toolContent.setLength(0);
             if (!pending.isEmpty()) {
@@ -457,6 +462,11 @@ public final class ChatCompletionsFormatter {
       });
   }
 
+  /**
+   * Builds the non-streaming {@code chat.completion} object. When the accumulated stream carries
+   * tool calls they are emitted as structured {@code tool_calls} with finish reason
+   * {@code tool_calls}; unparseable tool payload falls back to plain content.
+   */
   public static ObjectNode buildChatResponse(
     String modelName,
     SequenceAccumulator accumulator,

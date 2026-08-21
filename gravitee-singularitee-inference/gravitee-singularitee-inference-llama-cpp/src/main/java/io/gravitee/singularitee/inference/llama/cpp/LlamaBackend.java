@@ -25,7 +25,7 @@ import io.gravitee.llama.cpp.nativelib.LlamaLibLoader;
  * making all FFM bindings available. Thread-safe and idempotent.
  *
  * <p>Compute backend registration (CPU, Metal, RPC, etc.) is intentionally
- * left out — it is a per-model concern handled by {@link Model} based on
+ * left out: it is a per-model concern handled by {@link Model} based on
  * the {@link ModelConfig} (e.g. local-only vs RPC).
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)

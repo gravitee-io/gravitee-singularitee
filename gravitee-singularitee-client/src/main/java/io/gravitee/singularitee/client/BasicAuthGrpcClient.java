@@ -31,7 +31,7 @@ import java.util.Base64;
  * <p>gRPC call metadata is carried as HTTP/2 headers, so authenticating against a
  * server protected by {@code GrpcBasicAuthHandler} is a matter of setting the
  * {@code authorization: Basic base64(username:password)} header on each request.
- * Wrapping the {@link GrpcClient} keeps the generated service stubs untouched —
+ * Wrapping the {@link GrpcClient} keeps the generated service stubs untouched;
  * they simply receive a request that already carries the credential.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)

@@ -14,28 +14,28 @@
 # limitations under the License.
 #
 
-# Pipeline — tool-call repair with model escalation
+# Pipeline: tool-call repair with model escalation
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/pipelines/tool-repair-escalate.yaml
 #
-#   generate (llm, Qwen3-0.6B) ──→ repair_gate ──→ done
+#   generate (llm, Qwen3-0.6B) -> repair_gate -> done
 #      ↑_________________________________|
 #      (loops back on a failed tool-call parse, max 2, retries at temp 0.2)
-#      └────────────────────────────────→ escalate (llm-big, gpt-oss-20b) ──→ done
+#      └──────────────────────────────-> escalate (llm-big, gpt-oss-20b) -> done
 #
-# The fallback is not an apology — it is a BIGGER MODEL. The small model gets
+# The fallback is not an apology, it is a BIGGER MODEL. The small model gets
 # two repair attempts (with the parse error injected and near-greedy retry
 # sampling); if it still can't produce a valid call, `escalate` re-runs the
 # task on gpt-oss-20b. The escalation step inherits the accumulated
 # conversation, including the corrective loopback turns, so the big model sees
 # exactly what the small one got wrong. This needs no engine feature:
 # `fallback_step` simply points at an infer step bound to a different
-# model_id. Note the two steps speak different dialects — the small model uses
+# model_id. Note the two steps speak different dialects, the small model uses
 # the default <tool_call> tags, the escalation step carries the full Harmony
 # `tags:` config (see examples/llama/gpt-oss-20b.yaml for the rationale).
 #
-# Two llama.cpp models in one process are fine — the one-backend-per-process
+# Two llama.cpp models in one process are fine, the one-backend-per-process
 # rule is about mixing backend TYPES (llama.cpp + ONNX + vLLM), not model
 # count. The constraint is memory: 0.6B-Q8 + gpt-oss-20b-MXFP4 need ~14 GB
 # total with these context sizes.
@@ -70,7 +70,7 @@ workspace:
       memory_check: warn
       llama_cpp:
         path: gpt-oss-20b-MXFP4.gguf
-        n_ctx: 8192 # escalation turns are short — no need for the full window
+        n_ctx: 8192 # escalation turns are short, no need for the full window
         n_seq_max: 1
         n_gpu_layers: 99999
         flash_attn_type: ENABLED
@@ -109,11 +109,11 @@ workspace:
               match_value: "false"
             loopback_message:
               role: user
-              content: "Your previous reply did not contain a valid tool call.{% if generate.attempted_tool %} You called '{{ generate.attempted_tool }}', which is not a declared tool.{% endif %}{% if generate.parse_error %} Parse error: {{ generate.parse_error }}.{% endif %} The ONLY valid tools are: {{ tool_names | join(', ') }}. Reply again with a single valid tool call — no prose."
+              content: "Your previous reply did not contain a valid tool call.{% if generate.attempted_tool %} You called '{{ generate.attempted_tool }}', which is not a declared tool.{% endif %}{% if generate.parse_error %} Parse error: {{ generate.parse_error }}.{% endif %} The ONLY valid tools are: {{ tool_names | join(', ') }}. Reply again with a single valid tool call, no prose."
             retry_sampling_params:
               temperature: 0.2
 
-        # Small model exhausted its attempts — hand the same conversation
+        # Small model exhausted its attempts: hand the same conversation
         # (corrective turns included) to the bigger model. gpt-oss speaks
         # Harmony: the tags fold its chained channel headers into
         # reasoning/tool spans (full rationale in examples/llama/gpt-oss-20b.yaml).
@@ -155,7 +155,7 @@ workspace:
                 - "<|call|>"
             tool_extraction_template: harmony # built-in
 
-        # Valid call extracted — halt cleanly; generate already streamed.
+        # Valid call extracted: halt cleanly; generate already streamed.
         - id: done
           type: break
           config:

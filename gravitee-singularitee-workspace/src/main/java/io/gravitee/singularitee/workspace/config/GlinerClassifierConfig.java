@@ -18,8 +18,8 @@ package io.gravitee.singularitee.workspace.config;
 /**
  * GLiNER4j zero-shot classifier configuration.
  *
- * <p>Plain configuration, never on the wire — converted from the former proto
- * message with identical semantics (zero / empty = default).
+ * <p>Plain configuration, never on the wire. Numeric zero and empty string mean
+ * "engine default".
  */
 public record GlinerClassifierConfig(
   String modelDir,
@@ -36,20 +36,22 @@ public record GlinerClassifierConfig(
     labels = labels == null ? java.util.List.of() : java.util.List.copyOf(labels);
   }
 
-  /** All defaults — what an absent YAML block means. */
+  /** All defaults: what an absent YAML block means. */
   public static GlinerClassifierConfig getDefaultInstance() {
     return DEFAULT;
   }
 
+  /** Returns a builder with every field at its default. */
   public static Builder newBuilder() {
     return new Builder();
   }
 
-  /** Copy with {@code modelDir} replaced — resolvers rewrite paths after download. */
+  /** Copy with {@code modelDir} replaced; resolvers rewrite paths after download. */
   public GlinerClassifierConfig withModelDir(String v) {
     return new GlinerClassifierConfig(v, labels, threshold, variant, tokenCap);
   }
 
+  /** Fluent builder; unset fields keep the engine defaults. */
   public static final class Builder {
 
     private String modelDir = "";

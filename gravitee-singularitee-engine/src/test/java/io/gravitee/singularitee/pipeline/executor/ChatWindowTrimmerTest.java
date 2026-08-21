@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
  */
 class ChatWindowTrimmerTest {
 
-  /** 1 token per character — makes budgets trivially readable. */
+  /** 1 token per character; makes budgets trivially readable. */
   private static final TokenCounter CHAR_COUNTER = s -> s == null ? 0 : s.length();
 
   private static final String TOOL_TAG = "<tool_call>";
@@ -69,16 +69,16 @@ class ChatWindowTrimmerTest {
     // total = 200 + 5*200 = 1200 > 760 (fast path exceeded); target = 665 - 200 = 465
     List<Map<String, Object>> messages = List.of(
       msg("system", chars(200)),
-      msg("user", chars(200)), // oldest — dropped
+      msg("user", chars(200)), // oldest, dropped
       msg("assistant", chars(200)), // dropped
-      msg("user", chars(200)), // kept (newest 3 * 200 = 600 > 465? no — see below)
+      msg("user", chars(200)), // kept (newest 3 * 200 = 600 > 465? no, see below)
       msg("assistant", chars(200)),
       msg("user", chars(200))
     );
     var out = ChatWindowTrimmer.trim(messages, 1000, 0, CHAR_COUNTER, TOOL_TAG);
     assertThat(out).isNotSameAs(messages);
     // target 465: newest unit (200) always kept, next (200) fits (400),
-    // next (200) would make 600 > 465 → stop. Kept = system + last 2.
+    // next (200) would make 600 > 465 -> stop. Kept = system + last 2.
     assertThat(out).hasSize(3);
     assertThat(out.get(0).get("role")).isEqualTo("system");
     assertThat(out.get(1)).isSameAs(messages.get(4));
@@ -108,15 +108,15 @@ class ChatWindowTrimmerTest {
     List<Map<String, Object>> messages = List.of(
       msg("system", chars(100)),
       msg("user", chars(100)), // dropped
-      msg("assistant", TOOL_TAG + chars(189)), // tool call (200 tokens) — dropped
-      msg("user", "<tool_response>" + chars(185)), // tool result (200) — dropped WITH it
+      msg("assistant", TOOL_TAG + chars(189)), // tool call (200 tokens), dropped
+      msg("user", "<tool_response>" + chars(185)), // tool result (200), dropped WITH it
       msg("assistant", chars(200)), // kept
       msg("user", chars(200)) // kept (newest)
     );
     var out = ChatWindowTrimmer.trim(messages, 1000, 0, CHAR_COUNTER, TOOL_TAG);
     assertThat(out).isNotSameAs(messages);
     // target = 665 - 100 = 565: newest (200) kept, next (200) kept (400);
-    // tool unit = 400 → 800 > 565 → both dropped together.
+    // tool unit = 400 -> 800 > 565 -> both dropped together.
     assertThat(out).hasSize(3);
     assertThat(out.get(1)).isSameAs(messages.get(4));
     assertThat(out.get(2)).isSameAs(messages.get(5));
@@ -127,11 +127,10 @@ class ChatWindowTrimmerTest {
 
   @Test
   void structuredToolCallUnitDroppedAtomically() {
-    // Modern OpenAI shape: assistant carries a tool_calls LIST (content empty)
+    // Structured shape: assistant carries a tool_calls LIST (content empty)
     // and the result is a role=tool message. Splitting them orphans the tool
     // message, which chat templates reject ("tool role without a previous
-    // assistant tool call") — observed live with an agent client's huge
-    // read-file result forcing a trim.
+    // assistant tool call").
     Map<String, Object> call = new java.util.LinkedHashMap<>(msg("assistant", ""));
     call.put("tool_calls", List.of(Map.of("id", "call_1", "function", Map.of("name", "read"))));
     Map<String, Object> result = new java.util.LinkedHashMap<>(msg("tool", chars(400)));
@@ -185,15 +184,15 @@ class ChatWindowTrimmerTest {
   void toolCallUnitKeptAtomically() {
     List<Map<String, Object>> messages = List.of(
       msg("system", chars(50)),
-      msg("user", chars(500)), // oldest — dropped
-      msg("assistant", TOOL_TAG + chars(89)), // tool call (100) — kept as a unit
-      msg("user", "<tool_response>" + chars(85)), // tool result (100) — kept
-      msg("user", chars(100)) // newest — kept
+      msg("user", chars(500)), // oldest, dropped
+      msg("assistant", TOOL_TAG + chars(89)), // tool call (100), kept as a unit
+      msg("user", "<tool_response>" + chars(85)), // tool result (100), kept
+      msg("user", chars(100)) // newest, kept
     );
     var out = ChatWindowTrimmer.trim(messages, 1000, 0, CHAR_COUNTER, TOOL_TAG);
     assertThat(out).isNotSameAs(messages);
-    // target = 665 - 50 = 615: newest (100), tool unit (200) → 300 ≤ 615 kept;
-    // oldest user (500) → 800 > 615 dropped.
+    // target = 665 - 50 = 615: newest (100), tool unit (200) -> 300 ≤ 615 kept;
+    // oldest user (500) -> 800 > 615 dropped.
     assertThat(out).hasSize(4);
     assertThat(out.get(1)).isSameAs(messages.get(2));
     assertThat(out.get(2)).isSameAs(messages.get(3));
@@ -211,7 +210,7 @@ class ChatWindowTrimmerTest {
     );
     var out = ChatWindowTrimmer.trim(messages, 1000, 0, CHAR_COUNTER, TOOL_TAG);
     assertThat(out).isNotSameAs(messages);
-    // Last message alone (2012) > target (615) → kept but head-truncated.
+    // Last message alone (2012) > target (615) -> kept but head-truncated.
     var last = out.get(out.size() - 1);
     String trimmedContent = (String) last.get("content");
     assertThat(trimmedContent).startsWith(ChatWindowTrimmer.TRIM_MARKER);
@@ -231,7 +230,7 @@ class ChatWindowTrimmerTest {
 
   @Test
   void maxTokensReducesTheBudget() {
-    // context 1000, maxTokens 450 (below the ctx/2 cap) → budget = 1000 - 450 - 50
+    // context 1000, maxTokens 450 (below the ctx/2 cap) -> budget = 1000 - 450 - 50
     // = 500; fast path 400; target 350.
     List<Map<String, Object>> messages = List.of(
       msg("user", chars(160)),
@@ -240,14 +239,14 @@ class ChatWindowTrimmerTest {
     );
     var out = ChatWindowTrimmer.trim(messages, 1000, 450, CHAR_COUNTER, TOOL_TAG);
     assertThat(out).isNotSameAs(messages);
-    // newest two (320) kept; the third would make 480 > 350 → dropped.
+    // newest two (320) kept; the third would make 480 > 350 -> dropped.
     assertThat(out).hasSize(2);
     assertThat(out.get(1)).isSameAs(messages.get(2));
   }
 
   @Test
   void blankToolTagFallsBackToDefault() {
-    // Same scenario as toolCallUnitDroppedAtomically but with a blank tag —
+    // Same scenario as toolCallUnitDroppedAtomically but with a blank tag;
     // the default <tool_call> must still bind the pair.
     List<Map<String, Object>> messages = List.of(
       msg("system", chars(100)),

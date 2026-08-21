@@ -24,6 +24,13 @@ import io.gravitee.singularitee.inference.onnx.bert.resource.OnnxBertResource;
 import java.util.Map;
 
 /**
+ * Configuration of a BERT-family ONNX model: files, math kernels, free-form settings and
+ * tokenizer options.
+ *
+ * Settings are read by the {@code Constants} keys ({@code CLASSIFIER_MODE}, {@code POOLING_MODE},
+ * {@code MAX_SEQUENCE_LENGTH}, ...); {@link #get(String)} returns {@code null} for an absent
+ * key. Immutable once built.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -54,10 +61,12 @@ public final class OnnxBertConfig extends OnnxConfig<OnnxBertResource> {
     this(resource, gioMath, onnxConfig, DEFAULT_TOKENIZER_CONFIG);
   }
 
+  /** The setting under {@code key}, or {@code null}. */
   public <T> T get(String key) {
     return this.configuration.get(key);
   }
 
+  /** The setting under {@code key}, or {@code defaultValue} when absent. */
   public <T> T get(String key, T defaultValue) {
     return this.configuration.get(key, defaultValue);
   }

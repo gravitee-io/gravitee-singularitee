@@ -18,8 +18,8 @@ package io.gravitee.singularitee.workspace.config;
 /**
  * A single label definition for GLiNER4j zero-shot classification.
  *
- * <p>Plain configuration, never on the wire — converted from the former proto
- * message with identical semantics (zero / empty = default).
+ * <p>Plain configuration, never on the wire. Numeric zero and empty string mean
+ * "engine default".
  */
 public record GlinerLabelDef(String name, String description) {
   private static final GlinerLabelDef DEFAULT = newBuilder().build();
@@ -29,15 +29,17 @@ public record GlinerLabelDef(String name, String description) {
     description = description == null ? "" : description;
   }
 
-  /** All defaults — what an absent YAML block means. */
+  /** All defaults: what an absent YAML block means. */
   public static GlinerLabelDef getDefaultInstance() {
     return DEFAULT;
   }
 
+  /** Returns a builder with every field at its default. */
   public static Builder newBuilder() {
     return new Builder();
   }
 
+  /** Fluent builder; unset fields keep the engine defaults. */
   public static final class Builder {
 
     private String name = "";

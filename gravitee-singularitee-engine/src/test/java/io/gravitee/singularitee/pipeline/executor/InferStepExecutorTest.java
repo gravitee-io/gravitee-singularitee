@@ -250,7 +250,7 @@ class InferStepExecutorTest {
       executor.rxExecuteWithEngine("plan", cfg, engine, stepContext(pctx)).test();
 
       String prompt = ((CapturingEngine) engine).captured.get().prompt();
-      // Caller identity first, step steering appended — neither is dropped.
+      // Caller identity first, step steering appended; neither is dropped.
       assertThat(prompt).contains("You are pi, a coding agent.");
       assertThat(prompt).contains("Call the set_todos tool with the plan.");
       assertThat(prompt.indexOf("You are pi")).isLessThan(prompt.indexOf("Call the set_todos"));
@@ -398,7 +398,7 @@ class InferStepExecutorTest {
       TextGenRequest req = execute(configWithThinkingDisabled(), engine);
 
       assertThat(req).isNotNull();
-      // No pre-rendered prompt — and especially no "role: content" junk.
+      // No pre-rendered prompt, and especially no "role: content" junk.
       assertThat(req.prompt()).isNull();
       assertThat(req.messages())
         .extracting(ChatTurn::role, ChatTurn::content)
@@ -420,8 +420,8 @@ class InferStepExecutorTest {
     @Test
     void disposing_the_step_disposes_the_engine_subscription() {
       // Client disconnect cancels the pipeline chain; disposing the step's
-      // Maybe must dispose the engine's rxAddSequence subscription — that is
-      // the hook engines use to cancel native generation (doOnDispose →
+      // Maybe must dispose the engine's rxAddSequence subscription; that is
+      // the hook engines use to cancel native generation (doOnDispose ->
       // cancelSequence) or to cancel the upstream gRPC call (remote).
       var disposed = new java.util.concurrent.atomic.AtomicBoolean(false);
       var engine = new CapturingEngine(null) {
@@ -450,7 +450,7 @@ class InferStepExecutorTest {
 
     @Test
     void passthrough_without_yaml_messages_keeps_original_turns() {
-      // No YAML message override — the caller's original ChatTurns must be
+      // No YAML message override: the caller's original ChatTurns must be
       // forwarded as-is (preserving any multimodal media), not rebuilt.
       var engine = new CapturingEngine(null);
       var cfg = InferStepConfig.newBuilder().setModelId("qwen3").build();

@@ -109,7 +109,7 @@ public final class GuardStepExecutor
 
         // Span-bearing results are entity spans only for token-classification engines (NER, regex,
         // stop-words). A sequence classifier whose long input was split also carries spans (the
-        // chunk ranges) but those are not entities — gate on the engine's task so they aren't
+        // chunk ranges) but those are not entities; gate on the engine's task so they aren't
         // treated as redactable entities or used to trigger the guard.
         boolean tokenClassification = ModelTasks.TOKEN_CLASSIFICATION.equals(engine.task());
         boolean hasTokenEntities =
@@ -147,7 +147,7 @@ public final class GuardStepExecutor
         }
 
         LOGGER.info(
-          "GuardStep '{}': triggered — {} match(es): [{}], action={}",
+          "GuardStep '{}': triggered, {} match(es): [{}], action={}",
           stepId,
           matchedTriggers.size(),
           matchedTriggers.stream().map(MatchedTrigger::toString).collect(Collectors.joining(", ")),
@@ -203,7 +203,7 @@ public final class GuardStepExecutor
     pctx.set(stepId + ".labels", labels);
     pctx.set(stepId + ".scores", scores);
 
-    // Append to verdicts log — kept separate from generated_messages so
+    // Append to verdicts log, kept separate from generated_messages so
     // downstream steps can distinguish safety metadata from assistant turns.
     pctx.addVerdict(stepId, top.label(), details);
     pctx.set(stepId + ".details", details);
@@ -231,7 +231,7 @@ public final class GuardStepExecutor
     } else if (action == GuardAction.GUARD_ACTION_WARN) {
       pctx.set(PipelineContext.KEY_GUARD_TRIGGERED, stepId);
       LOGGER.warn(
-        "GuardStep '{}': warning — matched triggers: [{}]",
+        "GuardStep '{}': warning, matched triggers: [{}]",
         stepId,
         matchedTriggers.stream().map(MatchedTrigger::toString).collect(Collectors.joining(", "))
       );
@@ -340,7 +340,7 @@ public final class GuardStepExecutor
     if (template == null || template.isBlank()) return "";
     var ctx = JinjaContextHelper.buildBaseContext(pctx);
     if (LOGGER.isTraceEnabled()) {
-      LOGGER.trace("Guard reject-message render — context:\n{}", JinjaContextHelper.dump(ctx, 200));
+      LOGGER.trace("Guard reject-message render, context:\n{}", JinjaContextHelper.dump(ctx, 200));
     }
     return jinjaRenderer.render(template, "<guard_msg>", ctx);
   }

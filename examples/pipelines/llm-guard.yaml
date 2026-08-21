@@ -14,21 +14,21 @@
 # limitations under the License.
 #
 
-# Pipeline — llm-guard: Shieldstral screening, then gpt-oss-20b generation
+# Pipeline: llm-guard: Shieldstral screening, then gpt-oss-20b generation
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/pipelines/llm-guard.yaml
 #
-#   input_guard (Shieldstral, reject) ──→ generate (gpt-oss-20b)
+#   input_guard (Shieldstral, reject) -> generate (gpt-oss-20b)
 #
 # Unlike examples/pipelines/guard.yaml (fixed-label ONNX classifiers), the guard
 # here is an LLM: Shieldstral-1.0-3B evaluates the input against a natural
 # language policy and answers a single yes/no token. That makes the policy a
-# string in this file — edit <Query>/<Instruct> below to change what gets
+# string in this file, edit <Query>/<Instruct> below to change what gets
 # blocked, no retraining or label list involved.
 #
 # Verdict wiring: Shieldstral answers "yes" when the content MATCHES the policy
-# question ("Is this prompt unsafe?"), so the SAFE verdict is "no" —
+# question ("Is this prompt unsafe?"), so the SAFE verdict is "no",
 # safe_token: "no". Any other verdict triggers the reject action and the caller
 # gets `message` back instead of a generation.
 #
@@ -50,7 +50,7 @@ workspace:
       memory_check: warn
       llama_cpp:
         path: Shieldstral-1.0-3B-Q4_K_M.gguf
-        # Screening prompts are short and the verdict is one token — keep the
+        # Screening prompts are short and the verdict is one token, keep the
         # context small and let several guard calls run concurrently.
         n_ctx: 8192
         n_seq_max: 4
@@ -107,7 +107,7 @@ workspace:
             message: "Your request was blocked by the safety guard (verdict: {{ input_guard.verdict }})."
 
         # Reached only when the guard answered "no" (safe). Config is the
-        # gpt-oss-20b agent step verbatim — see examples/llama/gpt-oss-20b.yaml
+        # gpt-oss-20b agent step verbatim, see examples/llama/gpt-oss-20b.yaml
         # for the full rationale behind the Harmony tag markers.
         - id: generate
           type: infer

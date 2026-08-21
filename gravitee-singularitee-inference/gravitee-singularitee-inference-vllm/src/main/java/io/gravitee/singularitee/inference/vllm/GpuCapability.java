@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>{@code dtype: auto} resolves to the checkpoint's {@code bfloat16}, which
- *       those cards do not implement — vLLM refuses the load.</li>
+ *       those cards do not implement, so vLLM refuses the load.</li>
  *   <li>FlashInfer is selected for sampling and attention, then JIT-compiles its
  *       kernels at engine init and fails against the CUDA toolchain it pulls
  *       in.</li>
@@ -43,8 +43,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Deliberately shells out rather than asking CPython: this has to be known
  * <em>before</em> the vLLM import, and {@code nvidia-smi} ships with the driver
- * that must be present anyway. Anything unexpected — no binary, no GPU, a
- * timeout, unparseable output — yields an empty result, which every caller reads
+ * that must be present anyway. Anything unexpected (no binary, no GPU, a
+ * timeout, unparseable output) yields an empty result, which every caller reads
  * as "assume a modern card and change nothing".
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -76,8 +76,9 @@ final class GpuCapability {
   }
 
   /**
-   * The lowest compute capability across the visible GPUs — the binding one in a
-   * mixed set, since the engine's dtype and backend apply to all of them.
+   * The lowest compute capability across the visible GPUs: the binding one in a
+   * mixed set, since the engine's dtype and backend apply to all of them. Empty
+   * when it cannot be read.
    */
   static OptionalDouble lowest() {
     OptionalDouble local = cached;
@@ -107,13 +108,13 @@ final class GpuCapability {
       if (!process.waitFor(QUERY_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
         process.destroyForcibly();
         LOGGER.debug(
-          "nvidia-smi did not answer within {}s — GPU capability unknown",
+          "nvidia-smi did not answer within {}s, GPU capability unknown",
           QUERY_TIMEOUT_SECONDS
         );
         return OptionalDouble.empty();
       }
       if (process.exitValue() != 0) {
-        LOGGER.debug("nvidia-smi exited with {} — GPU capability unknown", process.exitValue());
+        LOGGER.debug("nvidia-smi exited with {}, GPU capability unknown", process.exitValue());
         return OptionalDouble.empty();
       }
 
@@ -127,7 +128,7 @@ final class GpuCapability {
       return OptionalDouble.empty();
     } catch (Exception e) {
       // No nvidia-smi at all (CPU box, macOS/Metal) is the common case and not
-      // worth a warning — every caller degrades to "change nothing".
+      // worth a warning: every caller degrades to "change nothing".
       LOGGER.debug("Could not read GPU compute capability: {}", e.toString());
       return OptionalDouble.empty();
     } finally {
@@ -139,8 +140,8 @@ final class GpuCapability {
 
   /**
    * Parses {@code nvidia-smi --query-gpu=compute_cap} output: one value per GPU,
-   * one per line. Unparseable lines — {@code [N/A]} on a card the driver cannot
-   * report, or a stray banner — are skipped rather than failing the whole read.
+   * one per line. Unparseable lines ({@code [N/A]} on a card the driver cannot
+   * report, or a stray banner) are skipped rather than failing the whole read.
    */
   static OptionalDouble parse(String output) {
     if (output == null || output.isBlank()) {

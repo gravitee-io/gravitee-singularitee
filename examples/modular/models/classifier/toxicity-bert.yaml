@@ -14,11 +14,11 @@
 # limitations under the License.
 #
 
-# Toxicity classifier — distilbert multilingual toxicity (ONNX)
+# Toxicity classifier: distilbert multilingual toxicity (ONNX)
 #
 # Logical id: "toxicity". Sequence-level classifier returning {non-toxic, toxic};
 # the guard step rejects inputs scoring "toxic" above the trigger threshold.
-# Cross-platform (ONNX Runtime, CPU) — pairs with any LLM backend.
+# Cross-platform (ONNX Runtime, CPU), pairs with any LLM backend.
 #
 # Served by: server-safety.yaml (:9092)
 

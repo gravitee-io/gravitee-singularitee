@@ -54,7 +54,7 @@ import java.util.Map;
  * </ul>
  *
  * <p><strong>Threading contract:</strong> one instance exists per pipeline request, and the
- * DAG walk executes steps strictly sequentially — the plain collections ({@code fields},
+ * DAG walk executes steps strictly sequentially: the plain collections ({@code fields},
  * {@code generatedMessages}, {@code verdicts}, {@code iterationCounters}) are only ever
  * mutated between steps, where the reactive chain provides the happens-before edge across
  * any thread hop. The {@code volatile} scalars and the {@code synchronized} todo/server-tool
@@ -79,7 +79,7 @@ public final class PipelineContext {
   /**
    * Per-request caller instructions (OpenAI Responses {@code instructions}),
    * seeded from the request's context. Injected as a system turn at prompt
-   * render time only — never part of the transcript, so a stored conversation
+   * render time only, never part of the transcript, so a stored conversation
    * does not carry them over and each continuation's own instructions apply.
    */
   public static final String KEY_INSTRUCTIONS = "instructions";
@@ -91,8 +91,8 @@ public final class PipelineContext {
    * Written by a tool-select step: the shortlist of tool names the downstream
    * infer step should inject. Stored in the string field map as a comma-joined
    * list (for templates/debugging); the typed view is {@link #selectedTools()}.
-   * Absent (null) = no selection ran → inject all tools. Empty list = the
-   * selector decided no tools are needed → inject none.
+   * Absent (null) = no selection ran -> inject all tools. Empty list = the
+   * selector decided no tools are needed -> inject none.
    */
   public static final String KEY_SELECTED_TOOLS = "__selected_tools";
 
@@ -101,7 +101,7 @@ public final class PipelineContext {
    * condensed injection descriptions keyed by tool name. Stored in the string
    * field map as {@code name=description} pairs joined with {@code ;} (for
    * templates/debugging); the typed view is {@link #condensedToolDescriptions()}.
-   * Absent (null) = no trimming ran → inject original descriptions.
+   * Absent (null) = no trimming ran -> inject original descriptions.
    */
   public static final String KEY_CONDENSED_TOOL_DESCRIPTIONS = "__condensed_tool_descriptions";
 
@@ -153,7 +153,7 @@ public final class PipelineContext {
   private final List<ToolDefinition> serverTools = new ArrayList<>();
 
   /**
-   * The chat messages from the caller. Mutable — may be updated by a guard
+   * The chat messages from the caller. Mutable: may be updated by a guard
    * step that redacts PII spans before passing to the LLM.
    * Null when the caller sent a flat prompt string instead.
    */
@@ -168,8 +168,8 @@ public final class PipelineContext {
 
   /**
    * Sampling override installed by a loop step on its RETRY edge (see
-   * {@code LoopStepConfig.retry_sampling_params}) and cleared when the loop exits — happy
-   * path or fallback — so it never leaks past the loop. Precedence in infer steps:
+   * {@code LoopStepConfig.retry_sampling_params}) and cleared when the loop exits (happy
+   * path or fallback) so it never leaks past the loop. Precedence in infer steps:
    * request override > this > step params. {@code null} = no active retry override.
    */
   private volatile SamplingParams retrySamplingParams;
@@ -206,6 +206,11 @@ public final class PipelineContext {
    */
   private volatile String haltMessage = null;
 
+  /**
+   * Builds the context for one pipeline run from the incoming request parts.
+   * Proto messages are converted to {@link ChatTurn}s; {@code null} collections are
+   * treated as empty.
+   */
   public PipelineContext(
     String prompt,
     List<ChatTurn> messages,
@@ -225,7 +230,7 @@ public final class PipelineContext {
    *
    * <p>Handles the three input modes:
    * <ol>
-   *   <li>Chat messages — converts proto messages to {@link ChatTurn}s,
+   *   <li>Chat messages: converts proto messages to {@link ChatTurn}s,
    *       extracts last user message as flat prompt</li>
    *   <li>Flat prompt string</li>
    *   <li>Empty (no input)</li>
@@ -470,7 +475,7 @@ public final class PipelineContext {
 
   /**
    * Returns a pretty, truncated, human-readable dump of the entire pipeline
-   * context — fields, messages, generated messages and verdicts — suitable
+   * context (fields, messages, generated messages and verdicts) suitable
    * for DEBUG/TRACE logging around step execution.
    *
    * <p>Long string values are truncated to {@code maxValueChars} characters
@@ -523,7 +528,7 @@ public final class PipelineContext {
           .append(v.stepId())
           .append("] ")
           .append(v.verdict())
-          .append(" — ")
+          .append(": ")
           .append(truncate(v.details(), maxValueChars))
           .append('\n');
       }
@@ -561,7 +566,7 @@ public final class PipelineContext {
     return sb.toString();
   }
 
-  /** Shortcut: {@code debugSnapshot(200)} — safe default for step logging. */
+  /** Shortcut: {@code debugSnapshot(200)}, a safe default for step logging. */
   public String debugSnapshot() {
     return debugSnapshot(200);
   }
@@ -664,7 +669,7 @@ public final class PipelineContext {
    * Replaces the engine-managed todo plan. The first item is promoted to
    * {@code in_progress} if every incoming item is {@code pending}. Mirrors
    * {@code todos.total} / {@code todos.completed} / {@code todos.remaining}
-   * into the fields map — conditions only read the flat String map.
+   * into the fields map: conditions only read the flat String map.
    */
   public synchronized void setTodos(List<TodoItem> items) {
     todos.clear();
@@ -756,6 +761,7 @@ public final class PipelineContext {
     return planLocked;
   }
 
+  /** Overrides the plan lock (restore-time policy; see {@link #setTodos}). */
   public void setPlanLocked(boolean locked) {
     this.planLocked = locked;
   }
@@ -764,7 +770,7 @@ public final class PipelineContext {
    * Plan-level constraints: the locked user decisions (tools, language,
    * frameworks) recorded by {@code set_todos} and re-injected into every step
    * prompt via the {@code constraints} Jinja variable. Deliberately NOT
-   * mirrored into the flat field map — a {@code todos.}-prefixed scalar would
+   * mirrored into the flat field map: a {@code todos.}-prefixed scalar would
    * be nested under the {@code todos} template key and clobbered by the item
    * list (see {@code JinjaContextHelper}).
    */
@@ -783,7 +789,7 @@ public final class PipelineContext {
   }
 
   /**
-   * Restores a previously persisted plan verbatim — statuses are kept exactly
+   * Restores a persisted plan verbatim: statuses are kept exactly
    * (no first-item promotion) so a session resumes where it paused. Mirrors
    * the {@code todos.*} scalar fields like every other mutation.
    */
@@ -922,12 +928,13 @@ public final class PipelineContext {
   }
 
   // ---------------------------------------------------------------------------
-  // Pending narration — an INTERNAL step's answer-channel text, surfaced when a
+  // Pending narration: an INTERNAL step's answer-channel text, surfaced when a
   // client-tool halt ends the turn so the user sees what the agent is doing.
   // ---------------------------------------------------------------------------
 
   private String pendingNarration;
 
+  /** Records an internal step's answer-channel text to surface on a client-tool halt. */
   public void setPendingNarration(String narration) {
     this.pendingNarration = narration;
   }
@@ -985,7 +992,7 @@ public final class PipelineContext {
 
   /**
    * Builds the accumulated {@link InferencePerformance} proto. Raw counters
-   * only — the wire contract carries no derived rates; consumers compute
+   * only; the wire contract carries no derived rates; consumers compute
    * tokens/second from {@code tokens_generated} and {@code eval_time_ms}.
    */
   public InferencePerformance buildTotalPerformance() {

@@ -14,17 +14,17 @@
 # limitations under the License.
 #
 
-# Pipeline — guard: PII redaction + toxicity rejection, then generation
+# Pipeline: guard: PII redaction + toxicity rejection, then generation
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/pipelines/guard.yaml
 #
-#   toxicity_guard (reject) ──→ pii_guard (redact) ──→ generate
+#   toxicity_guard (reject) -> pii_guard (redact) -> generate
 #
 # Two guard actions, deliberately in this order:
-#   REJECT first  — toxic input never reaches the model at all, so you don't pay
+#   REJECT first: toxic input never reaches the model at all, so you don't pay
 #                   for generation on a request you were going to refuse.
-#   REDACT second — clean-but-sensitive input is rewritten (spans masked) and the
+#   REDACT second, clean-but-sensitive input is rewritten (spans masked) and the
 #                   REDACTED text, not the original, is what the LLM ever sees.
 #
 # A guard is just a classifier plus a decision, which is why both steps here are
@@ -96,7 +96,7 @@ workspace:
             message: "Your request was blocked because toxic content was detected (label: {{toxicity_guard.label}}, confidence: {{toxicity_guard.score}})."
 
         # Redact: detected spans are masked and the result written to
-        # pii_guard.output — which is what the generate step reads below.
+        # pii_guard.output, which is what the generate step reads below.
         # The trigger label is "PII" because the bert-small backend aggregates its
         # BIO token labels under that single entity. Swapping in the zero-shot
         # GLiNER backend (examples/classifier/pii-gliner.yaml) means replacing this
@@ -127,7 +127,7 @@ workspace:
             prompt:
               messages:
                 - role: system
-                  content: "Answer the user. Some values may appear masked — treat them as redacted and never try to guess them."
+                  content: "Answer the user. Some values may appear masked, treat them as redacted and never try to guess them."
                 - role: user
                   content: "{{pii_guard.output}}"
             sampling:

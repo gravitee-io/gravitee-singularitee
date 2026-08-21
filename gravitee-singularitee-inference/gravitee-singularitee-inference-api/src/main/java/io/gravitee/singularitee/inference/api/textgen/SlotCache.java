@@ -24,8 +24,8 @@ import java.util.Set;
  * <p>Each slot is {@code COLD} (no KV worth reusing), {@code WARM} (a finished
  * sequence left its committed prompt+completion tokens KV-resident) or
  * {@code IN_USE}. {@link #acquire} picks the slot whose cached tokens share the
- * longest common prefix with the incoming prompt — preferring an exact
- * {@code cacheKey} match — and returns how many prefix tokens the new sequence
+ * longest common prefix with the incoming prompt (preferring an exact
+ * {@code cacheKey} match) and returns how many prefix tokens the new sequence
  * may reuse.
  *
  * <p><b>Busy slots are donors too.</b> A KV cell in llama.cpp carries a
@@ -34,19 +34,19 @@ import java.util.Set;
  * even while its owner is still generating. When the best match is {@code IN_USE}
  * the selection names it as {@link Selection#donorSlot()} and the destination is
  * a free slot; the caller performs the copy. Without this, N concurrent requests
- * behind one system prompt would each prefill it in full — only the first would
+ * behind one system prompt would each prefill it in full: only the first would
  * ever benefit, because it alone would leave a free warm slot behind.
  *
  * <p><b>Residency invariant.</b> A slot's cached tokens must never claim more
  * than is provably resident, or a later copy reads cells that no longer exist.
- * {@link #acquire} therefore narrows the chosen slot to the matched prefix — all
- * a copy destination holds, and all an in-place reuse keeps once the prefill
+ * {@link #acquire} therefore narrows the chosen slot to the matched prefix, which is
+ * all a copy destination holds, and all an in-place reuse keeps once the prefill
  * trims it. The caller widens it again with {@link #publish} once the prompt has
  * actually been prefilled, and must also shrink it to nothing if the copy failed.
  *
  * <p>Pure data structure: no locking, no engine calls. The caller (the batch
- * engine) holds its own lock around every method — including across
- * {@code acquire} and the copy it implies — and is responsible for actually
+ * engine) holds its own lock around every method, including across
+ * {@code acquire} and the copy it implies, and is responsible for actually
  * retaining/releasing KV on the backend.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -85,6 +85,12 @@ public final class SlotCache {
   private final int minReuseTokens;
   private long tick;
 
+  /**
+   * Creates bookkeeping for {@code numSlots} cold slots.
+   *
+   * @param minReuseTokens shortest common prefix worth preferring a warm slot over a cold one
+   *                       when no cache key matches; negative values are treated as zero
+   */
   public SlotCache(int numSlots, int minReuseTokens) {
     if (numSlots <= 0) {
       throw new IllegalArgumentException("numSlots must be positive");
@@ -104,11 +110,11 @@ public final class SlotCache {
    * Picks the best slot among {@code freeSlots} for a prompt and marks it IN_USE.
    *
    * <p>Priority: (1) a free warm slot whose {@code cacheKey} matches (reuse = LCP,
-   * no threshold — key affinity is an explicit client hint); (2) the slot with the
-   * longest token-id LCP, if it reaches {@code minReuseTokens} — busy slots
+   * no threshold, since key affinity is an explicit client hint); (2) the slot with
+   * the longest token-id LCP, if it reaches {@code minReuseTokens}, busy slots
    * included, in which case the prefix is copied onto a free destination and the
    * donor is named in the selection; (3) a cold free slot, else the
-   * least-recently-used warm slot — un-keyed warm slots are evicted before keyed
+   * least-recently-used warm slot, un-keyed warm slots being evicted before keyed
    * ones.
    *
    * <p>The chosen slot's cached tokens are narrowed to the matched prefix. See the
@@ -125,7 +131,7 @@ public final class SlotCache {
       return null;
     }
 
-    // (1) explicit key affinity — only among free slots, since reusing in place
+    // (1) explicit key affinity, only among free slots, since reusing in place
     // costs nothing and keeps the whole cached sequence rather than a prefix of it.
     if (cacheKey != null) {
       int best = -1;
@@ -144,7 +150,7 @@ public final class SlotCache {
     }
 
     // (2) longest common prefix above the threshold, over every slot holding
-    // tokens — a busy one is a legitimate donor, its cells are shared not moved.
+    // tokens; a busy one is a legitimate donor, its cells are shared not moved.
     int bestSlot = -1;
     int bestLcp = 0;
     for (int slot = 0; slot < states.length; slot++) {
@@ -166,7 +172,7 @@ public final class SlotCache {
       if (destination >= 0) {
         return checkout(destination, bestLcp, promptTokens, bestSlot);
       }
-      // The donor is the only free slot — fall through and run in place.
+      // The donor is the only free slot: fall through and run in place.
       if (freeSlots.contains(bestSlot)) {
         return checkout(bestSlot, bestLcp, promptTokens, -1);
       }
@@ -175,7 +181,7 @@ public final class SlotCache {
     // (3) no usable prefix: prefer a cold slot, else evict the LRU warm one
     int chosen = pickFreeSlot(freeSlots, -1);
     if (chosen < 0) {
-      // Free slots exist but are all marked IN_USE — inconsistent bookkeeping;
+      // Free slots exist but are all marked IN_USE (inconsistent bookkeeping):
       // fall back to any free slot with no reuse.
       chosen = freeSlots.iterator().next();
     }
@@ -184,7 +190,7 @@ public final class SlotCache {
 
   /**
    * A free slot to start a sequence in: coldest first, else the least recently
-   * used warm one (un-keyed before keyed). {@code exclude} is never returned —
+   * used warm one (un-keyed before keyed). {@code exclude} is never returned:
    * it names the donor, whose cells the caller is about to share.
    */
   private int pickFreeSlot(Set<Integer> freeSlots, int exclude) {
@@ -213,8 +219,8 @@ public final class SlotCache {
   }
 
   /**
-   * Records what an IN_USE slot provably holds — narrowing it when a copy was
-   * refused, widening it to the committed tokens once the prompt is prefilled so
+   * Records what an IN_USE slot provably holds: narrowed when a copy was
+   * refused, widened to the committed tokens once the prompt is prefilled so
    * later requests can copy from it while it is still generating.
    *
    * @param slot           the slot
@@ -238,7 +244,7 @@ public final class SlotCache {
     lastUsed[slot] = ++tick;
   }
 
-  /** Marks a slot COLD — its KV content is gone or untrustworthy. */
+  /** Marks a slot COLD: its KV content is gone or untrustworthy. */
   public void invalidate(int slot) {
     states[slot] = SlotState.COLD;
     cachedTokens[slot] = EMPTY;
@@ -251,6 +257,7 @@ public final class SlotCache {
     return states[slot];
   }
 
+  /** Marks {@code slot} IN_USE and narrows its advertised tokens to the matched prefix. */
   private Selection checkout(int slot, int reuse, int[] promptTokens, int donorSlot) {
     states[slot] = SlotState.IN_USE;
     lastUsed[slot] = ++tick;
@@ -263,6 +270,7 @@ public final class SlotCache {
     return new Selection(slot, reuse, donorSlot);
   }
 
+  /** Length of the longest common prefix of two token arrays. */
   private static int lcp(int[] a, int[] b) {
     int n = Math.min(a.length, b.length);
     int i = 0;

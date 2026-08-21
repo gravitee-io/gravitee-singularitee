@@ -18,7 +18,7 @@ package io.gravitee.singularitee.http.translation;
 import java.util.List;
 
 /**
- * A structured tool call as delivered on the wire ({@code ResponseCompleted.tool_calls}) —
+ * A structured tool call as delivered on the wire ({@code ResponseCompleted.tool_calls}),
  * extracted engine-side by the step's Jinja extraction template. {@code coercibleArgs} lists the
  * argument names whose string values came from untyped dialect text and should be coerced to
  * their declared JSON-schema types using the HTTP request's tool schemas.

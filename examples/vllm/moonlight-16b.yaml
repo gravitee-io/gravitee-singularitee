@@ -16,18 +16,18 @@
 
 # Moonlight-16B · vLLM backend
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/vllm/moonlight-16b.yaml
 #
 # MoE 16B (3B active, 64 experts) on the DeepSeek-V3 architecture, bf16. Note the
-# short 8192-token positional encoding — the smallest window of any model here.
+# short 8192-token positional encoding, the smallest window of any model here.
 # trust_remote_code is required: the checkpoint ships its own config class.
 #
 # ⚠ Linux + CUDA only. vLLM runs from a host venv (scripts/setup-venv.sh) unless
 #   you use the -vllm-cuda image, which bundles it:
 #     ./run-server.sh --workspace examples/vllm/moonlight-16b.yaml   -Dvllm4j.venv=/path/to/.venv
 #
-# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each loads its own
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM: each loads its own
 # native CUDA bindings. One backend per server, composed over gRPC.
 
 workspace:

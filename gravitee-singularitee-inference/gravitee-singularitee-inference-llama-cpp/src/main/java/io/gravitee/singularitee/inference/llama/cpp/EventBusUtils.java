@@ -20,11 +20,13 @@ package io.gravitee.singularitee.inference.llama.cpp;
  */
 public final class EventBusUtils {
 
+  /** Root of every llama.cpp event bus address. */
   public static final String ADDRESS_PREFIX = "gravitee.inference.llama-cpp";
   private static final String TOKENS_PREFIX = ADDRESS_PREFIX + ".tokens.";
 
   private EventBusUtils() {}
 
+  /** Address on which tokens of sequence {@code seqId} of stream {@code streamId} are published. */
   public static String tokensAddress(String streamId, int seqId) {
     return TOKENS_PREFIX + streamId + "." + seqId;
   }

@@ -40,6 +40,10 @@ public final class InferRequestBuilder {
 
   private InferRequestBuilder() {}
 
+  /**
+   * Builds an {@link InferRequest} for a raw model id from the payload of the given endpoint:
+   * chat messages, the Responses {@code input} shape, or a flat {@code prompt}.
+   */
   public static InferRequest build(String modelId, JsonNode payload, EndpointType endpointType) {
     InferRequest.Builder builder = InferRequest.newBuilder().setModelId(modelId);
 
@@ -65,7 +69,7 @@ public final class InferRequestBuilder {
       }
     }
 
-    // Tools → tools_json (the engine injects them via the chat template).
+    // Tools are forwarded as tools_json; the engine injects them via the chat template.
     JsonNode toolsNode = payload.at("/tools");
     if (toolsNode.isArray()) {
       for (JsonNode toolNode : toolsNode) {

@@ -34,8 +34,8 @@ import org.slf4j.LoggerFactory;
  * <p>vLLM can fetch weights itself, but then the download happens inside the
  * embedded CPython interpreter: it does not share the cache the other engines
  * use, it does not report progress through our logs, and it makes the model
- * cache depend on the Python environment. Every other backend — llama.cpp, ONNX,
- * GLiNER — resolves its files in Java through {@link HuggingFaceModelDownloader}
+ * cache depend on the Python environment. Every other backend (llama.cpp, ONNX,
+ * GLiNER) resolves its files in Java through {@link HuggingFaceModelDownloader}
  * first and hands the engine a path. This does the same for vLLM, so all four
  * share one cache layout and one download path.
  *
@@ -91,10 +91,12 @@ public final class VllmModelResolver {
   private final HuggingFaceModelDownloader downloader;
   private final Path cacheDir;
 
+  /** HuggingFace access with an optional token and the default cache directory. */
   public VllmModelResolver(Vertx vertx, String hfToken) {
     this(new HuggingFaceModelDownloader(vertx, hfToken), DEFAULT_CACHE_DIR);
   }
 
+  /** Full control over the downloader and cache directory (used by tests). */
   public VllmModelResolver(HuggingFaceModelDownloader downloader, Path cacheDir) {
     this.downloader = downloader;
     this.cacheDir = cacheDir;
@@ -120,7 +122,7 @@ public final class VllmModelResolver {
       return Single.error(new IllegalArgumentException("vLLM model name must not be blank"));
     }
 
-    // Already a local model directory — nothing to fetch.
+    // Already a local model directory: nothing to fetch.
     Path asPath = Path.of(modelName);
     if (Files.isDirectory(asPath)) {
       LOGGER.info("vLLM model is local: {}", asPath.toAbsolutePath());
@@ -175,7 +177,7 @@ public final class VllmModelResolver {
   /**
    * Picks the files vLLM needs.
    *
-   * <p>Repositories routinely ship the same weights several times over — a GGUF
+   * <p>Repositories routinely ship the same weights several times over: a GGUF
    * for llama.cpp, an ONNX export, a legacy PyTorch {@code .bin} beside the
    * safetensors. Downloading all of it would multiply the transfer for no
    * benefit, so this takes the metadata plus exactly one weight format,

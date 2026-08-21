@@ -27,7 +27,7 @@ public final class JsonResponses {
 
   private static final Logger log = LoggerFactory.getLogger(JsonResponses.class);
 
-  /** Longest slice of a JSON body worth logging — enough to identify it without flooding the log. */
+  /** Longest slice of a JSON body worth logging: enough to identify it without flooding the log. */
   private static final int LOGGED_BODY_MAX_LENGTH = 200;
 
   private JsonResponses() {}
@@ -38,17 +38,18 @@ public final class JsonResponses {
       : json.substring(0, LOGGED_BODY_MAX_LENGTH) + "… (" + json.length() + " chars)";
   }
 
+  /**
+   * Writes {@code json} with the given status and {@code application/json} content type.
+   *
+   * <p>Safe to call after the response has been (partly) written: a late write on an ended
+   * response is dropped, and one on a response whose head is already out terminates the stream
+   * instead, since status and headers can no longer change. Neither case throws.
+   */
   public static void writeJson(RoutingContext rc, int status, String json) {
     var response = rc.response();
-    // An error surfacing AFTER the response is (partly) written must not throw
-    // "Response has already been written" onto the event loop (observed live:
-    // an expired previous_response_id failed the pipeline, the failure was
-    // rendered into the response, and a second error write then blew up as an
-    // unhandled exception). Once the head is out, status/headers are gone —
-    // terminate the stream instead; once ended, there is nothing left to do.
     if (response.ended()) {
       log.debug(
-        "Response already ended — dropping late write (status {}): {}",
+        "Response already ended, dropping late write (status {}): {}",
         status,
         truncateForLog(json)
       );
@@ -56,7 +57,7 @@ public final class JsonResponses {
     }
     if (response.headWritten()) {
       log.warn(
-        "Response head already written — terminating stream instead of writing: {}",
+        "Response head already written, terminating stream instead of writing: {}",
         truncateForLog(json)
       );
       response.end();
@@ -65,10 +66,12 @@ public final class JsonResponses {
     response.setStatusCode(status).putHeader("content-type", APPLICATION_JSON).end(json);
   }
 
+  /** Writes {@code node} as a 200 JSON response. */
   public static void writeJson(RoutingContext rc, JsonNode node) {
     writeJson(rc, 200, node.toString());
   }
 
+  /** Writes an {@link OpenAiError} envelope with the given status. */
   public static void writeError(
     RoutingContext rc,
     int status,

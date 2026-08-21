@@ -118,7 +118,7 @@ class GlinerNerEngineTest {
 
   /**
    * A single request that splits into more chunks than {@link GlinerBatching#maxBatchSize()} must
-   * still reassemble every span at its correct absolute offset — even though its chunks are spread
+   * still reassemble every span at its correct absolute offset, even though its chunks are spread
    * across multiple {@code extractBatch} GPU runs (the batcher hard-caps each batch, so more chunks
    * than one batch's worth is guaranteed to span ≥2 calls).
    */
@@ -148,7 +148,7 @@ class GlinerNerEngineTest {
 
     var response = engine.rxClassify(new ClassifyRequest(text)).blockingGet();
 
-    // Exactly one span per chunk — nothing dropped or duplicated across batches.
+    // Exactly one span per chunk; nothing dropped or duplicated across batches.
     assertThat(response.results()).hasSize(chunkCount);
     // Every span's absolute offsets slice the original text back to its own token: the re-basing is
     // correct regardless of which batch produced the chunk.

@@ -24,10 +24,10 @@ package io.gravitee.singularitee.engine;
  *
  * <p>Mapping to internal engine types:
  * <ul>
- *   <li>{@link TextGenEngine}                                  → {@link #TEXT_GENERATION}</li>
- *   <li>{@link ClassifierEngine} in {@code SEQUENCE} mode      → {@link #TEXT_CLASSIFICATION}</li>
- *   <li>{@link ClassifierEngine} in {@code TOKEN}    mode      → {@link #TOKEN_CLASSIFICATION}</li>
- *   <li>{@link EmbeddingEngine}                                → {@link #FEATURE_EXTRACTION}</li>
+ *   <li>{@link TextGenEngine}: {@link #TEXT_GENERATION}</li>
+ *   <li>{@link ClassifierEngine} in {@code SEQUENCE} mode: {@link #TEXT_CLASSIFICATION}</li>
+ *   <li>{@link ClassifierEngine} in {@code TOKEN} mode: {@link #TOKEN_CLASSIFICATION}</li>
+ *   <li>{@link EmbeddingEngine}: {@link #FEATURE_EXTRACTION}</li>
  * </ul>
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)

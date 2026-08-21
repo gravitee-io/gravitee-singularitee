@@ -22,11 +22,11 @@ import java.util.function.Consumer;
 
 /**
  * Batch inference engine for vLLM models.
- * Delegates all complex orchestration to {@link AbstractBatchEngine},
- * focusing only on vLLM-specific configuration.
  *
- * <p>Unlike llama.cpp which requires a local GGUF file, vLLM takes a HuggingFace
- * model identifier and downloads/loads the model itself via the Python engine.
+ * <p>Delegates sequence lifecycle, slots, queuing and streaming to
+ * {@link AbstractBatchEngine} and contributes only the vLLM-specific
+ * {@link EngineAdapter}. Construction loads the model and initialises the
+ * CPython runtime.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -65,22 +65,31 @@ public class BatchEngine
     return engineAdapter.chatTemplateString();
   }
 
+  /** Context window vLLM resolved for this model, in tokens (0 if unknown). */
   public int maxModelLen() {
     return engineAdapter.maxModelLen();
   }
 
+  /** Every special token the tokenizer declares. */
   public java.util.List<String> allSpecialTokens() {
     return engineAdapter.allSpecialTokens();
   }
 
+  /**
+   * Counts tokens with the model's own tokenizer.
+   *
+   * @return the exact token count, or -1 when it cannot be determined
+   */
   public int countTokens(String text) {
     return engineAdapter.countTokens(text);
   }
 
+  /** Beginning-of-sequence token text as declared by the tokenizer. */
   public String bosToken() {
     return engineAdapter.bosToken();
   }
 
+  /** End-of-sequence token text as declared by the tokenizer. */
   public String eosToken() {
     return engineAdapter.eosToken();
   }

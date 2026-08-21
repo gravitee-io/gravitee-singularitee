@@ -31,8 +31,8 @@ import java.util.Optional;
  * Resolves the OpenAI {@code model} field to either a text-generation model ({@code Infer}) or a
  * pipeline ({@code InferPipeline}). Model ids and pipeline ids are separate namespaces; a
  * {@code pipeline:} prefix forces the pipeline lookup, otherwise a matching text-gen model wins and
- * a bare pipeline id is the fallback. An unresolved id yields {@link Optional#empty()} (→ 400
- * {@code model_not_found}).
+ * a bare pipeline id is the fallback. An unresolved id yields {@link Optional#empty()}, which
+ * handlers turn into 400 {@code model_not_found}.
  */
 public final class ModelOrPipelineResolver {
 
@@ -52,8 +52,10 @@ public final class ModelOrPipelineResolver {
    * <p>Hidden models and pipelines resolve to nothing: they are internal building
    * blocks, reachable as pipeline dependencies but not as an endpoint of their own.
    * Callers turn the empty result into the same {@code model_not_found} they would
-   * get for an id that was never declared — a hidden model does not announce its
+   * get for an id that was never declared: a hidden model does not announce its
    * own existence by answering differently.
+   *
+   * @throws IllegalArgumentException when the payload cannot be translated for {@code type}
    */
   public Optional<Resolution> resolve(String rawModel, JsonNode payload, EndpointType type) {
     if (rawModel == null || rawModel.isBlank()) {
@@ -114,7 +116,7 @@ public final class ModelOrPipelineResolver {
   /**
    * A resolved target: exactly one of {@code inferRequest} / {@code pipelineRequest} is set.
    *
-   * <p>{@code acceptedModalities} is what the target will read — the model's own
+   * <p>{@code acceptedModalities} is what the target will read: the model's own
    * answer, or for a pipeline the answer of the model behind its output step, since
    * that is what any attached media ends up being decoded by.
    */

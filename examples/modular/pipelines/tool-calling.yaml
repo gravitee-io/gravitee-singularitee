@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 
-# Pipeline — single-step tool-capable inference.
+# Pipeline: single-step tool-capable inference.
 #
 # Demonstrates the template mechanism: the prompt is rendered from the named
 # template "tool-system" (templates/tool-system.yaml) rather than inline

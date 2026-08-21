@@ -16,6 +16,8 @@
 package io.gravitee.singularitee.inference.api.classifier;
 
 /**
+ * Whether a classifier labels the whole input ({@link #SEQUENCE}) or each token ({@link #TOKEN}).
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

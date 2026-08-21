@@ -31,9 +31,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Loads a workspace YAML file and converts it into lists of
- * {@code ModelLoadRequest} messages
- * ready to be dispatched to the server's service layer.
+ * Loads a workspace YAML file and converts it into {@link ModelLoadRequest}s and proto
+ * {@link Pipeline}s ready for the server's service layer.
  *
  * <p>Models are translated first (in declaration order) so that pipeline
  * definitions can reference their stable IDs immediately.
@@ -159,7 +158,7 @@ public final class YamlWorkspaceLoader {
    *
    * <p>Used by the APIM gateway plugin when the workspace is constructed programmatically
    * from structured configuration fields rather than read from a YAML file or inline string.
-   * Templates are always inline {@code content:} strings in this path — no {@code template_file:}
+   * Templates are always inline {@code content:} strings in this path; no {@code template_file:}
    * resolution is performed.
    *
    * @param root the fully-assembled workspace root
@@ -193,7 +192,7 @@ public final class YamlWorkspaceLoader {
 
     var modelSplit = parseModels(root);
 
-    // Build template registry: id → resolved content string.
+    // Build template registry: id to resolved content string.
     // Templates declared in the root (or merged from includes) are resolved here
     // once, before pipelines are parsed, so template_id references resolve correctly.
     Map<String, String> templateRegistry = buildTemplateRegistry(root, basePath, templatesBasePath);
@@ -502,7 +501,6 @@ public final class YamlWorkspaceLoader {
     if (resolvedTemplate != null && !resolvedTemplate.isBlank()) {
       b.setRawTemplate(resolvedTemplate);
     } else {
-      // Messages: step messages only (personas removed)
       List<MessageEntry> messages = d.prompt() != null ? d.prompt().messages() : null;
       if (messages != null) {
         for (var msg : messages) {
@@ -516,7 +514,6 @@ public final class YamlWorkspaceLoader {
       }
     }
 
-    // Sampling: from step config only (personas removed)
     SamplingDef sampling = d.sampling();
     var sp = toSamplingParams(sampling);
     b.setSamplingParams(sp);
@@ -524,7 +521,7 @@ public final class YamlWorkspaceLoader {
       b.addAllStop(sampling.stop());
     }
 
-    // Tags section — a bare string value is a reference into the workspace's
+    // Tags section: a bare string value is a reference into the workspace's
     // named `tags:` entries, resolved here so the proto always carries the
     // expanded TagConfig.
     var tags = resolveTags(d.tags(), tagRegistry);
@@ -569,8 +566,7 @@ public final class YamlWorkspaceLoader {
     }
 
     // Per-step tool injection toggle. Omitting the key leaves the proto's
-    // optional field unset, which the executor treats as "true" (backwards
-    // compatible with workspaces written before this field existed).
+    // optional field unset, which the executor treats as "true".
     if (d.injectTools() != null) {
       b.setInjectTools(d.injectTools());
     }
@@ -582,7 +578,7 @@ public final class YamlWorkspaceLoader {
     // Per-step thinking suppression. When true, tokens emitted between the
     // reasoning open/close tags are neither streamed to the client nor stored
     // in the pipeline context. The tag pair is taken from reasoning_tags;
-    // when unset the executor defaults to <think>…</think>.
+    // when unset the executor defaults to <think> and </think>.
     if (d.stripThinking() != null) {
       b.setStripThinking(d.stripThinking());
     }
@@ -592,7 +588,7 @@ public final class YamlWorkspaceLoader {
       b.setStreamThinking(d.streamThinking());
     }
 
-    // One-liner default system prompt — the executor prepends it only when the
+    // One-liner default system prompt: the executor prepends it only when the
     // request carries no system message.
     if (d.system() != null && !d.system().isBlank()) {
       b.setSystemPrompt(d.system());
@@ -641,13 +637,13 @@ public final class YamlWorkspaceLoader {
     var named = tagRegistry.get(tags.id());
     if (named == null) {
       throw new IllegalArgumentException(
-        "unknown tags id '" + tags.id() + "' — declare it under workspace tags:"
+        "unknown tags id '" + tags.id() + "': declare it under workspace tags:"
       );
     }
     return named;
   }
 
-  /** Converts a SamplingDef to a proto SamplingParams (stop tokens excluded — handled separately). */
+  /** Converts a {@link SamplingDef} to proto {@link SamplingParams}; stop tokens are handled separately. */
   private static SamplingParams toSamplingParams(SamplingDef sampling) {
     var sp = SamplingParams.newBuilder();
     if (sampling != null) {
@@ -729,7 +725,7 @@ public final class YamlWorkspaceLoader {
     b.setAction(parseGuardAction(d.action()));
     if (d.outputField() != null && !d.outputField().isBlank()) b.setOutputField(d.outputField());
 
-    // Multi-trigger support: prefer triggers list over single trigger
+    // triggers: wins over the single trigger: form.
     if (d.triggers() != null && !d.triggers().isEmpty()) {
       for (var t : d.triggers()) {
         var tb = GuardTrigger.newBuilder();
@@ -738,12 +734,12 @@ public final class YamlWorkspaceLoader {
         b.addTriggers(tb.build());
       }
     } else if (d.trigger() != null) {
-      // Legacy single-trigger fallback — also populate triggers list for uniformity
+      // Single trigger: populate the triggers list too, so executors read one shape.
       var tb = GuardTrigger.newBuilder();
       if (d.trigger().label() != null) tb.setLabel(d.trigger().label());
       if (d.trigger().score() > 0) tb.setScore(d.trigger().score());
       b.addTriggers(tb.build());
-      // Also set deprecated fields for backward compat
+      // The deprecated single-trigger proto fields are still filled in.
       if (d.trigger().label() != null) b.setTriggerLabel(d.trigger().label());
       if (d.trigger().score() > 0) b.setTriggerScore(d.trigger().score());
     }
@@ -768,7 +764,6 @@ public final class YamlWorkspaceLoader {
     if (resolvedTemplate != null && !resolvedTemplate.isBlank()) {
       b.setRawTemplate(resolvedTemplate);
     } else {
-      // Messages: step messages only (personas removed)
       List<MessageEntry> messages = d.prompt() != null ? d.prompt().messages() : null;
       if (messages != null) {
         for (var msg : messages) {
@@ -782,7 +777,6 @@ public final class YamlWorkspaceLoader {
       }
     }
 
-    // Sampling: from step config only (personas removed)
     SamplingDef sampling = d.sampling();
     if (sampling != null) {
       b.setSamplingParams(toSamplingParams(sampling));
@@ -919,11 +913,11 @@ public final class YamlWorkspaceLoader {
   /**
    * Resolves a {@link PromptDef} to a raw template string.
    *
-   * <p>Precedence (mutually exclusive — more than one set is a load-time error):
+   * <p>Precedence (mutually exclusive; more than one set is a load-time error):
    * <ol>
-   *   <li>{@code template_id} — looks up a named template from the workspace registry.</li>
-   *   <li>{@code template_file} — reads the file content (UTF-8) from disk.</li>
-   *   <li>{@code template} — returns the inline string as-is.</li>
+   *   <li>{@code template_id}: looks up a named template from the workspace registry.</li>
+   *   <li>{@code template_file}: reads the file content (UTF-8) from disk.</li>
+   *   <li>{@code template}: returns the inline string as-is.</li>
    *   <li>Otherwise {@code null} is returned (the messages path applies).</li>
    * </ol>
    */
@@ -939,7 +933,7 @@ public final class YamlWorkspaceLoader {
     long setCount = (hasId ? 1 : 0) + (hasFile ? 1 : 0) + (hasInline ? 1 : 0);
     if (setCount > 1) {
       throw new IllegalArgumentException(
-        "prompt.template_id, prompt.template_file and prompt.template are mutually exclusive — use only one"
+        "prompt.template_id, prompt.template_file and prompt.template are mutually exclusive, use only one"
       );
     }
     if (hasId) {
@@ -958,7 +952,7 @@ public final class YamlWorkspaceLoader {
   }
 
   /**
-   * Builds an id → content registry from all {@code templates:} declared in the
+   * Builds an id to content registry from all {@code templates:} declared in the
    * (already-merged) workspace root. Each template's content is resolved from
    * either its inline {@code content:} field or its {@code file:} path.
    */
@@ -978,11 +972,11 @@ public final class YamlWorkspaceLoader {
       boolean hasFile = t.file() != null && !t.file().isBlank();
       if (hasContent && hasFile) {
         throw new IllegalArgumentException(
-          "Template '" + t.id() + "': content and file are mutually exclusive — use only one"
+          "Template '" + t.id() + "': content and file are mutually exclusive, use only one"
         );
       }
       if (!hasContent && !hasFile) {
-        LOGGER.warn("Template '{}' has neither content nor file — skipped", t.id());
+        LOGGER.warn("Template '{}' has neither content nor file, skipped", t.id());
         continue;
       }
       // Workspace-declared templates resolve relative to the WORKSPACE file first
@@ -1004,12 +998,6 @@ public final class YamlWorkspaceLoader {
     return registry;
   }
 
-  /**
-   * Reads a UTF-8 text file, resolving its path relative to {@code basePath}
-   * when the path is not absolute. Throws {@link IllegalArgumentException} if
-   * the file cannot be read.
-   */
-
   /** Prefers the workspace directory when the relative file exists there. */
   private static Path resolveTemplateBase(String file, Path workspaceDir, Path templatesBasePath) {
     Path p = Path.of(file);
@@ -1019,6 +1007,11 @@ public final class YamlWorkspaceLoader {
     return Files.exists(workspaceDir.resolve(p)) ? workspaceDir : templatesBasePath;
   }
 
+  /**
+   * Reads a UTF-8 text file, resolving a relative path under {@code basePath}.
+   *
+   * @throws IllegalArgumentException if the file cannot be read or escapes {@code basePath}
+   */
   private static String readFileContent(String filePath, Path basePath, String fieldName) {
     Path p = Path.of(filePath);
     Path resolved;
@@ -1141,11 +1134,11 @@ public final class YamlWorkspaceLoader {
    * file names (or glob patterns) resolved relative to the hardcoded subfolder that
    * matches the keyword:
    * <ul>
-   *   <li>{@code models:}    → {@code {workspaceDir}/models/}</li>
-   *   <li>{@code pipelines:} → {@code {workspaceDir}/pipelines/}</li>
-   *   <li>{@code templates:} → {@code {workspaceDir}/templates/}</li>
+   *   <li>{@code models:} resolves under {@code {workspaceDir}/models/}</li>
+   *   <li>{@code pipelines:} resolves under {@code {workspaceDir}/pipelines/}</li>
+   *   <li>{@code templates:} resolves under {@code {workspaceDir}/templates/}</li>
    * </ul>
-   * Only the section matching the key is extracted from each file — a file listed
+   * Only the section matching the key is extracted from each file: a file listed
    * under {@code models:} contributes only its {@code workspace.models} list, and so on.
    *
    * <p>Glob patterns (e.g. {@code *.yaml}) are expanded alphabetically (deterministic ordering).
@@ -1244,7 +1237,7 @@ public final class YamlWorkspaceLoader {
       pipelines.isEmpty() ? null : pipelines,
       templates.isEmpty() ? null : templates,
       mainRoot.tags(), // named tag sets come from the base file only (not merged from includes)
-      null // clear includes — no recursive processing
+      null // clear includes: no recursive processing
     );
   }
 
@@ -1260,7 +1253,7 @@ public final class YamlWorkspaceLoader {
     LOGGER.info("Loading include file: {}", file.toAbsolutePath());
     WorkspaceDefinition def = YAML_MAPPER.readValue(file.toFile(), WorkspaceDefinition.class);
     if (def.workspace() == null) {
-      LOGGER.warn("Include file {} missing top-level 'workspace:' key — skipped", file);
+      LOGGER.warn("Include file {} missing top-level 'workspace:' key, skipped", file);
       return null;
     }
     return def.workspace();
@@ -1278,7 +1271,7 @@ public final class YamlWorkspaceLoader {
 
     boolean hasWildcard = pattern.contains("*") || pattern.contains("?") || pattern.contains("{");
     if (!hasWildcard) {
-      // Literal path — return as single-element list (existence checked by caller)
+      // Literal path: single-element list, existence checked by the caller.
       return List.of(baseDir.resolve(pattern));
     }
 

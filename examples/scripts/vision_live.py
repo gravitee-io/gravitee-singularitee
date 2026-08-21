@@ -4,11 +4,11 @@ A live window shows the camera feed. Every INTERVAL seconds (default 0.6) it gra
 NEWEST frame and sends it to the vision model, overlaying the reply on the video. The
 model call runs on a worker thread so the video stays smooth.
 
-There is no native video input — "live video" = one recent still per query, which is what
+There is no native video input, "live video" = one recent still per query, which is what
 a VLM (e.g. Qwen3-VL) expects. Point this at examples/llama/qwen3-vl-2b.yaml.
 
 **Only one request is ever in flight.** 600ms is a target, not a guarantee: if the model
-takes longer than that, ticks are DROPPED rather than queued — queueing would make the
+takes longer than that, ticks are DROPPED rather than queued, queueing would make the
 overlay drift further behind the live feed with every tick. The HUD shows the achieved
 rate and how many ticks were dropped, so you can see what the model actually sustains.
 If you are dropping most ticks, raise INTERVAL, lower MAX_TOKENS or IMG_WIDTH, or use a
@@ -27,7 +27,7 @@ Env:
     MODEL       default: "llm" (or first model from /v1/models)
     API_KEY     default sk-noauth
     CAMERA      camera device index                 (default 0)
-    NUM_FRAMES  frames per query                     (default 1 — the newest)
+    NUM_FRAMES  frames per query                     (default 1, the newest)
     INTERVAL    auto-ask every N seconds; 0 = manual (default 0.6)
     MAX_TOKENS  cap on the reply; keeps latency inside the interval (default 48)
     IMG_WIDTH   longest edge sent to the model       (default 448; lower = faster)
@@ -126,7 +126,7 @@ def query_model():
         _status = "idle"
         _busy = False
         _latency = elapsed
-        # Exponential smoothing — a raw per-query rate jitters too much to read.
+        # Exponential smoothing, a raw per-query rate jitters too much to read.
         inst = 1.0 / elapsed if elapsed > 0 else 0.0
         _rate = inst if _rate == 0.0 else (0.7 * _rate + 0.3 * inst)
 
@@ -211,7 +211,7 @@ PREFLIGHT_CODE = "4827"
 def preflight():
     """Prove the model can actually SEE before opening the camera.
 
-    A text-only model does NOT reject image parts — the server drops them
+    A text-only model does NOT reject image parts, the server drops them
     silently and the model answers from the text alone ("I'm not able to view
     the video stream myself"). That reads like a broken demo when it is really
     the wrong server, so probe with an image the answer depends on: render a
@@ -229,7 +229,7 @@ def preflight():
     b64 = base64.b64encode(buf.tobytes()).decode()
     hint = (
         f"Model {MODEL!r} on {BASE_URL} cannot see images.\n\n"
-        "Text-only models do not error on image parts — the frames are dropped\n"
+        "Text-only models do not error on image parts, the frames are dropped\n"
         "silently and you get answers like \"I can't view the video stream\".\n\n"
         "Start a VISION model in another shell:\n"
         "    task run:vision            (examples/llama/qwen3-vl-2b.yaml)\n\n"
@@ -256,7 +256,7 @@ def preflight():
 
 
 preflight()
-print("preflight ok — the model read the test image")
+print("preflight ok: the model read the test image")
 
 cap = cv2.VideoCapture(CAMERA)
 if not cap.isOpened():
@@ -271,7 +271,7 @@ try:
         with _lock:
             _recent.append(frame.copy())
 
-        cv2.imshow("vision live — SPACE=ask  q=quit", overlay(frame))
+        cv2.imshow("vision live  SPACE=ask  q=quit", overlay(frame))
         key = cv2.waitKey(1) & 0xFF
         if key in (ord("q"), 27):  # q or ESC
             break
@@ -287,7 +287,7 @@ finally:
     cv2.destroyAllWindows()
     with _lock:
         if _dropped:
-            print(f"\n{_dropped} tick(s) dropped — the model could not keep up with {INTERVAL}s.")
+            print(f"\n{_dropped} tick(s) dropped: the model could not keep up with {INTERVAL}s.")
             print("Raise INTERVAL, or lower MAX_TOKENS / IMG_WIDTH, to close the gap.")
 
 print("\nDONE")

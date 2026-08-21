@@ -21,12 +21,10 @@ package io.gravitee.singularitee.inference.api.reranker;
  *
  * <p>Different reranker families require different input formats:
  * <ul>
- *   <li>BERT cross-encoders (BGE-reranker, Jina-reranker) accept plain
- *       concatenation; the BERT tokenizer auto-inserts the [CLS] and [SEP]
- *       special tokens. Use {@link #PLAIN}.</li>
- *   <li>Qwen3-Reranker and other chat-style rerankers require a structured
- *       prompt wrapping the query and document inside system/user messages.
- *       Supply a custom lambda.</li>
+ *   <li>BERT cross-encoders (e.g. BGE-reranker) accept plain concatenation; the
+ *       tokenizer inserts the [CLS] and [SEP] special tokens. Use {@link #PLAIN}.</li>
+ *   <li>Chat-style rerankers require a structured prompt wrapping the query and
+ *       document inside system/user messages. Supply a custom lambda.</li>
  * </ul>
  *
  * <p>This is a functional interface; any lambda works:

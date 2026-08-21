@@ -22,7 +22,7 @@ import io.vertx.rxjava3.core.Vertx;
 /**
  * {@link RerankerEngine} backed by a llama.cpp cross-encoder reranker model (GGUF).
  *
- * <p>Supports both encoder-family (BGE-reranker, Jina-reranker) and decoder-family
+ * <p>Supports both encoder-family (BGE-reranker) and decoder-family
  * (Qwen3-Reranker) architectures. The scoring mode (SIGMOID / SOFTMAX / LOGIT)
  * and any prompt template are configured at factory time via
  * {@link LlamaCppRerankerFactory}.

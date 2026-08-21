@@ -16,6 +16,8 @@
 package io.gravitee.singularitee.inference.api.service;
 
 /**
+ * Family of a model published on the inference service.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

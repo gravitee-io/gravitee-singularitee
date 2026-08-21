@@ -39,6 +39,11 @@ public final class SequenceAccumulator {
   private List<WireToolCall> wireToolCalls;
   private List<PositionLogprobs> logprobs;
 
+  /**
+   * Folds one token into the accumulated state. Text deltas append to their channel; the final
+   * token sets the finish reason, guard message and wire tool calls; usage and performance
+   * always take the latest value.
+   */
   public void add(TokenMessage token) {
     if (nonNull(token.token()) && !token.token().isEmpty()) {
       content.append(token.token());

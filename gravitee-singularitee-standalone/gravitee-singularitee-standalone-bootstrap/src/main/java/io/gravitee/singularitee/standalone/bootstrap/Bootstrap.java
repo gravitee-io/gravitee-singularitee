@@ -29,9 +29,9 @@ import java.util.List;
 /**
  * Production entry point for Singularitee.
  *
- * <p>Sets up a two-level classloader hierarchy ({@code lib/ext/} → {@code lib/})
- * and reflectively loads the {@code SingulariteeContainer} from the Gravitee classloader.
- * This keeps the bootstrap isolated from all Gravitee / Spring / Vert.x dependencies.
+ * <p>Builds a two-level classloader hierarchy ({@code lib/ext/} as parent of {@code lib/})
+ * and reflectively loads the {@code SingulariteeContainer} from the {@code lib/} loader, so
+ * this class itself has no Gravitee, Spring or Vert.x dependency.
  *
  * <p>Usage: {@code java -Dgravitee.home=/path/to/dist -jar gravitee-singularitee-standalone-bootstrap.jar}
  *
@@ -48,6 +48,11 @@ public final class Bootstrap {
   private ClassLoader graviteeClassLoader;
   private Object graviteeDaemon = null;
 
+  /**
+   * Resolves {@code gravitee.home}, builds the classloaders and instantiates the container.
+   *
+   * @throws IllegalStateException when neither {@code gravitee.home} nor {@code GRAVITEE_HOME} is set
+   */
   public void init() throws Exception {
     setGraviteeHome();
     initClassLoaders();
@@ -56,6 +61,7 @@ public final class Bootstrap {
     graviteeDaemon = fwClass.getDeclaredConstructor().newInstance();
   }
 
+  /** Initialises on first call, then invokes the container's {@code start()}. */
   public void start() throws Exception {
     if (graviteeDaemon == null) {
       init();
@@ -64,6 +70,7 @@ public final class Bootstrap {
     method.invoke(graviteeDaemon, (Object[]) null);
   }
 
+  /** Invokes the container's {@code stop()}; a no-op before {@link #init()}. */
   public void stop() throws Exception {
     if (graviteeDaemon != null) {
       Method method = graviteeDaemon.getClass().getMethod("stop", (Class[]) null);
@@ -110,6 +117,7 @@ public final class Bootstrap {
     return new URLClassLoader(urls.toArray(new URL[0]), parent);
   }
 
+  /** JVM entry point: {@code java -Dgravitee.home=<dist> -jar <bootstrap.jar>}. */
   public static void main(String[] args) throws Exception {
     Bootstrap bootstrap = new Bootstrap();
     bootstrap.start();

@@ -42,6 +42,7 @@ public final class RemoteRerankerEngine implements RerankerEngine {
   private final SingulariteeClient client;
   private final String modelId;
 
+  /** Creates a proxy for {@code modelId} on the server behind {@code client}. */
   public RemoteRerankerEngine(SingulariteeClient client, String modelId) {
     this.client = client;
     this.modelId = modelId;
@@ -69,6 +70,6 @@ public final class RemoteRerankerEngine implements RerankerEngine {
 
   @Override
   public void close() {
-    // Nothing to close — the client is shared
+    // Nothing to close: the client is shared
   }
 }

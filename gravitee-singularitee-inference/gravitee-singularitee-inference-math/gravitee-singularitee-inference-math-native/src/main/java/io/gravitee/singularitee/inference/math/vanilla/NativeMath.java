@@ -19,6 +19,11 @@ import io.gravitee.singularitee.inference.math.api.GioMaths;
 import org.apache.commons.math3.util.FastMath;
 
 /**
+ * Scalar {@link GioMaths} implementation: plain loops over {@code float[]}, no SIMD.
+ *
+ * The fallback on hosts without a usable vector extension and the reference the SIMD
+ * variants are checked against. Use {@link #INSTANCE}.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -26,6 +31,7 @@ public class NativeMath implements GioMaths {
 
   private NativeMath() {}
 
+  /** Shared stateless instance. */
   public static final GioMaths INSTANCE = new NativeMath();
 
   @Override

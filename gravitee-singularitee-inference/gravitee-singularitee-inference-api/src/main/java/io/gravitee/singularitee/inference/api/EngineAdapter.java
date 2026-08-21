@@ -15,49 +15,65 @@
  */
 package io.gravitee.singularitee.inference.api;
 
+import io.gravitee.singularitee.inference.api.textgen.AbstractBatchEngine;
 import io.gravitee.singularitee.inference.api.textgen.InferencePerformance;
+import io.gravitee.singularitee.inference.api.textgen.InferenceToken;
+import io.gravitee.singularitee.inference.api.textgen.PositionLogprobs;
 import io.gravitee.singularitee.inference.api.textgen.PromptStats;
 import io.gravitee.singularitee.inference.api.textgen.TokenChannel;
 import java.util.Optional;
 
 /**
- * Adapter interface for engine-specific operations.
- * Implementations handle the actual interaction with inference backends.
+ * Backend-specific half of a text-generation engine, driven by {@link AbstractBatchEngine}.
  *
- * <p>This interface uses the Template Method pattern - the abstract batch engine
- * handles all sequence management, queuing, thread safety, and token emission,
- * while implementations focus only on engine-specific logic.</p>
+ * <p>Division of responsibilities:
+ * <ul>
+ *   <li>The batch engine owns slots (internal ids in {@code [0, maxConcurrentSequences)}),
+ *       the pending queue, the external-to-internal id mapping, cancellation, stop-string
+ *       matching on decoded text, token streaming and the KV prefix cache bookkeeping.</li>
+ *   <li>The adapter owns the native or remote state behind each slot: it creates it in
+ *       {@link #createSequenceState}, advances every active slot one step in
+ *       {@link #processNextBatch()}, reports per-slot finish reasons and counters, and
+ *       releases native memory in {@link #removeSequence} / {@link #cleanupSequenceState}.</li>
+ * </ul>
  *
- * @param <CONFIG> Engine configuration type
- * @param <REQUEST> Generation request type
- * @param <TOKEN> Token type
- * @param <STATE> Engine-specific sequence state type
+ * <p>Threading: every method except {@link #validateRequest} and {@link #tokenizePrompt} is
+ * invoked while the batch engine holds its lock, so implementations need no synchronization of
+ * their own but must not block for long. {@link #validateRequest} and {@link #tokenizePrompt}
+ * run on the caller thread of {@code addSequence}, under the same lock.
+ *
+ * <p>Lifecycle of one sequence, as the batch engine drives it: {@code validateRequest},
+ * optionally {@code tokenizePrompt} and {@code copyKvPrefix}, {@code createSequenceState},
+ * repeated {@code processNextBatch} (interleaved with {@code getFinishReason},
+ * {@code getTokenCounts}, {@code channelOf}, {@code logprobsOf}, {@code committedTokens}),
+ * then {@code removeSequence} followed by {@code cleanupSequenceState}. Cancellation skips the
+ * remaining steps and goes straight to {@code removeSequence}.
+ *
+ * @param <CONFIG> engine configuration type
+ * @param <REQUEST> generation request type
+ * @param <TOKEN> token type emitted by the backend
+ * @param <STATE> per-sequence backend state
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
 public interface EngineAdapter<CONFIG, REQUEST, TOKEN, STATE> {
   /**
-   * Creates a new sequence state for the given internal ID and request.
-   * This is called when a sequence is ready to start processing.
+   * Creates the backend state for a sequence that has just been assigned a slot.
    *
-   * @param internalId The internal sequence ID (slot index)
-   * @param request The generation request
-   * @return A new sequence state, or null if the request is invalid
-   * @throws Exception if the state cannot be created
+   * @param internalId slot index the sequence will occupy
+   * @param request the generation request
+   * @return the new state, or {@code null} to reject the request (the slot is returned to the
+   *         pool and no token is emitted)
+   * @throws Exception if the state cannot be created; the slot is returned to the pool
    */
   STATE createSequenceState(int internalId, REQUEST request) throws Exception;
 
   /**
-   * Creates a new sequence state that may reuse the first {@code reusePrefixTokens}
-   * tokens already KV-resident in the slot (cross-request prefix cache).
-   * Default: ignores the reuse hint and delegates to
+   * Creates the backend state for a slot whose first {@code reusePrefixTokens} prompt tokens are
+   * already KV-resident, so prefill may skip them. The default ignores the hint and delegates to
    * {@link #createSequenceState(int, Object)}.
    *
-   * @param internalId The internal sequence ID (slot index)
-   * @param request The generation request
-   * @param reusePrefixTokens Number of prompt-prefix tokens already in the slot's KV
-   * @return A new sequence state, or null if the request is invalid
-   * @throws Exception if the state cannot be created
+   * @param reusePrefixTokens leading prompt tokens already in the slot's KV cache
    */
   default STATE createSequenceState(int internalId, REQUEST request, int reusePrefixTokens)
     throws Exception {
@@ -65,182 +81,144 @@ public interface EngineAdapter<CONFIG, REQUEST, TOKEN, STATE> {
   }
 
   /**
-   * Tokenizes the request's (rendered) prompt for prefix-cache matching.
-   * {@code null} (the default) means this backend does not support server-side
-   * prompt caching and the batch engine bypasses the slot cache entirely.
+   * Tokenizes the rendered prompt for prefix-cache matching.
    *
-   * @param request The generation request
-   * @return The prompt token ids, or {@code null} if unsupported
+   * <p>Must be cheap (vocabulary only, no context) since it runs on the caller thread of
+   * {@code addSequence}. {@code null} (the default) disables the slot cache for this request:
+   * backends without server-side KV reuse, or requests carrying media.
    */
   default int[] tokenizePrompt(REQUEST request) {
     return null;
   }
 
   /**
-   * The token ids currently committed to the slot's KV cache for this sequence
-   * (prompt + accepted completion tokens). {@code null} (the default) when the
-   * backend cannot report them — the slot is then treated as cold.
-   *
-   * @param state The sequence state
-   * @return The KV-resident token ids, or {@code null} if unsupported
+   * Token ids currently committed to the slot's KV cache for this sequence (prompt plus
+   * accepted completion tokens). {@code null} (the default) when the backend cannot report
+   * them; the slot is then treated as cold and never donates its prefix.
    */
   default int[] committedTokens(STATE state) {
     return null;
   }
 
   /**
-   * Publishes the leading {@code prefixTokens} KV rows of {@code donorSlot} onto
-   * {@code destSlot}, so the sequence starting there can skip re-evaluating them.
-   * The destination's existing rows are discarded. The donor may still be
-   * generating — on backends where a KV cell is shared by reference rather than
-   * owned by one sequence, this moves no tensor data and leaves the donor intact.
+   * Makes the leading {@code prefixTokens} KV rows of {@code donorSlot} available to
+   * {@code destSlot}, discarding whatever the destination held. The donor may still be
+   * generating: on backends where KV cells are shared by reference this moves no tensor data
+   * and leaves the donor intact.
    *
-   * <p>{@code 0} (the default) means the backend cannot share KV across slots, and
-   * the batch engine falls back to a cold prefill.
+   * <p>{@code 0} (the default) means the backend cannot share KV across slots; the batch engine
+   * then falls back to a cold prefill.
    *
-   * @param donorSlot    Slot holding the prefix
-   * @param destSlot     Slot to publish it onto
-   * @param prefixTokens Leading tokens to share
-   * @param promptTokens Length of the destination's prompt; the shared count is clamped below it,
-   *                     since the final prompt token must be re-evaluated for its logits
-   * @return Tokens the destination may actually reuse; {@code 0} if nothing was shared
+   * @param promptTokens length of the destination's prompt; the shared count is clamped below
+   *                     it because the final prompt token must be re-evaluated for its logits
+   * @return tokens the destination may actually reuse, {@code 0} if nothing was shared
    */
   default int copyKvPrefix(int donorSlot, int destSlot, int prefixTokens, int promptTokens) {
     return 0;
   }
 
   /**
-   * Validates a generation request and calculates statistics.
-   * Called before queuing to ensure the request is valid.
-   *
-   * @param request The generation request
-   * @return Statistics about the prompt
+   * Validates a request before it is queued and measures its prompt. A result whose
+   * {@code fitsInContext()} is false makes the batch engine reject the request with a
+   * {@code length_prompt} final token instead of queuing it.
    */
   PromptStats validateRequest(REQUEST request);
 
   /**
-   * Processes the next batch of tokens for all active sequences.
-   * This is called repeatedly by the worker thread until sequences complete.
+   * Advances every active sequence by one decode step and returns at most one token.
    *
-   * @return An optional output, or empty if no sequences are active
-   * @throws Exception if processing fails
+   * <p>Called in a loop by the worker thread while any sequence is registered. Backends that
+   * produce several tokens per step buffer them and drain one per call. An empty result means
+   * nothing was produced this step: either all sequences have finished (see
+   * {@link #getFinishReason}) or the backend has stalled (see {@link #hasStalled()}).
+   *
+   * @throws Exception on a decode failure; the batch engine logs it and calls again
    */
   Optional<EngineOutput<TOKEN, STATE>> processNextBatch() throws Exception;
 
   /**
-   * Whether the backend can no longer make progress on the sequences it still holds.
-   * An empty {@link #processNextBatch()} alone cannot say: idle and dead look identical.
-   * Defaults to {@code false} for adapters that cannot tell them apart.
+   * Whether the backend can no longer make progress on the sequences it still holds. An empty
+   * {@link #processNextBatch()} alone cannot say: idle and dead look identical. When this returns
+   * {@code true} the batch engine fails every in-flight sequence with reason {@code stalled}.
+   * Defaults to {@code false}.
    */
   default boolean hasStalled() {
     return false;
   }
 
   /**
-   * Removes a sequence from the batch processor.
-   * Called when a sequence completes or is cancelled.
-   *
-   * @param internalId The internal sequence ID
+   * Detaches a sequence from the backend batch and frees its KV cells. Called once per
+   * sequence, on completion, stop-string match, cancellation or stall, always before
+   * {@link #cleanupSequenceState}.
    */
   void removeSequence(int internalId);
 
   /**
-   * Removes a sequence from the batch processor, optionally keeping its KV
-   * cells resident so the next sequence in the slot can reuse the prefix.
-   * Default: ignores {@code keepKv} and delegates to {@link #removeSequence(int)}.
-   *
-   * @param internalId The internal sequence ID
-   * @param keepKv Whether to retain the slot's KV cache content
+   * Detaches a sequence, optionally keeping its KV cells resident so the next sequence in the
+   * slot can reuse the prefix. The default ignores {@code keepKv} and delegates to
+   * {@link #removeSequence(int)}.
    */
   default void removeSequence(int internalId, boolean keepKv) {
     removeSequence(internalId);
   }
 
   /**
-   * Checks if a sequence has finished.
-   *
-   * @param state The sequence state
-   * @return Optional finish reason if finished, empty otherwise
+   * The backend's own finish reason for a sequence, empty while it is still generating.
+   * Stop strings are matched by the batch engine on decoded text and never show up here.
    */
   Optional<String> getFinishReason(STATE state);
 
-  /**
-   * Gets token counts from a sequence state.
-   *
-   * @param state The sequence state
-   * @return Token count information
-   */
+  /** Current token counters for a sequence; polled on every emitted token and at finalization. */
   TokenCountInfo getTokenCounts(STATE state);
 
   /**
-   * Builds performance metrics for a completed sequence.
-   *
-   * @param state The sequence state
-   * @return Performance metrics, or null if not available
+   * Cumulative backend timings for the sequence, or {@code null} if unavailable. Read once at
+   * sequence start as a baseline and again at the end; the batch engine reports the difference.
    */
   InferencePerformance buildPerformance(STATE state);
 
   /**
-   * Returns the generation channel the sequence is currently emitting on, as
-   * classified by the engine (reasoning vs answer vs tool-call markup).
-   * Read at token-production time by the batch engine and stamped on the
-   * emitted {@link io.gravitee.singularitee.inference.api.textgen.InferenceToken}.
-   *
-   * <p>Default: {@code null} (unclassified — ANSWER semantics) for engines
-   * that do not track a generation state.
-   *
-   * @param engineState The sequence state
-   * @return The current token channel, or {@code null} if unclassified
+   * The generation channel the sequence is currently emitting on (reasoning, answer or
+   * tool-call markup), stamped on each emitted {@link InferenceToken}. {@code null} (the default)
+   * means unclassified and is treated as answer text.
    */
   default TokenChannel channelOf(STATE engineState) {
     return null;
   }
 
   /**
-   * Returns the log-probability data of the token the sequence just produced,
-   * when the request asked for logprobs collection. Read at token-production
-   * time by the batch engine and stamped on the emitted
-   * {@link io.gravitee.singularitee.inference.api.textgen.InferenceToken}.
-   *
-   * <p>Default: {@code null} (collection disabled or unsupported).
-   *
-   * @param engineState The sequence state
-   * @return The last produced token's logprobs, or {@code null}
+   * Log-probabilities of the token the sequence just produced, when the request asked for them,
+   * stamped on the emitted {@link InferenceToken}. {@code null} (the default) when collection is
+   * disabled or unsupported.
    */
-  default io.gravitee.singularitee.inference.api.textgen.PositionLogprobs logprobsOf(
-    STATE engineState
-  ) {
+  default PositionLogprobs logprobsOf(STATE engineState) {
     return null;
   }
 
   /**
-   * Releases resources associated with a sequence state.
-   *
-   * @param state The sequence state to cleanup
+   * Releases whatever {@code state} still owns after {@link #removeSequence} (samplers, buffers,
+   * arenas). Must be idempotent-safe against a state that was never fully started.
    */
   void cleanupSequenceState(STATE state);
 
-  /**
-   * Stops the batch processor and releases all resources.
-   * Called during engine shutdown.
-   */
+  /** Stops the backend and releases every native resource. Called once from engine shutdown. */
   void shutdown();
 
   /**
-   * Represents the output from processing a batch.
+   * One token produced by {@link #processNextBatch()}.
    *
-   * @param sequenceId The internal sequence ID that produced this output
-   * @param token The generated token
+   * @param sequenceId slot index of the sequence that produced it
+   * @param token the generated token
    */
   record EngineOutput<TOKEN, STATE>(int sequenceId, TOKEN token) {}
 
   /**
-   * Token count information for a sequence.
+   * Token counters for a sequence.
    *
-   * @param inputTokens Number of input/prompt tokens
-   * @param outputTokens Number of output/generated tokens
-   * @param reasoningTokens Number of reasoning tokens (0 if not supported)
-   * @param toolTokens Number of tool call tokens (0 if not supported)
+   * @param inputTokens prompt tokens
+   * @param outputTokens generated tokens
+   * @param reasoningTokens generated tokens on the reasoning channel ({@code 0} if untracked)
+   * @param toolTokens generated tokens on the tool-call channel ({@code 0} if untracked)
    */
   record TokenCountInfo(int inputTokens, int outputTokens, int reasoningTokens, int toolTokens) {}
 }

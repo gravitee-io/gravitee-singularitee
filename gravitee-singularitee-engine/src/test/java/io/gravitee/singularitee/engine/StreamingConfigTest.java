@@ -24,7 +24,7 @@ class StreamingConfigTest {
 
   @AfterEach
   void reset() {
-    // Global server-wide value — restore the default so tests don't leak into each other.
+    // Global server-wide value: restore the default so tests don't leak into each other.
     StreamingConfig.setStreamBufferCapacity(StreamingConfig.DEFAULT_STREAM_BUFFER_CAPACITY);
   }
 

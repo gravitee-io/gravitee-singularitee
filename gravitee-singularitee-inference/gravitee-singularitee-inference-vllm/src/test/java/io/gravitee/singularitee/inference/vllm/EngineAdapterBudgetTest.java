@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
  * <p>Getting this wrong in either direction is costly. Too eager, and a model
  * that would have loaded is refused under {@code memory_check: warn}, whose
  * whole contract is to proceed on a tight estimate. Too shy, and the server
- * proceeds into vLLM's "No available memory for the cache blocks" — an error
+ * proceeds into vLLM's "No available memory for the cache blocks", an error
  * that names neither the budget nor the setting behind it.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Test;
  */
 class EngineAdapterBudgetTest {
 
-  /** The real numbers from Qwen3-4B-AWQ at gpu_memory_utilization 0.35 on an 8 GB card. */
+  /** A 2.5 GiB checkpoint against a 2.39 GiB usable budget on an 8 GB card. */
   @Test
   void weights_that_do_not_fit_the_budget_are_certain_failure() {
     MemoryEstimate estimate = estimate(2.39, 6.98);

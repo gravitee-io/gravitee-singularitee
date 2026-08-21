@@ -18,8 +18,8 @@ package io.gravitee.singularitee.workspace.config;
 /**
  * ONNX embedding model configuration.
  *
- * <p>Plain configuration, never on the wire — converted from the former proto
- * message with identical semantics (zero / empty = default).
+ * <p>Plain configuration, never on the wire. Numeric zero and empty string mean
+ * "engine default".
  */
 public record OnnxEmbeddingConfig(
   String modelPath,
@@ -38,16 +38,17 @@ public record OnnxEmbeddingConfig(
     poolingMode = poolingMode == null ? "" : poolingMode;
   }
 
-  /** All defaults — what an absent YAML block means. */
+  /** All defaults: what an absent YAML block means. */
   public static OnnxEmbeddingConfig getDefaultInstance() {
     return DEFAULT;
   }
 
+  /** Returns a builder with every field at its default. */
   public static Builder newBuilder() {
     return new Builder();
   }
 
-  /** Copy with {@code modelPath} replaced — resolvers rewrite paths after download. */
+  /** Copy with {@code modelPath} replaced; resolvers rewrite paths after download. */
   public OnnxEmbeddingConfig withModelPath(String v) {
     return new OnnxEmbeddingConfig(
       v,
@@ -59,7 +60,7 @@ public record OnnxEmbeddingConfig(
     );
   }
 
-  /** Copy with {@code tokenizerPath} replaced — resolvers rewrite paths after download. */
+  /** Copy with {@code tokenizerPath} replaced; resolvers rewrite paths after download. */
   public OnnxEmbeddingConfig withTokenizerPath(String v) {
     return new OnnxEmbeddingConfig(
       modelPath,
@@ -71,7 +72,7 @@ public record OnnxEmbeddingConfig(
     );
   }
 
-  /** Copy with {@code configJsonPath} replaced — resolvers rewrite paths after download. */
+  /** Copy with {@code configJsonPath} replaced; resolvers rewrite paths after download. */
   public OnnxEmbeddingConfig withConfigJsonPath(String v) {
     return new OnnxEmbeddingConfig(
       modelPath,
@@ -83,6 +84,7 @@ public record OnnxEmbeddingConfig(
     );
   }
 
+  /** Fluent builder; unset fields keep the engine defaults. */
   public static final class Builder {
 
     private String modelPath = "";

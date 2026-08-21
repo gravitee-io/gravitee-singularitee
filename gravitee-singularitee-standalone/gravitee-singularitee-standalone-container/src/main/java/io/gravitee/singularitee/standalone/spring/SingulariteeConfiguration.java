@@ -72,10 +72,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 
 /**
- * Main Spring configuration for Singularitee.
+ * Main Spring configuration for Singularitee: registries, model resolvers, engine factories,
+ * gRPC service implementations, pipeline execution and the lifecycle components.
  *
- * <p>Replaces all manual wiring previously in {@code Singularitee.java}. All beans
- * are created with the managed Vert.x RxJava3 instance from gravitee-node's
+ * <p>Beans that touch I/O take the managed Vert.x RxJava3 instance from gravitee-node's
  * {@code VertxConfiguration}.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -86,15 +86,16 @@ public class SingulariteeConfiguration {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SingulariteeConfiguration.class);
 
+  /** Single-node cluster manager; Singularitee does not cluster. */
   @Bean
   public ClusterManager clusterManager(Vertx vertx) {
     return new StandaloneClusterManager(vertx.getDelegate());
   }
 
   /**
-   * Pluggable cache backing cross-request state (todo sessions). Standalone
-   * in-memory by default — swap this one bean for the hazelcast/redis cache
-   * plugins to get a distributed backend; no engine code changes.
+   * Pluggable cache backing cross-request state (todo sessions, conversations). In-memory
+   * by default; swapping this one bean for a hazelcast/redis cache plugin gives a distributed
+   * backend with no engine code change.
    */
   @Bean
   public CacheManager cacheManager() {
@@ -113,12 +114,13 @@ public class SingulariteeConfiguration {
     return new TodoSessionStore(cacheManager, ttlSeconds, maxEntries);
   }
 
+  /** The gravitee-node {@link Node} for this process. */
   @Bean
   public Node node() {
     return new SingulariteeNode();
   }
 
-  // ── Observability (OpenTelemetry tracing + Micrometer metrics) ─────────
+  // --- Observability (OpenTelemetry tracing + Micrometer metrics) ---
 
   /**
    * The server-side OpenTelemetry tracer, built from the gravitee-node OTel factories
@@ -145,7 +147,7 @@ public class SingulariteeConfiguration {
   /**
    * Micrometer-backed inference metrics, bound to the live registry that feeds the
    * Prometheus endpoint ({@code io.gravitee.node.monitoring.metrics.Metrics}). The
-   * {@link Vertx} parameter forces creation after Vert.x — and therefore after the metrics
+   * {@link Vertx} parameter forces creation after Vert.x, and therefore after the metrics
    * registry is bound. Records to a no-op registry when {@code services.metrics} is disabled.
    */
   @Bean
@@ -153,26 +155,29 @@ public class SingulariteeConfiguration {
     return new InferenceMetrics(io.gravitee.node.monitoring.metrics.Metrics.getDefaultRegistry());
   }
 
-  // ── Core registries ───────────────────────────────────────────────────
+  // --- Core registries ---
 
+  /** Registry of loaded models, keyed by logical id. */
   @Bean
   public ModelRegistry modelRegistry() {
     return new ModelRegistry();
   }
 
+  /** Registry of pipeline definitions, validated against {@link ModelRegistry}. */
   @Bean
   public PipelineRegistry pipelineRegistry(ModelRegistry modelRegistry) {
     return new PipelineRegistry(modelRegistry);
   }
 
-  // ── Math / Vector ─────────────────────────────────────────────────────
+  // --- Math / Vector ---
 
+  /** Vector maths used by embedding, reranking and routing. */
   @Bean
   public GioMaths gioMaths() {
     return NativeMath.INSTANCE;
   }
 
-  // ── Model resolvers (HuggingFace download) ────────────────────────────
+  // --- Model resolvers (HuggingFace download) ---
 
   /**
    * One downloader shared by every resolver: one HTTP connection pool instead of four,
@@ -190,6 +195,7 @@ public class SingulariteeConfiguration {
     );
   }
 
+  /** Resolves GGUF files for llama.cpp models into the models directory. */
   @Bean
   public GgufModelResolver ggufModelResolver(
     HuggingFaceModelDownloader downloader,
@@ -198,6 +204,7 @@ public class SingulariteeConfiguration {
     return new GgufModelResolver(downloader, getModelsDir(configuration));
   }
 
+  /** Resolves ONNX model folders (model + tokenizer) into the models directory. */
   @Bean
   public OnnxModelResolver onnxModelResolver(
     HuggingFaceModelDownloader downloader,
@@ -206,6 +213,7 @@ public class SingulariteeConfiguration {
     return new OnnxModelResolver(downloader, getModelsDir(configuration));
   }
 
+  /** Resolves GLiNER checkpoints into the models directory. */
   @Bean
   public GlinerModelResolver glinerModelResolver(
     HuggingFaceModelDownloader downloader,
@@ -239,8 +247,8 @@ public class SingulariteeConfiguration {
   }
 
   /**
-   * Chunked-download tuning (hf_transfer-style parallel Range requests). Peak buffered
-   * memory is {@code parallelism × chunkSize}.
+   * Chunked-download tuning (parallel HTTP Range requests). Peak buffered memory is
+   * {@code parallelism * chunkSize}.
    */
   private static HuggingFaceModelDownloader.Options getDownloadOptions(
     Configuration configuration
@@ -333,7 +341,7 @@ public class SingulariteeConfiguration {
     }
   }
 
-  // ── Engine factories ──────────────────────────────────────────────────
+  // --- Engine factories ---
 
   /** Third-party classes probed to decide which engines this distribution ships. */
   static final String LLAMA_CPP_PROBE = "io.gravitee.llama.cpp.LlamaModel";
@@ -342,6 +350,10 @@ public class SingulariteeConfiguration {
   static final String ONNX_PROBE = "ai.onnxruntime.OrtEnvironment";
   static final String GLINER_PROBE = "io.gravitee.lab.gliner4j.runtime.BaseRuntime";
 
+  /**
+   * Engine factories keyed by model type, limited to the engines whose library is on the
+   * classpath. Also applies the server-wide streaming buffer capacity before any engine exists.
+   */
   @Bean
   public Map<ModelType, ModelEngineFactory> engineFactories(
     Vertx vertx,
@@ -413,7 +425,7 @@ public class SingulariteeConfiguration {
     Supplier<ModelEngineFactory> factory
   ) {
     if (!isPresent(probeClass)) {
-      LOGGER.debug("{} not registered — {} is not on the classpath", type, probeClass);
+      LOGGER.debug("{} not registered: {} is not on the classpath", type, probeClass);
       return;
     }
     try {
@@ -422,10 +434,11 @@ public class SingulariteeConfiguration {
       // The JAR is present but unusable (e.g. a native library the engine loads
       // eagerly is missing). Degrade to "this engine is unavailable" rather than
       // taking the whole server down with it.
-      LOGGER.warn("{} not registered — factory could not be created: {}", type, e.toString());
+      LOGGER.warn("{} not registered: factory could not be created: {}", type, e.toString());
     }
   }
 
+  /** Whether {@code className} resolves without initialising it; never throws. */
   static boolean isPresent(String className) {
     try {
       Class.forName(className, false, SingulariteeConfiguration.class.getClassLoader());
@@ -435,8 +448,9 @@ public class SingulariteeConfiguration {
     }
   }
 
-  // ── gRPC service implementations ──────────────────────────────────────
+  // --- gRPC service implementations ---
 
+  /** Model management service: load, register, list and unload models. */
   @Bean
   public GraviteeModelServiceImpl modelService(
     Vertx vertx,
@@ -458,11 +472,13 @@ public class SingulariteeConfiguration {
     );
   }
 
+  /** Pipeline management service over {@link PipelineRegistry}. */
   @Bean
   public GraviteePipelineServiceImpl pipelineService(PipelineRegistry pipelineRegistry) {
     return new GraviteePipelineServiceImpl(pipelineRegistry);
   }
 
+  /** Embedding, reranking and similarity service. */
   @Bean
   public GraviteeVectorServiceImpl vectorService(
     Vertx vertx,
@@ -480,13 +496,15 @@ public class SingulariteeConfiguration {
     );
   }
 
-  // ── Pipeline execution ────────────────────────────────────────────────
+  // --- Pipeline execution ---
 
+  /** Shared Jinja template renderer for prompts and step templates. */
   @Bean
   public JinjaRenderer jinjaRenderer() {
     return new JinjaRenderer();
   }
 
+  /** Creates the per-type step executors; remote sub-pipeline callbacks are wired at workspace load. */
   @Bean
   public StepExecutorFactory stepExecutorFactory(
     ModelRegistry modelRegistry,
@@ -505,6 +523,7 @@ public class SingulariteeConfiguration {
     );
   }
 
+  /** Dispatches a step to its executor by step type. */
   @Bean
   public StepDispatcher stepDispatcher(StepExecutorFactory stepExecutorFactory) {
     return stepExecutorFactory.createDispatcher();
@@ -524,6 +543,7 @@ public class SingulariteeConfiguration {
     return new ConversationStore(cacheManager, ttlSeconds, maxEntries);
   }
 
+  /** Runs pipeline DAGs, with tracing, metrics and cross-request stores attached. */
   @Bean
   public PipelineExecutor pipelineExecutor(
     PipelineRegistry pipelineRegistry,
@@ -543,6 +563,7 @@ public class SingulariteeConfiguration {
     );
   }
 
+  /** Text-generation service over raw models and pipelines. */
   @Bean
   public GraviteeInferenceServiceImpl inferenceService(
     Vertx vertx,
@@ -560,13 +581,15 @@ public class SingulariteeConfiguration {
     );
   }
 
-  // ── Lifecycle components ──────────────────────────────────────────────
+  // --- Lifecycle components ---
 
+  /** Readiness flag shared by both servers and the workspace loader. */
   @Bean
   public io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState() {
     return new io.gravitee.singularitee.standalone.vertx.ReadinessState();
   }
 
+  /** Loads the workspace at boot; see {@link WorkspaceLoaderComponent}. */
   @Bean
   public WorkspaceLoaderComponent workspaceLoaderComponent(
     Configuration configuration,
@@ -586,6 +609,7 @@ public class SingulariteeConfiguration {
     );
   }
 
+  /** The gRPC API server; see {@link GrpcServerComponent}. */
   @Bean
   public GrpcServerComponent grpcServerComponent(
     org.springframework.core.env.Environment environment,
@@ -611,6 +635,7 @@ public class SingulariteeConfiguration {
     );
   }
 
+  /** The opt-in OpenAI-compatible HTTP API server; see {@link HttpApiServerComponent}. */
   @Bean
   public HttpApiServerComponent httpApiServerComponent(
     org.springframework.core.env.Environment environment,

@@ -16,24 +16,24 @@
 
 # Reranking · BAAI/bge-reranker-base cross-encoder (ONNX)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/reranker/bge-reranker-base.yaml
 #
 # A CROSS-ENCODER: it reads (query, document) TOGETHER and scores the pair, which
-# is why it beats embedding cosine similarity for ranking — and why it cannot be
+# is why it beats embedding cosine similarity for ranking, and why it cannot be
 # precomputed like an embedding index. The standard pattern is two-stage: embed
 # to retrieve the top ~100 candidates cheaply, then rerank those to the final top
 # ~10. Pair it with examples/embedding/bge-m3.yaml for the retrieval half.
 #
 # `scoring` is left unset: it auto-detects (SIGMOID / SOFTMAX / LOGIT) from the
 # model's output shape. Documents longer than the window are split and scored per
-# chunk, taking the MAX — a document is as relevant as its best passage.
+# chunk, taking the MAX, a document is as relevant as its best passage.
 #
 # Rerank over HTTP:
 #   curl localhost:8080/v1/rerank -H 'content-type: application/json' \
 #     -d '{"model":"reranker","query":"how do I cook pasta?",
 #          "documents":["Boil salted water, add pasta.","Git rebase rewrites history.",
-#                       "Al dente means firm to the bite."],"top_n":2}'
+#                       "Al dente means firm to the bite."],"top_k":2}'
 
 workspace:
   name: bge-reranker-base

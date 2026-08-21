@@ -14,12 +14,12 @@
 # limitations under the License.
 #
 
-# Pipeline — plan-and-execute with engine-managed to-dos · gpt-oss-20b (Harmony)
+# Pipeline: plan-and-execute with engine-managed to-dos · gpt-oss-20b (Harmony)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/pipelines/todo-agent.yaml
 #
-#   plan ──→ apply_plan ──→ work ──→ track ──→ work_gate ──→ summarize
+#   plan -> apply_plan -> work -> track -> work_gate -> summarize
 #              │(no call)     ↑________│(call)     ↑ │
 #              └──────────────┤        └───────────┘ └── loops to work while
 #                             │                          todos.remaining > 0
@@ -28,7 +28,7 @@
 # The presence of the `todo` steps injects three SERVER-EXECUTED tools into
 # every infer step: set_todos (decompose the task), complete_todo (mark one
 # done) and ask_user (pause for the user). The engine executes those calls
-# itself — they never reach the client — and each mutation streams a PROGRESS
+# itself, they never reach the client, and each mutation streams a PROGRESS
 # event (Responses API: "gravitee.progress") plus mirrors todos.total /
 # todos.completed / todos.remaining into the context for loop conditions.
 # Prompts render the live plan via {{todos}}.
@@ -42,11 +42,11 @@
 #
 # The model can also PAUSE for the user: calling ask_user streams the question
 # as the assistant answer and ends the turn with finish_reason "stop". The plan
-# survives across turns when the request carries a session key — OpenAI
-# `prompt_cache_key` (or `user`) — via the pluggable node cache (standalone
+# survives across turns when the request carries a session key, OpenAI
+# `prompt_cache_key` (or `user`), via the pluggable node cache (standalone
 # in-memory by default; ai.todos.session-ttl configures the idle timeout).
 #
-# Try it (http.enabled must be on) — watch the plan tick item by item:
+# Try it (http.enabled must be on): watch the plan tick item by item:
 #   curl -sN localhost:8080/v1/responses -H 'content-type: application/json' -d '{
 #     "model": "agent", "stream": true,
 #     "input": "Write one haiku for each of the four seasons."
@@ -89,10 +89,10 @@ workspace:
 
       steps:
         # Entry gate: a continued conversation (previous_response_id / session
-        # key) arrives with its plan restored — skip straight to `work` instead
-        # of re-planning. Loop mechanics as a one-shot branch: no plan →
-        # condition met → next_step (plan); plan present → max_iterations
-        # exhausted immediately → fallback_step (work).
+        # key) arrives with its plan restored, skip straight to `work` instead
+        # of re-planning. Loop mechanics as a one-shot branch: no plan ->
+        # condition met -> next_step (plan); plan present -> max_iterations
+        # exhausted immediately -> fallback_step (work).
         - id: plan_gate
           type: loop
           next_step: plan
@@ -143,7 +143,7 @@ workspace:
                 - "<|call|>"
             tool_extraction_template: harmony # built-in
             # `system:` steers the step WITHOUT replacing the conversation (a
-            # prompt.messages override would hide the user's turns — including
+            # prompt.messages override would hide the user's turns, including
             # answers to ask_user questions).
             system: "You are a planning assistant. If the user's message is a real multi-step task, break it into 2-6 concrete steps and call the set_todos tool with them - ONLY the tool call, no prose. If it is a greeting, a simple question, or something a single reply or single tool call can handle, do NOT call set_todos and do not answer it yourself: reply with the single word SKIP."
 
@@ -163,7 +163,7 @@ workspace:
           config:
             model_id: llm
             output_field: work.output
-            # medium, not low: at low gpt-oss is a weak agent — it asks instead
+            # medium, not low: at low gpt-oss is a weak agent, it asks instead
             # of acting and writes malformed tool JSON more often.
             context: { reasoning_effort: medium }
             tags:
@@ -195,7 +195,7 @@ workspace:
                 - "<|call|><|start|>assistant<|channel|>final<|message|>"
                 - "<|call|>"
             tool_extraction_template: harmony # built-in
-            system: "You are executing a fixed plan.\nPlan status:\n{% for t in todos %}- [{{ t.status }}] ({{ t.id }}) {{ t.title }}{% if t.proof %} — result: {{ t.proof }}{% endif %}\n{% endfor %}\nDo ONLY the item marked in_progress: produce its result, then call complete_todo with its id AND the COMPLETE result text in the note argument. The note is the only place your work survives — anything not in it is lost. NEVER call set_todos — the plan is fixed. If a plan item's result is already recorded (e.g. the user answered a question), do NOT redo it — just call complete_todo with its id. Only if you truly cannot proceed without NEW information from the user, call ask_user with ONE precise question."
+            system: "You are executing a fixed plan.\nPlan status:\n{% for t in todos %}- [{{ t.status }}] ({{ t.id }}) {{ t.title }}{% if t.proof %}, result: {{ t.proof }}{% endif %}\n{% endfor %}\nDo ONLY the item marked in_progress: produce its result, then call complete_todo with its id AND the COMPLETE result text in the note argument. The note is the only place your work survives, anything not in it is lost. NEVER call set_todos, the plan is fixed. If a plan item's result is already recorded (e.g. the user answered a question), do NOT redo it, just call complete_todo with its id. Only if you truly cannot proceed without NEW information from the user, call ask_user with ONE precise question."
 
         # Server executes complete_todo/ask_user, then the gate loops while
         # items remain.
@@ -217,8 +217,8 @@ workspace:
               input_field: todos.remaining
               match_value: "0"
 
-        # All items done — assemble the final answer from the work transcript.
-        # server_tools: false — a prose-only step must not see the todo tool
+        # All items done: assemble the final answer from the work transcript.
+        # server_tools: false: a prose-only step must not see the todo tool
         # schemas: a schema in the prompt invites a call, and with no todo step
         # downstream a Harmony call span could only leak into the answer.
         - id: summarize
@@ -227,7 +227,7 @@ workspace:
           config:
             model_id: llm
             output_field: summarize.output
-            # A prose-only step must see NO tool schemas at all — client tools
+            # A prose-only step must see NO tool schemas at all, client tools
             # included: this step has no tool tags, so any call it made would
             # leak its raw span into the visible answer.
             inject_tools: false
@@ -243,4 +243,4 @@ workspace:
                 - "<|end|><|start|>assistant<|channel|>final<|message|>"
                 - "<|channel|>final<|message|>"
                 - "<|end|>"
-            system: "Every plan item is done. The results are recorded below:\n{% for t in todos %}### {{ t.title }}\n{{ t.proof }}\n{% endfor %}\nAssemble the complete final answer for the user from these recorded results — reproduce them faithfully, do not rewrite or regenerate them. A warm, friendly tone: a short welcoming sentence, then the results clearly formatted with headings or bullet points where it helps readability. Do not mention the plan or the tools."
+            system: "Every plan item is done. The results are recorded below:\n{% for t in todos %}### {{ t.title }}\n{{ t.proof }}\n{% endfor %}\nAssemble the complete final answer for the user from these recorded results, reproduce them faithfully, do not rewrite or regenerate them. A warm, friendly tone: a short welcoming sentence, then the results clearly formatted with headings or bullet points where it helps readability. Do not mention the plan or the tools."

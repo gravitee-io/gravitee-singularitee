@@ -14,30 +14,14 @@
 // limitations under the License.
 //
 
-/*
- * Copyright © 2015 The Gravitee team (http://gravitee.io)
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-// Singularitee — inference protocol.
+// Singularitee inference protocol.
 //
 // Defines:
 //   - Infer: direct, single-model server-streaming text generation
 //   - InferPipeline: pipeline DAG execution with per-step token tagging
 //
 // The response stream follows the OpenAI Responses API event model:
-//   CREATED → OUTPUT_TEXT_DELTA* → COMPLETED | FAILED
+//   CREATED, OUTPUT_TEXT_DELTA*, then COMPLETED or FAILED
 //
 // Shared types (SamplingParams, ChatMessage, TagConfig, etc.) live here
 // and are imported by pipeline.proto.
@@ -134,7 +118,7 @@ message ClassifyBatchResponse {
 message InferRequest {
   // model_id returned by PublishModel.
   string model_id    = 1;
-  // sequence_id is intentionally absent — sequence tracking is server-internal.
+  // 2 retired: sequence_id.
   reserved 2; reserved "sequence_id";
 
   oneof input {
@@ -173,7 +157,7 @@ message InferRequest {
 message InferPipelineRequest {
   // pipeline_id returned by PublishPipeline.
   string pipeline_id = 1;
-  // sequence_id is intentionally absent — sequence tracking is server-internal.
+  // 2 retired: sequence_id.
   reserved 2; reserved "sequence_id";
 
   oneof input {
@@ -207,8 +191,8 @@ message InferPipelineRequest {
   string cache_key = 61;
 
   // Stored-conversation continuation (OpenAI Responses `previous_response_id`).
-  // When set, the server prepends the transcript stored under that id — the
-  // curated history the SERVER built, internal tool turns included — and the
+  // When set, the server prepends the transcript stored under that id (the
+  // curated history the SERVER built, internal tool turns included) and the
   // request's own input becomes the new user turn(s). Unknown id = the request
   // fails; the client must not silently lose its history.
   string previous_response_id = 62;
@@ -226,16 +210,15 @@ message InferPipelineRequest {
 // stream maps 1:1 to an SSE event that the gateway connector can emit
 // directly. The lifecycle is:
 //
-//   CREATED → OUTPUT_TEXT_DELTA* → COMPLETED
-//                                 or
-//   CREATED → OUTPUT_TEXT_DELTA* → FAILED
+//   CREATED, OUTPUT_TEXT_DELTA*, COMPLETED
+//   CREATED, OUTPUT_TEXT_DELTA*, FAILED
 //
 // For pipelines with THINKING steps, deltas carry step_role = THINKING
 // before the OUTPUT deltas begin.
 // ---------------------------------------------------------------------------
 
 message InferResponse {
-  // The event type — maps 1:1 to an SSE event type string on the wire.
+  // The event type; maps 1:1 to an SSE event type string on the wire.
   ResponseEventType event_type = 1;
 
   // Exactly one payload per event type.
@@ -269,7 +252,7 @@ enum ResponseEventType {
   // The inference run failed (guard block, error, etc.).
   RESPONSE_EVENT_TYPE_FAILED            = 4;
   // Auxiliary progress update (e.g. the pipeline's todo plan changed).
-  // Additive and ignorable: clients that don't know it skip it — the OpenAI
+  // Additive and ignorable: clients that don't know it skip it. The OpenAI
   // Chat Completions surface drops it, the Responses API surfaces it as a
   // "gravitee.progress" object.
   RESPONSE_EVENT_TYPE_PROGRESS          = 5;
@@ -393,8 +376,7 @@ enum FinishReason {
   FINISH_REASON_LENGTH          = 2;
   // The model emitted a tool call.
   FINISH_REASON_TOOL_CALLS      = 3;
-  // Tags 4 and 5 were dead OpenAI-compatibility values (CONTENT_FILTER, FUNCTION_CALL)
-  // never emitted by any engine. Guard blocking uses FINISH_REASON_GUARD_BLOCKED.
+  // 4, 5 retired: FINISH_REASON_CONTENT_FILTER, FINISH_REASON_FUNCTION_CALL.
   reserved 4, 5;
   reserved "FINISH_REASON_CONTENT_FILTER", "FINISH_REASON_FUNCTION_CALL";
   // A guard step triggered and the pipeline was blocked.
@@ -415,17 +397,17 @@ enum FinishReason {
 
 // Semantic role of an infer step's output in a pipeline.
 // Controls whether tokens are streamed to the client and how they are tagged.
-// Only meaningful for STEP_TYPE_INFER steps — all other step types are silent.
+// Only meaningful for STEP_TYPE_INFER steps; all other step types are silent.
 enum StepRole {
   // Default: treated as OUTPUT at runtime.
   STEP_ROLE_UNSPECIFIED = 0;
-  // Intermediate reasoning — streamed to client tagged as THINKING.
+  // Intermediate reasoning, streamed to the client tagged as THINKING.
   STEP_ROLE_THINKING    = 1;
-  // Final answer — streamed to client tagged as OUTPUT.
+  // Final answer, streamed to the client tagged as OUTPUT.
   STEP_ROLE_OUTPUT      = 2;
-  // Server-internal — never streamed to client.
+  // Server-internal, never streamed to the client.
   STEP_ROLE_INTERNAL    = 3;
-  // Tool-call payload — the engine classified these tokens as belonging to a
+  // Tool-call payload: the engine classified these tokens as belonging to a
   // tool-call span (tag markers suppressed engine-side; the delta text is the
   // BARE payload, e.g. {"name":...,"arguments":{...}} or call:name{...}).
   STEP_ROLE_TOOL        = 4;
@@ -467,7 +449,7 @@ message MediaContent {
 }
 
 // Only formats the engines can actually decode are listed. Images go to
-// llama.cpp's stb_image (JPEG, PNG, GIF, BMP — no WebP, no TIFF); audio is
+// llama.cpp's stb_image (JPEG, PNG, GIF, BMP; no WebP, no TIFF); audio is
 // decoded by javax.sound.sampled, which handles WAV and nothing else here.
 // Declaring more than this produced requests that failed silently: the media
 // was dropped and the model answered from the text alone.
@@ -480,8 +462,7 @@ enum MediaType {
   MEDIA_TYPE_AUDIO_WAV         = 7;
   MEDIA_TYPE_APPLICATION_OCTET = 13;
 
-  // Removed — declared but never decodable. Reserved so the numbers and names
-  // are not recycled for something with different semantics.
+  // 4, 6, 8 to 12 retired: formats no engine can decode.
   reserved 4, 6, 8, 9, 10, 11, 12;
   reserved "MEDIA_TYPE_IMAGE_WEBP", "MEDIA_TYPE_IMAGE_TIFF", "MEDIA_TYPE_AUDIO_MP3",
            "MEDIA_TYPE_AUDIO_OGG", "MEDIA_TYPE_AUDIO_FLAC", "MEDIA_TYPE_AUDIO_AAC",
@@ -517,7 +498,7 @@ message TokenUsage {
   int32 completion_tokens = 2;
   int32 reasoning_tokens  = 3;
   int32 tool_tokens       = 4;
-  // Tag 5 was a dead 'total_tokens' OpenAI-compatibility field (never populated).
+  // 5 retired: total_tokens.
   reserved 5;
   reserved "total_tokens";
 }
@@ -552,15 +533,15 @@ message TagConfig {
   // Additional closing markers, when a channel can be left more than one way. Harmony needs
   // this: reasoning ends into the final channel via <|end|><|start|>assistant<|channel|>final
   // <|message|> when the model answers directly, but the run before the final channel is
-  // terminated by <|call|> when a tool call intervenes — and a tool call either ends generation
+  // terminated by <|call|> when a tool call intervenes, and a tool call either ends generation
   // or is followed straight by the final header. close_tag stays the primary; longest match
   // wins, and a shorter match that is the prefix of a longer one settles only when the longer
   // one is refuted or generation ends.
   repeated string close_tag_alternatives = 4;
   // Whether the channel may be entered AGAIN after it closes, within one generation.
-  // One <think>…</think> block per generation is a ChatML property, not a property of
+  // One <think>...</think> block per generation is a ChatML property, not a property of
   // reasoning: Harmony chains channels, so a generation can run analysis, return to the
-  // final channel, and then open commentary — and a channel that cannot re-open stops
+  // final channel, and then open commentary. A channel that cannot re-open stops
   // matching, leaving its header in the answer as raw text with its tokens billed there.
   // Optional so that unset means "the engine's own default" (tool channels repeat,
   // everything else occurs once) rather than an explicit false, which for the tool

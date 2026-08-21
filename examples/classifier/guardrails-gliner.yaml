@@ -16,10 +16,10 @@
 
 # LLM safety guardrails · GLiGuard zero-shot (GLiNER)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/classifier/guardrails-gliner.yaml
 #
-# ZERO-SHOT: the labels below ARE the schema — edit, add or remove categories and
+# ZERO-SHOT: the labels below ARE the schema: edit, add or remove categories and
 # the model adapts with no retraining. That is the whole point of GLiNER versus a
 # fine-tuned bert: policy changes are a YAML edit, not a training run.
 #

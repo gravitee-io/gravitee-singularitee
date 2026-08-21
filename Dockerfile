@@ -15,7 +15,7 @@
 #
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Singularitee Gateway — Production Image (Debian, linux/amd64)
+# Singularitee Gateway production image (Debian, linux/amd64)
 # ─────────────────────────────────────────────────────────────────────────────
 FROM graviteeio/java:25-debian
 LABEL maintainer="contact@graviteesource.com"

@@ -15,6 +15,7 @@
  */
 package io.gravitee.singularitee.inference.api.textgen;
 
+/** Plain text part of a chat message. */
 public record TextContent(String text) implements Content {
   @Override
   public String type() {

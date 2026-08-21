@@ -21,7 +21,7 @@ import java.util.List;
 
 /**
  * The gravitee-namespaced Responses-API progress event
- * ({@code RESPONSE_EVENT_TYPE_PROGRESS} → {@code {"type":"gravitee.progress", ...}}).
+ * ({@code RESPONSE_EVENT_TYPE_PROGRESS} rendered as {@code {"type":"gravitee.progress", ...}}).
  * {@code text} is the preformatted multi-line plan view ({@code "1. [x] title\n2. [>] …"};
  * markers {@code [x]} done, {@code [>]} in_progress, {@code [ ]} pending) so a client can
  * print the plan directly instead of laying out the structured items itself.
@@ -35,6 +35,7 @@ public record ProgressPayload(
   int total,
   String text
 ) {
+  /** Builds the payload from the wire {@link ResponseProgress}, rendering the plan text. */
   public ProgressPayload(long sequenceNumber, ResponseProgress progress) {
     this(
       "gravitee.progress",
@@ -61,7 +62,7 @@ public record ProgressPayload(
       }
       sb.append(index++).append(". ").append(marker).append(' ').append(t.getTitle());
       if (!t.getProof().isEmpty()) {
-        sb.append(" — proof: ").append(t.getProof());
+        sb.append(" (proof: ").append(t.getProof()).append(')');
       }
     }
     return sb.toString();

@@ -82,7 +82,7 @@ class OnnxEmbeddingEngineTest {
       int tokens = pooled.stream().mapToInt(ChunkEmbedding::contentTokens).sum();
       return new EmbeddingTokenCount(pooled.getFirst().vector(), tokens);
     });
-    // full-input tokenize incl. special tokens — content chars + 2, mirroring [CLS]/[SEP]
+    // full-input tokenize incl. special tokens: content chars + 2, mirroring [CLS]/[SEP]
     when(delegate.countTokens(anyString())).thenAnswer(
       inv -> ((String) inv.getArgument(0)).replace("|", "").length() + 2
     );
@@ -114,7 +114,7 @@ class OnnxEmbeddingEngineTest {
   void an_input_that_already_fits_skips_the_splitter() {
     // split() tokenises the whole text again just to discover it does not need splitting.
     // When the measured count is already within the budget that answer is knowable, so the
-    // pass is skipped — the observable contract being that split() is never consulted.
+    // pass is skipped; the observable contract being that split() is never consulted.
     var delegate = mockModel();
     when(delegate.sequenceBudget()).thenReturn(100);
     var engine = new OnnxEmbeddingEngine(delegate, vertx);

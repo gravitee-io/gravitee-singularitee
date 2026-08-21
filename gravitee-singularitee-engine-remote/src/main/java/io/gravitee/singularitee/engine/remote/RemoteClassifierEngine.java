@@ -28,7 +28,7 @@ import java.util.Map;
  * Remote proxy for {@link ClassifierEngine} that calls the server's {@code Classify} RPC.
  *
  * <p>Fully non-blocking: delegates directly to the gRPC {@link Single} returned by the client
- * — no {@code blockingGet()} required.
+ * with no {@code blockingGet()} required.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -188,6 +188,6 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
 
   @Override
   public void close() {
-    // Nothing to close — the client is shared
+    // Nothing to close: the client is shared
   }
 }

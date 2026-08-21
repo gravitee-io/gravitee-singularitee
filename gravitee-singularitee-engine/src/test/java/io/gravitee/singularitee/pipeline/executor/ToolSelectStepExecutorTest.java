@@ -134,9 +134,9 @@ class ToolSelectStepExecutorTest {
 
   @Test
   void tool_selected_only_when_score_meets_threshold_and_beats_none() {
-    // tool0: above threshold, beats none → selected
-    // tool1: above threshold but none beats it → rejected
-    // tool2: below threshold → rejected
+    // tool0: above threshold, beats none -> selected
+    // tool1: above threshold but none beats it -> rejected
+    // tool2: below threshold -> rejected
     stubEngine(name ->
       switch (name) {
         case "tool0" -> 0.8f;
@@ -183,7 +183,7 @@ class ToolSelectStepExecutorTest {
 
   @Test
   void classify_error_fails_open_including_the_batch_tools() {
-    // 6 tools, batch_size 4 → batch1 (tool0-3) fails, batch2 (tool4-5) all none.
+    // 6 tools, batch_size 4 -> batch1 (tool0-3) fails, batch2 (tool4-5) all none.
     var calls = new int[] { 0 };
     when(engine.rxClassify(any(ClassifyRequest.class), anyList())).thenAnswer(inv -> {
       List<ClassifyLabel> labels = inv.getArgument(1);
@@ -274,7 +274,7 @@ class ToolSelectStepExecutorTest {
   void injectable_tools_filters_by_shortlist_and_empty_list_injects_none() {
     var pctx = pctx("hi", tools(3));
 
-    // No shortlist → all tools (behavior identical when the key is absent)
+    // No shortlist -> all tools (behavior identical when the key is absent)
     assertThat(
       PromptAssembler.injectableTools(
         pctx,
@@ -282,7 +282,7 @@ class ToolSelectStepExecutorTest {
       )
     ).hasSize(3);
 
-    // Shortlist → only named tools
+    // Shortlist -> only named tools
     pctx.setSelectedTools(List.of("tool1"));
     assertThat(
       PromptAssembler.injectableTools(
@@ -293,7 +293,7 @@ class ToolSelectStepExecutorTest {
       .extracting(ToolDefinition::getName)
       .containsExactly("tool1");
 
-    // Empty shortlist → no tools injected
+    // Empty shortlist -> no tools injected
     var pctx2 = pctx("hi", tools(3));
     pctx2.setSelectedTools(List.of());
     assertThat(
@@ -357,12 +357,12 @@ class ToolSelectStepExecutorTest {
     var cfg = ToolSelectStepConfig.newBuilder()
       .setModelId("triage")
       .setTrimDescriptions(true)
-      .setDescriptionTemplate("{{ tool.name }} — {{ tool.description | upper }}")
+      .setDescriptionTemplate("{{ tool.name }} - {{ tool.description | upper }}")
       .build();
 
     var pctx = execute(cfg, pctx("go", List.of(tool("read", "Reads files."))));
 
-    assertThat(pctx.condensedToolDescriptions().get("read")).isEqualTo("read — READS FILES.");
+    assertThat(pctx.condensedToolDescriptions().get("read")).isEqualTo("read - READS FILES.");
   }
 
   // ── InferStepExecutor description rewriting helper ────────────────────────
@@ -441,7 +441,7 @@ class ToolSelectStepExecutorTest {
       toolWithTemplate("tool1", "Original one.", "{\"name\":\"tool1\"}")
     );
 
-    // No condensed map → tools pass through unchanged
+    // No condensed map -> tools pass through unchanged
     var plain = pctx("hi", toolList);
     plain.setSelectedTools(List.of("tool0"));
     assertThat(
@@ -451,7 +451,7 @@ class ToolSelectStepExecutorTest {
       ).get(0)
     ).isSameAs(toolList.get(0));
 
-    // Condensed map → selected tool rewritten (description + template)
+    // Condensed map -> selected tool rewritten (description + template)
     var pctx = pctx("hi", toolList);
     pctx.setSelectedTools(List.of("tool0"));
     pctx.setCondensedToolDescriptions(Map.of("tool0", "Zero."));

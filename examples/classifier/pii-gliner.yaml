@@ -16,11 +16,11 @@
 
 # PII detection · GLiNER2 zero-shot, 42 entity types
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/classifier/pii-gliner.yaml
 #
 # ZERO-SHOT counterpart to pii-bert.yaml: the entity list below is supplied to the
-# model at inference time, so narrowing detection is a matter of DELETING lines —
+# model at inference time, so narrowing detection is a matter of DELETING lines,
 # no retraining, no new model. The trade-off is cost: a zero-shot pass is heavier
 # than the fine-tuned bert, and the schema is re-embedded per distinct label set.
 #
@@ -40,7 +40,7 @@ workspace:
         variant: onnx_fp16
         threshold: 0.4
         # The full 42-type PII schema the model was trained on. Trim this list to
-        # narrow what is detected — that is the entire tuning surface.
+        # narrow what is detected, that is the entire tuning surface.
         entities:
           - name: person
             description: Full name of a real individual

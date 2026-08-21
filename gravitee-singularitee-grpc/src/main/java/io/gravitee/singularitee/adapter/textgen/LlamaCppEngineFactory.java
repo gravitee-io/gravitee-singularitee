@@ -17,12 +17,14 @@ package io.gravitee.singularitee.adapter.textgen;
 
 import io.gravitee.llama.cpp.AttentionType;
 import io.gravitee.llama.cpp.FlashAttentionType;
+import io.gravitee.llama.cpp.GgmlType;
 import io.gravitee.llama.cpp.PoolingType;
 import io.gravitee.llama.cpp.SpeculativeConfig;
 import io.gravitee.singularitee.adapter.ModelEngineFactory;
 import io.gravitee.singularitee.engine.ModelEngine;
 import io.gravitee.singularitee.inference.api.memory.MemoryCheckPolicy;
 import io.gravitee.singularitee.inference.llama.cpp.ModelConfig;
+import io.gravitee.singularitee.workspace.MemoryCheckPolicyType;
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
 import io.gravitee.singularitee.workspace.config.LlamaCppConfig;
 import java.nio.file.Path;
@@ -49,7 +51,7 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
   /**
    * Creates the engine using a pre-resolved local model path (after HF download).
    * The {@code lora_path} / {@code mmproj_path} sidecar files are resolved from the
-   * config as bare paths — prefer {@link #create(ModelLoadRequest, Path, Path, Path)}
+   * config as bare paths; prefer {@link #create(ModelLoadRequest, Path, Path, Path)}
    * when those sidecars also need HF resolution/download.
    *
    * @param request           the model load request with llama.cpp configuration
@@ -93,7 +95,7 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
   /**
    * As above, with the speculative sidecars pre-resolved.
    *
-   * <p>A draft model or an EAGLE3 head usually lives in a DIFFERENT repository from the target,
+   * <p>A draft model or an EAGLE3 head usually lives in a different repository from the target,
    * so these cannot be resolved from the target's repo like mmproj and LoRA are.
    *
    * @param resolvedDraftPath  local draft GGUF, or {@code null}
@@ -114,7 +116,7 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
       (resolvedEagle3Path != null ? 1 : 0);
     if (flavours > 1) {
       throw new IllegalArgumentException(
-        "Configure at most one speculative flavour: mtp, draft_path or eagle3_path — they are " +
+        "Configure at most one speculative flavour: mtp, draft_path or eagle3_path. They are " +
           "three ways to produce the same draft tokens, not a stack."
       );
     }
@@ -129,7 +131,7 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
       .attentionType(resolveAttentionType(cfg.attentionType()))
       .flashAttnType(resolveFlashAttnType(cfg.flashAttnType()))
       // Default true (llama.cpp parity): offload_kqv=false keeps the KV cache and attention
-      // on the CPU — ~3x decode throughput loss on Metal.
+      // on the CPU, roughly 3x decode throughput loss on Metal.
       .offloadKQV(cfg.offloadKqv() == null || cfg.offloadKqv())
       // Default true (llamaj.cpp Main parity): unpinned mmap'd weights get evicted under
       // memory pressure and a MoE model then decodes at SSD-fault speed.
@@ -141,7 +143,7 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
       .mtp(cfg.mtp())
       .cacheTypeK(resolveGgmlType(cfg.cacheTypeK()))
       .cacheTypeV(resolveGgmlType(cfg.cacheTypeV()))
-      // Default true when unset (`!has || get`) — cross-request KV prefix cache.
+      // Default true when unset: cross-request KV prefix cache.
       .promptCache(cfg.promptCache() == null || cfg.promptCache())
       .promptCacheMinTokens(cfg.promptCacheMinTokens() > 0 ? cfg.promptCacheMinTokens() : 64)
       // <= 0 disables the soft landing; the unbiased path stays bit-identical.
@@ -160,6 +162,7 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
   private static SpeculativeConfig toSpeculativeConfig(
     io.gravitee.singularitee.workspace.config.SpeculativeConfig s
   ) {
+    // The workspace record shares the llama.cpp type's simple name, so it stays qualified here.
     int nDraft = s.nDraft() > 0 ? s.nDraft() : 2;
     return new SpeculativeConfig(
       nDraft,
@@ -172,9 +175,7 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
     );
   }
 
-  private static MemoryCheckPolicy toMemoryCheckPolicy(
-    io.gravitee.singularitee.workspace.MemoryCheckPolicyType policy
-  ) {
+  private static MemoryCheckPolicy toMemoryCheckPolicy(MemoryCheckPolicyType policy) {
     if (policy == null) return MemoryCheckPolicy.WARN;
     return switch (policy) {
       case FAIL -> MemoryCheckPolicy.FAIL;
@@ -201,10 +202,10 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
     }
   }
 
-  private static io.gravitee.llama.cpp.GgmlType resolveGgmlType(String value) {
+  private static GgmlType resolveGgmlType(String value) {
     if (value == null || value.isBlank()) return null;
     try {
-      return io.gravitee.llama.cpp.GgmlType.valueOf(value.toUpperCase());
+      return GgmlType.valueOf(value.toUpperCase());
     } catch (IllegalArgumentException e) {
       return null;
     }

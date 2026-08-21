@@ -14,17 +14,17 @@
 # limitations under the License.
 #
 
-# Pipeline — chain-of-thought with a self-refinement loop
+# Pipeline: chain-of-thought with a self-refinement loop
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/pipelines/cot.yaml
 #
-#   reason ──→ evaluate ──→ loop_gate ──→ answer
+#   reason -> evaluate -> loop_gate -> answer
 #     ↑___________________________|
 #     (loops back to refine while the evaluator says "NO", max 3 iterations)
-#     └────────────────────────────────────────→ fallback_answer (loop exhausted)
+#     └──────────────────────────────────────-> fallback_answer (loop exhausted)
 #
-# ONE model plays every role — it reasons, judges its own reasoning, refines on
+# ONE model plays every role, it reasons, judges its own reasoning, refines on
 # loop-back, and writes the answer. The interesting part is that the quality gate
 # is a step in the graph, not a prompt instruction: `loop` re-enters `reason` with
 # a corrective message until `condition` holds or `max_iterations` is spent, and
@@ -34,7 +34,7 @@
 # response while leaving it in context for the later steps.
 #
 # Small models loop more: with Qwen3-0.6B expect the gate to fire often. That is
-# the demo working, not failing — raise max_iterations or use a bigger model from
+# the demo working, not failing, raise max_iterations or use a bigger model from
 # examples/llama/ to see it settle on the first pass.
 
 workspace:
@@ -98,9 +98,9 @@ workspace:
               match_value: "YES"
             loopback_message:
               role: user
-              content: "Your previous reasoning was not yet conclusive (evaluator said '{{evaluate.output}}'). Continue your thinking — refine your analysis and work towards a clearer conclusion."
+              content: "Your previous reasoning was not yet conclusive (evaluator said '{{evaluate.output}}'). Continue your thinking, refine your analysis and work towards a clearer conclusion."
 
-        # Condition met — produce the validated answer.
+        # Condition met: produce the validated answer.
         - id: answer
           type: infer
           role: output
@@ -113,7 +113,7 @@ workspace:
                 - role: user
                   content: "Based on this reasoning: {{reason.output}}\nGive a clear, concise answer to: {{prompt}}"
 
-        # Max iterations exhausted — best-effort answer.
+        # Max iterations exhausted: best-effort answer.
         - id: fallback_answer
           type: infer
           role: output

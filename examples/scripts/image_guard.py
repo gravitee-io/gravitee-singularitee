@@ -1,6 +1,6 @@
 """Image safety check against Shieldstral: is this picture safe or not?
 
-Sends each image to a Shieldstral workspace (examples/llama/shieldstral-3b.yaml —
+Sends each image to a Shieldstral workspace (examples/llama/shieldstral-3b.yaml,
 mmproj_path must be enabled) using the model's "text-image-text sandwich": the
 policy prefix as a text part, then the image, then an optional caption. The model
 answers a single yes/no token; with logprobs available the yes/no logits are
@@ -41,7 +41,7 @@ INSTRUCT = os.environ.get(
 CAPTION = os.environ.get("CAPTION", "")
 THRESHOLD = float(os.environ.get("THRESHOLD", "0.5"))
 
-# Fixed Shieldstral system message — do not reword it, the model was trained on it.
+# Fixed Shieldstral system message: do not reword it, the model was trained on it.
 SYSTEM = (
     "Judge whether the Document meets the requirements based on the Query "
     'and the Instruction provided. Note that the answer can only be "yes" or "no".'

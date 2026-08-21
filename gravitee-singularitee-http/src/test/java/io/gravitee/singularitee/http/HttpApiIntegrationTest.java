@@ -283,7 +283,7 @@ class HttpApiIntegrationTest {
             ClassifyResponse.newBuilder()
               .setTopLabel("unsafe")
               .setTopScore(0.9f)
-              // a per-label entry WITHOUT character offsets — must not become a span
+              // a per-label entry WITHOUT character offsets, must not become a span
               .addResults(ClassifyResult.newBuilder().setLabel("unsafe").setScore(0.9f).build())
               .build()
           )
@@ -421,7 +421,7 @@ class HttpApiIntegrationTest {
 
   @Test
   void schemaInvalidPayloadReturns400() throws Exception {
-    // model present (passes requireModel) but messages is the wrong type → schema 400.
+    // model present (passes requireModel) but messages is the wrong type, so the schema returns 400.
     Resp r = post("/v1/chat/completions", "{\"model\":\"llm\",\"messages\":\"notanarray\"}");
     assertThat(r.status()).isEqualTo(400);
     JsonNode n = mapper.readTree(r.body());

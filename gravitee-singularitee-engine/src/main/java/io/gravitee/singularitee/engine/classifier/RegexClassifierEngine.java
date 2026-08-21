@@ -40,7 +40,7 @@ import java.util.stream.IntStream;
  * list of regular expressions, tagging each match with its entity type
  * (e.g. {@code "SSN"}, {@code "EMAIL"}, {@code "PHONE"}).
  *
- * <p>Runs fully in-process — no native library, no GPU, no remote call. Safe
+ * <p>Runs fully in-process: no native library, no GPU, no remote call. Safe
  * to instantiate on both server and client sides. Deterministic: every match
  * returns a {@link ClassifyResult} with score {@code 1.0f} and the character
  * span offsets of the match.
@@ -53,17 +53,17 @@ import java.util.stream.IntStream;
  * non-overlapping chunks that each fit an (estimated) token budget (see
  * {@link #DEFAULT_TOKEN_BUDGET}) and matched chunk-by-chunk, with each match's
  * offsets shifted back to the original text. This bounds the work a single
- * {@link java.util.regex.Matcher} pass can do on a huge document. Inputs within
- * budget are matched in a single pass, exactly as before.
+ * {@link Matcher} pass can do on a huge document. Inputs within
+ * budget are matched in a single pass.
  *
  * <p>Response shape:
  * <ul>
- *   <li>On match — {@code topLabel =} first matched entity type,
+ *   <li>On match: {@code topLabel =} first matched entity type,
  *       {@code topScore = 1.0f}, {@code allScores} contains one {@code 1.0}
  *       entry per distinct matched entity type, {@code results} contains one
  *       {@link ClassifyResult} per match with {@code label =} entity type,
  *       {@code token =} matched text, and {@code start/end} character offsets.</li>
- *   <li>No match — empty response: {@code topLabel = null},
+ *   <li>No match: empty response: {@code topLabel = null},
  *       {@code topScore = 0.0f}, {@code allScores} empty, {@code results} empty.
  *       The guard step treats this as "not triggered" and continues.</li>
  * </ul>
@@ -85,6 +85,7 @@ public final class RegexClassifierEngine implements ClassifierEngine {
 
   /** A single regex pattern tagged with the entity type it identifies. */
   public record PatternEntry(String pattern, String entityType) {
+    /** Rejects {@code null} components. */
     public PatternEntry {
       Objects.requireNonNull(pattern, "pattern");
       Objects.requireNonNull(entityType, "entityType");
@@ -92,7 +93,7 @@ public final class RegexClassifierEngine implements ClassifierEngine {
   }
 
   /**
-   * Default per-chunk token budget (estimated — see {@link EstimatedTokens}).
+   * Default per-chunk token budget (estimated, see {@link EstimatedTokens}).
    * Inputs longer than this are split on semantic boundaries before matching so a
    * single pathological pattern can never backtrack over an unbounded run of text
    * (or hold the whole input in one matcher). Only genuinely large documents are
@@ -104,7 +105,7 @@ public final class RegexClassifierEngine implements ClassifierEngine {
   private final Pattern combinedPattern;
 
   /**
-   * Indexed by group position (P0 → entityTypes[0], …). Empty when no valid
+   * Indexed by group position (P0 maps to entityTypes[0], and so on). Empty when no valid
    * patterns were supplied.
    */
   private final String[] entityTypes;
@@ -136,7 +137,7 @@ public final class RegexClassifierEngine implements ClassifierEngine {
    *
    * <p>Inputs longer than {@code tokenBudget} estimated tokens (see
    * {@link EstimatedTokens}) are split on semantic boundaries
-   * (paragraph → line → sentence → clause) before matching to bound per-pass work
+   * (paragraph, line, sentence, clause) before matching to bound per-pass work
    * on very large documents. Chunks never overlap, so a match that straddles a
    * chunk boundary can be missed; the splitter prefers coarse semantic boundaries
    * precisely to make that vanishingly rare for realistic text, and no chunking
@@ -176,8 +177,8 @@ public final class RegexClassifierEngine implements ClassifierEngine {
 
   /**
    * The input is already within a caller's character budget (e.g. a composite
-   * has split once for the whole model), so we skip our own splitter entirely
-   * and match the text in a single pass.
+   * has split once for the whole model), so the splitter is skipped and the
+   * text is matched in a single pass.
    */
   @Override
   public Single<ClassifyResponse> rxClassifyPresplit(ClassifyRequest request) {

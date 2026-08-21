@@ -53,14 +53,17 @@ public final class GgufModelResolver {
   private final HuggingFaceModelDownloader downloader;
   private final Path cacheDir;
 
+  /** Anonymous HuggingFace access and the default cache directory. */
   public GgufModelResolver(Vertx vertx) {
     this(new HuggingFaceModelDownloader(vertx), DEFAULT_CACHE_DIR);
   }
 
+  /** Authenticated HuggingFace access ({@code hfToken} may be null) and the default cache directory. */
   public GgufModelResolver(Vertx vertx, String hfToken) {
     this(new HuggingFaceModelDownloader(vertx, hfToken), DEFAULT_CACHE_DIR);
   }
 
+  /** Full control over the downloader and cache directory (used by tests). */
   public GgufModelResolver(HuggingFaceModelDownloader downloader, Path cacheDir) {
     this.downloader = downloader;
     this.cacheDir = cacheDir;

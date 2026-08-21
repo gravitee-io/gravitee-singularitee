@@ -16,6 +16,8 @@
 package io.gravitee.singularitee.inference.api.embedding;
 
 /**
+ * An embedding vector together with the number of tokens the input consumed.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

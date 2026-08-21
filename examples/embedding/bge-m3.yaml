@@ -16,11 +16,11 @@
 
 # Text embeddings · BAAI/bge-m3 (ONNX)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/embedding/bge-m3.yaml
 #
 # Multilingual (100+ languages), 1024-dim, CLS pooling, L2-normalized, no query
-# prefix needed. The pooling/normalize pair MUST match the model card — BGE-M3
+# prefix needed. The pooling/normalize pair MUST match the model card, BGE-M3
 # wants CLS + normalize; most sentence-transformers want MEAN.
 #
 # Embed over HTTP:

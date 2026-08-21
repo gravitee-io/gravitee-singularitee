@@ -40,10 +40,10 @@ scrape_configs:
     static_configs:
       # Prometheus runs with host networking (see docker-compose.yml), so each
       # server instance's management port is reachable over loopback. One entry
-      # per running instance — the `instance` label distinguishes them in Grafana.
+      # per running instance, the `instance` label distinguishes them in Grafana.
       - targets: ["localhost:18092"]
         labels:
-          instance: semantic-router     # ONNX/GLiNER (classify) — ai_classify_*
+          instance: semantic-router     # ONNX/GLiNER (classify), ai_classify_*
       - targets: ["localhost:18093"]
         labels:
-          instance: qwen3               # llama.cpp LLM (pipelines) — ai_pipeline_*, ai_tokens_*
+          instance: qwen3               # llama.cpp LLM (pipelines), ai_pipeline_*, ai_tokens_*

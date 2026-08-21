@@ -30,7 +30,7 @@ public record QueuedSequence<REQUEST extends GenerationRequest>(
   REQUEST request,
   String cacheKey
 ) {
-  /** Compatibility constructor — no cache key. */
+  /** Queues a request without a cache key. */
   public QueuedSequence(int seqId, REQUEST request) {
     this(seqId, request, null);
   }

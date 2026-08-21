@@ -25,20 +25,21 @@ import org.junit.jupiter.api.Test;
 /**
  * Tests for {@link VllmMemoryEstimator}.
  *
- * <p>The estimator calls {@code GpuMemoryQuery.query()} which requires a live
- * CPython + GPU runtime that is not available in unit test environments.
- * These tests focus on input validation (invalid parameters → {@code unknown()})
- * which is the pure-logic path that never touches CPython.
+ * <p>The estimator calls {@code GpuMemoryQuery.query()}, which needs a live
+ * CPython and GPU runtime. These tests cover input validation (invalid
+ * parameters yield {@code unknown()}), the pure-logic path that never touches
+ * CPython. The estimation math itself is validated by integration tests on a
+ * real GPU.
  *
- * <p>Full estimation math (GPU queries, KV cache, multimodal margins) is
- * validated end-to-end via integration tests that run with a real GPU.
+ * @author Rémi SULTAN (remi.sultan at graviteesource.com)
+ * @author GraviteeSource Team
  */
 class VllmMemoryEstimatorTest {
 
-  // Llama-3.1-8B dimensions (representative real model)
+  /** Parameter count of an 8B checkpoint. */
   private static final long TOTAL_PARAMS_8B = 8_030_261_248L;
 
-  // Qwen3-0.6B dimensions (from real HF Hub metadata)
+  /** Parameter count of Qwen3-0.6B. */
   private static final long TOTAL_PARAMS_QWEN3_06B = 751_632_384L;
 
   @Nested

@@ -6,10 +6,10 @@
     - a bare JSON array of call objects;
     - one or more bare/concatenated {"name":...,"arguments":...} objects
       (marker-less TOOL-channel payload);
-    - a single JSON object as the whole output (legacy whole-content fallback).
+    - a single JSON object as the whole output.
 
   Renders a JSON array of the call objects verbatim. Arguments carry native
-  JSON types, so no "coerce" hints are emitted (legacy: JSON flavor untouched).
+  JSON types, so no "coerce" hints are emitted.
 -#}
 {%- set out = output | trim -%}
 {%- set blocks = output | regex_findall('(?s)<tool_call>\\s*(\\{.*?})\\s*</tool_call>') -%}

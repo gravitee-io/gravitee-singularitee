@@ -29,11 +29,17 @@ import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
 
 /**
- * {@code POST /v1/responses} — OpenAI Responses API, streaming and buffered. Pipeline targets
- * support the stored-conversation continuation model: every response gets a {@code resp_…} id it
- * is stored under (unless {@code store: false}), and {@code previous_response_id} resumes the
- * server-curated transcript — the client sends only the new {@code input}. Direct model targets
- * remain stateless.
+ * {@code POST /v1/responses}: OpenAI Responses API, streaming and buffered.
+ *
+ * <p>Accepts {@code model}, {@code input} (string or item array), {@code instructions},
+ * {@code tools}, {@code stream}, {@code store}, {@code previous_response_id} and sampling
+ * fields. Pipeline targets support stored-conversation continuation: every response gets a
+ * {@code resp_...} id it is stored under (unless {@code store: false}), and
+ * {@code previous_response_id} resumes the server-curated transcript, so the client sends only
+ * the new {@code input}. Direct model targets remain stateless. Emits 400
+ * {@code invalid_request_error} for a malformed payload, 400 {@code model_not_found} for an
+ * unknown or hidden target, 400 {@code unsupported_modality} for media the target cannot
+ * read, and 500 {@code internal_error} on engine failure.
  */
 public final class ResponsesHandler implements Handler<RoutingContext> {
 
@@ -79,9 +85,8 @@ public final class ResponsesHandler implements Handler<RoutingContext> {
 
     boolean stream = payload.at("/stream").asBoolean(false);
     var toolSchemas = InferenceResponseFormatter.toolParameterSchemas(payload.at("/tools"));
-    // Stored-conversation continuation: the pipeline request carries the id this
-    // response is stored under — the emitted response must carry the SAME id so
-    // the client can continue from it via previous_response_id.
+    // Stored-conversation continuation: the emitted response must carry the same id the
+    // pipeline request stores it under, so the client can continue via previous_response_id.
     String responseId = res.pipeline() && !res.pipelineRequest().getRequestId().isBlank()
       ? res.pipelineRequest().getRequestId()
       : null;

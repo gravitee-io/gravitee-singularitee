@@ -16,7 +16,7 @@
 
 # GLM-4-9B · vLLM backend
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/vllm/glm-4-9b.yaml
 #
 # Dense 9.4B, bf16, 32k context. GLM ships its own chat template; trust_remote_code
@@ -26,7 +26,7 @@
 #   you use the -vllm-cuda image, which bundles it:
 #     ./run-server.sh --workspace examples/vllm/glm-4-9b.yaml   -Dvllm4j.venv=/path/to/.venv
 #
-# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each loads its own
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM: each loads its own
 # native CUDA bindings. One backend per server, composed over gRPC.
 
 workspace:
@@ -64,7 +64,7 @@ workspace:
               # GLM ends a tool call by emitting <|observation|> and expects the runtime to
               # supply the result. The GGUF does not flag it end-of-generation, so without a
               # stop string the model runs straight past it and writes the observation itself
-              # — a fabricated tool result, indistinguishable from a real one downstream.
+              # i.e. a fabricated tool result, indistinguishable from a real one downstream.
               # <|user|> is the same hazard for the next turn.
               stop:
                 - "<|observation|>"

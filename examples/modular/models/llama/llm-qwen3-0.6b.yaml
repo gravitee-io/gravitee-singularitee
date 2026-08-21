@@ -14,12 +14,12 @@
 # limitations under the License.
 #
 
-# Generation model — Qwen3-0.6B (llama.cpp / GGUF)
+# Generation model: Qwen3-0.6B (llama.cpp / GGUF)
 #
 # Logical id: "llm". Every generation pipeline (infer, tool-calling, pii-redact,
 # toxicity-guard) references the model under the stable id "llm", so the SAME
 # pipeline runs unchanged whatever backend a server binds to that id. This file
-# binds "llm" to the small cross-platform llama.cpp model — the default,
+# binds "llm" to the small cross-platform llama.cpp model, the default,
 # runs on macOS/Metal and CPU with no extra runtime.
 #
 # Served by: server-llamacpp.yaml (:9090)

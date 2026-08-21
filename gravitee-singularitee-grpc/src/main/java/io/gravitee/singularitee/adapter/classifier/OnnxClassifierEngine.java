@@ -121,12 +121,12 @@ public final class OnnxClassifierEngine
       return Single.zip(perChunk, OnnxClassifierEngine::perChunkRows)
         .map(this::toLocalResponse)
         .observeOn(eventLoopScheduler());
-      // split() is CPU-bound tokenizer work running at subscription time — keep it off the
+      // split() is CPU-bound tokenizer work running at subscription time; keep it off the
       // caller's event loop.
     }).subscribeOn(workerScheduler());
   }
 
-  /** One row per (label, chunk) tagged with the chunk's char span — mirror of the delegate's perSplitRows. */
+  /** One row per (label, chunk) tagged with the chunk's char span, mirroring the delegate's perSplitRows. */
   private static ClassifierResults perChunkRows(Object[] chunkResults) {
     List<ClassifierResult> rows = new ArrayList<>();
     for (Object o : chunkResults) {

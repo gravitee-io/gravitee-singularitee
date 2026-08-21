@@ -105,7 +105,7 @@
             <artifactId>spring-context</artifactId>
         </dependency>
 
-        <!-- Logging — BOM marks these as 'provided', override to 'compile' for distribution -->
+        <!-- Logging: the BOM marks these 'provided'; override to 'compile' for the distribution -->
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>

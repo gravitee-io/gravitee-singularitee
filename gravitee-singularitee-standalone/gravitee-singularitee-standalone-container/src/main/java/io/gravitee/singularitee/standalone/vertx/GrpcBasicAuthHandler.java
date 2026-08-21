@@ -55,8 +55,11 @@ public class GrpcBasicAuthHandler implements Handler<HttpServerRequest> {
   private final Map<String, String> users;
 
   /**
+   * Creates the handler; {@code users} is copied.
+   *
    * @param delegate the gRPC server to forward authenticated requests to
-   * @param users    immutable map of username to plaintext password; must be non-empty
+   * @param users    username to plaintext password; must be non-empty
+   * @throws IllegalArgumentException when {@code users} is null or empty
    */
   public GrpcBasicAuthHandler(GrpcServer delegate, Map<String, String> users) {
     if (users == null || users.isEmpty()) {

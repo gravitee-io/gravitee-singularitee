@@ -16,10 +16,10 @@
 
 # Qwen3-0.6B · vLLM backend
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/vllm/qwen3-0.6b.yaml
 #
-# The smallest useful text model here — the one to smoke-test a vLLM deployment
+# The smallest useful text model here, the one to smoke-test a vLLM deployment
 # with before committing a GPU to something larger. Dense 0.6B, bf16, 40960-token
 # positional encoding. Hybrid thinking: enable_thinking drives <think> blocks.
 #
@@ -27,7 +27,7 @@
 #   you use the -vllm-cuda image, which bundles it:
 #     ./run-server.sh --workspace examples/vllm/qwen3-0.6b.yaml   -Dvllm4j.venv=/path/to/.venv
 #
-# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each loads its own
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM: each loads its own
 # native CUDA bindings. One backend per server, composed over gRPC.
 
 workspace:

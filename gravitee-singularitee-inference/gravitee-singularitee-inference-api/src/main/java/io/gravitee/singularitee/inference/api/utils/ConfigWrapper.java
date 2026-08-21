@@ -18,14 +18,18 @@ package io.gravitee.singularitee.inference.api.utils;
 import java.util.Map;
 
 /**
+ * Untyped key/value configuration with unchecked typed accessors; the caller owns the cast.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
 public record ConfigWrapper(Map<String, Object> configuration) {
+  /** Value for {@code key}, or {@code null}; the cast to {@code T} is unchecked. */
   public <T> T get(String key) {
     return (T) this.configuration.get(key);
   }
 
+  /** Value for {@code key}, or {@code defaultValue} when absent; the cast is unchecked. */
   public <T> T get(String key, T defaultValue) {
     return (T) this.configuration.getOrDefault(key, defaultValue);
   }

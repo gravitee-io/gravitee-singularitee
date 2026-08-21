@@ -14,12 +14,12 @@
 # limitations under the License.
 #
 
-# Router — GLiNER zero-shot intent classifier (ONNX)
+# Router: GLiNER zero-shot intent classifier (ONNX)
 #
 # Logical id: "router". A zero-shot classifier: the routing labels (with their
 # descriptions) are supplied here, no fine-tuning required. The route pipeline
 # step classifies the prompt against these labels and branches accordingly.
-# Cross-platform (ONNX Runtime, CPU) — co-located with the other classifiers on
+# Cross-platform (ONNX Runtime, CPU), co-located with the other classifiers on
 # the safety server.
 #
 # Served by: server-safety.yaml (:9092)

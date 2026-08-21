@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
  * outcome after generation. This class owns the streaming lifecycle and the
  * post-generation context updates (output fields, conversation append, usage).
  *
- * <p>Fully reactive — no blocking. The step returns a {@link Maybe} that chains on
+ * <p>Fully reactive, no blocking. The step returns a {@link Maybe} that chains on
  * the {@link Completable} from {@link TextGenEngine#rxAddSequence}, completing only
  * after the final token has been delivered to the capture stream.
  *
@@ -142,8 +142,8 @@ public final class InferStepExecutor
 
   /**
    * Derives the capture behavior for this step: whether tokens stream to the
-   * client, how reasoning is handled (strip_thinking keeps the legacy
-   * behavior — reasoning removed from both the step output and the wire;
+   * client, how reasoning is handled (strip_thinking removes
+   * reasoning from both the step output and the wire;
    * otherwise reasoning is ROUTEd on a separate STEP_ROLE_THINKING flux while
    * the step output keeps the raw text), the reasoning tag pair, and the
    * tool-open markers that cut the forwarded thinking flux.
@@ -274,9 +274,8 @@ public final class InferStepExecutor
     var pctx = ctx.pipelineContext();
     // Engines that classify tool tokens suppress the tag markers and deliver
     // the bare payload on the TOOL channel (captured separately). Re-wrap it
-    // with the step's configured tool tags so the step output — and the
-    // assistant turn appended below — stays byte-compatible with the legacy
-    // tagged text; chat templates and downstream tool parsing re-render
+    // with the step's configured tool tags so the step output, and the
+    // assistant turn appended below, keep the tagged-text form; chat templates and downstream tool parsing re-render
     // prior tool calls from that tagged block on later turns.
     String stepOutput = ToolCallOutcomeRecorder.withReWrappedToolCalls(
       accumulator.toString(),
@@ -321,7 +320,7 @@ public final class InferStepExecutor
     TokenCaptureStream captureStream,
     String stepOutput
   ) {
-    // Append to generated_messages log — preserved across CoT
+    // Append to generated_messages log, preserved across CoT
     // iterations, unlike the step_id.output field which is
     // overwritten by each run.
     pctx.addGeneratedMessage(stepId, stepOutput);
@@ -354,7 +353,7 @@ public final class InferStepExecutor
       int msgCountBefore = pctx.messages() != null ? pctx.messages().size() : 0;
       pctx.appendMessage(new ChatTurn(ChatRole.ASSISTANT, conversationText));
       LOGGER.debug(
-        "InferStep '{}': appended assistant response (role={}) — messages grew from {} to {}",
+        "InferStep '{}': appended assistant response (role={}), messages grew from {} to {}",
         stepId,
         role,
         msgCountBefore,
@@ -420,7 +419,7 @@ public final class InferStepExecutor
       if (completed.hasPerformance()) {
         // Per-step prefill cost: prompt_tokens alone cannot show how much
         // of the prompt was re-evaluated versus served from the KV
-        // prefix cache — the eval TIME is what a re-prefill regression
+        // prefix cache; the eval TIME is what a re-prefill regression
         // moves.
         pctx.set(
           stepId + ".prompt_ms",

@@ -23,17 +23,17 @@ import io.vertx.core.net.TrustOptions;
  *
  * <p>Deliberately expressed in plain Vert.x types: the caller decides where the
  * certificates come from (a {@code gravitee.yml} block, a vault, a test fixture) and this
- * module stays free of configuration dependencies — it is the one artifact a gateway
+ * module stays free of configuration dependencies; it is the one artifact a gateway
  * connector embeds.
  *
  * <p>Everything is optional. With no trust material the JVM default trust store applies,
  * which is enough for a publicly-trusted certificate; a private CA needs {@code trust}.
- * {@code keyCert} is what makes the connection <em>mutual</em> — without it the client
+ * {@code keyCert} is what makes the connection <em>mutual</em>; without it the client
  * cannot answer a server running {@code grpc.ssl.clientAuth: REQUIRED}.
  *
  * @param trust          material verifying the server, or {@code null} for the JVM default trust store
  * @param keyCert        this client's own certificate and key, or {@code null} for one-way TLS
- * @param trustAll       accept any server certificate — development only, defeats the point of TLS
+ * @param trustAll       accept any server certificate (development only, defeats the point of TLS)
  * @param verifyHostname whether the certificate must match the host being dialled
  */
 public record ClientTlsOptions(

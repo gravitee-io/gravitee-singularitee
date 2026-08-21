@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
 /**
  * {@link ClassifierEngine} backed by a GLiNER4j zero-shot classifier.
  *
- * <p>Produces sequence-level results (no spans) — suitable for toxicity guards
+ * <p>Produces sequence-level results (no spans), suitable for toxicity guards
  * and classifier-based routing.
  *
  * <p>Long inputs are split into model-sized, disjoint chunks (see {@link GlinerChunking}) since
@@ -101,7 +101,7 @@ public final class GlinerClassifierEngine
       .map(l -> new ClassificationLabel(l.name(), l.description()))
       .toList();
     var names = labels.stream().map(ClassifierEngine.ClassifyLabel::name).toList();
-    // Custom labels can't use classifyBatch (no per-request overload) — single-call path.
+    // Custom labels can't use classifyBatch (no per-request overload): single-call path.
     return rxInfer(() -> classifyChunked(request.text(), classificationLabels, names));
   }
 
@@ -176,7 +176,7 @@ public final class GlinerClassifierEngine
   ) {}
 
   /**
-   * Splits {@code text} to fit the encoder window (budget = tokenCap − estimated label prompt),
+   * Splits {@code text} to fit the encoder window (budget = tokenCap minus estimated label prompt),
    * classifies each chunk, and keeps the max score per label across chunks. Used for the custom-label
    * path, which gliner4j cannot batch.
    */

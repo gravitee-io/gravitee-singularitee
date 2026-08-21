@@ -31,6 +31,7 @@ public enum SchemaName {
     this.pointer = pointer;
   }
 
+  /** JSON Pointer to this schema inside {@code /llm-schemas.json}. */
   public String pointer() {
     return pointer;
   }

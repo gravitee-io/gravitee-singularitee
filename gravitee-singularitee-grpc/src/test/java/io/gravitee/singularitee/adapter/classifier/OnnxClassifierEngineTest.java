@@ -121,7 +121,7 @@ class OnnxClassifierEngineTest {
     verify(delegate).infer("John");
     verify(delegate, never()).classifySequences(anyList());
 
-    engine.close(); // no batcher in TOKEN mode — must not throw
+    engine.close(); // no batcher in TOKEN mode; must not throw
     verify(delegate).close();
   }
 

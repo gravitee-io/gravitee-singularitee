@@ -22,61 +22,27 @@ import io.gravitee.vllm.engine.GpuMemoryQuery.GpuMemoryInfo;
 /**
  * Pre-flight VRAM estimator for models loaded via vLLM.
  *
- * <p>Accepts only primitives — no external model-metadata types.
- * The caller (typically {@code VllmProvider} in {@code gravitee-inference-service})
- * resolves HuggingFace metadata into {@code totalParams} and {@code bitsPerParam}
- * before building {@code VllmConfig}.
+ * <p>Accepts only primitives: the caller resolves the model shape into
+ * {@code totalParams} and {@code bitsPerParam} before building {@link VllmConfig}.
  *
- * <h3>Multimodal support (vision and audio)</h3>
- * <p>For vision-language models (VLMs) and audio-language models, the weight
- * estimate is already correct because {@code safetensors.total()} reported by
- * the HuggingFace Hub API includes <b>all</b> parameters — LLM backbone,
- * vision/audio encoder, and projection layers.
+ * <p>Multimodal models: the parameter count already includes the vision/audio
+ * encoder and projection layers, but inference adds transient memory the
+ * estimate cannot capture. Encoder activations take roughly 1-3 GB for vision
+ * and 0.5-1.5 GB for audio, and each media item expands into hundreds to
+ * thousands of KV-cache tokens by an amount that depends on the input and the
+ * architecture. When {@code multimodal} is {@code true} the safety margin is
+ * therefore raised from 10 % to 25 %, and the estimate stays labelled
+ * approximate. Multimodal is detected from {@code vision_config} or
+ * {@code audio_config} in the model's {@code config.json}.
  *
- * <p>However, multimodal models incur additional transient GPU memory during
- * inference that this estimator cannot capture precisely:
- * <ul>
- *   <li><b>Vision encoder activations</b> — the ViT forward pass allocates
- *       1–3 GB of temporary activation memory depending on image resolution
- *       and patch size. This is freed after each image is processed.</li>
- *   <li><b>Audio encoder activations</b> — Whisper-style audio encoders
- *       allocate similar transient memory for mel-spectrogram processing,
- *       typically 0.5–1.5 GB depending on audio segment length.</li>
- *   <li><b>Media token expansion</b> — a single image consumes hundreds to
- *       thousands of visual tokens in the KV cache (e.g. 1,176 for Qwen2.5-VL
- *       at 1080p, up to 4,096 for InternVL2). Audio segments similarly expand
- *       into encoder output tokens. This eats from the same {@code maxModelLen}
- *       budget but cannot be predicted at estimation time since the actual media
- *       count and duration/resolution are runtime-dependent.</li>
- *   <li><b>Architecture-specific overhead</b> — each model family (LLaVA,
- *       Qwen2-VL, InternVL, Pixtral, Qwen2-Audio, Whisper, etc.) has a
- *       different media tokenization strategy, making per-architecture
- *       estimation impractical.</li>
- * </ul>
+ * <p>LoRA: with {@code enableLora}, vLLM pre-allocates buffers for
+ * {@code maxLoras} adapters up to {@code maxLoraRank}. Typical configurations
+ * (4 adapters, rank 16-64) cost 200 MB to 1 GB, which the safety margins cover.
+ * The buffers are not sized explicitly because the allocation depends on which
+ * layers each adapter touches. For {@code maxLoras >= 8} with a high rank, raise
+ * {@code gpu_memory_utilization} or reduce {@code maxLoras}.
  *
- * <p>To account for this, when {@code multimodal=true} the safety margin is
- * increased from 10 % to 25 %, providing a coarse but honest buffer. The
- * estimate remains labeled {@code isApproximate=true}. Multimodal is detected
- * from the presence of {@code vision_config} or {@code audio_config} in the
- * model's {@code config.json}.
- *
- * <h3>LoRA adapter support</h3>
- * <p>When vLLM's LoRA engine is enabled ({@code enableLora=true}), it
- * pre-allocates GPU buffers for {@code maxLoras} concurrent adapters up to
- * {@code maxLoraRank}. Individual adapters are small (10–200 MB each), and
- * the total overhead for typical configurations (4 adapters, rank 16–64)
- * is 200 MB – 1 GB — well within the 10 % text-only safety margin for
- * 24 GB+ GPUs.
- *
- * <p>This estimator does <b>not</b> compute LoRA buffer sizes explicitly
- * because the exact allocation depends on which model layers are adapted,
- * which varies per adapter and is unknown at estimation time. The existing
- * safety margins (10 % for text, 25 % for multimodal) cover typical LoRA
- * usage. For extreme configurations ({@code maxLoras >= 8} with high rank),
- * users should increase {@code gpu_memory_utilization} or reduce
- * {@code maxLoras}.
- *
- * <p>Pure computation — no side effects, never throws.
+ * <p>Pure computation: no side effects, never throws.
  * {@link MemoryEstimate#unknown()} is returned whenever estimation is not possible.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -85,15 +51,15 @@ import io.gravitee.vllm.engine.GpuMemoryQuery.GpuMemoryInfo;
 public final class VllmMemoryEstimator {
 
   /**
-   * Safety margin for text-only models — keep 10 % of VRAM free for CUDA
+   * Safety margin for text-only models: keep 10 % of VRAM free for CUDA
    * driver overhead, CUDA graph workspace, and vLLM internal buffers.
    */
   private static final double SAFETY_MARGIN_TEXT = 0.10;
 
   /**
-   * Safety margin for multimodal models (VLM / audio-LM) — keep 25 % of VRAM
-   * free to absorb transient vision/audio encoder activations and media token
-   * expansion in the KV cache. See class javadoc for rationale.
+   * Safety margin for multimodal models: keep 25 % of VRAM free to absorb
+   * transient vision/audio encoder activations and media token expansion in the
+   * KV cache.
    */
   private static final double SAFETY_MARGIN_MULTIMODAL = 0.25;
 
@@ -124,7 +90,7 @@ public final class VllmMemoryEstimator {
    *                               KV-cache is estimated for {@code maxModelLen * maxNumSeqs}
    *                               tokens. {@code <= 0} defaults to {@code 1}.
    * @param gpuMemoryUtilization   fraction of total GPU memory vLLM is allowed to use
-   *                               (0.0–1.0). {@code <= 0} defaults to {@code 0.9}.
+   *                               (0.0-1.0). {@code <= 0} defaults to {@code 0.9}.
    * @param multimodal             {@code true} if the model has a vision or audio encoder
    *                               (detected via {@code vision_config} or {@code audio_config}
    *                               in config.json). Bumps the safety margin from 10 % to 25 %.
@@ -190,7 +156,7 @@ public final class VllmMemoryEstimator {
     long kvBytes = computeKvBytes(maxModelLen, maxNumSeqs, numHiddenLayers, numKvHeads, headDim);
     long totalRequired = weightBytes + kvBytes;
 
-    // vLLM's usable budget: totalGpuMemory × gpuMemoryUtilization.
+    // vLLM's usable budget: totalGpuMemory x gpuMemoryUtilization.
     // Within that budget we also reserve a safety margin for CUDA context,
     // NCCL buffers, FlashInfer workspace, and CUDA graph captures.
     long usableBudget = (long) (cuda.totalBytes() * gpuMemoryUtilization * (1.0 - safetyMargin));
@@ -251,7 +217,7 @@ public final class VllmMemoryEstimator {
     boolean multimodal
   ) {
     String mmNote = multimodal
-      ? " Multimodal model detected — using 25%% safety margin for encoder activations."
+      ? " Multimodal model detected: using 25%% safety margin for encoder activations."
       : "";
     if (required <= usableBudget) {
       double headroom = (100.0 * (usableBudget - required)) / usableBudget;

@@ -31,7 +31,7 @@ echo "[cuda-entrypoint] LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
 
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi -L 2>/dev/null \
-    || echo "[cuda-entrypoint] WARNING: nvidia-smi found no GPU — did you run with '--gpus all'?"
+    || echo "[cuda-entrypoint] WARNING: nvidia-smi found no GPU. Did you run with '--gpus all'?"
 else
   echo "[cuda-entrypoint] WARNING: nvidia-smi not on PATH; GPU may be unavailable."
 fi
@@ -53,10 +53,10 @@ if [ -n "${VLLM4J_VENV:-}" ]; then
   # vLLM4j derives libpython from pyvenv.cfg, so a venv without it cannot
   # bootstrap CPython no matter what else is in place.
   if [ ! -f "${VLLM4J_VENV}/pyvenv.cfg" ]; then
-    echo "[cuda-entrypoint] WARNING: ${VLLM4J_VENV}/pyvenv.cfg missing — vLLM4j cannot bootstrap CPython."
+    echo "[cuda-entrypoint] WARNING: ${VLLM4J_VENV}/pyvenv.cfg missing; vLLM4j cannot bootstrap CPython."
   fi
   if ! compgen -G "${VLLM4J_VENV}/lib/libpython3*.so" >/dev/null 2>&1; then
-    echo "[cuda-entrypoint] WARNING: no libpython under ${VLLM4J_VENV}/lib — the native load will fail."
+    echo "[cuda-entrypoint] WARNING: no libpython under ${VLLM4J_VENV}/lib; the native load will fail."
   fi
   "${VLLM4J_VENV}/bin/python" -c 'import vllm; print("[cuda-entrypoint] vllm", vllm.__version__)' 2>/dev/null \
     || echo "[cuda-entrypoint] WARNING: 'import vllm' failed in ${VLLM4J_VENV}."
@@ -81,7 +81,7 @@ if [ -z "${GRAVITEE_AI_MODELS_PATH:-}" ]; then
     FALLBACK="${TMPDIR:-/tmp}/graviteeio-singularitee-models"
     mkdir -p "${FALLBACK}"
     export GRAVITEE_AI_MODELS_PATH="${FALLBACK}"
-    echo "[cuda-entrypoint] WARNING: ${MODELS_DIR} is not writable as $(id -u):$(id -g) — falling back to ${FALLBACK}."
+    echo "[cuda-entrypoint] WARNING: ${MODELS_DIR} is not writable as $(id -u):$(id -g); falling back to ${FALLBACK}."
     echo "[cuda-entrypoint] WARNING: that path is not persistent; models will be downloaded again on every start."
     echo "[cuda-entrypoint] Set GRAVITEE_AI_MODELS_PATH to a writable persistent path, or chown the mount to $(id -u)."
   fi

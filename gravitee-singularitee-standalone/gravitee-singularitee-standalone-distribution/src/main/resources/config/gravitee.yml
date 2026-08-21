@@ -22,7 +22,7 @@
 # Example: grpc.port -> GRAVITEE_GRPC_PORT=9090
 #
 
-# ── gRPC Server ──────────────────────────────────────────────────────────
+# --- gRPC Server ---
 # All options under "grpc.*" are read by gravitee-node's VertxHttpServerOptions
 # and applied to the Vert.x HTTP/2 server that carries gRPC traffic.
 grpc:
@@ -32,7 +32,7 @@ grpc:
   compressionSupported: false # gRPC message compression
   idleTimeout: 0 # Connection idle timeout in seconds (0 = no timeout)
   tcpKeepAlive: true # TCP keep-alive
-  # ── Outbound TLS (workspace remote: endpoints with `ssl: true`) ─────────
+  # --- Outbound TLS (workspace remote: endpoints with `ssl: true`) ---
   # The workspace decides WHICH endpoints are reached over TLS; this block
   # decides WHAT to present. Unset = JVM default trust store, no client cert.
   # client:
@@ -41,14 +41,14 @@ grpc:
   #       type: PKCS12         # PEM | JKS | PKCS12
   #       path: /certs/ca.p12
   #       password: changeit
-  #     keystore:              # our identity — presented to servers demanding
+  #     keystore:              # our identity, presented to servers demanding
   #       type: PKCS12         # clientAuth (this is what makes it mutual TLS)
   #       path: /certs/client.p12
   #       password: changeit   # PEM type needs keyPath instead of password
 
-# ── TLS ──────────────────────────────────────────────────────────────
+# --- TLS ---
 # Uncomment to enable TLS on the gRPC server.
-# Certificates are hot-reloadable — changes are picked up without restart.
+# Certificates are hot-reloadable: changes are picked up without restart.
 #  secured: true
 #  ssl:
 #    sni: false                       # Server Name Indication
@@ -65,12 +65,12 @@ grpc:
 #      path: ${gravitee.home}/config/truststore.jks
 #      password: changeit
 
-# ── HAProxy PROXY protocol ──────────────────────────────────────────
+# --- HAProxy PROXY protocol ---
 #  haproxy:
 #    proxyProtocol: false             # Enable HAProxy PROXY protocol v1/v2
 #    proxyProtocolTimeout: 10000      # PROXY protocol header timeout in ms
 
-# ── Authentication ───────────────────────────────────────────────────
+# --- Authentication ---
 # Optional HTTP Basic auth on gRPC calls. When enabled, callers must send an
 # "authorization: Basic base64(username:password)" entry in their gRPC metadata.
 # Requests without valid credentials are rejected with gRPC UNAUTHENTICATED.
@@ -80,7 +80,7 @@ grpc:
 #    users:                           # username -> password
 #      admin: adminadmin
 
-# ── Native OpenAI-compatible HTTP API ────────────────────────────────────
+# --- Native OpenAI-compatible HTTP API ---
 # Opt-in JSON/REST API (OpenAI-compatible + Gravitee classify/rerank/similarity)
 # exposing the same models & pipelines as gRPC. Disabled by default.
 http:
@@ -90,7 +90,7 @@ http:
   idleTimeout: 0
   tcpKeepAlive: true
   expose-pipelines: true             # list pipelines on /v1/models and accept pipeline ids
-#  secured: true                     # TLS — same ssl/haproxy structure as the grpc block above
+#  secured: true                     # TLS; same ssl/haproxy structure as the grpc block above
 #  ssl:
 #    keystore:
 #      type: PKCS12
@@ -102,7 +102,7 @@ http:
 #    tokens:                          # accepted API keys (Authorization: Bearer <token>)
 #      - sk-local-changeme
 
-# ── AI Workspace ─────────────────────────────────────────────────────────
+# --- AI Workspace ---
 ai:
   # Workspace YAML to load at startup (models + pipelines).
   # No default: mount or point this at your own workspace file, e.g. one of the
@@ -131,7 +131,7 @@ ai:
 
   # Streaming response back-pressure.
   # buffer-capacity is the number of generated tokens a single (slow) client may fall
-  # behind before its stream is cancelled — instead of buffering without bound. Larger
+  # behind before its stream is cancelled, instead of buffering without bound. Larger
   # tolerates slower clients at higher memory per stream; smaller cancels them sooner.
   streaming:
     buffer-capacity: 256
@@ -149,7 +149,7 @@ ai:
   #  ttl: 3600
   #  max-entries: 10000
 
-# ── Management API ───────────────────────────────────────────────────────
+# --- Management API ---
 # Internal HTTP API for health checks, metrics, configuration introspection.
 services:
   core:
@@ -162,10 +162,10 @@ services:
         users:
           admin: adminadmin
 
-  # ── Metrics (Micrometer → Prometheus) ──────────────────────────────────
+  # --- Metrics (Micrometer, Prometheus endpoint) ---
   # Set BOTH flags to true to expose inference metrics
   # (ai_infer_requests_total, ai_infer_latency_seconds, ai_model_call_seconds,
-  # ai_tokens_total), JVM/Vert.x metrics, and — when GPU monitoring is on below —
+  # ai_tokens_total), JVM/Vert.x metrics, and, when GPU monitoring is on below,
   # the gpu_* gauges, scraped at
   # http://<core.host>:18092/_node/metrics/prometheus (basic-auth protected).
   metrics:
@@ -173,7 +173,7 @@ services:
     prometheus:
       enabled: true
 
-  # ── Node monitoring (CPU/JVM + GPU) ─────────────────────────────────────
+  # --- Node monitoring (CPU/JVM + GPU) ---
   # GPU monitoring shells out to `nvidia-smi` on a fixed delay and publishes a
   # snapshot on the event bus; when metrics are enabled (above) the snapshot is
   # bound to Micrometer gauges exposed on the Prometheus endpoint:
@@ -187,11 +187,11 @@ services:
       delay: 5000
       unit: MILLISECONDS
 
-  # ── OpenTelemetry tracing (server-side spans) ───────────────────────────
+  # --- OpenTelemetry tracing (server-side spans) ---
   # Disabled by default. When enabled, the gRPC server emits a SERVER span per RPC
-  # (continuing any inbound W3C traceparent) with nested ai.pipeline → ai.step →
-  # ai.model.<op> spans, exported via OTLP to a collector (Jaeger, Tempo, …).
-  # Legacy aliases under services.tracing.otel.* are also accepted.
+  # (continuing any inbound W3C traceparent) with nested ai.pipeline, ai.step and
+  # ai.model.<op> spans, exported via OTLP to a collector (Jaeger, Tempo, and similar).
+  # Keys under services.tracing.otel.* are accepted as aliases.
   opentelemetry:
     enabled: false
     verbose: false # add request/response attributes to spans
@@ -206,12 +206,12 @@ services:
 #        trustAll: false
 #        verifyHost: true
 
-# ── Graceful shutdown ────────────────────────────────────────────────────
+# --- Graceful shutdown ---
 gracefulShutdown:
   delay: 0
   unit: MILLISECONDS
 
-# ── Kubernetes ───────────────────────────────────────────────────────────
+# --- Kubernetes ---
 # Disable Kubernetes integration (not needed for standalone Singularitee)
 kubernetes:
   enabled: false

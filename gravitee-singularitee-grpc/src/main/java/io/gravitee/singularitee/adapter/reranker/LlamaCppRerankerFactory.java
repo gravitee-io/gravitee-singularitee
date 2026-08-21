@@ -26,6 +26,7 @@ import io.gravitee.singularitee.inference.api.reranker.RerankTemplate;
 import io.gravitee.singularitee.inference.llama.cpp.ModelConfig;
 import io.gravitee.singularitee.inference.llama.cpp.encoder.LlamaCppRerankerModel;
 import io.gravitee.singularitee.inference.math.api.GioMaths;
+import io.gravitee.singularitee.workspace.MemoryCheckPolicyType;
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
 import io.gravitee.singularitee.workspace.config.LlamaCppConfig;
 import io.gravitee.singularitee.workspace.config.LlamaCppRerankerConfig;
@@ -36,7 +37,7 @@ import java.nio.file.Path;
  * Creates a llama.cpp-backed {@link LlamaCppRerankerEngine} from a
  * {@link ModelLoadRequest}.
  *
- * <p>The GGUF model file is resolved by {@link io.gravitee.singularitee.grpc.resolver.GgufModelResolver}
+ * <p>The GGUF model file is resolved by {@code GgufModelResolver}
  * before this factory is invoked; the resolved path is passed via
  * {@link #create(ModelLoadRequest, Path)}.
  *
@@ -51,6 +52,7 @@ public final class LlamaCppRerankerFactory implements ModelEngineFactory {
   private final GioMaths gioMaths;
   private final Vertx vertx;
 
+  /** Creates the factory with the math backend and the Vert.x instance engines schedule on. */
   public LlamaCppRerankerFactory(GioMaths gioMaths, Vertx vertx) {
     this.gioMaths = gioMaths;
     this.vertx = vertx;
@@ -83,7 +85,7 @@ public final class LlamaCppRerankerFactory implements ModelEngineFactory {
       .nUBatch(llamaCfg.nUbatch() > 0 ? llamaCfg.nUbatch() : 512)
       .nSeqMax(llamaCfg.nSeqMax() > 0 ? llamaCfg.nSeqMax() : 8)
       .nGpuLayers(llamaCfg.nGpuLayers() > 0 ? llamaCfg.nGpuLayers() : 999)
-      // Reranker models must use RANK pooling — force it regardless of what the YAML says.
+      // Reranker models must use RANK pooling; forced regardless of what the YAML says.
       .poolingType(PoolingType.RANK)
       .attentionType(resolveAttentionType(llamaCfg.attentionType()))
       .flashAttnType(resolveFlashAttnType(llamaCfg.flashAttnType()))
@@ -105,9 +107,7 @@ public final class LlamaCppRerankerFactory implements ModelEngineFactory {
     );
   }
 
-  private static MemoryCheckPolicy toMemoryCheckPolicy(
-    io.gravitee.singularitee.workspace.MemoryCheckPolicyType policy
-  ) {
+  private static MemoryCheckPolicy toMemoryCheckPolicy(MemoryCheckPolicyType policy) {
     if (policy == null) return MemoryCheckPolicy.WARN;
     return switch (policy) {
       case FAIL -> MemoryCheckPolicy.FAIL;

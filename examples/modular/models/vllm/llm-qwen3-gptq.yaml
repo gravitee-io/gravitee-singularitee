@@ -14,10 +14,10 @@
 # limitations under the License.
 #
 
-# Generation model — Qwen3-0.6B GPTQ-Int8 (vLLM / vllm4j)
+# Generation model: Qwen3-0.6B GPTQ-Int8 (vLLM / vllm4j)
 #
 # Logical id: "llm". 8-bit GPTQ quantization, ~2x memory reduction vs bfloat16.
-# Linux/CUDA only — requires the vLLM virtualenv: -Dvllm4j.venv=/path/to/.venv
+# Linux/CUDA only: requires the vLLM virtualenv: -Dvllm4j.venv=/path/to/.venv
 #
 # Served by: server-vllm-gptq.yaml (:9091)
 

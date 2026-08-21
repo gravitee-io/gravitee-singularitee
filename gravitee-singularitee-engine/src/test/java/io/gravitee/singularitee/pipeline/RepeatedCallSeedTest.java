@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The stuck-call signal: the trailing run of consecutive assistant tool-call
- * turns with identical (name, arguments) — an engine-counted fact of the
+ * turns with identical (name, arguments), an engine-counted fact of the
  * transcript that a graph gate uses to break behavioral loops.
  */
 class RepeatedCallSeedTest {

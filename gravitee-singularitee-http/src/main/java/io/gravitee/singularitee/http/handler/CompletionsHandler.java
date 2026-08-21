@@ -28,7 +28,14 @@ import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
 
-/** {@code POST /v1/completions} — legacy text completions, streaming and buffered. */
+/**
+ * {@code POST /v1/completions}: legacy text completions, streaming and buffered.
+ *
+ * <p>Accepts {@code model}, {@code prompt}, {@code stream}, {@code stream_options} and
+ * sampling fields. Emits 400 {@code invalid_request_error} for a malformed payload, 400
+ * {@code model_not_found} for an unknown or hidden target, and 500 {@code internal_error} on
+ * engine failure.
+ */
 public final class CompletionsHandler implements Handler<RoutingContext> {
 
   private final GraviteeInferenceServiceImpl inference;

@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
 /**
  * {@link ClassifierEngine} backed by a GLiNER4j zero-shot NER model.
  *
- * <p>Produces token-level (span) results — suitable for PII redaction guards.
+ * <p>Produces token-level (span) results, suitable for PII redaction guards.
  *
  * <p>Long inputs are split into model-sized, disjoint chunks (see {@link GlinerChunking}) since
  * gliner4j truncates internally at the encoder window. The per-chunk text budget is the configured
@@ -59,7 +59,7 @@ public final class GlinerNerEngine
 
   /**
    * Coalesces chunk extractions from all concurrent default-schema requests into a single batched
-   * {@code extractBatch} GPU run. Only the configured-entity path uses it — gliner4j's
+   * {@code extractBatch} GPU run. Only the configured-entity path uses it: gliner4j's
    * {@code extractBatch} takes no per-request entity list, so custom-label requests can't batch.
    */
   private final MicroBatcher<String, Map<String, List<EntitySpan>>> batcher;
@@ -103,7 +103,7 @@ public final class GlinerNerEngine
       .map(l -> new EntityDefinition(l.name(), l.description()))
       .toList();
     var names = labels.stream().map(ClassifierEngine.ClassifyLabel::name).toList();
-    // Custom entities can't use extractBatch (no per-request overload) — single-call path.
+    // Custom entities can't use extractBatch (no per-request overload): single-call path.
     return rxInfer(() -> extractChunked(request.text(), entityDefs, names));
   }
 
@@ -183,7 +183,7 @@ public final class GlinerNerEngine
   ) {}
 
   /**
-   * Splits {@code text} to fit the encoder window (budget = tokenCap − estimated entity prompt),
+   * Splits {@code text} to fit the encoder window (budget = tokenCap minus estimated entity prompt),
    * extracts each chunk, and re-bases span offsets to the original text. Used for the custom-entity
    * path, which gliner4j cannot batch.
    */

@@ -54,8 +54,7 @@ class Jinja4jChatTemplateRendererTest {
     renderer = new Jinja4jChatTemplateRenderer();
   }
 
-  // ── Basic rendering ────────────────────────────────────────────────────────
-
+  // Basic rendering
   @Nested
   class BasicRendering {
 
@@ -105,8 +104,7 @@ class Jinja4jChatTemplateRendererTest {
     }
   }
 
-  // ── BOS / EOS tokens ──────────────────────────────────────────────────────
-
+  // BOS / EOS tokens
   @Nested
   class SpecialTokens {
 
@@ -140,8 +138,7 @@ class Jinja4jChatTemplateRendererTest {
     }
   }
 
-  // ── extraVariables messages vs parameter messages ─────────────────────────
-
+  // extraVariables messages vs parameter messages
   @Nested
   class MessagesPrecedence {
 
@@ -169,8 +166,7 @@ class Jinja4jChatTemplateRendererTest {
     }
   }
 
-  // ── Tools ──────────────────────────────────────────────────────────────────
-
+  // Tools
   @Nested
   class ToolRendering {
 
@@ -206,8 +202,7 @@ class Jinja4jChatTemplateRendererTest {
     }
   }
 
-  // ── Multimodal content parts ───────────────────────────────────────────────
-
+  // Multimodal content parts
   @Nested
   class MultimodalRendering {
 
@@ -246,8 +241,7 @@ class Jinja4jChatTemplateRendererTest {
     }
   }
 
-  // ── Template caching ──────────────────────────────────────────────────────
-
+  // Template caching
   @Nested
   class TemplateCaching {
 
@@ -271,8 +265,7 @@ class Jinja4jChatTemplateRendererTest {
     }
   }
 
-  // ── Real Qwen3 template: thinking bypass ──────────────────────────────────
-
+  // Real Qwen3 template: thinking bypass
   @Nested
   class Qwen3ThinkingBypass {
 
@@ -281,7 +274,7 @@ class Jinja4jChatTemplateRendererTest {
      * {@code enable_thinking} is the boolean {@code false} and
      * {@code add_generation_prompt} is true: an assistant header followed by
      * an empty think-block prefill. The prefill is what suppresses reasoning
-     * at generation time — if it is missing, the model thinks.
+     * at generation time; if it is missing, the model thinks.
      */
     private static final String THINK_PREFILL = "<|im_start|>assistant\n<think>\n\n</think>\n\n";
 
@@ -328,7 +321,7 @@ class Jinja4jChatTemplateRendererTest {
     void string_false_does_NOT_trigger_prefill() {
       // 'enable_thinking is false' is a strict boolean-identity test in
       // Jinja2. A quoted YAML value ("false") arrives as a String and
-      // silently disables the bypass — this pins down that semantic so the
+      // silently disables the bypass; this pins down that semantic so the
       // hardening warning in JinjaContextHelper stays honest.
       assertThat(render("false")).endsWith("<|im_start|>assistant\n").doesNotContain("<think>");
     }
@@ -340,8 +333,7 @@ class Jinja4jChatTemplateRendererTest {
     }
   }
 
-  // ── defaultEnvironment ────────────────────────────────────────────────────
-
+  // defaultEnvironment
   @Nested
   class DefaultEnvironment {
 

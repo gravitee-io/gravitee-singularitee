@@ -21,8 +21,9 @@ import java.nio.file.Path;
 /**
  * Configuration for a vLLM engine instance.
  *
- * <p>Unlike llama.cpp which takes a local GGUF file path, vLLM takes a
- * HuggingFace model identifier and downloads/loads the model itself via Python.
+ * <p>Immutable; the compact constructor rejects a blank {@code model} and
+ * defaults {@code dtype} to {@code auto} and {@code memoryCheckPolicy} to
+ * {@code WARN}.
  *
  * @param model HuggingFace model ID (e.g. "Qwen/Qwen3-0.6B"), used for logging and
  *              for the pre-flight shape lookup
@@ -50,9 +51,9 @@ import java.nio.file.Path;
  * @param venvPath Path to the Python venv, or null for auto-detection
  * @param memoryCheckPolicy Pre-flight VRAM check policy (FAIL / WARN / DISABLED). Default: WARN.
  * @param totalParams Total model parameter count, used for VRAM weight estimation.
- *                    0 means unknown — memory check is skipped.
+ *                    0 means unknown and the memory check is skipped.
  * @param bytesPerParam Bytes per parameter (2 for BF16/FP16, 4 for FP32).
- *                      0 means unknown — memory check is skipped.
+ *                      0 means unknown and the memory check is skipped.
  * @param numHiddenLayers Transformer layer count from config.json, used for KV-cache estimation.
  * @param numKvHeads Number of KV attention heads from config.json.
  * @param headDim Per-head hidden dimension from config.json.

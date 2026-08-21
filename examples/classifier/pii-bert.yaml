@@ -16,12 +16,12 @@
 
 # PII detection · bert-small token classifier (ONNX)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/classifier/pii-bert.yaml
 #
 # A FINE-TUNED (not zero-shot) token classifier: it emits BIO token labels that
 # the engine aggregates into "PII" spans. Fast and cheap on CPU, but it only
-# detects what it was trained on — compare with pii-gliner.yaml, which takes its
+# detects what it was trained on, compare with pii-gliner.yaml, which takes its
 # entity list at inference time.
 #
 # Classify over HTTP:

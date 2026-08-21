@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
  * <p>A tool-using conversation only makes sense to the model if it can see what it already did.
  * With {@code tool_calls} missing, the replayed conversation is a question the assistant never
  * acted on: it plans the same call, runs it, gets the result as an anonymous message, and plans
- * the same call again — observed as an agent looping on one {@code git log} indefinitely.
+ * the same call again.
  *
  * @author GraviteeSource Team
  */
@@ -60,7 +60,7 @@ class ToolTranscriptRenderingTest {
 
   @Test
   void arguments_are_a_mapping_not_their_json_text() {
-    // Templates iterate arguments as a mapping — Gemma's raises outright on a string.
+    // Templates iterate arguments as a mapping; Gemma's raises outright on a string.
     var turn = new ChatTurn(
       ChatRole.ASSISTANT,
       "",

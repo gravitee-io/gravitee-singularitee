@@ -26,6 +26,9 @@ import org.apache.commons.math3.util.FastMath;
 import org.junit.jupiter.api.Test;
 
 /**
+ * {@link LoopBoundSIMDMath} against the scalar reference results, including odd lengths that
+ * exercise the tail loop.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

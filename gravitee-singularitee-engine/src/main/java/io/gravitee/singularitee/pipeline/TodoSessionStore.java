@@ -26,7 +26,7 @@ import java.util.Optional;
  * Lets a plan survive an {@code ask_user} pause: the next turn with the same
  * key restores the plan and continues at the in_progress item.
  *
- * <p>A thin domain wrapper over the gravitee-node {@link CacheManager} — the
+ * <p>A thin domain wrapper over the gravitee-node {@link CacheManager}: the
  * backing implementation is whatever the container wires (standalone
  * in-memory by default; Hazelcast/Redis by swapping one bean), so nothing
  * here assumes process-locality. Values are small serializable DTOs, not
@@ -41,7 +41,7 @@ public final class TodoSessionStore extends CacheBackedStore<TodoSessionStore.Se
   /**
    * The cache value: the plan items plus the plan-level constraints paragraph
    * (locked user decisions). Changing this record's shape is a serialization
-   * concern for distributed backends — bump the cache name if it ever becomes
+   * concern for distributed backends; bump the cache name if it ever becomes
    * incompatible.
    */
   public record SessionPlan(List<SessionTodo> todos, String constraints) implements Serializable {}
@@ -61,7 +61,7 @@ public final class TodoSessionStore extends CacheBackedStore<TodoSessionStore.Se
     this.cacheManager = cacheManager;
   }
 
-  /** The underlying manager (may be {@code null}) — lets other engine caches share the backend. */
+  /** The underlying manager (may be {@code null}); lets other engine caches share the backend. */
   public CacheManager cacheManager() {
     return cacheManager;
   }

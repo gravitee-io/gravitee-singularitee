@@ -25,11 +25,14 @@ import io.gravitee.singularitee.protocol.MediaContent;
 import io.gravitee.singularitee.protocol.MediaType;
 import io.gravitee.singularitee.protocol.Role;
 import io.gravitee.singularitee.protocol.SamplingParams;
+import io.gravitee.singularitee.protocol.ToolCall;
 import io.gravitee.singularitee.protocol.ToolDefinition;
 import io.gravitee.singularitee.protocol.ToolParameterDef;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,7 +63,7 @@ public final class PipelineRequestBuilder {
     } else if (endpointType == EndpointType.RESPONSES) {
       // Instructions travel in the context map, NOT as a transcript turn:
       // per the Responses API, instructions are per-request and are never
-      // carried over via previous_response_id — a stored system turn would
+      // carried over via previous_response_id; a stored system turn would
       // replay stale instructions into every continuation.
       builder.setMessages(buildResponsesMessageList(payload, false));
       JsonNode instructions = payload.at("/instructions");
@@ -70,7 +73,7 @@ public final class PipelineRequestBuilder {
       // Stored-conversation continuation (OpenAI semantics): every Responses
       // request gets a unique id it may be continued from; previous_response_id
       // resumes server-side history; store=false opts out of persistence.
-      builder.setRequestId("resp_" + java.util.UUID.randomUUID().toString().replace("-", ""));
+      builder.setRequestId("resp_" + UUID.randomUUID().toString().replace("-", ""));
       JsonNode prev = payload.at("/previous_response_id");
       if (prev.isTextual() && !prev.asText().isBlank()) {
         builder.setPreviousResponseId(prev.asText());
@@ -212,7 +215,7 @@ public final class PipelineRequestBuilder {
    * OpenAI semantics: {@code logprobs} (boolean) turns collection on;
    * {@code top_logprobs} (0-20) sets how many alternatives to return and is
    * only meaningful when {@code logprobs} is true. With {@code logprobs: true}
-   * and no {@code top_logprobs}, only the chosen token's logprob is returned —
+   * and no {@code top_logprobs}, only the chosen token's logprob is returned;
    * internally that is a collection depth of 1.
    */
   public static int resolveTopLogprobs(JsonNode payload) {
@@ -223,6 +226,10 @@ public final class PipelineRequestBuilder {
     return top.isNumber() ? Math.max(1, top.asInt()) : 1;
   }
 
+  /**
+   * Translates a Chat Completions {@code messages} array into a {@link ChatMessageList}. Turns
+   * without a role, and turns with neither content nor {@code tool_calls}, are skipped.
+   */
   public static ChatMessageList buildChatMessageList(JsonNode messagesNode) {
     ChatMessageList.Builder listBuilder = ChatMessageList.newBuilder();
     if (!messagesNode.isArray()) {
@@ -233,12 +240,11 @@ public final class PipelineRequestBuilder {
       JsonNode contentNode = msgNode.at("/content");
       JsonNode toolCallsNode = msgNode.at("/tool_calls");
       boolean hasToolCalls = toolCallsNode.isArray() && !toolCallsNode.isEmpty();
-      // A tool-call turn is the OpenAI-correct {"content": null, "tool_calls": [...]}. Its null
-      // content must never reach applyContent, whose toString() fallback would render the four
-      // characters "null" as the assistant's words — a long agent session then teaches the model,
-      // few-shot from its own transcript, that assistant turns say "null". But the turn itself
-      // has to survive: drop it and the transcript records what the model said and never what it
-      // did, so on the next pass it sees an unanswered question and calls the same tool again.
+      // A tool-call turn is {"content": null, "tool_calls": [...]}. Its null content must never
+      // reach applyContent, whose toString() fallback would render the characters "null" as the
+      // assistant's words, which a long transcript then teaches the model to imitate. The turn
+      // itself must survive: dropping it erases what the assistant did, so the model sees an
+      // unanswered question and calls the same tool again.
       if (role == null) {
         continue;
       }
@@ -292,7 +298,7 @@ public final class PipelineRequestBuilder {
       String argumentsJson = args.isTextual()
         ? args.asText()
         : (args.isMissingNode() || args.isNull() ? "{}" : args.toString());
-      var callBuilder = io.gravitee.singularitee.protocol.ToolCall.newBuilder()
+      var callBuilder = ToolCall.newBuilder()
         .setName(name)
         .setArgumentsJson(argumentsJson.isBlank() ? "{}" : argumentsJson);
       String id = call.path("id").asText("");
@@ -310,8 +316,8 @@ public final class PipelineRequestBuilder {
    * {@code input_text} / {@code output_text} parts are concatenated (newline-separated) into the
    * text content, while {@code image_url} / {@code input_image} and {@code input_audio} parts are
    * extracted as base64 and added as {@link MediaContent}. The base64 payload is stored as UTF-8
-   * bytes to match the downstream gRPC/engine contract ({@code getData().toStringUtf8()} → base64
-   * decode). Non-array, non-textual content falls back to its JSON string form.
+   * bytes to match the downstream gRPC/engine contract ({@code getData().toStringUtf8()}, then
+   * base64 decode). Non-array, non-textual content is ignored.
    */
   static void applyContent(ChatMessage.Builder msgBuilder, JsonNode contentNode) {
     if (contentNode.isTextual()) {
@@ -319,8 +325,8 @@ public final class PipelineRequestBuilder {
       return;
     }
     if (!contentNode.isArray()) {
-      // Anything else (object, number, boolean) has no sensible text form — its JSON source
-      // would be injected verbatim as the message's words, exactly as `null` was.
+      // Anything else (object, number, boolean) has no sensible text form; its JSON source
+      // would be injected verbatim as the message's words.
       return;
     }
 
@@ -426,7 +432,7 @@ public final class PipelineRequestBuilder {
       );
     }
     try {
-      java.util.Base64.getDecoder().decode(mediaUrl);
+      Base64.getDecoder().decode(mediaUrl);
       return mediaUrl;
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(
@@ -458,7 +464,7 @@ public final class PipelineRequestBuilder {
       case "image/png" -> MediaType.MEDIA_TYPE_IMAGE_PNG;
       case "image/gif" -> MediaType.MEDIA_TYPE_IMAGE_GIF;
       case "image/bmp" -> MediaType.MEDIA_TYPE_IMAGE_BMP;
-      // image/webp and image/tiff intentionally absent — stb_image cannot decode
+      // image/webp and image/tiff intentionally absent: stb_image cannot decode
       // them, so they fall through to APPLICATION_OCTET like any other unknown type.
       default -> MediaType.MEDIA_TYPE_APPLICATION_OCTET;
     };
@@ -471,8 +477,8 @@ public final class PipelineRequestBuilder {
     return switch (mime) {
       case "audio/wav", "audio/x-wav", "audio/wave" -> MediaType.MEDIA_TYPE_AUDIO_WAV;
       // Compressed audio (mp3/ogg/flac/aac/m4a) is intentionally absent:
-      // javax.sound.sampled has no reader for it, so it fell through to the
-      // engine and was dropped silently.
+      // javax.sound.sampled has no reader for it, so the engine would drop
+      // it silently.
       default -> MediaType.MEDIA_TYPE_APPLICATION_OCTET;
     };
   }
@@ -487,6 +493,10 @@ public final class PipelineRequestBuilder {
   }
 
   /**
+   * Translates an OpenAI Responses payload into a {@link ChatMessageList}, including replayed
+   * {@code function_call} / {@code function_call_output} items as assistant tool-call and tool
+   * turns. Replayed {@code reasoning} items and items of unknown shape are skipped.
+   *
    * @param instructionsAsSystemTurn whether {@code instructions} becomes a leading system
    *                                 message. Direct-model targets (stateless) keep it in the
    *                                 list; pipeline targets carry it in the request context so
@@ -528,7 +538,7 @@ public final class PipelineRequestBuilder {
               ChatMessage.newBuilder()
                 .setRole(Role.ROLE_ASSISTANT)
                 .addToolCalls(
-                  io.gravitee.singularitee.protocol.ToolCall.newBuilder()
+                  ToolCall.newBuilder()
                     .setId(callId)
                     .setName(item.at("/name").asText(""))
                     .setArgumentsJson(item.at("/arguments").asText("{}"))
@@ -554,7 +564,7 @@ public final class PipelineRequestBuilder {
           String role = item.at("/role").asText(null);
           JsonNode contentNode = item.at("/content");
           if (role == null && contentNode.isMissingNode()) {
-            continue; // unknown item shape — never fabricate an empty USER turn
+            continue; // unknown item shape: never fabricate an empty USER turn
           }
           Role chatRole = switch (role == null ? "user" : role) {
             case "system", "developer" -> Role.ROLE_SYSTEM;

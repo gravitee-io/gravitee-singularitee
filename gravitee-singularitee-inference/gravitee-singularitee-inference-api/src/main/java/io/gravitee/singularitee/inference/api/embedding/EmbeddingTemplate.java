@@ -18,27 +18,18 @@ package io.gravitee.singularitee.inference.api.embedding;
 /**
  * Formats text before feeding it to an embedding model.
  *
- * <p>Some embedding models are instruction-aware and require a specific prompt
- * format wrapping the raw text. For example:
- * <ul>
- *   <li>Qwen3-Embedding expects:
- *       {@code "Instruct: <task instruction>\nQuery: <text>"}</li>
- *   <li>E5/GTE models use: {@code "query: <text>"} or
- *       {@code "passage: <text>"}</li>
- *   <li>BGE-M3 and nomic-embed accept raw text directly</li>
- * </ul>
+ * <p>Some embedding models are instruction-aware and expect the raw text wrapped in a prompt
+ * (an instruction line, or a {@code "query: "} / {@code "passage: "} prefix); others, such as
+ * BGE-M3, take the text as is.
  *
  * <p>This is a functional interface; any lambda works:
  * <pre>{@code
  * // Raw text, no wrapping
  * EmbeddingTemplate plain = text -> text;
  *
- * // Qwen3-Embedding with a retrieval instruction
- * EmbeddingTemplate qwen3Query = text ->
+ * // Instruction-prefixed retrieval query
+ * EmbeddingTemplate query = text ->
  *     "Instruct: Given a web search query, retrieve relevant passages.\nQuery: " + text;
- *
- * // E5 query format
- * EmbeddingTemplate e5Query = text -> "query: " + text;
  * }</pre>
  *
  * @author Remi SULTAN (remi.sultan at graviteesource.com)
@@ -55,9 +46,7 @@ public interface EmbeddingTemplate {
   String format(String text);
 
   /**
-   * Identity template: passes text through unchanged.
-   * Suitable for models that accept raw text directly (BGE-M3, nomic-embed,
-   * MiniLM, BERT-base, etc.).
+   * Identity template: passes text through unchanged, for models that take raw text.
    */
   EmbeddingTemplate IDENTITY = text -> text;
 }

@@ -15,6 +15,8 @@
  */
 package io.gravitee.singularitee.inference.api.textgen;
 
+/** One part of a chat message: text, image or audio. */
 public sealed interface Content permits TextContent, ImageContent, AudioContent {
+  /** Part discriminator: {@code text}, {@code image} or {@code audio}. */
   String type();
 }

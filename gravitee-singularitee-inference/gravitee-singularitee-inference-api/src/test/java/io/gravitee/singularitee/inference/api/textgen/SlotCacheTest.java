@@ -21,6 +21,10 @@ import java.util.Set;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Tests for {@link SlotCache}: key affinity, longest-common-prefix selection, busy-slot donors,
+ * LRU eviction and the residency invariant.
+ */
 class SlotCacheTest {
 
   private static int[] tokens(int... ids) {
@@ -166,7 +170,7 @@ class SlotCacheTest {
 
     var second = cache.acquire(null, range(0, 20), Set.of(1));
 
-    // Slot 0 provably holds nothing yet — claiming its rows would read cells that
+    // Slot 0 provably holds nothing yet; claiming its rows would read cells that
     // do not exist.
     assertThat(second.reusePrefixTokens()).isZero();
     assertThat(second.donorSlot()).isEqualTo(-1);
@@ -194,7 +198,7 @@ class SlotCacheTest {
     assertThat(sel.slot()).isEqualTo(0);
     assertThat(sel.reusePrefixTokens()).isEqualTo(6);
 
-    // Slot 0 must now advertise 6 tokens, not the 20 it used to hold — a copy of
+    // Slot 0 must now advertise 6 tokens, not the 20 it held before; a copy of
     // 20 would share rows it is about to lose.
     var next = cache.acquire(null, range(0, 20), Set.of(1));
     assertThat(next.donorSlot()).isZero();
@@ -207,7 +211,7 @@ class SlotCacheTest {
     cache.acquire(null, range(0, 20), Set.of(0));
     cache.publish(0, range(0, 20));
 
-    // Only 5 tokens in common, below minReuseTokens — not worth a copy.
+    // Only 5 tokens in common, below minReuseTokens: not worth a copy.
     var sel = cache.acquire(null, tokens(0, 1, 2, 3, 4, 70, 71), Set.of(1));
 
     assertThat(sel.reusePrefixTokens()).isZero();

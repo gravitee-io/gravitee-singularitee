@@ -34,7 +34,7 @@ import java.util.Locale;
 /**
  * Base {@link RerankerEngine} for cross-encoder reranker models. Backend-specific
  * subclasses ({@link OnnxRerankerEngine}, {@link LlamaCppRerankerEngine}) only differ
- * by their concrete delegate type — the scoring, sorting and {@code topK} logic is
+ * by their concrete delegate type; the scoring, sorting and {@code topK} logic is
  * identical and lives here.
  *
  * <p>The delegate is bound to {@link InferenceModel} (a {@code gravitee-inference-api}

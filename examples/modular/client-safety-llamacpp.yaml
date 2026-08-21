@@ -15,28 +15,28 @@
 #
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Client — MULTI-SERVER (safety :9092  +  llama.cpp :9090)
+# Client: MULTI-SERVER (safety :9092  +  llama.cpp :9090)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # One client, two servers. The pipeline DAG runs locally; each model call is
 # routed over gRPC to the server that hosts it:
-#   - "pii" / "toxicity" classifiers ──→ safety   server (:9092)
-#   - "llm" generation               ──→ llamacpp server (:9090)
+#   - "pii" / "toxicity" classifiers -> safety   server (:9092)
+#   - "llm" generation               -> llamacpp server (:9090)
 #
-#   pii-redact:     pii_guard @safety ──→ generate @llamacpp
-#   toxicity-guard: toxicity_guard @safety ──→ generate @llamacpp
+#   pii-redact:     pii_guard @safety -> generate @llamacpp
+#   toxicity-guard: toxicity_guard @safety -> generate @llamacpp
 #
 #       ┌──────────────── CLIENT (runs the DAG) ────────────────┐
-#       │   pii_guard ──gRPC──→ :9092      generate ──gRPC──→ :9090 │
+#       │   pii_guard ──gRPC-> :9092      generate ──gRPC-> :9090 │
 #       └────────────────────────────────────────────────────────┘
 #
 # Prerequisites: server-safety.yaml on :9092 AND server-llamacpp.yaml on :9090.
 #
 # Launch:
-#   java io.gravitee.singularitee.cli.Main \
-#        --workspace examples/modular/client-safety-llamacpp.yaml \
-#        --pipeline pii-redact-pipeline
-#   (or --pipeline toxicity-guard-pipeline)
+#   GRAVITEE_GRPC_PORT=9190 ./run-server.sh --port 8180 --workspace examples/modular/client-safety-llamacpp.yaml
+#   curl -s localhost:8180/v1/chat/completions -H 'content-type: application/json' \
+#        -d '{"model":"pii-redact-pipeline","messages":[{"role":"user","content":"hello"}]}'
+#   (or "model":"toxicity-guard-pipeline")
 
 workspace:
   name: client-safety-llamacpp

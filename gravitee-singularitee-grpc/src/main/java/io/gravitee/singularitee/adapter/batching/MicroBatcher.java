@@ -30,8 +30,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Concurrent producers on any thread {@link #submit(Object, int)} an input with a cost weight
  * (estimated tokens) and get a {@link CompletableFuture} for its result. Items are routed by weight
- * into one of two independent lanes — <em>short</em> ({@code weight <= bucketWeight}) and
- * <em>long</em> — each with its own FIFO queue and daemon worker thread. A lane's worker takes the
+ * into one of two independent lanes, <em>short</em> ({@code weight <= bucketWeight}) and
+ * <em>long</em>, each with its own FIFO queue and daemon worker thread. A lane's worker takes the
  * first pending item, lingers up to {@code lingerMillis} to let more accumulate, then invokes
  * {@code batchFn} <em>once</em> for the whole group and completes each item's future with the
  * matching output (by position).
@@ -39,11 +39,11 @@ import org.slf4j.LoggerFactory;
  * <p>Batch composition is shaped for encoders that pad every batch item to the longest sequence in
  * the batch (quadratic-attention cost):
  * <ul>
- *   <li><strong>Token cap</strong> — a batch closes once its summed weight reaches
+ *   <li><strong>Token cap</strong>: a batch closes once its summed weight reaches
  *       {@code maxBatchWeight}, bounding worst-case batch wall time regardless of item count.</li>
- *   <li><strong>Length bucketing</strong> — short and long items never share a batch, so a single
+ *   <li><strong>Length bucketing</strong>: short and long items never share a batch, so a single
  *       long chunk can't inflate the padded cost of many short ones.</li>
- *   <li><strong>Lane isolation</strong> — because each lane dispatches on its own thread, an
+ *   <li><strong>Lane isolation</strong>: because each lane dispatches on its own thread, an
  *       expensive long batch inside {@code batchFn} cannot head-of-line block short requests
  *       (convoy effect); the short lane keeps flowing while a long batch runs.</li>
  * </ul>
@@ -69,6 +69,16 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
   private final Lane longLane;
   private volatile boolean running = true;
 
+  /**
+   * Creates the two lanes and starts their daemon workers.
+   *
+   * @param name           thread-name prefix for the lane workers
+   * @param maxBatchSize   max items per batch (floored at 1)
+   * @param maxBatchWeight max summed weight per batch (floored at 1)
+   * @param bucketWeight   short/long lane boundary (floored at 1)
+   * @param lingerMillis   how long a lane waits for a batch to fill (floored at 0)
+   * @param batchFn        thread-safe batch function returning one output per input, in order
+   */
   public MicroBatcher(
     String name,
     int maxBatchSize,

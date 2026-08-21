@@ -35,13 +35,17 @@ import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 
 /**
- * Mounts the OpenAI-compatible (+ Gravitee extension) routes on a vert.x-web {@link Router}. Each
+ * Mounts the OpenAI-compatible (+ additional) routes on a vert.x-web {@link Router}. Each
  * path is mounted both bare and under {@code /v1} (OpenAI SDKs use {@code /v1/...}).
  */
 public final class OpenAiRoutes {
 
   private OpenAiRoutes() {}
 
+  /**
+   * Registers every handler on {@code router}. {@code exposePipelines} controls whether
+   * pipelines appear on the models routes; inference routes resolve pipeline ids regardless.
+   */
   public static void mount(
     Router router,
     GraviteeInferenceServiceImpl inference,

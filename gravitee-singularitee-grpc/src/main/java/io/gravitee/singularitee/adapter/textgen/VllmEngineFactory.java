@@ -20,7 +20,9 @@ import io.gravitee.singularitee.engine.ModelEngine;
 import io.gravitee.singularitee.inference.api.memory.MemoryCheckPolicy;
 import io.gravitee.singularitee.inference.vllm.BatchEngine;
 import io.gravitee.singularitee.inference.vllm.VllmConfig;
+import io.gravitee.singularitee.workspace.MemoryCheckPolicyType;
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
+import java.nio.file.Path;
 
 /**
  * Creates a vLLM-backed {@link VllmTextGenEngine} from a {@link ModelLoadRequest}.
@@ -51,15 +53,18 @@ public final class VllmEngineFactory implements ModelEngineFactory {
     int pipelineParallelSize,
     String distributedExecutorBackend
   ) {
+    /** No server-wide defaults: every topology value is left to vLLM. */
     public static final DistributedDefaults NONE = new DistributedDefaults(0, 0, null);
   }
 
   private final DistributedDefaults distributedDefaults;
 
+  /** Creates a factory with no server-wide distributed defaults. */
   public VllmEngineFactory() {
     this(DistributedDefaults.NONE);
   }
 
+  /** Creates a factory with the given server-wide distributed defaults; {@code null} means none. */
   public VllmEngineFactory(DistributedDefaults distributedDefaults) {
     this.distributedDefaults = distributedDefaults != null
       ? distributedDefaults
@@ -79,7 +84,7 @@ public final class VllmEngineFactory implements ModelEngineFactory {
    *                     {@code VllmModelResolver}; null lets vLLM resolve the
    *                     repo id itself (the offline-unfriendly path)
    */
-  public ModelEngine create(ModelLoadRequest request, java.nio.file.Path resolvedPath) {
+  public ModelEngine create(ModelLoadRequest request, Path resolvedPath) {
     var cfg = request.vllmConfig();
 
     var vllmConfig = new VllmConfig(
@@ -130,9 +135,7 @@ public final class VllmEngineFactory implements ModelEngineFactory {
     );
   }
 
-  private static MemoryCheckPolicy toMemoryCheckPolicy(
-    io.gravitee.singularitee.workspace.MemoryCheckPolicyType policy
-  ) {
+  private static MemoryCheckPolicy toMemoryCheckPolicy(MemoryCheckPolicyType policy) {
     if (policy == null) return MemoryCheckPolicy.WARN;
     return switch (policy) {
       case FAIL -> MemoryCheckPolicy.FAIL;

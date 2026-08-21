@@ -32,9 +32,8 @@ import java.util.Map;
 /**
  * Creates an ONNX BERT cross-encoder reranker engine from a {@link ModelLoadRequest}.
  *
- * <p>By the time this factory is called, all paths in the request have been
- * resolved and verified by {@link io.gravitee.singularitee.grpc.resolver.OnnxModelResolver}
- * — they are guaranteed to exist as local filesystem paths.
+ * <p>All paths in the request have already been resolved and verified by
+ * {@code OnnxModelResolver}: they exist as local filesystem paths.
  *
  * <p>This class and {@link OnnxRerankerEngine} are the <strong>only</strong>
  * files permitted to import {@code gravitee-inference-onnx} reranker types.
@@ -47,6 +46,7 @@ public final class OnnxRerankerFactory implements ModelEngineFactory {
   private final GioMaths gioMaths;
   private final Vertx vertx;
 
+  /** Creates the factory with the math backend and the Vert.x instance engines schedule on. */
   public OnnxRerankerFactory(GioMaths gioMaths, Vertx vertx) {
     this.gioMaths = gioMaths;
     this.vertx = vertx;

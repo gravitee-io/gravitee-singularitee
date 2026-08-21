@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
 /**
  * Harmony (gpt-oss) residue: beyond the verbatim tags, every {@code <|...|>}
  * special token can appear in invented combinations (e.g.
- * {@code <|channel|>functions.name} — observed live), and the {@code to=}
+ * {@code <|channel|>functions.name}), and the {@code to=}
  * routing prefix can float free of any full tag.
  */
 public final class HarmonyToolMarkerResidue extends DefaultToolMarkerResidue {

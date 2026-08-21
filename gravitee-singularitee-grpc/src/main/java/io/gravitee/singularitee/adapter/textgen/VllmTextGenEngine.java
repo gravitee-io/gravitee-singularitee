@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.adapter.textgen;
 
 import io.gravitee.singularitee.engine.ModelEngineType;
+import io.gravitee.singularitee.engine.TextGenEngine;
 import io.gravitee.singularitee.engine.TextGenRequest;
 import io.gravitee.singularitee.inference.vllm.BatchEngine;
 import io.gravitee.singularitee.inference.vllm.EngineAdapter;
@@ -28,12 +29,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * {@link io.gravitee.singularitee.engine.TextGenEngine} backed by a vLLM
- * {@link BatchEngine}.
+ * {@link TextGenEngine} backed by a vLLM {@link BatchEngine}.
  *
- * <p>This class — together with {@link VllmEngineFactory} — is the
- * <strong>only</strong> place in the project that may import
- * {@code gravitee-inference-vllm} types.
+ * <p>This class and {@link VllmEngineFactory} are the <strong>only</strong> places in the
+ * project that may import {@code gravitee-inference-vllm} types.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -57,8 +56,8 @@ public final class VllmTextGenEngine
 
   /**
    * What the checkpoint accepts as input, read from its {@code config.json} at
-   * construction. Fixed for the life of the engine — the weights do not change
-   * underneath it — so it is resolved once rather than per request.
+   * construction. Fixed for the life of the engine (the weights do not change
+   * underneath it), so it is resolved once rather than per request.
    */
   private final List<String> inputModalities;
 
@@ -97,7 +96,7 @@ public final class VllmTextGenEngine
    * {@inheritDoc}
    *
    * <p>Reports what vLLM actually resolved rather than what the workspace
-   * asked for — an unset {@code max_model_len} is derived from the
+   * asked for: an unset {@code max_model_len} is derived from the
    * checkpoint. Returning a real value here arms the context-overrun guard in
    * {@link AbstractTextGenEngine}, which stays disabled while this is 0.
    */
@@ -172,7 +171,7 @@ public final class VllmTextGenEngine
       request.seed(),
       toLibraryTagConfig(request.reasoningTags()),
       toLibraryTagConfig(request.toolCallTags()),
-      null, // tools — handled by Jinja4j at the executor level now
+      null, // tools: rendered by Jinja4j at the executor level
       request.loraName(),
       request.loraPath()
     );

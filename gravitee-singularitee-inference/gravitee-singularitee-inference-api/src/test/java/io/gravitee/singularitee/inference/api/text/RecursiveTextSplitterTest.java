@@ -114,7 +114,7 @@ class RecursiveTextSplitterTest {
     String text = "alpha beta gamma delta epsilon"; // 5 words, no punctuation at all
     var chunks = splitter(2).split(text);
     assertInvariants(text, chunks, 2);
-    // packed up to 2 words per window, cut only on word (token) boundaries — never inside a word
+    // packed up to 2 words per window, cut only on word (token) boundaries, never inside a word
     assertEquals(3, chunks.size());
   }
 
@@ -124,7 +124,7 @@ class RecursiveTextSplitterTest {
     String text = "tiny " + longWord + " tiny";
     var chunks = splitter(1).split(text);
     assertInvariants(text, chunks, 1);
-    // even at budget 1 the long word stays a single intact chunk — it is one token
+    // even at budget 1 the long word stays a single intact chunk: it is one token
     assertTrue(chunks.stream().anyMatch(c -> c.text().contains(longWord)));
   }
 

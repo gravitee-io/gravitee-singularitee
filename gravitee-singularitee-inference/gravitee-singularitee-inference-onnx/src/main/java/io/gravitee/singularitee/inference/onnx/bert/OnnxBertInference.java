@@ -41,6 +41,18 @@ import java.util.List;
 import java.util.Set;
 
 /**
+ * Base class for BERT-family ONNX models: a HuggingFace tokenizer in front of the session.
+ *
+ * <p>Provides the encode helpers subclasses build on: single sequence, pre-built token window,
+ * (query, document) pair, and padded batches of either. Each helper creates the
+ * {@code input_ids} / {@code attention_mask} / {@code token_type_ids} tensors (the last only
+ * when the graph declares that input), runs the session and frees the input tensors before
+ * returning. The returned {@code Result} owns native output memory: callers must close it,
+ * and must read its tensors before closing.
+ *
+ * <p>{@link #sequenceBudget} is the content-token limit per sequence; {@link #splitter} cuts
+ * longer inputs on tokenizer boundaries. The tokenizer and session are shared and thread-safe.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -87,11 +99,6 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
   }
 
   /**
-   * Splits {@code text} into chunks that each fit this model's sequence budget (real tokenizer
-   * boundaries, semantic-boundary first). Exposed so batching callers can split on the request
-   * thread and feed the chunks to a batch entry point.
-   */
-  /**
    * The per-sequence token budget: inputs longer than this must be split.
    *
    * <p>Exposed so a caller that has already measured its input can tell whether
@@ -102,6 +109,11 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
     return sequenceBudget;
   }
 
+  /**
+   * Splits {@code text} into chunks that each fit this model's sequence budget (real tokenizer
+   * boundaries, semantic-boundary first). Exposed so batching callers can split on the request
+   * thread and feed the chunks to a batch entry point.
+   */
   public List<RecursiveTextSplitter.Chunk> split(String text) {
     return splitter.split(text);
   }
@@ -128,6 +140,7 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
     }
   }
 
+  /** Tokenizes one sentence (special tokens added) and runs it as a batch of one. */
   protected EncodingResults encode(String sentence) {
     var encoding = tokenizer.encode(sentence, true, false);
 
@@ -161,8 +174,8 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
    * leading {@code [CLS]} and trailing {@code [SEP]}). The attention mask is all-ones
    * (no padding) and token type ids all-zeros (single segment). Unlike
    * {@link #encode(String)} this does not re-tokenize, so a caller that has already
-   * tokenized the full input can embed individual token windows without re-tokenizing —
-   * or re-running the model on the whole input — per window.
+   * tokenized the full input can run individual token windows without re-tokenizing or
+   * re-running the model on the whole input per window.
    */
   protected Result encode(long[] inputIds) {
     long[] attentionMask = new long[inputIds.length];
@@ -190,7 +203,7 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
     }
   }
 
-  /** Encode a single (query, document) pair. Tokenizer auto-handles [CLS] q [SEP] d [SEP] + token type IDs. */
+  /** Encodes one (query, document) pair; the tokenizer lays out {@code [CLS] q [SEP] d [SEP]} and the token type ids. */
   protected EncodingResults encodePair(String queryText, String docText) {
     var encoding = tokenizer.encode(queryText, docText, true, false);
 
@@ -219,7 +232,7 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
     }
   }
 
-  /** Encode a query against multiple documents as a batch of pairs. */
+  /** Encodes one query against several documents as a right-padded batch of pairs. */
   protected EncodingResults encodeAllPairs(String queryText, List<String> docTexts) {
     List<Encoding> encodings = new ArrayList<>(docTexts.size());
     int maxTokens = 0;
@@ -272,6 +285,7 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
     }
   }
 
+  /** Tokenizes each sentence and runs them as one right-padded batch. */
   protected EncodingResults encodeAll(List<String> sentences) {
     List<Encoding> encodings = new ArrayList<>(sentences.size());
     int maxTokens = 0;
@@ -289,7 +303,6 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
     for (int i = 0; i < sentences.size(); i++) {
       Encoding encoding = encodings.get(i);
 
-      // Retrieve the tokens for the current sentence
       long[] sentenceInputIds = encoding.getIds();
       long[] sentenceAttentionMask = encoding.getAttentionMask();
 
@@ -324,5 +337,9 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
     }
   }
 
+  /**
+   * A batch's tokenizer encodings (one per row, in input order) with the session output.
+   * {@code result} holds native memory: the receiver must close it after reading.
+   */
   public record EncodingResults(List<Encoding> encoding, Result result) {}
 }

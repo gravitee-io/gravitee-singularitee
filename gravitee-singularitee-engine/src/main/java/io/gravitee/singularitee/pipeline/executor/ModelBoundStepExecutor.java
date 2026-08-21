@@ -29,8 +29,8 @@ import java.util.Map;
 /**
  * Reactive template base for step executors that need a model engine.
  *
- * <p>Handles the repetitive lookup → type-check → skip-on-error pattern
- * that was previously copy-pasted across Classify, Embed, Guard, Route and Infer executors.
+ * <p>Handles the shared lookup, type-check and skip-on-error pattern so
+ * Classify, Embed, Guard, Route and Infer executors do not repeat it.
  * Subclasses only implement the domain logic via {@link #rxExecuteWithEngine}.
  *
  * @param <C> the protobuf config type (e.g. ClassifyStepConfig)
@@ -94,8 +94,8 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
     final String op = modelOp();
 
     // Open an ai.model.<op> span (child of the active step span) and time the engine
-    // call (ai_model_call_seconds). Deferred so it opens at subscribe time and — for
-    // streaming infer — stays open until the token stream completes (rxExecuteWithEngine
+    // call (ai_model_call_seconds). Deferred so it opens at subscribe time and, for
+    // streaming infer, stays open until the token stream completes (rxExecuteWithEngine
     // only terminates once the capture stream ends). No-op when tracing/metrics are off.
     return Maybe.defer(() -> {
       final Tracer tracer = ctx.tracer();
@@ -120,8 +120,8 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
 
   /**
    * The {@code op} tag/suffix for {@code ai.model.*} spans and metrics, derived from the
-   * executor class name (e.g. {@code InferStepExecutor} → {@code infer},
-   * {@code ClassifyStepExecutor} → {@code classify}). Override for a custom value.
+   * executor class name (e.g. {@code InferStepExecutor} gives {@code infer},
+   * {@code ClassifyStepExecutor} gives {@code classify}). Override for a custom value.
    */
   protected String modelOp() {
     String name = getClass().getSimpleName();

@@ -19,8 +19,10 @@ import io.gravitee.singularitee.workspace.config.*;
 import java.util.Locale;
 
 /**
- * Enumeration of supported model types in workspace definitions.
- * Maps YAML model type strings to {@link ModelLoadRequest} construction.
+ * Model types accepted by the workspace {@code type:} key.
+ *
+ * <p>Each constant maps its YAML config block to a {@link ModelLoadRequest}; remote and
+ * client-local types carry no engine config and return {@code null} from that mapping.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -143,9 +145,9 @@ public enum ModelType {
         d.quantization()
       );
       if (d.seed() > 0) b.setSeed(d.seed());
-      // `prompt_cache` is a unified alias for `enable_prefix_caching` — either enables it.
+      // `prompt_cache` is an alias for `enable_prefix_caching`; either enables it.
       // Left unset when the workspace mentions neither, so the engine keeps its own
-      // default; an explicit false now reaches the engine as a real disable.
+      // default; an explicit false reaches the engine as a real disable.
       if (d.enablePrefixCaching() != null || d.promptCache() != null) {
         b.setEnablePrefixCaching(
           Boolean.TRUE.equals(d.enablePrefixCaching()) || Boolean.TRUE.equals(d.promptCache())
@@ -406,7 +408,7 @@ public enum ModelType {
       WorkspaceDefinition.ModelDefinition modelDef
     ) {
       return null;
-    } // remote — no engine config needed
+    } // remote: no engine config needed
   },
 
   REMOTE_CLASSIFIER("remote_classifier") {
@@ -624,8 +626,8 @@ public enum ModelType {
   }
 
   /**
-   * Returns {@code true} if this model type represents a client-local model
-   * — a pure-Java engine that runs in-process on either server or client with
+   * Returns {@code true} if this model type represents a client-local model:
+   * a pure-Java engine that runs in-process on either server or client with
    * no native library, no GPU, and no gRPC call.
    */
   public boolean isClientLocal() {

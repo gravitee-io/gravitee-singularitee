@@ -36,6 +36,7 @@ public final class GlinerNerFactory implements ModelEngineFactory {
 
   private final Vertx vertx;
 
+  /** Creates the factory with the Vert.x instance engines schedule on. */
   public GlinerNerFactory(Vertx vertx) {
     this.vertx = vertx;
   }

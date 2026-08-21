@@ -16,7 +16,7 @@
 
 # Gemma 4 26B-A4B (QAT) · channel markers
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/gemma4-26b.yaml
 #
 # One model (id: llm) and one pipeline (id: agent), so the same client config and
@@ -25,9 +25,9 @@
 #
 # n_ctx is PER SEQUENCE: total KV allocated is n_ctx * n_seq_max.
 # MoE (4B active), sliding-window attention, Gemma license. ~23 ms warm TTFT with
-# full prefix reuse — SWA decode cost is capped at the window, so speed holds at
+# full prefix reuse, SWA decode cost is capped at the window, so speed holds at
 # depth. The full-size SWA cache is memory-hungry: 131k OOMs a 36 GB Mac next to
-# the weights, 32k fits. Run thinking-OFF — the thinking channel's
+# the weights, 32k fits. Run thinking-OFF, the thinking channel's
 # generation-time grammar is unstable.
 
 workspace:

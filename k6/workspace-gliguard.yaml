@@ -15,7 +15,7 @@
 #
 
 #
-# Isolated workspace — gliguard only (GliGuard LLM-safety classifier, onnx_fp16
+# Isolated workspace: gliguard only (GliGuard LLM-safety classifier, onnx_fp16
 # variant). Single-model target for the corpus-driven perf runs
 # (guardrails-corpus-load-test.js).
 #

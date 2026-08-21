@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Executes a SUB_PIPELINE step: invokes another pipeline and captures its output.
  *
- * <p>Supports both local and remote sub-pipelines. Fully reactive — no
+ * <p>Supports both local and remote sub-pipelines. Fully reactive, no
  * {@code CountDownLatch} or blocking.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -64,6 +64,10 @@ public final class SubPipelineStepExecutor implements StepExecutor<SubPipelineSt
     );
   }
 
+  /**
+   * Creates an executor; {@code localCallback} runs same-process pipelines and
+   * {@code remoteCallbacks} (keyed by remote id, may be null) run remote ones.
+   */
   public SubPipelineStepExecutor(
     StepExecutionContext execContext,
     PipelineExecutorCallback localCallback,
@@ -236,11 +240,7 @@ public final class SubPipelineStepExecutor implements StepExecutor<SubPipelineSt
     if (remoteId != null && !remoteId.isBlank()) {
       var cb = remoteCallbacks.get(remoteId);
       if (cb == null) {
-        LOGGER.warn(
-          "SubPipelineStep '{}': remote '{}' not configured — skipping",
-          stepId,
-          remoteId
-        );
+        LOGGER.warn("SubPipelineStep '{}': remote '{}' not configured, skipping", stepId, remoteId);
         return null;
       }
       return cb;
@@ -249,7 +249,7 @@ public final class SubPipelineStepExecutor implements StepExecutor<SubPipelineSt
     if (execContext.pipelineRegistry().get(pipelineId).isPresent()) {
       if (localCallback == null) {
         LOGGER.warn(
-          "SubPipelineStep '{}': local pipeline '{}' found but no local callback — skipping",
+          "SubPipelineStep '{}': local pipeline '{}' found but no local callback, skipping",
           stepId,
           pipelineId
         );
@@ -259,7 +259,7 @@ public final class SubPipelineStepExecutor implements StepExecutor<SubPipelineSt
     }
 
     LOGGER.warn(
-      "SubPipelineStep '{}': pipeline '{}' not found locally and no remote_id set — skipping",
+      "SubPipelineStep '{}': pipeline '{}' not found locally and no remote_id set, skipping",
       stepId,
       pipelineId
     );

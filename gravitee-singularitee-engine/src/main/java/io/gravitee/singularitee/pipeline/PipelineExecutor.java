@@ -46,7 +46,7 @@ import org.slf4j.LoggerFactory;
  * Walks a pipeline DAG step-by-step reactively, delegating execution to
  * {@link StepDispatcher}.
  *
- * <p>The DAG walk is implemented as a recursive {@code flatMapCompletable} chain — no
+ * <p>The DAG walk is implemented as a recursive {@code flatMapCompletable} chain: no
  * {@code CountDownLatch}, no blocking. Each step returns a {@link io.reactivex.rxjava3.core.Single}
  * emitting the next step ID; the walk recurses until the chain terminates.
  *
@@ -123,7 +123,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
   }
 
   // ---------------------------------------------------------------------------
-  // DAG walk — recursive reactive chain
+  // DAG walk: recursive reactive chain
   // ---------------------------------------------------------------------------
 
   private Completable walk(
@@ -136,7 +136,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
 
     // Stored-conversation continuation: prepend the server-curated transcript
     // (internal tool turns included) so the request's own input is just the
-    // new user turn(s). An unknown id fails loudly — silently dropping history
+    // new user turn(s). An unknown id fails loudly; silently dropping history
     // would corrupt the conversation.
     if (!request.getPreviousResponseId().isEmpty()) {
       var storedOpt = conversationStore != null
@@ -144,7 +144,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
         : Optional.<ConversationStore.StoredConversation>empty();
       if (storedOpt.isEmpty()) {
         LOGGER.warn(
-          "Pipeline '{}': previous_response_id '{}' not found — failing request",
+          "Pipeline '{}': previous_response_id '{}' not found, failing request",
           pipeline.getPipelineId(),
           request.getPreviousResponseId()
         );
@@ -158,7 +158,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
                   .setErrorMessage(
                     "No stored response '" +
                       request.getPreviousResponseId() +
-                      "' — it may have expired (ai.conversations.ttl) or storage is disabled"
+                      "': it may have expired (ai.conversations.ttl) or storage is disabled"
                   )
               )
               .build()
@@ -199,7 +199,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
       context.addServerTools(TodoTools.definitions());
       // Stuck-call signal: the length of the TRAILING run of consecutive
       // assistant tool calls with identical (name, arguments) is a fact of
-      // the transcript — seeded so a graph gate can break behavioral loops
+      // the transcript, seeded so a graph gate can break behavioral loops
       // (the same failing call retried blindly) without model judgment.
       // ask_user is exempt: repeated questions are governed elsewhere.
       context.set(PipelineContext.KEY_REPEATED_CALL, Long.toString(trailingRepeatedCalls(context)));
@@ -326,8 +326,8 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
 
   /**
    * End-of-request conversation storage (OpenAI `store`, default true when the
-   * request carries an id): the transcript the pipeline built — internal tool
-   * turns included — plus the todo plan, under the response id, so the next
+   * request carries an id): the transcript the pipeline built (internal tool
+   * turns included) plus the todo plan, under the response id, so the next
    * turn can continue via previous_response_id with server-curated history.
    */
   private void persistConversation(InferPipelineRequest request, PipelineContext context) {
@@ -401,7 +401,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
       todoSessionStore.clear(key);
       if (allDone) {
         LOGGER.debug(
-          "Pipeline '{}': plan completed — session '{}' cleared",
+          "Pipeline '{}': plan completed, session '{}' cleared",
           pipeline.getPipelineId(),
           key
         );
@@ -448,7 +448,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
     PipelineStep step = stepMap.get(stepId);
     if (step == null) {
       LOGGER.warn(
-        "Pipeline '{}': step '{}' not found — halting",
+        "Pipeline '{}': step '{}' not found, halting",
         stepCtx.pipeline().getPipelineId(),
         stepId
       );
@@ -485,7 +485,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
 
     if (reason == FinishReason.FINISH_REASON_GUARD_BLOCKED) {
       LOGGER.info(
-        "Pipeline halted due to guard block — reason={}, output_field={}",
+        "Pipeline halted due to guard block: reason={}, output_field={}",
         reason,
         context.breakOutputField()
       );
@@ -504,7 +504,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
       response.end(failed);
     } else {
       LOGGER.debug(
-        "Pipeline halted — reason={}, output_field={}",
+        "Pipeline halted: reason={}, output_field={}",
         reason,
         context.breakOutputField()
       );

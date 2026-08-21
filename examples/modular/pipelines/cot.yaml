@@ -14,12 +14,12 @@
 # limitations under the License.
 #
 
-# Pipeline — chain-of-thought with a self-refinement loop.
+# Pipeline: chain-of-thought with a self-refinement loop.
 #
-#   reason ──→ evaluate ──→ loop_gate ──→ answer
+#   reason -> evaluate -> loop_gate -> answer
 #     ↑___________________________|
 #     (loops back to refine while the evaluator says "NO", max 3 iterations)
-#     └────────────────────────────────────────→ fallback_answer (loop exhausted)
+#     └──────────────────────────────────────-> fallback_answer (loop exhausted)
 #
 # A single generation model under logical id "llm" plays every role: it reasons,
 # judges whether the reasoning is conclusive, refines on loop-back, and writes
@@ -71,9 +71,9 @@ workspace:
               match_value: "YES"
             loopback_message:
               role: user
-              content: "Your previous reasoning was not yet conclusive (evaluator said '{{evaluate.output}}'). Continue your thinking — refine your analysis and work towards a clearer conclusion."
+              content: "Your previous reasoning was not yet conclusive (evaluator said '{{evaluate.output}}'). Continue your thinking, refine your analysis and work towards a clearer conclusion."
 
-        # Condition met — produce the validated answer.
+        # Condition met: produce the validated answer.
         - id: answer
           type: infer
           role: output
@@ -85,7 +85,7 @@ workspace:
                 - role: user
                   content: "Based on this reasoning: {{reason.output}}\nGive a clear, concise answer to: {{prompt}}"
 
-        # Max iterations exhausted — best-effort answer.
+        # Max iterations exhausted: best-effort answer.
         - id: fallback_answer
           type: infer
           role: output

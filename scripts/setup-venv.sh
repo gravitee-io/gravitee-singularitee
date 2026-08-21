@@ -34,7 +34,7 @@ VENV_PARENT="${HOME}/.venv-gravitee-ai"
 PYTHON_VERSION="3.12"
 BACKEND=""
 VLLM_VERSION="0.26.0"  # minimum version floor; CUDA/CPU pull latest nightly >= this
-# See install_common() — newer xgrammar segfaults on import.
+# See install_common(): newer xgrammar segfaults on import.
 XGRAMMAR_VERSION="0.2.2"
 TVM_FFI_VERSION="0.1.12"
 
@@ -68,7 +68,7 @@ VENV_DIR="${VENV_PARENT}/.venv"
 # ═══════════════════════════════════════════════════════════════════════════════
 
 if ! command -v uv &>/dev/null; then
-  echo "uv not found — installing via official installer..."
+  echo "uv not found; installing via official installer..."
   curl -LsSf https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 fi
@@ -83,7 +83,7 @@ echo "Using uv: $UV_BIN  ($(uv --version))"
 # Always a uv-managed standalone CPython, never a system/Homebrew one.
 #
 # Homebrew's macOS pythons are *framework* builds, where the interpreter on PATH
-# is a shim whose prefix holds no stdlib — so a venv built on one records a
+# is a shim whose prefix holds no stdlib, so a venv built on one records a
 # pyvenv.cfg `home` that PYTHONHOME cannot be derived from naively (CPython then
 # aborts with "No module named 'encodings'"). PythonLibLoader handles that
 # layout, but pinning to a standalone build keeps CI, local dev and the jextract
@@ -93,12 +93,12 @@ export UV_PYTHON_PREFERENCE=only-managed
 "$UV_BIN" python install "$PYTHON_VERSION"
 
 # An existing venv is only reusable if its interpreter still exists and is
-# managed — otherwise every later uv command fails with "No virtual environment
+# managed; otherwise every later uv command fails with "No virtual environment
 # or system Python installation found".
 if [[ -d "$VENV_DIR" ]]; then
   VENV_HOME="$(sed -n 's/^home[[:space:]]*=[[:space:]]*//p' "${VENV_DIR}/pyvenv.cfg" 2>/dev/null | head -1)"
   if [[ ! -x "${VENV_DIR}/bin/python" || "$VENV_HOME" != *"/uv/python/"* ]]; then
-    echo "Existing venv is unusable (interpreter: ${VENV_HOME:-unknown}) — recreating."
+    echo "Existing venv is unusable (interpreter: ${VENV_HOME:-unknown}); recreating."
     rm -rf "$VENV_DIR"
   fi
 fi
@@ -129,7 +129,7 @@ install_common() {
   #   !!!!!!! Segfault encountered !!!!!!!
   #     TVMFFIEnvRegisterCAPI / xgrammar::__TVMFFIStaticInitFunc0()
   # taking the whole process down (exit 139) before any vLLM code runs. It is
-  # not JVM-specific — a plain `python -c "from vllm import LLM"` crashes too.
+  # not JVM-specific; a plain `python -c "from vllm import LLM"` crashes too.
   #
   # 0.2.2/0.1.12 is the last combination verified to import cleanly. Revisit
   # when bumping VLLM_VERSION; xgrammar is only used for guided decoding, which
@@ -157,7 +157,7 @@ install_common() {
 # compiler, assembler and headers coherent so the kernels build.
 #
 # Only CUDA 13 is affected. NVIDIA publishes these toolchain wheels on PyPI for
-# 13.x only — for a CUDA 12 torch (what --torch-backend=auto picks on a pre-580
+# 13.x only; for a CUDA 12 torch (what --torch-backend=auto picks on a pre-580
 # driver) they come from torch's own cu12 index as one coherent set, nothing
 # floats, and there is nothing to align. Asking for "==12.9.*" there is not a
 # no-op but a hard resolve failure ("only nvidia-cuda-nvcc<12.9.dev0 and
@@ -166,12 +166,12 @@ align_cuda_toolchain() {
   local cuda_mm
   cuda_mm="$("$VENV_PYTHON" -c 'import torch; print(torch.version.cuda or "")')"
   if [[ -z "$cuda_mm" ]]; then
-    echo "Could not determine torch CUDA version — skipping toolchain alignment."
+    echo "Could not determine torch CUDA version; skipping toolchain alignment."
     return 0
   fi
 
   if [[ "${cuda_mm%%.*}" -lt 13 ]]; then
-    echo "torch is a CUDA ${cuda_mm} build — toolchain already coherent, skipping alignment."
+    echo "torch is a CUDA ${cuda_mm} build; toolchain already coherent, skipping alignment."
     return 0
   fi
 
@@ -186,7 +186,7 @@ align_cuda_toolchain() {
 # Builds and installs the vLLM core from the GitHub release tarball.
 #
 # Used by both `metal` and `cpu`: neither has a usable wheel on PyPI. The
-# published `vllm` wheel is CUDA-only — installing it on a machine without a GPU
+# published `vllm` wheel is CUDA-only; installing it on a machine without a GPU
 # leaves `current_platform.device_type` empty and every engine construction dies
 # with "Device string must not be empty". Compiling from source with
 # VLLM_TARGET_DEVICE=cpu produces a genuine CPU build (`0.26.0+cpu`).
@@ -198,12 +198,12 @@ align_cuda_toolchain() {
 # kernels.
 install_vllm_from_source() {
   # importlib reports the *local* version (e.g. "0.26.0+cpu"), so compare only
-  # the part before "+" — otherwise this never matches and every run rebuilds.
+  # the part before "+"; otherwise this never matches and every run rebuilds.
   if "$VENV_PYTHON" -c "
 import importlib.metadata as m, sys
 sys.exit(0 if m.version('vllm').split('+')[0] == '${VLLM_VERSION}' else 1)
 " &>/dev/null; then
-    echo "vllm ${VLLM_VERSION} already installed — skipping vllm core install."
+    echo "vllm ${VLLM_VERSION} already installed; skipping vllm core install."
     return 0
   fi
 
@@ -216,7 +216,7 @@ sys.exit(0 if m.version('vllm').split('+')[0] == '${VLLM_VERSION}' else 1)
       -o "$VLLM_TARBALL"
   fi
 
-  # Always extract fresh — a prior failed build leaves stale CMake cache
+  # Always extract fresh; a prior failed build leaves stale CMake cache
   # (baked ninja paths from uv's temp build-isolation dir) that causes
   # subsequent builds to fail. Fresh extraction is cheap (~1s) and ensures
   # idempotent builds.
@@ -227,7 +227,7 @@ sys.exit(0 if m.version('vllm').split('+')[0] == '${VLLM_VERSION}' else 1)
   # Build requirements first, then runtime, then build with isolation OFF.
   #
   # The isolation matters: pyproject.toml asks for a bare "torch == 2.11.0",
-  # which PEP 517 re-resolves from PyPI into a throwaway environment — and on
+  # which PEP 517 re-resolves from PyPI into a throwaway environment, and on
   # Linux that is the CUDA build, so find_package(Torch) drags in Caffe2Config
   # and configure dies with:
   #   Your installed Caffe2 version uses CUDA but I cannot find the CUDA
@@ -242,7 +242,7 @@ sys.exit(0 if m.version('vllm').split('+')[0] == '${VLLM_VERSION}' else 1)
   # --no-build-isolation makes the build use that torch instead of re-resolving.
   # vLLM 0.26.0 dropped the "--extra-index-url https://download.pytorch.org/whl/cpu"
   # line from its cpu requirements files (its own CI passes the index
-  # externally), but the files still pin torch==X+cpu on Linux — a local
+  # externally), but the files still pin torch==X+cpu on Linux; a local
   # version that only exists on the PyTorch index. Supply it here.
   "$UV_BIN" pip install --python "$VENV_PYTHON" \
     -r "${VLLM_SRC}/requirements/build/cpu.txt" \
@@ -282,7 +282,7 @@ case "$BACKEND" in
     {
       # Pick the wheel that matches the *driver*, not the newest build.
       #
-      # The wheel on PyPI is a CUDA 13 build — its compiled extension links libcudart.so.13 —
+      # The wheel on PyPI is a CUDA 13 build (its compiled extension links libcudart.so.13);
       # and --torch-backend=auto pairs it with whatever torch the driver allows.
       # On a pre-580 driver those two disagree and the engine dies at import:
       #   ImportError: libcudart.so.13: cannot open shared object file
@@ -297,7 +297,7 @@ case "$BACKEND" in
       # --torch-backend to match so uv cannot resolve torch into the other major.
       # A build-only box has no nvidia-smi at all, and under `set -e` a missing
       # command inside a command substitution takes the whole script down with
-      # 127 before a single package is installed — with stderr swallowed by the
+      # 127 before a single package is installed, with stderr swallowed by the
       # redirect, so the log just stops after "Creating virtual environment".
       # Absent driver means "cannot tell": fall through to the default wheel,
       # which is what a machine that only compiles wants anyway.
@@ -309,7 +309,7 @@ case "$BACKEND" in
       fi
 
       if [[ -n "$DRIVER_MAJOR" && "$DRIVER_MAJOR" -lt 580 ]]; then
-        echo "Driver ${DRIVER_MAJOR}.x predates CUDA 13 (needs r580+) — using the +cu129 wheel."
+        echo "Driver ${DRIVER_MAJOR}.x predates CUDA 13 (needs r580+); using the +cu129 wheel."
         VLLM_PACKAGE="https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}+cu129-cp38-abi3-manylinux_2_28_$(uname -m).whl"
         TORCH_BACKEND="cu129"
         WANT_CUDA_MAJOR="12"
@@ -321,7 +321,7 @@ case "$BACKEND" in
     }
 
     # "Already installed" is not the same as "usable". A venv built before this
-    # check existed — or on a machine with a different driver — can hold a CUDA
+    # check existed (or on a machine with a different driver) can hold a CUDA
     # 13 vllm beside a cu129 torch, a pairing that only fails at model load:
     #   ImportError: libcudart.so.13: cannot open shared object file
     # Compare what is actually installed against what the driver needs and
@@ -333,12 +333,12 @@ case "$BACKEND" in
     CURRENT_VLLM_VERSION="$("$VENV_PYTHON" -c \
       "import importlib.metadata as m; print(m.version('vllm').split('+')[0])" 2>/dev/null || true)"
 
-    # Probe the compiled extension — `import vllm` sails past a broken one.
+    # Probe the compiled extension; `import vllm` sails past a broken one.
     # The 0.26 CUDA wheels ship it as _C_stable_libtorch; vllm._C is CPU-only now.
     if "$VENV_PYTHON" -c "import vllm._C_stable_libtorch" &>/dev/null &&
        [[ "$CURRENT_CUDA_MAJOR" == "$WANT_CUDA_MAJOR" &&
           "$CURRENT_VLLM_VERSION" == "$VLLM_VERSION" ]]; then
-      echo "vllm ${VLLM_VERSION} already installed and built for CUDA ${CURRENT_CUDA_MAJOR} — skipping."
+      echo "vllm ${VLLM_VERSION} already installed and built for CUDA ${CURRENT_CUDA_MAJOR}; skipping."
     else
       if [[ -n "$CURRENT_VLLM_VERSION" ]]; then
         if [[ "$CURRENT_VLLM_VERSION" != "$VLLM_VERSION" ]]; then
@@ -347,7 +347,7 @@ case "$BACKEND" in
           echo "Repairing venv: torch targets CUDA ${CURRENT_CUDA_MAJOR:-unknown}," \
                "this driver needs CUDA ${WANT_CUDA_MAJOR}."
         else
-          echo "Repairing venv: vllm's compiled extension does not load — its CUDA runtime" \
+          echo "Repairing venv: vllm's compiled extension does not load; its CUDA runtime" \
                "does not match torch (CUDA ${CURRENT_CUDA_MAJOR:-unknown})."
         fi
       fi

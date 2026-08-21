@@ -62,12 +62,9 @@ public final class OnnxEmbeddingEngine
   @Override
   public Single<EmbedResponse> rxEmbed(EmbedRequest request) {
     return Single.defer(() -> {
-      // Measured first, because this count is needed either way — and when the input
-      // already fits, knowing it lets us skip split() entirely. split() tokenises the
-      // whole text again to find its boundaries, so for the common case of a short
-      // input that was a third full tokenizer pass for a result we could predict:
-      // content tokens <= countTokens <= budget means the splitter returns the text
-      // unchanged. Longer inputs fall through to the unchanged splitting path.
+      // Measured first because the count is needed either way, and when the input already
+      // fits it lets us skip split(), which would tokenise the whole text again: content
+      // tokens <= countTokens <= budget means the splitter returns the text unchanged.
       int fullTokenCount = delegate.countTokens(request.text());
 
       if (fullTokenCount > 0 && fullTokenCount <= delegate.sequenceBudget()) {
@@ -82,7 +79,7 @@ public final class OnnxEmbeddingEngine
 
       var chunks = delegate.split(request.text());
       if (chunks.isEmpty()) {
-        // blank input — preserve infer()'s token count (full-input tokenize) semantics cheaply
+        // blank input: preserve infer()'s token count (full-input tokenize) semantics cheaply
         return rxInfer(() -> {
           var result = delegate.infer(request.text());
           return new EmbedResponse(result.embedding(), result.tokenCount());
@@ -97,14 +94,14 @@ public final class OnnxEmbeddingEngine
         );
       }
       // infer()'s contract: token count = full-input tokenize incl. special tokens, not
-      // combine()'s content-token sum — measured above, on this worker thread.
+      // combine()'s content-token sum; measured above, on this worker thread.
       return Single.zip(perChunk, OnnxEmbeddingEngine::toChunkEmbeddings)
         .map(pooled -> {
           var combined = delegate.combine(pooled);
           return new EmbedResponse(combined.embedding(), fullTokenCount);
         })
         .observeOn(eventLoopScheduler());
-      // split() + countTokens() are CPU-bound tokenizer work running at subscription time —
+      // split() + countTokens() are CPU-bound tokenizer work running at subscription time;
       // keep them off the caller's event loop.
     }).subscribeOn(workerScheduler());
   }

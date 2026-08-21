@@ -39,7 +39,7 @@ import java.util.Objects;
  * <p>Use this to compose multiple simple guards (e.g. a {@link RegexClassifierEngine}
  * + an ONNX classifier) into a single logical
  * model. A single {@code STEP_TYPE_GUARD} step then collects all matches
- * across every delegate in one pass — including the character spans needed
+ * across every delegate in one pass, including the character spans needed
  * for the REDACT action.
  *
  * <p>Delegates are invoked sequentially in declaration order for deterministic
@@ -47,28 +47,25 @@ import java.util.Objects;
  *
  * <p><strong>Single split for the whole composite.</strong> Rather than letting
  * each delegate split a huge input on its own (which would re-split the same text
- * once per delegate), the composite splits the input <em>once</em> — on semantic
- * boundaries, up to {@link #DEFAULT_TOKEN_BUDGET} estimated tokens per chunk — and runs
+ * once per delegate), the composite splits the input <em>once</em>, on semantic
+ * boundaries, up to {@link #DEFAULT_TOKEN_BUDGET} estimated tokens per chunk, and runs
  * every delegate over the shared chunks, shifting each delegate's per-chunk match
  * offsets back to the original text before merging. Inputs that fit the budget
- * produce a single chunk, so the common path is byte-for-byte the previous
- * behaviour (each delegate simply sees the full text); only genuinely huge inputs
- * are chunked, and then the expensive split happens once, not per delegate. A
- * delegate that does its own finer splitting (e.g. an ONNX classifier with a
- * token budget) still splits its chunk as needed — correctness is unaffected;
- * only the redundant top-level split is removed.
+ * produce a single chunk and each delegate sees the full text. A delegate that does
+ * its own finer splitting (e.g. an ONNX classifier with a token budget) still splits
+ * its chunk as needed.
  *
  * <p>Result merging:
  * <ul>
- *   <li>{@code results} — union of all delegate {@link ClassifyResult} entries,
+ *   <li>{@code results}: union of all delegate {@link ClassifyResult} entries,
  *       preserving the original character spans.</li>
- *   <li>{@code allScores} — merged flat map. If two delegates emit the same
+ *   <li>{@code allScores}: merged flat map. If two delegates emit the same
  *       label, the higher score wins.</li>
- *   <li>{@code topLabel} — the first non-{@code null} {@code topLabel} from
+ *   <li>{@code topLabel}: the first non-{@code null} {@code topLabel} from
  *       any delegate (in delegate order). When no delegate matches, the
  *       composite returns an empty response ({@code topLabel = null},
  *       {@code topScore = 0.0f}, empty scores and results).</li>
- *   <li>{@code topScore} — the maximum score across all delegate top scores.</li>
+ *   <li>{@code topScore}: the maximum score across all delegate top scores.</li>
  * </ul>
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -84,9 +81,9 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
   );
 
   /**
-   * Default per-chunk token budget (estimated — see {@link EstimatedTokens}) used
+   * Default per-chunk token budget (estimated, see {@link EstimatedTokens}) used
    * when splitting a huge input once for the whole composite. Only large documents
-   * are chunked; smaller inputs stay a single chunk (common path unchanged).
+   * are chunked; smaller inputs stay a single chunk.
    * 4096 tokens ≈ 14k characters at {@value EstimatedTokens#CHARS_PER_TOKEN} chars/token.
    */
   public static final int DEFAULT_TOKEN_BUDGET = 4096;
@@ -149,8 +146,7 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
   public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
     return Single.defer(() -> {
       List<Chunk> chunks = splitter.split(request.text());
-      // Common path: the input fits the budget (single chunk) — hand each delegate
-      // the full text exactly as before, so behaviour is unchanged for normal inputs.
+      // Common path: the input fits the budget (single chunk); hand each delegate the full text.
       if (chunks.size() <= 1) {
         return Observable.fromIterable(delegates)
           .concatMapSingle(delegate -> delegate.rxClassify(request))
@@ -166,8 +162,8 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
   }
 
   /**
-   * Invoked when an enclosing composite has already split the input for us: skip
-   * our own split and fan the text to each delegate in presplit mode too, so the
+   * Invoked when an enclosing composite has already split the input: skips the
+   * composite's own split and fans the text to each delegate in presplit mode, so the
    * character-budget split happens exactly once at the outermost composite.
    */
   @Override
@@ -227,7 +223,7 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
 
   @Override
   public void close() {
-    // Delegates are owned by the ModelRegistry, not by the composite — do not close them here.
+    // Delegates are owned by the ModelRegistry, not by the composite; do not close them here.
   }
 
   private static ClassifyResponse merge(List<ClassifyResponse> responses) {

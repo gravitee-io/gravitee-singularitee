@@ -18,7 +18,7 @@ package io.gravitee.singularitee.inference.api.memory;
 /**
  * Result of a pre-flight VRAM estimation for a given model configuration.
  *
- * <p>Used to decide — before any weights are loaded — whether the model will
+ * <p>Used to decide, before any weights are loaded, whether the model will
  * fit in available GPU memory, and to surface a human-readable suggestion when
  * it will not.
  *
@@ -49,7 +49,7 @@ public record MemoryEstimate(
    * config.json missing). Callers should treat this as "skip the check".
    */
   public static MemoryEstimate unknown() {
-    return new MemoryEstimate(0, 0, 0, true, "Memory estimate unavailable — skipping check.", true);
+    return new MemoryEstimate(0, 0, 0, true, "Memory estimate unavailable, skipping check.", true);
   }
 
   /** Returns {@code true} if this is the sentinel {@link #unknown()} value. */
@@ -116,7 +116,7 @@ public record MemoryEstimate(
     String fitStr = willFit ? "fits" : "does NOT fit";
     String approxStr = isApproximate ? " (approximate)" : " (exact)";
     return String.format(
-      "VRAM estimate%s: required=%.2f GiB, usable=%.2f GiB, total=%.2f GiB — %s. %s",
+      "VRAM estimate%s: required=%.2f GiB, usable=%.2f GiB, total=%.2f GiB: %s. %s",
       approxStr,
       requiredGb,
       usableGb,

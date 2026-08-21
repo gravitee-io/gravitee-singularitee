@@ -60,7 +60,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Calls the HF API once to list all files in the repo with their blob sizes</li>
  *   <li>Validates that every requested file actually exists</li>
  *   <li>Skips files that are already present locally with the expected size
- *       (a size mismatch — e.g. a half-written file from a crashed boot — is re-downloaded)</li>
+ *       (a size mismatch, e.g. a half-written file from a crashed boot, is re-downloaded)</li>
  *   <li>Downloads the remaining files, using chunked parallel HTTP Range requests
  *       (hf_transfer-style) for large blobs and a plain streaming GET otherwise</li>
  * </ol>
@@ -73,7 +73,7 @@ import org.slf4j.LoggerFactory;
  * signed CDN URL, then {@link Options#parallelism()} concurrent Range requests pull
  * {@link Options#chunkSizeBytes()}-sized chunks that are written at their offset into a
  * preallocated file. Peak buffered memory is {@code parallelism × chunkSize}. Servers
- * that ignore {@code Range} — and any chunked attempt that exhausts its retries — fall
+ * that ignore {@code Range}, and any chunked attempt that exhausts its retries, fall
  * back to the single-stream path.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -113,6 +113,7 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
       }
     }
 
+    /** 10 MiB chunks, 8 in parallel, chunked transfer from 20 MiB upwards. */
     public static Options defaults() {
       return new Options(DEFAULT_CHUNK_SIZE, 8, 2 * DEFAULT_CHUNK_SIZE);
     }
@@ -130,8 +131,8 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
   }
 
   /**
-   * Expired signed CDN URL (HTTP 403 on a chunk). Pointless to retry at chunk level —
-   * the URL stays expired — but retryable at file level, where a fresh attempt
+   * Expired signed CDN URL (HTTP 403 on a chunk). Pointless to retry at chunk level
+   * (the URL stays expired) but retryable at file level, where a fresh attempt
    * re-resolves the redirect to a new signed URL.
    */
   private static final class UrlExpiredException extends NonRetryableException {
@@ -151,14 +152,17 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
   private final int hubPort;
   private final boolean ssl;
 
+  /** Anonymous access to huggingface.co with {@link Options#defaults()}. */
   public HuggingFaceModelDownloader(Vertx vertx) {
     this(vertx, null, Options.defaults());
   }
 
+  /** Access to huggingface.co with an optional bearer token and {@link Options#defaults()}. */
   public HuggingFaceModelDownloader(Vertx vertx, String hfToken) {
     this(vertx, hfToken, Options.defaults());
   }
 
+  /** Access to huggingface.co with an optional bearer token and explicit transfer options. */
   public HuggingFaceModelDownloader(Vertx vertx, String hfToken, Options options) {
     this(vertx, hfToken, options, HF_HOST, 443, true);
   }
@@ -422,7 +426,7 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
    * The probe only needs the status line and headers: the request is made on a raw
    * {@link HttpClient} (no body aggregation) and the connection is torn down as soon as the
    * status is known, so a server that ignores {@code Range} and answers 200 with the whole
-   * blob never gets to transfer — or buffer — that body here.
+   * blob never gets to transfer (or buffer) that body here.
    */
   private Single<ResolvedSource> probe(String url, int hops) {
     if (hops > MAX_REDIRECTS) {
@@ -452,12 +456,12 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
         if (status == 206) {
           long total = contentRangeTotal(response.getHeader("Content-Range"));
           abortProbe(response);
-          LOG.debug("Range probe: 206 from [{}], total {} bytes — chunked path", url, total);
+          LOG.debug("Range probe: 206 from [{}], total {} bytes, chunked path", url, total);
           return Single.just(new ResolvedSource(url, true, total));
         }
         if (status == 200) {
           abortProbe(response);
-          LOG.debug("Range probe: 200 from [{}] — Range ignored, single-stream path", url);
+          LOG.debug("Range probe: 200 from [{}], Range ignored, single-stream path", url);
           return Single.just(new ResolvedSource(url, false, UNKNOWN_SIZE));
         }
         abortProbe(response);
@@ -615,7 +619,7 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
    * <p>{@link #detachOnDispose} only covers a chunk that is already disposed. A sibling
    * whose error wins the race against the merge's own disposal is delivered normally,
    * and a non-delaying {@code flatMapCompletable} that has already terminated hands
-   * that second error to the global error handler — which is downstream of any wrapper
+   * that second error to the global error handler, which is downstream of any wrapper
    * on the chunk itself. Collapsing to the first failure here means the merge never sees
    * a second one; the first still aborts the download and triggers the fallback.
    */
@@ -691,7 +695,7 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
    * some marker exceptions differently (see {@link UrlExpiredException}).
    *
    * <p>The attempt index is tracked explicitly (not via {@code zipWith(range)}) so
-   * exhausting the retries always rethrows the error — a completed inner stream
+   * exhausting the retries always rethrows the error: a completed inner stream
    * would otherwise terminate the retried operation as a silent success.
    */
   private static Flowable<?> backoff(
@@ -782,7 +786,7 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
   }
 
   /**
-   * Unique temp sibling of the final path — same directory, hence same filesystem, so the
+   * Unique temp sibling of the final path: same directory, hence same filesystem, so the
    * publishing move can be atomic. The name never collides with a requested file name.
    */
   private static Path tempPathFor(Path outputPath) {

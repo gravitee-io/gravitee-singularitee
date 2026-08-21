@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
  * <p>Three components have to agree on what a configured {@code nCtx} means: the memory estimator
  * budgets VRAM for {@code nCtx * nSeqMax}, llama.cpp allocates {@code n_ctx} as one shared pool, and
  * admission divides it back by {@code nSeqMax}. These tests pin the conversion that keeps them in
- * step — the round-trip property is the one that matters: what a slot is given must equal what was
+ * step; the round-trip property is the one that matters: what a slot is given must equal what was
  * configured.
  *
  * <p>No model or native libraries required.
@@ -55,8 +55,7 @@ class ModelTotalContextTest {
 
   @Test
   void the_default_pairing_no_longer_starves_a_slot() {
-    // 4096 per sequence over 8 slots: 32768 total, and each slot keeps its full 4096 —
-    // previously this allocated 4096 total and handed each request 512.
+    // 4096 per sequence over 8 slots: 32768 total, and each slot keeps its full 4096.
     int total = Model.totalContext(4096, 8);
 
     assertThat(total).isEqualTo(32768);

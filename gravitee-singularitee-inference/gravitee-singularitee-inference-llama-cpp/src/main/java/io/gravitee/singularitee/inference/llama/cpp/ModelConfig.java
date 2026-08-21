@@ -112,8 +112,9 @@ public record ModelConfig(
    *   <li>{@code nBatch} = 0 (defer to llama.cpp default)</li>
    *   <li>{@code nUBatch} = 0 (defer to llama.cpp default)</li>
    *   <li>{@code nSeqMax} = 0 (defer to llama.cpp default)</li>
-   *   <li>{@code nThreads} / {@code nThreadsBatch} = 0 (defer to llama.cpp default — forcing
-   *       all cores drags Apple Silicon E-cores into every decode sync, ~3x slower on Metal)</li>
+   *   <li>{@code nThreads} / {@code nThreadsBatch} = 0 (defer to llama.cpp default; forcing
+   *       all cores drags Apple Silicon efficiency cores into every decode sync and slows
+   *       Metal-offloaded decode)</li>
    *   <li>{@code nGpuLayers} = 0 (CPU-only; set to 999 to offload everything to GPU)</li>
    *   <li>{@code useMlock} = false</li>
    *   <li>{@code useMmap} = true</li>
@@ -316,7 +317,6 @@ public record ModelConfig(
       return this;
     }
 
-    /** Minimum shared-prefix tokens to prefer a warm slot without a key match (default 64). */
     /** Draft model GGUF for model-drafting speculation; null disables it. */
     public Builder draftPath(Path draftPath) {
       this.draftPath = draftPath;
@@ -341,11 +341,17 @@ public record ModelConfig(
       return this;
     }
 
+    /** Minimum shared-prefix tokens to prefer a warm slot without a key match (default 64). */
     public Builder promptCacheMinTokens(int promptCacheMinTokens) {
       this.promptCacheMinTokens = promptCacheMinTokens;
       return this;
     }
 
+    /**
+     * Builds the configuration.
+     *
+     * @throws IllegalArgumentException when {@code mtp} is combined with a multimodal projector
+     */
     public ModelConfig build() {
       if (mtp && mmprojPath != null) {
         throw new IllegalArgumentException(

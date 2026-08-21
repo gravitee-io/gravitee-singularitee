@@ -18,9 +18,16 @@ package io.gravitee.singularitee.inference.api.textgen;
 import java.util.List;
 
 /**
- * Channel markers. {@code openAlternatives} carries additional opening markers for dialects that
- * open the same channel more than one way — Harmony emits tool calls on both the commentary and
- * analysis channels, and a variant that is not configured leaks into the previous channel as text.
+ * Opening and closing markers of one generation channel (reasoning or tool call).
+ *
+ * <p>{@code openAlternatives} and {@code closeAlternatives} carry the extra markers of dialects
+ * that enter or leave the same channel more than one way (Harmony emits tool calls on both the
+ * commentary and analysis channels). A variant that is not configured leaks into the previous
+ * channel as text. {@code repeatable} states whether the channel may be re-entered after it was
+ * closed; {@code null} defers to the engine default.
+ *
+ * @author Rémi SULTAN (remi.sultan at graviteesource.com)
+ * @author GraviteeSource Team
  */
 public record TagConfig(
   String openToken,
@@ -34,7 +41,7 @@ public record TagConfig(
     closeAlternatives = closeAlternatives == null ? List.of() : List.copyOf(closeAlternatives);
   }
 
-  /** Without an explicit re-entry rule — the engine's own default applies. */
+  /** Without an explicit re-entry rule: the engine's own default applies. */
   public TagConfig(
     String openToken,
     String closeToken,
@@ -44,10 +51,12 @@ public record TagConfig(
     this(openToken, closeToken, openAlternatives, closeAlternatives, null);
   }
 
+  /** Primary markers only. */
   public TagConfig(String openToken, String closeToken) {
     this(openToken, closeToken, List.of(), List.of());
   }
 
+  /** Primary markers plus alternative opening markers. */
   public TagConfig(String openToken, String closeToken, List<String> openAlternatives) {
     this(openToken, closeToken, openAlternatives, List.of());
   }
@@ -87,6 +96,7 @@ public record TagConfig(
     return List.copyOf(all);
   }
 
+  /** Whether both primary markers are set and non-blank. */
   public boolean isConfigured() {
     return openToken != null && !openToken.isBlank() && closeToken != null && !closeToken.isBlank();
   }

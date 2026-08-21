@@ -34,9 +34,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Engine adapter for llama.cpp backend.
- * Handles all llama.cpp-specific operations while the AbstractBatchEngine
- * manages sequence lifecycle, queuing, and token emission.
+ * Engine adapter for the llama.cpp backend.
+ *
+ * <p>Handles the llama.cpp-specific operations (model load, conversation state, KV prefix
+ * sharing, batch decode, finish reasons, native cleanup) while {@code AbstractBatchEngine}
+ * owns sequence lifecycle, queuing and token emission. {@link #processNextBatch()} and the
+ * sequence methods are called from the engine's single decode thread.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -55,6 +58,11 @@ public class EngineAdapter
   private final Model model;
   private final BatchIterator iterator;
 
+  /**
+   * Registers compute backends, runs the memory pre-flight check and loads the model.
+   *
+   * @throws InsufficientVramException when the policy is {@code FAIL} and the estimate does not fit
+   */
   public EngineAdapter(ModelConfig config) {
     // Compute backends must be registered BEFORE the memory pre-flight opens the GGUF:
     // LlamaModelDims.loadFrom() calls llama_model_load_from_file, which needs ≥1 backend device
@@ -81,10 +89,7 @@ public class EngineAdapter
     }
     String modelName = config.modelPath().getFileName().toString();
     if (config.nCtx() == 0) {
-      LOGGER.info(
-        "Memory pre-flight: nCtx deferred to model — skipping estimate for {}",
-        modelName
-      );
+      LOGGER.info("Memory pre-flight: nCtx deferred to model, skipping estimate for {}", modelName);
       return;
     }
     LOGGER.info("Running memory pre-flight check for {} (policy={})", modelName, policy);
@@ -99,7 +104,7 @@ public class EngineAdapter
       config.logLevel()
     );
     if (estimate.isUnknown()) {
-      LOGGER.info("Memory pre-flight: estimate unavailable — skipping check");
+      LOGGER.info("Memory pre-flight: estimate unavailable, skipping check");
       return;
     }
     LOGGER.info("Memory pre-flight: {}", estimate.toHumanReadable());
@@ -109,14 +114,14 @@ public class EngineAdapter
     if (policy == MemoryCheckPolicy.FAIL) {
       throw new InsufficientVramException(modelName, estimate);
     }
-    LOGGER.warn("Memory pre-flight: model may not fit — {}", estimate.suggestion());
+    LOGGER.warn("Memory pre-flight: model may not fit: {}", estimate.suggestion());
   }
 
   /**
    * Prompts rendered by {@link #tokenizePrompt} and consumed by
-   * {@link #createSequenceState(int, Request, int)} — avoids rendering the chat
-   * template twice per request. Keyed by Request identity; entries are removed
-   * on consumption, so the map stays bounded by in-flight requests.
+   * {@link #createSequenceState(int, Request, int)}, so the chat template is rendered once
+   * per request. Keyed by {@link Request} identity; entries are removed on consumption, so
+   * the map stays bounded by in-flight requests.
    */
   private final Map<Request, String> renderedPrompts = Collections.synchronizedMap(
     new IdentityHashMap<>()
@@ -167,7 +172,7 @@ public class EngineAdapter
    *
    * <p>A llama.cpp KV cell carries a <em>set</em> of sequence ids, so
    * {@code seq_cp} adds the destination to the cells at {@code [0, prefixTokens)}
-   * and moves no tensor data — a 2000-token system prompt is published in
+   * and moves no tensor data: a 2000-token system prompt is published in
    * microseconds, with no extra VRAM and without disturbing a donor that is still
    * generating.
    *
@@ -246,8 +251,8 @@ public class EngineAdapter
     if (state == null) {
       return new TokenCountInfo(0, 0, 0, 0);
     }
-    // OpenAI semantics: completion_tokens is EVERYTHING generated; reasoning/tool counts are
-    // breakdowns of that total, not separate buckets.
+    // completion_tokens counts everything generated; reasoning/tool counts are breakdowns of
+    // that total, not separate buckets.
     return new TokenCountInfo(
       state.getInputTokens(),
       state.getAnswerTokens() + state.getReasoningTokens() + state.getToolsTokens(),
@@ -264,7 +269,7 @@ public class EngineAdapter
     // llama.cpp classifies every generated token via the reasoning/tool tags
     // configured on the request. With a <think>-prefilled prompt the state
     // STARTS in REASONING, so no literal open tag ever appears in the emitted
-    // text — this classification is the only reliable signal downstream.
+    // text; this classification is the only reliable signal downstream.
     return switch (state.getGenerationState()) {
       case ANSWER -> TokenChannel.ANSWER;
       case REASONING -> TokenChannel.REASONING;
@@ -306,8 +311,6 @@ public class EngineAdapter
     var contextPerf = state.getContext().getPerformance(arena);
     var samplerPerf = state.getSampler().getPerformance(arena);
 
-    // Direct primitive conversions - eliminates temporary Double object allocation
-    // and reduces bytecode overhead vs Double.valueOf(x).longValue()
     return new InferencePerformance(
       (long) contextPerf.startTimeMs(),
       (long) contextPerf.loadTimeMs(),
@@ -316,7 +319,7 @@ public class EngineAdapter
       contextPerf.promptTokensEvaluated(),
       contextPerf.tokensGenerated(),
       // Cross-request prefix reuse (getReusePrefixTokens) supersedes the native
-      // in-context reuse counter when present — both mean "prompt tokens not
+      // in-context reuse counter when present; both mean "prompt tokens not
       // re-evaluated because their KV was already resident".
       Math.max(contextPerf.tokensReused(), state.getReusePrefixTokens()),
       (long) samplerPerf.samplingTimeMs(),
@@ -327,7 +330,7 @@ public class EngineAdapter
   @Override
   public void cleanupSequenceState(ConversationState state) {
     if (state != null) {
-      // Free native media bitmaps to prevent memory leaks and stale encoder state
+      // Native media bitmaps are not arena-managed; free them here or they leak.
       for (MtmdMedia media : state.getMedia()) {
         if (!media.isFree()) {
           media.free();

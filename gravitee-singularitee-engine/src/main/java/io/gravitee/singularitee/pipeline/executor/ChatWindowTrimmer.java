@@ -30,22 +30,22 @@ import org.slf4j.LoggerFactory;
  * <p>Budget: {@code contextTokens - max(0, maxTokens) - contextTokens/20}
  * (a 5% safety margin on top of the completion reservation). When the whole
  * conversation is comfortably below the budget (fast path, &lt; 80%), the
- * input list is returned <em>unchanged — same instance</em>, so callers can
+ * input list is returned <em>unchanged, same instance</em>, so callers can
  * detect trimming with an identity check.
  *
  * <p>Trimming rules:
  * <ul>
  *   <li>All <em>leading</em> system messages are pinned (never dropped).</li>
- *   <li>The remainder is walked newest→oldest, keeping messages while they
+ *   <li>The remainder is walked newest->oldest, keeping messages while they
  *       fit a 70%-of-budget target (hysteresis: a trimmed conversation leaves
  *       headroom so the very next turn does not immediately re-trim).</li>
  *   <li>An assistant message carrying the step's tool-call open tag and the
  *       message immediately following it (the tool result) form one atomic
- *       unit — kept or dropped together.</li>
+ *       unit, kept or dropped together.</li>
  *   <li>The last message overall (the newest turn) is always kept; if it
  *       alone exceeds the target its content is truncated from the head
  *       (tail kept), prefixed with {@value #TRIM_MARKER}. Media-carrying
- *       turns are never truncated — they are kept whole.</li>
+ *       turns are never truncated; they are kept whole.</li>
  * </ul>
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -76,7 +76,7 @@ public final class ChatWindowTrimmer {
    * @param contextTokens the model context window in tokens; {@code <= 0} disables trimming
    * @param maxTokens     the completion reservation (0 when unset)
    * @param counter       token counter (exact or estimated)
-   * @param toolOpenTag   the step's tool-call open tag (blank/null → {@value #DEFAULT_TOOL_OPEN_TAG})
+   * @param toolOpenTag   the step's tool-call open tag (blank/null -> {@value #DEFAULT_TOOL_OPEN_TAG})
    * @return the same list instance when no trim is needed, otherwise a new trimmed list
    */
   public static List<Map<String, Object>> trim(
@@ -91,7 +91,7 @@ public final class ChatWindowTrimmer {
 
   /**
    * Trims a {@link ChatTurn} history (direct-model path). Media-carrying turns
-   * are preserved exactly — never content-truncated.
+   * are preserved exactly, never content-truncated.
    *
    * @see #trim(List, int, int, TokenCounter, String)
    */
@@ -194,7 +194,7 @@ public final class ChatWindowTrimmer {
     }
     // The completion reservation may never starve the prompt: a client asking for
     // max_tokens near (or above) the context size would drive the budget to ~0 and
-    // shred the conversation. Cap the reservation at half the window — the engine
+    // shred the conversation. Cap the reservation at half the window; the engine
     // clamps the actual completion to whatever remains after the prompt anyway.
     int reservation = Math.min(Math.max(0, maxTokens), contextTokens / 2);
     long budget = Math.max(0L, (long) contextTokens - reservation - contextTokens / 20);
@@ -209,7 +209,7 @@ public final class ChatWindowTrimmer {
       tok[i] = Math.max(0, counter.count(a.content(messages.get(i))));
       total += tok[i];
     }
-    // Fast path: comfortably within budget — untouched, same instance.
+    // Fast path: comfortably within budget, untouched, same instance.
     if (total < budget * FAST_PATH_RATIO) {
       return messages;
     }
@@ -220,7 +220,7 @@ public final class ChatWindowTrimmer {
       pinnedEnd++;
     }
     if (pinnedEnd >= n) {
-      return messages; // nothing but pinned systems — nothing to trim
+      return messages; // nothing but pinned systems, nothing to trim
     }
     long pinnedTokens = 0;
     for (int i = 0; i < pinnedEnd; i++) {
@@ -228,9 +228,8 @@ public final class ChatWindowTrimmer {
     }
     long target = Math.max(0L, (long) (budget * TARGET_RATIO) - pinnedTokens);
 
-    // Atomic units: an assistant message that makes tool calls — STRUCTURED
-    // (OpenAI tool_calls, content typically null) or legacy tagged text —
-    // plus ALL immediately following tool-result messages (parallel calls
+    // Atomic units: an assistant message that makes tool calls, structured
+    // (OpenAI tool_calls, content typically null) or tagged text, plus ALL immediately following tool-result messages (parallel calls
     // yield several) trim together. Splitting the pair orphans the tool
     // message, which chat templates reject outright ("tool role without a
     // previous assistant tool call").
@@ -251,7 +250,7 @@ public final class ChatWindowTrimmer {
       j = end + 1;
     }
 
-    // Walk newest → oldest, keeping whole units while they fit the target.
+    // Walk newest -> oldest, keeping whole units while they fit the target.
     // The newest unit (containing the last message) is always kept.
     int keepFrom = n;
     long kept = 0;
@@ -268,21 +267,21 @@ public final class ChatWindowTrimmer {
         newest = false;
         u = start - 1;
       } else {
-        break; // keep the retained window contiguous — stop at the first non-fit
+        break; // keep the retained window contiguous: stop at the first non-fit
       }
     }
 
-    // Safety net: the retained window must never START with tool results —
+    // Safety net: the retained window must never START with tool results;
     // even if unit bookkeeping missed a shape, an orphaned tool message is a
     // guaranteed template error, while dropping it merely loses old context.
     while (keepFrom < n - 1 && "tool".equalsIgnoreCase(a.role(messages.get(keepFrom)))) {
-      LOGGER.debug("Trim window opened on a tool result at index {} — advancing past it", keepFrom);
+      LOGGER.debug("Trim window opened on a tool result at index {}, advancing past it", keepFrom);
       keepFrom++;
     }
 
     // Oversized newest turn: truncate the last message's content from the
     // head so the tail (the most recent text) survives. Skipped for
-    // non-truncatable (media-carrying) messages — those are kept whole.
+    // non-truncatable (media-carrying) messages; those are kept whole.
     M last = messages.get(n - 1);
     M truncatedLast = null;
     if (kept > target && tok[n - 1] > target && a.truncatable(last)) {
@@ -303,7 +302,7 @@ public final class ChatWindowTrimmer {
     }
 
     if (keepFrom == pinnedEnd && truncatedLast == null) {
-      return messages; // everything fits after all — untouched
+      return messages; // everything fits after all, untouched
     }
 
     List<M> out = new ArrayList<>(pinnedEnd + (n - keepFrom));

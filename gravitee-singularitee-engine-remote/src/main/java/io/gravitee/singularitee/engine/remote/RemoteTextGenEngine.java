@@ -56,14 +56,14 @@ public final class RemoteTextGenEngine implements TextGenEngine {
    * What the backend behind the proxy reads, as reported by {@code GetModel}.
    * Text-only until the probe answers; a workspace {@code modalities:} declaration
    * on the proxy entry overrides this at the registry, so the probe is only the
-   * default — the thing that makes a proxy over a VLM advertise images without
+   * default, the thing that makes a proxy over a VLM advertise images without
    * anyone having to say so.
    */
   private volatile List<String> inputModalities = Modalities.TEXT_ONLY;
 
   /**
    * Whether the chat-template metadata is final. True when the caller supplied
-   * it explicitly (5-arg constructor — caller authority) or after a successful
+   * it explicitly (5-arg constructor, caller authority) or after a successful
    * lazy {@code GetModel} probe. While false, {@link #chatTemplateString()}
    * keeps re-triggering the async fetch so the engine self-heals as soon as
    * the remote becomes reachable.
@@ -75,7 +75,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
 
   /**
    * Per-sequence reactive token streams, keyed by seqId. When a subscriber is present,
-   * relayed tokens are routed to its processor instead of the legacy callback.
+   * relayed tokens are routed to its processor instead of the {@code start(...)} consumer.
    */
   private final ConcurrentHashMap<Integer, FlowableProcessor<ModelEngineToken>> streams =
     new ConcurrentHashMap<>();
@@ -83,7 +83,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
   /**
    * Creates an engine whose chat-template metadata is fetched lazily from the
    * remote server via {@code GetModel}. Construction never opens an RPC and
-   * never fails when the remote is down — the fetch is fired asynchronously
+   * never fails when the remote is down: the fetch is fired asynchronously
    * here and re-attempted on each {@link #chatTemplateString()} miss, so
    * workspace startup stays decoupled from remote availability (see the
    * registration-time comment in {@code WorkspaceLoaderComponent}).
@@ -98,7 +98,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
 
   /**
    * Creates an engine with caller-supplied chat-template metadata. No remote
-   * probe is ever made — the caller (e.g. {@code ClientPipelineExecutor},
+   * probe is ever made; the caller (e.g. {@code ClientPipelineExecutor},
    * which already validated the model via {@code GetModel}) has authority.
    */
   public RemoteTextGenEngine(
@@ -148,7 +148,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
   @Override
   public String chatTemplateString() {
     if (!metadataLoaded) {
-      // Still unknown — kick a background refresh for subsequent requests.
+      // Still unknown: kick a background refresh for subsequent requests.
       // This call intentionally returns the current (possibly null) value
       // without blocking: callers fall back to sending raw messages, which
       // the remote server renders with the model's own template.
@@ -170,7 +170,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
   /**
    * Fires a non-blocking {@code GetModel} probe to populate chat-template
    * metadata. At most one probe is in flight at a time; failures are logged
-   * and the next {@link #chatTemplateString()} miss retries — request traffic
+   * and the next {@link #chatTemplateString()} miss retries; request traffic
    * naturally paces the retries, so a dead remote is never hammered.
    */
   private void fetchMetadataAsync() {
@@ -182,7 +182,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
       .subscribe(
         info -> {
           String template = info.getChatTemplate();
-          // bos/eos first, template last — readers key off chatTemplate, so
+          // bos/eos first, template last: readers key off chatTemplate, so
           // they never observe a template paired with stale special tokens.
           bosToken = info.getBosToken() != null ? info.getBosToken() : "";
           eosToken = info.getEosToken() != null ? info.getEosToken() : "";
@@ -198,13 +198,13 @@ public final class RemoteTextGenEngine implements TextGenEngine {
               template.length()
             );
           } else {
-            // Success but no template on the wire — e.g. a chained remote
+            // Success but no template on the wire, e.g. a chained remote
             // whose own lazy metadata fetch hasn't completed yet. Do NOT
             // latch metadataLoaded: the next chatTemplateString() miss
             // re-probes, so the engine still self-heals once the template
             // becomes available downstream.
             LOGGER.info(
-              "RemoteTextGenEngine: GetModel for model '{}' returned no chat template yet — will re-probe on next use",
+              "RemoteTextGenEngine: GetModel for model '{}' returned no chat template yet, will re-probe on next use",
               modelId
             );
           }
@@ -213,7 +213,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
         err -> {
           metadataFetchInFlight.set(false);
           LOGGER.warn(
-            "RemoteTextGenEngine: GetModel metadata fetch failed for model '{}' — will retry on next use: {}",
+            "RemoteTextGenEngine: GetModel metadata fetch failed for model '{}', will retry on next use: {}",
             modelId,
             err.getMessage()
           );
@@ -238,7 +238,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
         capacity,
         () ->
           LOGGER.warn(
-            "Remote sequence {} token-stream buffer overflowed ({} tokens) — consumer too slow",
+            "Remote sequence {} token-stream buffer overflowed ({} tokens): consumer too slow",
             seqId,
             capacity
           ),
@@ -249,7 +249,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
 
   /**
    * Routes a relayed token to the per-sequence reactive stream when one is subscribed,
-   * otherwise to the legacy {@code start(...)} consumer. Completes the stream on the
+   * otherwise to the {@code start(...)} consumer. Completes the stream on the
    * final token. Cancellation of the remote call is driven by disposal of the
    * {@link #rxAddSequence} subscription, so no per-stream cancel hook is needed here.
    */
@@ -276,7 +276,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
 
     var inferReqBuilder = InferRequest.newBuilder().setModelId(modelId);
 
-    // Map prompt / messages — prefer pre-rendered prompt (from client-side
+    // Map prompt / messages: prefer pre-rendered prompt (from client-side
     // chat template rendering) so that per-step context variables like
     // enable_thinking are honoured. Fall back to raw messages otherwise,
     // forwarding template_context so the server-side render still honours
@@ -348,7 +348,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
 
     // Subscribe to the streaming RPC; relay each token to the consumer.
     // The Completable completes when the Flowable completes (all tokens delivered),
-    // or errors if the stream errors — in both cases the final token was already
+    // or errors if the stream errors; in both cases the final token was already
     // sent to the consumer by the onNext handler.
     return client
       .infer(inferReq)
@@ -417,7 +417,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
             );
           }
           default -> {
-            // CREATED and UNSPECIFIED — no action needed
+            // CREATED and UNSPECIFIED: no action needed
           }
         }
       })
@@ -448,12 +448,12 @@ public final class RemoteTextGenEngine implements TextGenEngine {
       .doOnComplete(() ->
         LOGGER.info("RemoteTextGenEngine: Infer stream completed for model '{}'", modelId)
       )
-      .ignoreElements(); // Flowable<InferResponse> → Completable
+      .ignoreElements(); // Flowable<InferResponse> -> Completable
   }
 
   @Override
   public void close() {
-    // Nothing to close — the client is shared and managed externally
+    // Nothing to close: the client is shared and managed externally
   }
 
   private static Role toProtoRole(ChatRole role) {

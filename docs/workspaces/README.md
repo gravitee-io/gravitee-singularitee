@@ -1,340 +1,249 @@
 # Workspaces
 
-> Declare models, pipelines, templates, and remote endpoints in a single YAML — the unit of deployment the server loads at startup.
+> The YAML document that declares what a server publishes: models, pipelines, templates, tag sets, remote endpoints and includes, and how the loader validates it.
 
 ## Overview
-A workspace is a YAML document with one root key, `workspace:`, that declares everything a server
-(or a client-side executor) publishes: the models to load, the pipelines that orchestrate them,
-reusable prompt templates, and optional remote gRPC endpoints. Models are bound to a stable
-**logical id** (`llm`, `pii`, `toxicity`, `router`, ...) while `name` points at the actual source —
-usually a HuggingFace repo — so the same pipeline runs unchanged against any backend a given
-workspace binds to that id. Larger setups compose a workspace from shared fragments via
-`includes:`, resolved from conventional `models/`, `pipelines/`, and `templates/` sibling folders.
+
+A workspace is one YAML file with a single root key, `workspace:`. It declares the models to
+load, the pipelines that run over them, reusable templates and tag sets, and optional remote
+gRPC endpoints. `ai.workspace.path` names the file the server loads at boot.
+
+Models carry a stable logical id (`llm`, `pii`, `toxicity`, `router`) while `name` points at
+the source, usually a HuggingFace repo. Pipelines reference the id, so the same pipeline runs
+against any backend a workspace binds to that id. Larger setups compose a workspace from
+fragments with `includes:`, resolved from `models/`, `pipelines/` and `templates/` folders
+beside the file.
+
+Per-type and per-step keys are documented once, in the reference:
+[model types](../reference/models/README.md), [step types](../reference/steps/README.md),
+[templates](../reference/templates/README.md). This page covers the document itself.
 
 ## Key types
-- `WorkspaceDefinition` / `WorkspaceRoot` — Jackson mapping of the document: `name`, `remote`, `models`, `pipelines`, `templates`, `includes` (unknown keys are ignored).
-- `YamlWorkspaceLoader` — parses the YAML, resolves includes and globs, builds the template registry, and validates step ids.
-- `ModelType` — enum of every `type:` string (parsed case-insensitively) and the builder that turns each config block into a model-load request.
-- `ModelDefinition` — one `models:` entry: `id`, `name`, `type`, optional `server`, `memory_check`, `download`, `task`, `visible`, plus exactly one type-specific block.
-- `RemoteConfig` / `RemoteEndpoint` — the `remote:` block: a `default` endpoint and/or named `servers` (`id`, `host`, `port`, optional `username`/`password`).
-- `TemplateDefinition` — a template entry: `id` plus `content` (inline Jinja2) *or* `file` (mutually exclusive).
-- `MemoryCheckPolicyType` — per-model GPU/RAM pre-load check: `fail`, `warn` (default), `disabled`.
+
+- `WorkspaceDefinition` / `WorkspaceRoot`: the Jackson mapping. `@JsonProperty` names are the YAML keys; unknown keys are ignored.
+- `YamlWorkspaceLoader`: parses the file, resolves includes and globs, builds the template and tag registries, validates ids and publication metadata, and produces model-load requests and pipeline definitions.
+- `ModelDefinition`: one `models:` entry; `PipelineDefinition` and `StepDefinition`: one `pipelines:` entry and its steps; `TemplateDefinition`: one `templates:` entry; `TagsDef`: one `tags:` entry.
+- `RemoteConfig` / `RemoteEndpoint`: the `remote:` block.
+- `ModelType`: every `type:` string (parsed case-insensitively) and its mapping to a proto `ModelLoadRequest`.
+- `Publication`: the closed sets for `task:` and `modalities:`.
+- `MemoryCheckPolicyType`: `fail`, `warn`, `disabled`.
 
 ## Usage
 
-A minimal server workspace (from `examples/modular/models/llama/llm-qwen3-0.6b.yaml` + `examples/modular/pipelines/infer.yaml`):
+A minimal server workspace:
 
 ```yaml
 workspace:
-  name: server-llamacpp
+  name: my-workspace
   models:
-    - id: llm                          # logical id — pipelines reference this
-      name: Qwen/Qwen3-0.6B-GGUF       # HF repo (downloaded on first load)
-      type: llama_cpp
+    - id: llm                       # logical id: what pipelines reference
+      name: Qwen/Qwen3-0.6B-GGUF    # HuggingFace repo, or a local path
+      type: llama_cpp               # selects the llama_cpp: block below
       memory_check: warn
       llama_cpp:
         path: Qwen3-0.6B-Q8_0.gguf
-        n_seq_max: 4
+        n_ctx: 4096
+        n_seq_max: 1
         n_gpu_layers: 999
-        flash_attn_type: AUTO
   pipelines:
-    - id: infer-pipeline
-      name: Inference Pipeline
-      entry: infer
+    - id: agent
+      entry: generate               # first step
       steps:
-        - id: infer
+        - id: generate
           type: infer
-          role: output
+          role: output              # this step's output is the response
           config:
             model_id: llm
-            output_field: infer.output
-            sampling:
-              max_tokens: 512
+            output_field: generate.output
 ```
 
-Composing from shared fragments (`examples/modular/server-llamacpp.yaml`):
+Composition from fragments (`examples/modular/server-llamacpp.yaml`):
 
 ```yaml
 workspace:
   name: server-llamacpp
   includes:
     models:
-      - llama/llm-qwen3-0.6b.yaml      # resolved in ./models/ — subfolders are fine
+      - llama/llm-qwen3-0.6b.yaml   # resolved in ./models/; subfolders allowed
     templates:
-      - tool-system.yaml               # resolved in ./templates/
-    pipelines:                         # resolved in ./pipelines/ — globs allowed
+      - tool-system.yaml            # resolved in ./templates/
+    pipelines:                      # resolved in ./pipelines/; globs allowed
       - infer.yaml
       - tool-calling.yaml
-      - cot.yaml
-      - reasoning.yaml
 ```
 
-A client workspace with remote models (see `examples/modular/client-safety-llamacpp.yaml`):
+A client workspace whose models live on other servers (adapted from `examples/modular/client-safety-llamacpp.yaml`, with a default endpoint, TLS and credentials added to show every key):
 
 ```yaml
 workspace:
   name: client
   remote:
+    default:                        # used by entries with no server:
+      host: 127.0.0.1
+      port: 9090
     servers:
-      - id: pii
+      - id: safety
         host: 127.0.0.1
-        port: 9100
-        username: pii
+        port: 9092
+        ssl: true                   # TLS; trust and client cert come from grpc.client.ssl.*
+        username: pii               # optional Basic auth sent as gRPC metadata
         password: <password>
   models:
-    - id: pii-detector
+    - id: llm
+      type: remote_llm              # default endpoint
+    - id: pii
       type: remote_classifier
-      server: pii                      # binds to the endpoint id above
+      server: safety                # named endpoint
 ```
 
-(`remote.default:` is the single-endpoint shorthand — models with no `server:` use it.)
-
-A client-local composite (production PII, abbreviated):
-
-```yaml
-workspace:
-  name: pii
-  models:
-    - id: pii-regex-contact
-      type: regex
-      regex:
-        patterns:
-          - pattern: '(?U)\b[\p{L}\p{Nd}._%+-]+@[\p{L}\p{Nd}.-]+\.\p{L}{2,}\b'
-            entity_type: EMAIL
-    - id: pii-ner
-      name: gravitee-io/gliner4j-gliner2-privacy-filter-PII-multi
-      type: gliner_ner
-      gliner_ner:
-        variant: onnx
-        threshold: 0.4
-        entities:
-          - name: person
-            description: Full name of a real individual
-    - id: pii-detector
-      type: composite_classifier
-      composite_classifier:
-        models: [pii-regex-contact, pii-ner]
-```
+Validate a workspace without starting a server: `task test:examples` runs
+`ExamplesWorkspaceTest`, which loads every file under `examples/` through the real loader.
+Point the same loader at your own file with `YamlWorkspaceLoader.load(path, templatesPath)`.
 
 ## Options
 
-### Top-level `workspace:` fields
-| Field | Default | Purpose |
+### Root keys
+
+| Key | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `workspace.name` | string | unset | Informational; logged at load. |
+| `workspace.remote` | object | unset | `default:` endpoint and/or `servers:` list. See below. |
+| `workspace.models` | list | `[]` | Model entries. |
+| `workspace.pipelines` | list | `[]` | Pipeline entries. |
+| `workspace.templates` | list | `[]` | Named Jinja templates. |
+| `workspace.tags` | list | `[]` | Named tag sets an `infer` step references by id as its whole `tags:` value. Base file only; not merged from includes. |
+| `workspace.includes` | object | unset | `models:`, `pipelines:`, `templates:` lists of file names or globs. |
+
+### `remote` endpoints
+
+| Key | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `remote.default` | endpoint | unset | Endpoint for `remote_*` entries that set no `server:`. |
+| `remote.servers[]` | list of endpoints | `[]` | Named endpoints. |
+| `endpoint.id` | string | unset | Name referenced by `server:` (not needed on `default`). |
+| `endpoint.host` / `endpoint.port` | string / int | unset | gRPC address. |
+| `endpoint.ssl` | bool | `false` | Reach the endpoint over TLS. Trust material and any client certificate come from `grpc.client.ssl.*` in `gravitee.yml`. |
+| `endpoint.username` / `endpoint.password` | string | unset | HTTP Basic credentials sent as gRPC metadata. Pair them with `ssl: true` off loopback. |
+| `endpoint.http2_keep_alive_timeout` | int | `-1` | Seconds an idle HTTP/2 connection is held; `-1` keeps it open indefinitely. |
+
+### Common model keys
+
+| Key | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `id` | string | required | Logical id pipelines reference. |
+| `name` | string | unset | HuggingFace repo or local path the files come from. |
+| `type` | string | required | One of the [model types](../reference/models/README.md); case-insensitive. Selects which config block is read. |
+| `<type>` | object | unset | The block named after the type (`llama_cpp:`, `vllm:`, `onnx_classifier:`, ...). Keys per type are in the reference. |
+| `server` | string | `default` endpoint | Endpoint id for `remote_*` types. |
+| `memory_check` | string | `warn` | Pre-load memory check: `fail` aborts the load, `warn` logs, `disabled` skips. Unknown values fall back to `warn`. |
+| `download.exclude` | list of globs | `[]` | Repository files to skip where a resolver picks files out of a listing (`vllm`, `gliner_*`, the sibling listings of `onnx_*`). Never drops a file named outright (`path`, `model_path`, `tokenizer_path`). |
+| `task` | string | engine's own | Published task slug. See Publication. |
+| `visible` | bool | `true` | Catalogue membership. See Publication. |
+| `modalities` | list | detected | Accepted input modalities. See Publication. |
+
+### Pipeline keys
+
+| Key | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `id` | string | required | Pipeline id; what clients call. |
+| `name` | string | unset | Display name. |
+| `entry` | string | required | Id of the first step. |
+| `steps[]` | list | required | Step entries. |
+| `task` / `visible` / `modalities` | | inherited / `true` / union | Publication, as for models. A pipeline's default `task` is the one of the model behind its `role: output` step (falling back to the entry step); its default `modalities` are the union over its model-bound steps. |
+| `server` | string | unset | Makes the entry a proxy for a pipeline of the same id on that endpoint; no local `steps`. |
+| `remote.system_prompt` | string | unset | Proxy only: system prompt prepended on the remote call. |
+| `remote.forward_messages` | bool | `false` | Proxy only: forward the chat messages (system prompt and history) instead of the flat prompt string. |
+
+### Step keys
+
+| Key | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `id` | string | required | Must match `[A-Za-z_][A-Za-z0-9_]*`: it becomes a Jinja identifier (`{{ generate.output }}`). Hyphens are rejected. |
+| `type` | string | required | One of the [step types](../reference/steps/README.md). Selects the shape of `config:`. |
+| `role` | string | `output` | `output`: the step's output is the response; `thinking`: reasoning-only; `internal`: neither. Unset parses as `output`. |
+| `next_step` | string | unset | Successor for linear chains; routing steps carry their own edges in `config`. |
+| `config` | object | required | Step configuration; keys per type are in the reference. |
+
+### Templates
+
+| Key | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `id` | string | required | Referenced by a step's `prompt.template_id` or `chat_template`. (`tool_extraction_template` takes a built-in name or inline source, not a template id.) |
+| `content` | string | unset | Inline Jinja source. |
+| `file` | string | unset | Path to a `.jinja` or `.jinja2` file, relative to the workspace file's directory. Exactly one of `content` or `file`. |
+
+Templates are materialised at load time; the engine only ever sees the resolved source.
+Built-in templates and the variables available are in [Templates](../reference/templates/README.md).
+
+### Includes
+
+| Key | Resolved in | Purpose |
 | --- | --- | --- |
-| `name` | — | Workspace name (informational). |
-| `remote` | — | `default:` endpoint and/or `servers:` list of named gRPC endpoints. |
-| `models` | `[]` | Model definitions (see types below). |
-| `pipelines` | `[]` | Pipeline DAGs (`id`, `name`, `entry`, `steps`, optional `server` for remote proxy pipelines). |
-| `templates` | `[]` | Jinja2 templates: `id` + `content` (inline) or `file` (path), never both. |
-| `tags` | `[]` | Named tag sets: `id` + the step `tags:` keys (`reasoning_open/close`, `tool_open/close`, `reasoning_repeatable`). An infer step references one by writing the id as its whole `tags:` value; unknown ids fail loading. Declared in the base file only (not merged from includes). |
-| `includes` | — | `models:` / `pipelines:` / `templates:` lists of filenames or globs, resolved in sibling folders of the same name. |
+| `includes.models[]` | `<workspace dir>/models/` | Each file contributes only its `workspace.models`. |
+| `includes.pipelines[]` | `<workspace dir>/pipelines/` | Each file contributes only its `workspace.pipelines`. |
+| `includes.templates[]` | `<workspace dir>/templates/` | Each file contributes only its `workspace.templates`. |
 
-### Model `type:` values (`ModelType`)
-| `type:` | Config block | Category |
-| --- | --- | --- |
-| `llama_cpp` | `llama_cpp` | local GGUF text generation (llamaj.cpp) |
-| `vllm` | `vllm` | local HF Transformers via vLLM |
-| `onnx_classifier` | `onnx_classifier` | local ONNX sequence/token classifier |
-| `onnx_embedding` | `onnx_embedding` | local ONNX embedding model |
-| `onnx_reranker` | `onnx_reranker` | local ONNX cross-encoder reranker |
-| `gliner_classifier` | `gliner_classifier` | zero-shot classification (gliner4j) |
-| `gliner_ner` | `gliner_ner` | zero-shot NER (gliner4j) |
-| `llama_cpp_embedding` | `llama_cpp_embedding` | GGUF embedding model |
-| `llama_cpp_reranker` | `llama_cpp_reranker` | GGUF reranker |
-| `remote_llm` / `remote_classifier` / `remote_embedding` / `remote_reranker` | — (uses `server:`) | proxy to another Singularitee over gRPC |
-| `regex` | `regex` | client-local regex entity matcher (pure Java) |
-| `composite_classifier` | `composite_classifier` | client-local union of other classifier ids |
+Entries are file names or globs (`llama/*.yaml`), expanded alphabetically. Subfolders are
+allowed (`classifier/pii-bert.yaml`). Includes are not recursive: an included file's own
+`includes:` is ignored. A glob whose directory does not exist logs a warning and contributes
+nothing.
 
-### Common model fields
-| Field | Default | Purpose |
-| --- | --- | --- |
-| `id` | — | Stable logical id referenced by pipelines. |
-| `name` | — | HuggingFace repo / model name (source of the files). |
-| `type` | — | One of the strings above (case-insensitive). |
-| `server` | `default` endpoint | Remote endpoint id for `remote_*` models. |
-| `memory_check` | `warn` | Pre-load memory policy: `fail`, `warn`, or `disabled`. |
-| `download` | — | Narrows what gets pulled from HuggingFace — see below. |
-| `task` | engine's own | Overrides the task slug the model is advertised under. |
-| `visible` | `true` | `false` keeps the model out of the catalogue — see below. |
-| `modalities` | detected | Overrides the input modalities the model is advertised as accepting. |
+Because ids are logical, several fragments may share one (`examples/modular/models/llama/llm-*.yaml`
+and `vllm/llm-*.yaml` all publish `llm`). A server lists the one it wants explicitly rather
+than globbing a folder that holds several.
 
-### `task`, `visible` and `modalities`
+### Publication
 
-All three say how a model or pipeline is *published*, and all three work the same on
-either.
+`task`, `visible` and `modalities` work the same on a model and on a pipeline.
 
-`task` is the slug callers route on — `text-generation`, `text-classification`,
-`token-classification`, `feature-extraction`, `reranking`; any other value (including
-a typo such as `text_generation`) fails the workspace at load. Models answer it from
-their engine, so declaring it is only needed when a model serves a surface its
-engine cannot infer. Pipelines have no engine to ask: an undeclared pipeline task
-is derived at registration from the model behind the `role: output` step (falling
-back to the entry step), which is why a guarded, routed pipeline over an LLM
-advertises itself as plain `text-generation`. Nothing is ever advertised as a
-"pipeline" — see [OpenAI HTTP API](../openai-http-api/README.md).
-
-`visible: false` takes an entry out of the catalogue: gone from `/v1/models` and
-from `ListModels` / `ListPipelines`, `404` by id, and `model_not_found` on every
-inference route. It stays reachable where composition needs it — as a pipeline's
-model, as a sub-pipeline, and over gRPC to another Singularitee. That is the
-point: publish the pipeline, hide the four models and two helper pipelines it is
-assembled from.
-
-```yaml
-models:
-  - id: llm                   # the pipeline's engine — not for direct calls
-    name: Qwen/Qwen3-0.6B-GGUF
-    type: llama_cpp
-    visible: false
-    llama_cpp: { path: Qwen3-0.6B-Q8_0.gguf }
-pipelines:
-  - id: assistant             # the one id clients see, advertised as text-generation
-    entry: generate
-    steps:
-      - id: generate
-        type: infer
-        role: output
-        config: { model_id: llm, output_field: generate.output }
-```
-
-`http.expose-pipelines: false` still hides *every* pipeline at once; `visible` is
-the per-entry switch on top of it.
-
-`modalities` lists what the entry accepts as input — `text`, `image`, `audio`.
-Leave it unset and the backend is asked: llama.cpp interrogates the loaded `mmproj`
-projector, vLLM reads `vision_config` / `audio_config` out of the checkpoint's
-`config.json`, a `remote_llm` proxy reads it off its `GetModel` probe, and a pipeline
-accepts the union of what its model-bound steps accept — media is decoded by
-whichever step feeds it to a model, not necessarily the output step.
-Declare it only where nothing can be interrogated — a `remote_*` proxy, or a vLLM
-model whose weights were never resolved to a local directory — because a model that
-under-reports will have its media requests refused with `unsupported_modality`. A
-multimodal model's `task` stays `text-generation`: modality says what it reads, not
-which endpoint it serves. See [Multimodal](../multimodal/README.md).
-
-### `download` block
-
-Each resolver already drops the formats its engine cannot read (vLLM takes one
-weight format plus metadata; GLiNER takes one ONNX variant). `download.exclude`
-is for what those rules cannot know: a duplicate the repo ships in the *same*
-format, a variant you do not want, a multi-gigabyte extra you would rather not
-transfer.
-
-```yaml
-models:
-  - id: llm
-    name: mistralai/Mistral-7B-Instruct-v0.3
-    type: vllm
-    download:
-      exclude:
-        - "consolidated*.safetensors"   # duplicate of the sharded weights
-        - "original/*"                  # Meta-style original checkpoint
-        - "*.pth"
-```
-
-| Field | Default | Purpose |
-| --- | --- | --- |
-| `exclude` | — | Glob patterns for repository files to skip. |
-
-Patterns match the repository-relative path: `*` within a path segment, `**`
-across segments, `?` a single character; everything else — `.` included — is
-literal, and matching is case-insensitive. A pattern with no `/` also matches on
-the file name alone, so `"*.pth"` catches `original/consolidated.00.pth`; a
-pattern with a `/` is anchored at the repo root, so `"original/*"` leaves a
-nested `nested/original/...` alone.
-
-Excludes only ever *narrow* the built-in selection — naming a `.gguf` will not
-make vLLM download one. They apply where a resolver picks a set of files out of
-a repository listing (`vllm`, `gliner_*`, and the sibling/tokenizer listings of
-the `onnx_*` types). A file named outright in the model definition — a
-`llama_cpp` `path:`, an ONNX `model_path:` or `tokenizer_path:` — is always
-fetched, since excluding it could only turn a working config into a failed load.
-
-For `vllm`, exclusions are applied *before* the weight format is chosen, so
-excluding a repo's safetensors falls back to its `.bin` weights rather than
-selecting nothing.
-
-### `llama_cpp` block
-| Field | Default | Purpose |
-| --- | --- | --- |
-| `path` | — | GGUF filename inside the repo/cache. |
-| `n_ctx` / `n_batch` / `n_ubatch` / `n_seq_max` | engine default | Context, batch sizes, max parallel sequences (only sent when > 0). |
-| `n_gpu_layers` | engine default | Layers to offload to GPU (`999` = all). |
-| `pooling_type` / `attention_type` / `flash_attn_type` | engine default | Engine enums as strings (e.g. `flash_attn_type: AUTO`). |
-| `offload_kqv` | `false` | Offload KV-cache to GPU. |
-| `lora_path` / `mmproj_path` / `media_marker` | — | LoRA adapter, multimodal projector, media marker string. |
-| `eog_ramp_start` / `eog_ramp_max_bias` | disabled / `100` | Budget-aware soft landing: end `max_tokens`-limited answers on a finished sentence instead of mid-word ([Text Generation](../text-generation/README.md)). |
-
-### `vllm` block
-| Field | Default | Purpose |
-| --- | --- | --- |
-| `dtype` / `quantization` / `kv_cache_dtype` | engine default | e.g. `dtype: auto`, `quantization: awq`. |
-| `max_model_len` / `max_num_seqs` / `max_num_batched_tokens` | engine default | Context and batching limits (sent when > 0). |
-| `gpu_memory_utilization` | engine default | Fraction of GPU memory to claim (e.g. `0.35`). |
-| `enforce_eager` / `trust_remote_code` / `enable_chunked_prefill` / `enable_lora` | `false` | Boolean toggles. Only ever forwarded when `true`: an omitted key and an explicit `false` are indistinguishable in the proto, so leaving one out means "engine default", not "off". |
-| `enable_prefix_caching` | engine default (off on Metal) | Three-valued: unset leaves the engine's own default, and an explicit `false` genuinely disables it. Defaults to off on Metal, where the paged runtime desyncs — see [Deployment](../deployment/README.md#vllm-on-apple-silicon-local-development-only). |
-| `seed` / `max_loras` / `max_lora_rank` | engine default | Sent when > 0. |
-| `enable_sleep_mode` | unset | Nullable boolean — only forwarded when present. |
-| `tensor_parallel_size` | server default, then `1` | GPUs to shard each layer across. Needed for weights that do not fit on one card. |
-| `pipeline_parallel_size` | server default, then `1` | Pipeline stages to split the layers into. |
-| `distributed_executor_backend` | server default, then vLLM's | `mp` or `ray`. Any of these three above their default switches vLLM to the V1 engine with subprocess workers. |
-
-**Pre-Ampere GPUs (compute capability < 8.0) are adapted automatically.** On a
-Turing or Volta card the server reads the capability from `nvidia-smi` before the
-engine is built and corrects two vLLM defaults that would otherwise fail at model
-load:
-
-- `dtype: auto` resolves to `float16` — those cards have no bfloat16, and vLLM
-  refuses the load rather than downgrading.
-- FlashInfer is avoided: the sampler is turned off and the attention backend is
-  pinned to `TRITON_ATTN`. vLLM would otherwise select FlashInfer there —
-  FLASH_ATTN needs sm_80+, and FlashInfer's own `supports_compute_capability()`
-  claims Turing works — but its kernels either fail to JIT-build or fail at
-  runtime with `BatchPrefillWithPagedKVCache failed with error invalid argument`.
-
-Both are logged when they happen, and an explicit setting always wins: a
-`dtype:` in the workspace, or `-Dvllm4j.attentionBackend` /
-`VLLM4J_ATTENTION_BACKEND` for the backend.
-
-`gpu_memory_utilization` is a fraction of **total** VRAM, so a value tuned for a
-24 GB card can leave nothing for the KV cache on a smaller one. When the budget
-cannot even hold the weights the load is refused up front, naming the numbers and
-the setting, rather than reaching vLLM's `No available memory for the cache
-blocks`. This one is never adjusted for you — it is your capacity decision.
-
-### ONNX blocks (`onnx_classifier` / `onnx_embedding` / `onnx_reranker`)
-| Field | Default | Purpose |
-| --- | --- | --- |
-| `model_path` / `tokenizer_path` / `config_json_path` | — | Files inside the repo (e.g. `onnx/model.onnx`, `tokenizer.json`, `config.json`). |
-| `max_sequence_length` | engine default | Token cap per input (oversized inputs are auto-split). |
-| `classifier_mode` | — | classifier only: `SEQUENCE` or `TOKEN`. |
-| `labels` | from `config.json` | classifier only: label override list. |
-| `pooling_mode` / `normalize` | — / `false` | embedding only: e.g. `pooling_mode: CLS`, `normalize: true`. |
-| `scoring` | auto | reranker only: score transform. |
-
-### GLiNER blocks (`gliner_classifier` / `gliner_ner`)
-| Field | Default | Purpose |
-| --- | --- | --- |
-| `model_dir` | — | Model directory (usually resolved via `name`). |
-| `labels` / `entities` | — | List of `{name, description}` zero-shot labels or entity types. |
-| `threshold` | engine default | Minimum confidence (e.g. `0.4`, sent when > 0). |
-| `variant` | — | Runtime variant: `onnx`, `onnx_fp16`, ... |
-| `token_cap` | engine default | Max tokens per chunk (sent when > 0). |
+- `task` is the slug `/v1/models` and `ListModels` advertise: `text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`. Any other value fails the load. Unset, a model reports its engine's task and a pipeline inherits from its output step. Nothing is ever advertised as `pipeline`; a multimodal generation model stays `text-generation`.
+- `visible: false` removes the entry from the listings, from lookup by id and from HTTP resolution (`model_not_found`). It stays callable as a pipeline's model, as a sub-pipeline and over gRPC from another server. Publish the pipeline, hide its parts. `http.expose-pipelines: false` hides every pipeline at once; `visible` is the per-entry switch.
+- `modalities` lists what the entry accepts: `text`, `image`, `audio`. Unset, it is detected: llama.cpp asks the loaded projector, vLLM reads `vision_config` / `audio_config` from the checkpoint's `config.json`, a `remote_llm` reads its `GetModel` probe, a pipeline takes the union over its model-bound steps. Declare it only where detection cannot run (a `remote_*` proxy, a vLLM model whose weights were never resolved locally). The HTTP API refuses media the target cannot read with `400 unsupported_modality`. Any other slug fails the load.
 
 ## Notes
-- **The root `workspace:` key is mandatory** — a file without it fails with `IllegalArgumentException`. Unknown fields anywhere are silently ignored, so typos don't error: double-check key spellings.
-- **Includes resolve in hardcoded sibling folders** of the workspace file: `includes.models` in `./models/`, `includes.pipelines` in `./pipelines/`, `includes.templates` in `./templates/`. Entries may nest into subfolders of those (`llama/llm-qwen3-0.6b.yaml`), which is how `examples/modular/` groups fragments by backend. Entries may be globs (`*`, `?`, `{}`), expanded in sorted order; missing files log a warning and are skipped. Includes are **not recursive** — an included file's own `includes:` is ignored, and only its matching section is merged (a file included under `models:` contributes only `workspace.models`).
-- **Template sources are mutually exclusive**: a `templates:` entry with both `content` and `file` throws; with neither it is skipped with a warning. Steps pick a template via `prompt.template_id` (registry), `prompt.template_file`, or inline `prompt.template` — again, exactly one.
-- **Step ids must match `[A-Za-z_][A-Za-z0-9_]*`** because they become Jinja2 identifiers — hyphens are rejected (model and pipeline ids may use hyphens).
-- **The VRAM pre-flight reads the model itself**: `memory_check` for `vllm` models no longer needs any hand-written dimensions. The layer count, KV heads, head dimension, context length and quantized weight width are read from the checkpoint's `config.json` (via vLLM's own resolver, so a repo id, a local directory and a gated repo all behave the same), and the parameter count from the Hub's safetensors index. Quantization is honoured — an AWQ checkpoint is sized at 4 bits per weight, not at its `float16` activation dtype. If the shape cannot be read (offline, or a model needing `trust_remote_code`) the check is skipped with a warning rather than blocking the load.
-- **The GPU topology has a deployment-wide fallback**: `tensor_parallel_size`, `pipeline_parallel_size` and `distributed_executor_backend` describe the machine rather than the model, so the server reads `ai.vllm.tensor-parallel-size`, `ai.vllm.pipeline-parallel-size` and `ai.vllm.distributed-executor-backend` from `gravitee.yml` (or the matching `GRAVITEE_*` environment variables, e.g. `GRAVITEE_AI_VLLM_TENSORPARALLELSIZE=4`). A model's own value wins; otherwise the server default applies; otherwise vLLM decides.
-- **Numeric zero means "engine default"**: omitted numeric fields parse as `0` and are dropped before reaching the engine; you cannot explicitly set a numeric option to `0`. Booleans default to `false` and are always forwarded (except nullable `enable_sleep_mode`).
-- **`memory_check` defaults to `warn`** (also for unrecognized values): the load proceeds with a log warning if the model may not fit. Use `fail` to abort the load instead, or `disabled` for small CPU models.
-- **`regex` and `composite_classifier` are client-local** — pure-Java models that run inside the loading process (server or CLI client) with no engine load; composite members must be ids of other classifier models in the same workspace.
+
+**Load-time errors.** These stop the workspace with an `IllegalArgumentException` naming the offending entry:
+
+| Error | Trigger |
+| --- | --- |
+| `Workspace file missing top-level 'workspace:' key` | No `workspace:` root. |
+| `Unknown model type '...'` | `type:` is not a `ModelType`. The model is skipped with a WARN, not fatal. |
+| `'<id>' declares unknown task '...'` / `unknown modality '...'` | `task:` or `modalities:` outside the closed sets. |
+| `Invalid step id '...'` | A step id that is not a valid Jinja identifier. |
+| `prompt.template_id, prompt.template_file and prompt.template are mutually exclusive` | More than one prompt source on a step. |
+| `prompt.template_id '...' not found in workspace templates` | Reference to an undeclared template. |
+| `Template '<id>': content and file are mutually exclusive` | Both set on a template. Neither set logs a WARN and skips it. |
+| `workspace tags entries require an id` / `duplicate workspace tags id` / `unknown tags id '...'` | Malformed or dangling tag-set references. |
+| `Refusing <field> '...': resolves outside <dir>` | A `file:` or `template_file:` path escaping the workspace directory. |
+
+**Load failures are not fatal.** A model whose files cannot be resolved (wrong repo, wrong
+`path`) is logged as `failed to load` by `WorkspaceLoaderComponent` and the server comes up
+without it. A pipeline whose model is missing fails to register the same way. An inert
+server with `/v1/models` empty almost always means one of these lines is in the log.
+
+**Structure is validated, weights are not.** `ExamplesWorkspaceTest` (and `task test:examples`)
+parses and resolves every `examples/**.yaml`, including the modular fragments, through the
+real loader. It catches a wrong step type, a dangling `template_id`, a bad `task` slug. It
+never downloads weights, so a wrong HuggingFace repo name passes there and fails at boot.
+
+**Unknown keys are ignored.** A misspelt key does not error; it is silently dropped. When an
+option seems to have no effect, check its spelling against the reference page.
+
+**Numeric zero means engine default.** Omitted numeric fields parse as `0` and are not sent
+to the engine; a numeric option cannot be set to `0` explicitly. Most booleans are forwarded
+only when `true`; the three-valued ones (`enable_prefix_caching`, `enable_sleep_mode`,
+`offload_kqv`, `use_mlock`, `prompt_cache`) distinguish unset from `false`.
+
+**Remote pipeline proxies.** A pipeline with `server:` and no `steps` forwards `InferPipeline`
+to a pipeline of the same id on that endpoint. See
+[Remote and multi-server](../guides/remote-and-multi-server/README.md).
 
 ## See also
-- [Getting Started](../getting-started/README.md) — pointing the server at a workspace via `ai.workspace.path`.
-- [Pipelines](../pipelines/README.md) — the `steps:` DAG: step types, roles, `entry`/`next_step`.
-- [Remote & Multi-Server](../remote-and-multi-server/README.md) — `remote:` endpoints, `remote_*` models, and remote proxy pipelines.
-- [Classification](../classification/README.md) — ONNX/GLiNER/regex/composite classifiers in practice.
-- [Deployment](../deployment/README.md) — the production workspaces bundled in the distribution.
+
+- [Concepts](../concepts/README.md): what a model, pipeline and template are.
+- [Pipelines](../concepts/pipelines/README.md): the DAG, roles, `entry` and `next_step`.
+- [Model types](../reference/models/README.md) and [step types](../reference/steps/README.md): every key per block.
+- [Templates](../reference/templates/README.md): built-ins, variables, `chat_template` and `tool_extraction_template`.
+- [Context fields](../reference/context-fields.md): what steps read and write.
+- [Getting started](../getting-started/README.md): pointing the server at a workspace.
+- [examples/](../../examples/README.md): every runnable workspace, including `modular/`.

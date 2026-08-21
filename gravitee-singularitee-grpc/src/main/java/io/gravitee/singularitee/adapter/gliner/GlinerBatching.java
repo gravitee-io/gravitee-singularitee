@@ -20,7 +20,7 @@ import io.gravitee.singularitee.adapter.batching.BatchingConfig;
 /**
  * GLiNER micro-batching knobs: a {@link BatchingConfig} read once from the environment under the
  * {@code GRAVITEE_GLINER_BATCH} prefix ({@code _MAX}, {@code _MAX_TOKENS}, {@code _BUCKET_TOKENS},
- * {@code _LINGER_MS} — see {@link BatchingConfig} for semantics and defaults).
+ * {@code _LINGER_MS}); see {@link BatchingConfig} for semantics and defaults.
  */
 final class GlinerBatching {
 

@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine;
 
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -63,7 +64,7 @@ public non-sealed interface TextGenEngine extends ModelEngine {
    * that completes when the final token for this sequence has been delivered to the
    * token consumer registered via {@link #start}.
    *
-   * <p>Implementations must never block the calling thread — they subscribe to the
+   * <p>Implementations must never block the calling thread: they subscribe to the
    * underlying generation stream and relay tokens to the consumer asynchronously.
    *
    * @param seqId   server-assigned internal sequence identifier (must be unique
@@ -86,7 +87,7 @@ public non-sealed interface TextGenEngine extends ModelEngine {
    * <p>Pairs with {@link #rxAddSequence} by {@code seqId}: {@code rxStream} carries the
    * tokens, {@code rxAddSequence} submits the request and signals lifecycle/latency.
    *
-   * <p>The default throws — engines that only deliver via the {@link #start(Consumer)}
+   * <p>The default throws; engines that only deliver via the {@link #start(Consumer)}
    * callback do not expose a per-sequence reactive stream.
    *
    * @param seqId the sequence whose tokens to stream
@@ -104,7 +105,7 @@ public non-sealed interface TextGenEngine extends ModelEngine {
    * releases its resources; no further tokens are delivered for it.
    *
    * <p>Idempotent and safe to call for already-finished or unknown sequence
-   * ids — implementations must treat that as a no-op. The default does
+   * ids; implementations must treat that as a no-op. The default does
    * nothing: engines whose cancellation is driven by reactive disposal of
    * the {@link #rxAddSequence} subscription (e.g. the remote gRPC proxy,
    * where disposing the subscription cancels the underlying call) need not
@@ -123,21 +124,21 @@ public non-sealed interface TextGenEngine extends ModelEngine {
   }
 
   /**
-   * The literal text of every token this model parses as special (control / user-defined) —
+   * The literal text of every token this model parses as special (control / user-defined),
    * {@code <|im_start|>}, {@code <|channel|>}, {@code <start_of_turn>}, and so on.
    *
    * <p>Prompts are tokenized with special-token parsing enabled, which is required for the chat
    * template's own scaffolding to become real control tokens. The same pass applies to message
    * text, so a caller whose message contains one of these strings would have it tokenized as the
-   * control token rather than as text — forging conversation structure from inside a message.
+   * control token rather than as text, forging conversation structure from inside a message.
    * Callers neutralise these strings in caller-supplied text before rendering.
    *
    * <p>Longest first, so replacing them in order cannot let a short marker consume part of a
    * longer one. Empty (the default) means the engine cannot enumerate them and no neutralisation
    * is applied.
    */
-  default java.util.List<String> specialTokenTexts() {
-    return java.util.List.of();
+  default List<String> specialTokenTexts() {
+    return List.of();
   }
 
   /**
@@ -157,7 +158,7 @@ public non-sealed interface TextGenEngine extends ModelEngine {
    * Counts the tokens in {@code text} using the model's own tokenizer.
    *
    * <p>Returns {@code -1} when the engine has no tokenizer to consult
-   * (the default) — callers must then fall back to an estimation heuristic
+   * (the default); callers must then fall back to an estimation heuristic
    * (e.g. {@code EstimatedTokens}).
    *
    * @param text the text to tokenize

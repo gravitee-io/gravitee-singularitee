@@ -16,6 +16,8 @@
 package io.gravitee.singularitee.inference.api.embedding;
 
 /**
+ * How token embeddings are reduced to one vector: the {@link #CLS} token, or the {@link #MEAN} over the attention mask.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

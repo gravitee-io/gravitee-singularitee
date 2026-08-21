@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gravitee.singularitee.http.json.JsonResponses;
 import io.gravitee.singularitee.http.json.Utils;
+import io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver;
 import io.gravitee.singularitee.protocol.GetModelRequest;
 import io.gravitee.singularitee.protocol.GetPipelineRequest;
 import io.gravitee.singularitee.protocol.ListModelsRequest;
@@ -31,17 +32,17 @@ import io.vertx.ext.web.RoutingContext;
 import java.time.Instant;
 
 /**
- * {@code GET /v1/models} and {@code GET /v1/models/{id}} — lists models (and pipelines).
+ * {@code GET /v1/models} and {@code GET /v1/models/{id}}: lists models (and pipelines).
  *
  * <p>Pipelines are listed as models, described by their task, and never labelled as
  * pipelines: a caller picks an id by the surface it serves, and how the answer is
- * produced — one model or a guarded, routed DAG of them — is the server's business.
+ * produced (one model or a guarded, routed DAG of them) is the server's business.
  * The workspace loader only admits the five task slugs, so {@code type} is a closed
  * set here and {@code "pipeline"} is never one of its values.
  *
- * <p>Hidden models and pipelines are absent from the listing and 404 on the
- * single-id route, matching what {@link io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver}
- * does on the inference routes.
+ * <p>Hidden models and pipelines are absent from the listing and 404
+ * ({@code model_not_found}) on the single-id route, matching what
+ * {@link ModelOrPipelineResolver} does on the inference routes.
  */
 public final class ModelsHandler {
 
@@ -62,6 +63,7 @@ public final class ModelsHandler {
     this.exposePipelines = exposePipelines;
   }
 
+  /** {@code GET /v1/models}: writes the {@code list} envelope of visible models and pipelines. */
   public void list(RoutingContext rc) {
     models
       .listModels(ListModelsRequest.getDefaultInstance())
@@ -78,6 +80,7 @@ public final class ModelsHandler {
       .onFailure(err -> HandlerSupport.mapServiceError(rc, err));
   }
 
+  /** {@code GET /v1/models/{id}}: writes one entry, or 404 {@code model_not_found}. */
   public void getOne(RoutingContext rc) {
     String id = rc.pathParam("model");
     models

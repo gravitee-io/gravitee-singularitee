@@ -86,14 +86,13 @@ public non-sealed interface ClassifierEngine extends ModelEngine {
 
   /**
    * Classifies a single input that the caller has <em>already</em> chunked to fit
-   * a character budget — so implementations that do their own character-budget
+   * a character budget, so implementations that do their own character-budget
    * splitting must skip it here and process the text as one unit. This lets a
-   * {@link io.gravitee.singularitee.engine.classifier.CompositeClassifierEngine
-   * composite} split a huge input once for the whole model and disable the
+   * composite classifier split a huge input once for the whole model and disable the
    * redundant per-delegate re-split.
    *
    * <p>Splitting that a model <em>hard-requires</em> (e.g. an ONNX token window)
-   * still applies — this only disables voluntary character-budget chunking.
+   * still applies; this only disables voluntary character-budget chunking.
    *
    * <p>The default implementation simply delegates to {@link #rxClassify}: engines
    * that never split are already correct.

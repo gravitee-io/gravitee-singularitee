@@ -28,7 +28,7 @@ import java.util.List;
 /**
  * {@link EmbeddingEngine} backed by a llama.cpp embedding model (GGUF).
  *
- * <p>Supports both encoder-only (BERT, ModernBERT, Jina) and decoder-based
+ * <p>Supports both encoder-only (BERT, ModernBERT) and decoder-based
  * (Qwen3-Embedding) architectures. Pooling strategy (CLS, MEAN, LAST) and any
  * instruction template are configured at factory time via
  * {@link LlamaCppEmbeddingFactory}.

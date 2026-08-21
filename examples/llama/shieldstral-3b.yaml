@@ -16,7 +16,7 @@
 
 # Shieldstral-1.0-3B · policy-adaptive safety classifier (Ministral-3 base)
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/shieldstral-3b.yaml
 #
 # Shieldstral reduces moderation to a binary QA task: it answers a single
@@ -55,9 +55,9 @@ workspace:
       memory_check: warn
       llama_cpp:
         # Locally converted GGUFs (see header). `path:` accepts a full local
-        # file path directly — no HF download involved.
+        # file path directly, no HF download involved.
         path: Shieldstral-1.0-3B-Q4_K_M.gguf
-        # Pixtral vision encoder — uncomment to enable image moderation
+        # Pixtral vision encoder: uncomment to enable image moderation
         # (text-image-text sandwich: policy prefix, image, optional caption).
         mmproj_path: mmproj-Shieldstral-1.0-3B-F16.gguf
         n_ctx: 16384

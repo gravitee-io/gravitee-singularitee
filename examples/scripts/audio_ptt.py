@@ -17,7 +17,7 @@ Env:
     API_KEY     default sk-noauth
     PROMPT      text instruction sent with the audio
                 (default: "Answer the question asked in the audio.")
-    TEMPERATURE default 0.2 — small audio models ramble at the engine default
+    TEMPERATURE default 0.2, small audio models ramble at the engine default
 
 Run with uv (https://docs.astral.sh/uv/):
     uv run --with openai --with sounddevice examples/scripts/audio_ptt.py
@@ -71,7 +71,7 @@ def ask(wav_bytes):
         {"type": "text", "text": PROMPT},
         {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "wav"}},
     ]
-    print("  → ", end="", flush=True)
+    print("  -> ", end="", flush=True)
     for chunk in client.chat.completions.create(
         model=MODEL,
         stream=True,
@@ -119,7 +119,7 @@ def synth_wav():
 def preflight():
     """Prove the model can actually HEAR before opening the mic.
 
-    A text-only model does NOT reject audio parts — the server drops them
+    A text-only model does NOT reject audio parts, the server drops them
     silently and the model answers from the text alone, so you only discover the
     problem after granting mic permission and recording. Probe with synthesized
     speech whose content the answer depends on.
@@ -131,7 +131,7 @@ def preflight():
         return
     hint = (
         f"Model {MODEL!r} on {BASE_URL} cannot hear audio.\n\n"
-        "Text-only models do not error on audio parts — the clip is dropped\n"
+        "Text-only models do not error on audio parts, the clip is dropped\n"
         "silently and you get an answer written from the text prompt alone.\n\n"
         "Start an AUDIO model in another shell:\n"
         "    task run:audio             (examples/llama/voxtral-3b.yaml)\n\n"
@@ -140,7 +140,7 @@ def preflight():
     )
     wav = synth_wav()
     if wav is None:
-        print("  ! no `say`/`espeak` — skipping the hearing check.")
+        print("  ! no `say`/`espeak`, skipping the hearing check.")
         print("  ! if replies ignore what you said, you are on a text-only server:")
         print("  !     task run:audio")
         return
@@ -161,7 +161,7 @@ def preflight():
     if PREFLIGHT_KEYWORD not in reply.lower():
         # ADVISORY, not fatal. Unlike the vision probe (OCR of a rendered number,
         # which a VLM does reliably), this depends on a small ALM transcribing a
-        # robotic `say`/`espeak` voice — Voxtral routinely hears the clip and
+        # robotic `say`/`espeak` voice, Voxtral routinely hears the clip and
         # still answers something other than the digits. Failing hard here blocks
         # a working setup, so warn and carry on; a genuinely deaf model shows up
         # immediately anyway, as replies that ignore what you said.
@@ -170,7 +170,7 @@ def preflight():
         print("  ! if replies keep ignoring what you say, you are on a text-only server:")
         print("  !     task run:audio")
         return
-    print("preflight ok — the model transcribed the test clip")
+    print("preflight ok: the model transcribed the test clip")
 
 
 preflight()

@@ -34,7 +34,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Integration tests for {@link OnnxBertRerankerModel} using
- * Xenova/ms-marco-MiniLM-L-6-v2 (quantized, 23 MB) — a cross-encoder that emits
+ * Xenova/ms-marco-MiniLM-L-6-v2 (quantized, 23 MB), a cross-encoder that emits
  * a single {@code [batch, 1]} logit per pair, defaulting to SIGMOID scoring.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -64,7 +64,7 @@ public class OnnxBertRerankerTest extends OnnxBertBaseTest {
     Path.of(RERANKER_TOKENIZER_URI)
   );
 
-  // Shared model instance — cross-encoder, [batch,1] output → SIGMOID default
+  // Shared model instance: cross-encoder, [batch,1] output, SIGMOID default
   private static final OnnxBertRerankerModel rerankerModel = new OnnxBertRerankerModel(
     new OnnxBertConfig(RERANKER_RESOURCE, NativeMath.INSTANCE, Map.of())
   );
@@ -159,9 +159,8 @@ public class OnnxBertRerankerTest extends OnnxBertBaseTest {
 
   @Test
   public void must_batch_the_rest_when_one_document_is_oversized() {
-    // The regression this guards: a single oversized document used to demote the whole
-    // request to one-pair-at-a-time. Correctness is what is observable from here — every
-    // document still gets its own score, in input order, with the oversized one in the middle.
+    // An oversized document must not push the whole request onto the one-pair-at-a-time path:
+    // every document still gets its own score, in input order, with the oversized one in the middle.
     String oversized = ("The ocean is vast and deep. ").repeat(400);
     var pairs = List.of(
       RELEVANT_PAIR,
@@ -182,7 +181,7 @@ public class OnnxBertRerankerTest extends OnnxBertBaseTest {
   @Test
   public void must_preserve_input_order_when_documents_vary_in_length() {
     // Documents are grouped by length before batching, so results come back out of the
-    // order they were computed in — they must still map to their original positions.
+    // order they were computed in; they must still map to their original positions.
     var pairs = List.of(
       new RerankPair(RELEVANT_PAIR.query(), "Paris is the capital of France. ".repeat(20)),
       IRRELEVANT_PAIR,

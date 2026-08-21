@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  * <p>Score resolution logic:
  * <ol>
  *   <li>Try "{@code <input_field>.score}" key</li>
- *   <li>Try stripping last segment: "{@code quality.label}" → "{@code quality.score}"</li>
+ *   <li>Try stripping last segment: "{@code quality.label}" -> "{@code quality.score}"</li>
  *   <li>Fall back to parsing raw value as float</li>
  *   <li>Default to 0.0 if not found or parse fails</li>
  * </ol>
@@ -51,7 +51,7 @@ public final class ScoreResolver {
     // Try "<input_field>.score" first
     String scoreStr = context.get(inputField + ".score");
 
-    // Also try stripping the last segment: "quality.label" → "quality.score"
+    // Also try stripping the last segment: "quality.label" -> "quality.score"
     if (scoreStr == null && inputField.contains(".")) {
       int lastDot = inputField.lastIndexOf('.');
       scoreStr = context.get(inputField.substring(0, lastDot) + ".score");

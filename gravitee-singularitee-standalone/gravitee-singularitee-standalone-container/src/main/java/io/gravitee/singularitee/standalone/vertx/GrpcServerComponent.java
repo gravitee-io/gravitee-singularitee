@@ -54,8 +54,8 @@ import org.springframework.core.env.PropertySource;
  * HAProxy PROXY protocol, compression, idle timeout, and all other options
  * configurable under the {@code grpc.*} prefix in {@code gravitee.yml}.
  *
- * <p>This is the last component started by {@code SingulariteeNode}, ensuring all
- * models, pipelines, and services are ready before accepting connections.
+ * <p>Starts before the workspace loader so the port is bound and {@code /health} answers while
+ * models load; service calls get {@code UNAVAILABLE} until {@link ReadinessState} flips.
  *
  * <h3>Configuration reference ({@code gravitee.yml})</h3>
  * <pre>{@code
@@ -103,7 +103,7 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(GrpcServerComponent.class);
 
-  /** Configuration prefix — all properties are read from {@code grpc.*} in gravitee.yml. */
+  /** Configuration prefix: all properties are read from {@code grpc.*} in gravitee.yml. */
   public static final String GRPC_PREFIX = "grpc";
 
   /** Configuration prefix for the optional gRPC authentication block. */
@@ -136,6 +136,7 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
   private VertxHttpServer vertxHttpServer;
   private HttpServer httpServer;
 
+  /** Creates the component; the tracer's lifecycle is owned here (started first, stopped last). */
   public GrpcServerComponent(
     Environment environment,
     Vertx vertx,
@@ -174,7 +175,7 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
     );
     boolean forceAlpn = securedInConfig && !alpnInConfig;
     if (forceAlpn) {
-      LOGGER.info("gRPC over TLS requires ALPN — enabling automatically");
+      LOGGER.info("gRPC over TLS requires ALPN: enabling automatically");
     }
 
     // Build server options from gravitee.yml under the "grpc" prefix.
@@ -218,15 +219,14 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
     final Handler<HttpServerRequest> service = tracingHandler(
       authEnabled ? buildAuthHandler(grpcServer) : grpcServer
     );
-    // GET /health → 200 (unauthenticated); service calls → 503 until the workspace has loaded.
+    // GET /health is 200 (unauthenticated); service calls are 503 until the workspace has loaded.
     final Handler<HttpServerRequest> requestHandler = healthAndReadinessGate(service);
 
-    // gRPC is the primary API and defaults to 0.0.0.0 with auth and TLS off, so an
-    // unguarded bind exposes inference — and every model — to the network. Mirrors the
-    // equivalent warning on the HTTP API.
+    // gRPC defaults to 0.0.0.0 with auth and TLS off, so an unguarded bind exposes every
+    // model to the network. Mirrors the equivalent warning on the HTTP API.
     if (!authEnabled && !isLoopback(options.getHost())) {
       LOGGER.warn(
-        "gRPC API is bound to non-loopback host '{}' without authentication — " +
+        "gRPC API is bound to non-loopback host '{}' without authentication; " +
           "set grpc.auth.enabled=true (and grpc.secured=true) before exposing it",
         options.getHost()
       );
@@ -289,14 +289,6 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
   }
 
   /**
-   * Wraps the gRPC request handler so each HTTP/2 stream (one gRPC call) opens a
-   * {@code SERVER}-kind span — continuing any inbound W3C {@code traceparent} — and closes it
-   * when the response ends or fails. The span is attached to the request's (duplicated) Vert.x
-   * context, which the gRPC service methods run on, so their child spans nest under it.
-   *
-   * <p>No-op overhead only when tracing is disabled (the tracer is a no-op implementation).
-   */
-  /**
    * Unauthenticated {@code GET /health} liveness (always {@code 200}) plus a readiness gate: until
    * the workspace finishes loading, service calls get {@code 503} (gRPC clients map this to
    * {@code UNAVAILABLE}). Sits outside auth and tracing so probes are never rejected or traced.
@@ -321,6 +313,12 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
     };
   }
 
+  /**
+   * Wraps the request handler so each HTTP/2 stream (one gRPC call) opens a {@code SERVER}
+   * span, continuing any inbound W3C {@code traceparent}, and closes it when the response ends
+   * or fails. The span is attached to the request's Vert.x context, which the service methods
+   * run on, so their child spans nest under it. Cost is nil when the tracer is the no-op one.
+   */
   private Handler<HttpServerRequest> tracingHandler(Handler<HttpServerRequest> delegate) {
     return request -> {
       final Context ctx = request instanceof

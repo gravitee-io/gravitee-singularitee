@@ -57,6 +57,7 @@ public final class Dispatch {
     return tokens;
   }
 
+  /** Writes a 500 {@code internal_error} envelope carrying the throwable's message. */
   public static void failInternal(RoutingContext rc, Throwable t) {
     String msg = t.getMessage() == null ? "Internal error" : t.getMessage();
     JsonResponses.writeError(rc, 500, msg, "internal_error", null, "internal_error");

@@ -42,6 +42,7 @@ public final class RemotePipelineCallback
 
   private final SingulariteeClient client;
 
+  /** Creates a callback that runs sub-pipelines on the server behind {@code client}. */
   public RemotePipelineCallback(SingulariteeClient client) {
     this.client = client;
   }
@@ -102,6 +103,6 @@ public final class RemotePipelineCallback
         LOGGER.info("Remote sub-pipeline '{}' stream completed", request.getPipelineId())
       )
       .onErrorComplete() // Error logged + stream closed in doOnError
-      .ignoreElements(); // Flowable → Completable
+      .ignoreElements(); // Flowable -> Completable
   }
 }

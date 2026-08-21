@@ -22,14 +22,11 @@ import org.junit.jupiter.api.Test;
 /**
  * Completion-budget resolution for a vLLM request.
  *
- * <p>This exists because of a genuinely nasty default: vLLM's
- * {@code SamplingParams.max_tokens} is <strong>16</strong>. A client that does
- * not name a limit therefore gets 16 tokens, and on a thinking model all 16 are
- * consumed inside the reasoning block — so the reply is empty with
- * {@code finish_reason=length}, which reads as the model being broken rather
- * than a default being applied. llama.cpp treats unset as "the rest of the
- * context window", so the same workspace behaved completely differently on the
- * two backends.
+ * <p>vLLM's {@code SamplingParams.max_tokens} defaults to 16. A client that
+ * does not name a limit would get 16 tokens, and on a thinking model all 16 are
+ * consumed inside the reasoning block, so the reply is empty with
+ * {@code finish_reason=length}. llama.cpp treats unset as "the rest of the
+ * context window", and the two backends must agree.
  *
  * <p>The resolution is mirrored here rather than reaching into the adapter,
  * which would need a live CPython engine.
@@ -90,7 +87,7 @@ class MaxTokensDefaultTest {
 
   @Test
   void an_unknown_window_still_beats_vllms_default() {
-    // maxModelLen() can fail; falling back to 16 would reintroduce the bug.
+    // maxModelLen() can fail; the fallback must still beat vLLM's 16.
     assertThat(resolve(null, 0, "hello")).isEqualTo(DEFAULT_MAX_TOKENS);
   }
 

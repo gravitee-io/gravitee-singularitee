@@ -29,7 +29,7 @@ import org.slf4j.LoggerFactory;
  * <p>Models are loaded once at startup from the workspace YAML and live for the
  * lifetime of the process. The registry only supports {@code register}, {@code get}
  * / {@code rxGet}, and bulk cleanup via {@code shutdown()}. There is no runtime
- * model lifecycle (no draining, no swapping, no per-model retirement) — the
+ * model lifecycle (no draining, no swapping, no per-model retirement): the
  * deployment is static.
  *
  * <p>Sequence IDs are issued per-model via an {@link AtomicInteger} counter so that
@@ -55,7 +55,7 @@ public final class ModelRegistry {
    * Registers a model engine and starts it if it is a text-gen engine.
    *
    * <p>If the caller supplies a non-blank {@code modelId} and that ID is already
-   * in use, an {@link IllegalArgumentException} is thrown — the existing model is
+   * in use, an {@link IllegalArgumentException} is thrown; the existing model is
    * left untouched.  Pass an empty string to have the server assign a UUID.
    *
    * @param modelId       caller-supplied ID, or empty to auto-generate a UUID
@@ -277,7 +277,7 @@ public final class ModelRegistry {
 
     /**
      * Atomically increments and returns the next sequence ID, wrapping back to 1 at
-     * Integer.MAX_VALUE — a plain incrementAndGet would go negative on overflow and
+     * Integer.MAX_VALUE; a plain incrementAndGet would go negative on overflow and
      * fail InferenceToken's seqId >= 0 validation on every request until restart.
      * Collision after a wrap would require a sequence to stay in-flight across ~2^31
      * requests, which slot-bounded concurrency makes impossible.

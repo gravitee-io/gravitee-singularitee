@@ -15,11 +15,11 @@
 #
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Server — vLLM AWQ generation backend (:9093)
+# Server: vLLM AWQ generation backend (:9093)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Hosts ONE generation model under logical id "llm" (Qwen3-0.6B AWQ 4-bit) plus
-# the plain infer pipeline. Linux/CUDA only — requires the vLLM virtualenv.
+# the plain infer pipeline. Linux/CUDA only: requires the vLLM virtualenv.
 # Runs on a different port from the GPTQ server (:9091) so both can run at once.
 #
 # Launch (port via -Dgrpc.port; vLLM venv via -Dvllm4j.venv):

@@ -58,7 +58,7 @@ final class ResponsesEventFactory {
     return r;
   }
 
-  /** A Responses {@code message} output item; {@code text == null} → empty content (item still open). */
+  /** A Responses {@code message} output item; {@code text == null} leaves the content empty (item still open). */
   static ObjectNode responsesMessageItem(String id, String status, String text) {
     ObjectNode item = OBJECT_MAPPER.get().createObjectNode();
     item.put("id", id);
@@ -133,6 +133,7 @@ final class ResponsesEventFactory {
     return new ServerEvent(event.toString());
   }
 
+  /** An {@code response.output_item.*} event wrapping {@code item} at {@code outputIndex}. */
   static ServerEvent outputItemEvent(
     String type,
     AtomicLong seq,
@@ -147,6 +148,7 @@ final class ResponsesEventFactory {
     return new ServerEvent(event.toString());
   }
 
+  /** A {@code response.content_part.*} event carrying an {@code output_text} part. */
   static ServerEvent contentPartEvent(
     String type,
     AtomicLong seq,
@@ -167,6 +169,7 @@ final class ResponsesEventFactory {
     return new ServerEvent(event.toString());
   }
 
+  /** A {@code response.output_text.delta} event. */
   static ServerEvent outputTextDeltaEvent(
     AtomicLong seq,
     String itemId,
@@ -183,6 +186,7 @@ final class ResponsesEventFactory {
     return new ServerEvent(event.toString());
   }
 
+  /** A {@code response.output_text.done} event carrying the full text. */
   static ServerEvent outputTextDoneEvent(
     AtomicLong seq,
     String itemId,
@@ -199,7 +203,7 @@ final class ResponsesEventFactory {
     return new ServerEvent(event.toString());
   }
 
-  /** A Responses {@code reasoning} output item; {@code text == null}/empty → empty summary. */
+  /** A Responses {@code reasoning} output item; a {@code null} or empty {@code text} leaves the summary empty. */
   static ObjectNode reasoningItem(String id, String text) {
     ObjectNode item = OBJECT_MAPPER.get().createObjectNode();
     item.put("id", id);
@@ -213,6 +217,7 @@ final class ResponsesEventFactory {
     return item;
   }
 
+  /** A {@code response.reasoning_summary_part.*} event for the reasoning item at index 0. */
   static ServerEvent reasoningSummaryPartEvent(
     String type,
     AtomicLong seq,
@@ -231,6 +236,7 @@ final class ResponsesEventFactory {
     return new ServerEvent(event.toString());
   }
 
+  /** A {@code response.reasoning_summary_text.delta} event. */
   static ServerEvent reasoningSummaryDelta(AtomicLong seq, String itemId, String delta) {
     ObjectNode event = OBJECT_MAPPER.get().createObjectNode();
     event.put("type", "response.reasoning_summary_text.delta");
@@ -253,7 +259,7 @@ final class ResponsesEventFactory {
     return new ServerEvent(event.toString());
   }
 
-  /** Emits the three closing events for a reasoning item (summary done → part done → item done). */
+  /** Emits the three closing events for a reasoning item: summary done, part done, item done. */
   static void closeReasoning(
     List<ServerEvent> events,
     AtomicLong seq,

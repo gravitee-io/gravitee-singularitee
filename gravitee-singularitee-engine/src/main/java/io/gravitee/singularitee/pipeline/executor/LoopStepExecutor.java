@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
  * {@link LoopStepConfig#getTargetStepId()}. If the config carries a
  * {@link LoopStepConfig#hasLoopbackMessage() loopback_message}, it is
  * rendered through Jinja2 against the full pipeline context and appended
- * to {@link PipelineContext#messages()} as a new conversation turn —
+ * to {@link PipelineContext#messages()} as a new conversation turn,
  * enabling downstream inference steps to see the feedback as real chat
  * context (conversational refinement, CoT).
  *
@@ -69,7 +69,7 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
     String inputField = cfg.getInputField();
     boolean shouldExit = BreakStepEvaluator.evaluateLoopExit(cfg, pctx);
     // The field value can be a whole generation (a verify verdict, a step
-    // output) — logging it verbatim floods the line. The verdict is what
+    // output); logging it verbatim floods the line. The verdict is what
     // matters; the raw value stays available at DEBUG.
     LOGGER.info(
       "LoopStep '{}': condition={} on '{}' (match_value='{}') -> {}, next_step='{}', loopback='{}'",
@@ -114,7 +114,7 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
       return Maybe.just((fallback != null && !fallback.isBlank()) ? fallback : cfg.getNextStepId());
     }
 
-    // We're looping back — inject the configured feedback message (if any)
+    // We're looping back: inject the configured feedback message (if any)
     // into the conversation so the next iteration of target_step_id sees it
     // as a real chat turn, and install the retry sampling override (if any)
     // so the retry runs tighter than the first attempt.
@@ -147,13 +147,13 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
    *
    * <p>Failures are non-fatal: if the template fails to render or the role
    * is malformed we log a warning and skip the injection rather than aborting
-   * the loop — loss of a refinement cue is always preferable to a pipeline
+   * the loop; loss of a refinement cue is always preferable to a pipeline
    * crash.
    */
   private void injectLoopbackMessage(String stepId, MessageDef msg, PipelineContext pctx) {
     String content = msg.getContent();
     if (content == null || content.isBlank()) {
-      LOGGER.debug("LoopStep '{}': loopback_message content is empty — skipping injection", stepId);
+      LOGGER.debug("LoopStep '{}': loopback_message content is empty, skipping injection", stepId);
       return;
     }
 
@@ -162,7 +162,7 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
     try {
       if (LOGGER.isTraceEnabled()) {
         LOGGER.trace(
-          "LoopStep '{}': loopback_message render — context:\n{}",
+          "LoopStep '{}': loopback_message render, context:\n{}",
           stepId,
           JinjaContextHelper.dump(jinjaCtx, 200)
         );
@@ -170,7 +170,7 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
       rendered = jinjaRenderer.render(content, "<loopback>", jinjaCtx);
     } catch (RuntimeException e) {
       LOGGER.warn(
-        "LoopStep '{}': failed to render loopback_message — skipping injection: {}",
+        "LoopStep '{}': failed to render loopback_message, skipping injection: {}",
         stepId,
         e.getMessage()
       );
@@ -179,7 +179,7 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
 
     if (rendered == null || rendered.isBlank()) {
       LOGGER.debug(
-        "LoopStep '{}': loopback_message rendered to empty string — skipping injection",
+        "LoopStep '{}': loopback_message rendered to empty string, skipping injection",
         stepId
       );
       return;
@@ -191,7 +191,7 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
     int after = pctx.messages() != null ? pctx.messages().size() : 0;
 
     LOGGER.info(
-      "LoopStep '{}': injected loopback_message (role={}, {} chars) — messages grew from {} to {}",
+      "LoopStep '{}': injected loopback_message (role={}, {} chars), messages grew from {} to {}",
       stepId,
       role,
       rendered.length(),
@@ -215,10 +215,7 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
       case "assistant" -> ChatRole.ASSISTANT;
       case "user" -> ChatRole.USER;
       default -> {
-        LOGGER.warn(
-          "LoopStep: unknown loopback_message role '{}' — defaulting to USER",
-          roleString
-        );
+        LOGGER.warn("LoopStep: unknown loopback_message role '{}', defaulting to USER", roleString);
         yield ChatRole.USER;
       }
     };

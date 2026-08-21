@@ -26,6 +26,6 @@ public enum RerankScoring {
   SIGMOID,
   /** Apply softmax and take the positive class. Default for [batch, 2] outputs. */
   SOFTMAX,
-  /** Return raw logit - monotonic ordering only, no normalization. */
+  /** Return the raw logit: monotonic ordering only, no normalization. */
   LOGIT,
 }

@@ -16,12 +16,11 @@
 package io.gravitee.singularitee.inference.api.textgen;
 
 /**
- * Statistics about a generation request.
- * Used to validate requests before processing and track resource usage.
+ * Prompt measurements returned by {@code EngineAdapter.validateRequest} before a request is queued.
  *
- * @param promptTokens Number of tokens in the prompt
- * @param contextTokens Total context capacity
- * @param estimatedGenerationTokens Estimated tokens to generate (if available)
+ * @param promptTokens tokens in the prompt
+ * @param contextTokens context window of the slot, in tokens
+ * @param estimatedGenerationTokens tokens the request may generate, {@code 0} if unknown
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -35,10 +34,7 @@ public record PromptStats(int promptTokens, int contextTokens, int estimatedGene
     }
   }
 
-  /**
-   * Checks if the prompt fits within the context window.
-   * @return true if prompt tokens are less than context tokens
-   */
+  /** Whether the prompt leaves room for at least one generated token. */
   public boolean fitsInContext() {
     return promptTokens < contextTokens;
   }

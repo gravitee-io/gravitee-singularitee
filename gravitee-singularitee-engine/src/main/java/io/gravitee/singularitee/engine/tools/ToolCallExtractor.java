@@ -38,26 +38,24 @@ import org.slf4j.LoggerFactory;
 /**
  * Extracts structured tool calls from generated text by rendering a Jinja extraction template.
  *
- * <p>This is the single, template-driven replacement for the hand-coded dialect parsers that used
- * to live in the HTTP layer. An extraction template receives two variables:
+ * <p>An extraction template receives two variables:
  *
  * <ul>
- *   <li>{@code output} — the raw text of the tool span(s): the bare TOOL-channel payload when the
- *       engine stamps channels, or the full generated content on the legacy tagged-text path;</li>
- *   <li>{@code tools} — the request's tool list as data (name/description entries), for optional
+ *   <li>{@code output}: the raw text of the tool span(s), the bare TOOL-channel payload when the
+ *       engine stamps channels or the full generated content on the tagged-text path;</li>
+ *   <li>{@code tools}: the request's tool list as data (name/description entries), for optional
  *       name validation inside a template.</li>
  * </ul>
  *
  * <p>The template must render a JSON array of {@code {"name": ..., "arguments": {...}}} objects.
- * An optional per-call {@code "coerce"} member — {@code true} or a list of argument names — flags
+ * An optional per-call {@code "coerce"} member ({@code true} or a list of argument names) flags
  * string-valued arguments recovered from untyped dialect text (XML / Gemma flavors) so the client
  * holding the request's tool schemas can coerce them to their declared JSON types.
  *
- * <p>Built-in dialect templates ship as resources under {@code tool-extraction/} and reproduce the
- * legacy parsers: {@code chatml-json} (Qwen3 JSON), {@code xml-function} (Qwen3.5 XML) and
+ * <p>Built-in dialect templates ship as resources under {@code tool-extraction/}: {@code chatml-json} (Qwen3 JSON), {@code xml-function} (Qwen3.5 XML) and
  * {@code gemma-call} (Gemma {@code call:name{...}}). When no template is configured they are tried
  * in that order until one yields calls. {@code glm-name-json} (GLM-4) and {@code harmony}
- * (gpt-oss) are resolvable by explicit name only. Render or parse failures always fail open (empty list) —
+ * (gpt-oss) are resolvable by explicit name only. Render or parse failures always fail open (empty list);
  * the caller surfaces the raw text as plain content.
  */
 public final class ToolCallExtractor {
@@ -75,8 +73,8 @@ public final class ToolCallExtractor {
 
   /**
    * All built-in template names resolvable by config. Dialects whose span carries no
-   * self-identifying wrapper — GLM-4's {@code name\n{json}}, Harmony's {@code name ...
-   * <|message|>{json}} — are resolvable by explicit name only: they lean on the tool-name check
+   * self-identifying wrapper (GLM-4's {@code name\n{json}}, Harmony's {@code name ...
+   * <|message|>{json}}) are resolvable by explicit name only: they lean on the tool-name check
    * alone, so they are never part of the speculative {@link #BUILTIN_ORDER} trial.
    */
   public static final Set<String> BUILTIN_NAMES = Stream.concat(
@@ -89,7 +87,7 @@ public final class ToolCallExtractor {
   /**
    * Compiled-template cache, keyed by template source. Sources normally come from workspace
    * config (a small, fixed set), but the cap keeps a caller-supplied inline template from
-   * growing the heap without bound — beyond it, templates compile per call, uncached.
+   * growing the heap without bound; beyond it, templates compile per call, uncached.
    */
   private static final int TEMPLATE_CACHE_MAX = 256;
 
@@ -109,7 +107,7 @@ public final class ToolCallExtractor {
 
   /**
    * Outcome of an extraction attempt. {@code error} is {@code null} unless the template render
-   * or JSON parse threw — an empty {@code calls} with a {@code null} error means the output
+   * or JSON parse threw; an empty {@code calls} with a {@code null} error means the output
    * simply contained no recognizable call.
    */
   public record ExtractionResult(List<ExtractedToolCall> calls, String error) {

@@ -14,28 +14,28 @@
 # limitations under the License.
 #
 
-# Pipeline — embedding router: nearest-neighbour routing on sentence similarity
+# Pipeline: embedding router: nearest-neighbour routing on sentence similarity
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/pipelines/embedding-router.yaml
 #
-#   route ──→ [ respond_support | respond_sales | respond_general ]
+#   route -> [ respond_support | respond_sales | respond_general ]
 #
-# `strategy: embedding_knn` — instead of a classifier's label, each rule carries
+# `strategy: embedding_knn`, instead of a classifier's label, each rule carries
 # example `sentences`. Every sentence is embedded ONCE at workspace load time and
 # cached; at request time the prompt is embedded and the SINGLE nearest reference
-# sentence wins (best match, not a per-rule average — so one sharp example beats
+# sentence wins (best match, not a per-rule average, so one sharp example beats
 # five vague ones, and adding weak examples to a rule cannot dilute it).
 #
 # Why choose this over gliner-router.yaml: you teach it by EXAMPLE rather than by
 # label. When routes are fuzzy, overlapping, or evolve from real user phrasings
 # you can paste in, examples are easier to get right than label descriptions. Cost
-# is one embedding call per request — cheaper than a zero-shot classifier pass.
+# is one embedding call per request, cheaper than a zero-shot classifier pass.
 #
 # Try:
-#   "my invoice is wrong and I got charged twice"  → respond_support
-#   "what does the enterprise plan cost?"          → respond_sales
-#   "tell me a joke"                               → respond_general
+#   "my invoice is wrong and I got charged twice"  -> respond_support
+#   "what does the enterprise plan cost?"          -> respond_sales
+#   "tell me a joke"                               -> respond_general
 
 workspace:
   name: embedding-router

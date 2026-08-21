@@ -44,8 +44,8 @@ import org.slf4j.LoggerFactory;
  * turns to the model's context window, neutralises the model's special tokens
  * in message text, and renders the chat template.
  *
- * <p>Produces either a fully rendered prompt string or — when no chat template
- * is available — the structured messages to forward for engine-side rendering,
+ * <p>Produces either a fully rendered prompt string or, when no chat template
+ * is available, the structured messages to forward for engine-side rendering,
  * never both.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -93,7 +93,7 @@ final class PromptAssembler {
     List<ChatTurn> originalMessages = pctx.messages(); // retained for multimodal
 
     if (!cfg.getRawTemplate().isBlank()) {
-      // Raw template mode — resolve with Jinja4j, bypass chat template
+      // Raw template mode: resolve with Jinja4j, bypass chat template
       return new AssembledPrompt(
         resolveJinjaString(cfg.getRawTemplate(), jinjaCtx),
         originalMessages
@@ -107,8 +107,8 @@ final class PromptAssembler {
 
     // Put resolved messages into context for the chat template, with the model's special
     // tokens neutralised in every message body first. Prompts are tokenized with
-    // parse_special enabled — required so the template's own scaffolding becomes real control
-    // tokens — and that same pass applies to message text. Left alone, a message containing
+    // parse_special enabled (required so the template's own scaffolding becomes real control
+    // tokens) and that same pass applies to message text. Left alone, a message containing
     // <|im_start|>, <|channel|> or <start_of_turn> is tokenized as the control token and
     // forges conversation structure from inside a message.
     jinjaCtx.put("messages", neutralizeSpecialTokens(messages, tge.specialTokenTexts()));
@@ -125,13 +125,13 @@ final class PromptAssembler {
     }
 
     // No chat template available (e.g. remote metadata not fetched yet).
-    // Never degrade to plain "role: content" concatenation — that strips
+    // Never degrade to plain "role: content" concatenation; that strips
     // all ChatML scaffolding (assistant header, <think> prefill) and
     // silently breaks models that depend on it. Ship the structured messages
     // instead: the engine forwards them and the model server renders
     // with its own authoritative template.
     LOGGER.error(
-      "InferStep '{}': model '{}' has no chat template — sending structured " +
+      "InferStep '{}': model '{}' has no chat template, sending structured " +
         "messages for engine-side rendering (template variables like " +
         "enable_thinking are forwarded via template_context)",
       stepId,
@@ -139,7 +139,7 @@ final class PromptAssembler {
     );
     // Passthrough case: keep the caller's original turns so multimodal
     // media survives (the resolved maps carry role/content only). YAML-
-    // defined messages and bare prompts never carry media — convert those.
+    // defined messages and bare prompts never carry media; convert those.
     List<ChatTurn> wireMessages = (cfg.getMessagesList().isEmpty() && originalMessages != null)
       ? originalMessages
       : toChatTurns(messages);
@@ -153,7 +153,7 @@ final class PromptAssembler {
     Map<String, Object> jinjaCtx
   ) {
     if (!cfg.getMessagesList().isEmpty()) {
-      // YAML overrides messages — resolve each content with Jinja4j
+      // YAML overrides messages: resolve each content with Jinja4j
       return cfg
         .getMessagesList()
         .stream()
@@ -164,7 +164,7 @@ final class PromptAssembler {
         .toList();
     }
     if (pctx.messages() != null) {
-      // Implicit passthrough — caller's messages as-is
+      // Implicit passthrough: caller's messages as-is
       return pctx.messages().stream().map(PromptAssembler::toTemplateMessage).toList();
     }
     // Bare prompt fallback
@@ -178,12 +178,12 @@ final class PromptAssembler {
    * step outputs) can steer a step WITHOUT replacing the conversation the way
    * a prompt.messages override does. It COMBINES with a caller-supplied system
    * message rather than yielding to it: the caller's prompt establishes
-   * identity, the step's establishes its role in the graph — dropping either
+   * identity, the step's establishes its role in the graph; dropping either
    * one loses instructions the request depends on.
    */
   /**
    * Prepends the caller's per-request instructions (OpenAI Responses
-   * {@code instructions}) as a leading system turn — at render time only.
+   * {@code instructions}) as a leading system turn, at render time only.
    * The instructions never enter the transcript, so stored conversations do
    * not carry them over and each continuation's own instructions apply.
    */
@@ -267,7 +267,7 @@ final class PromptAssembler {
         .mapToLong(m -> counter.count(String.valueOf(m.getOrDefault("content", ""))))
         .sum();
       LOGGER.info(
-        "InferStep '{}': trimmed {}→{} messages (~{} tokens) to fit context budget {}",
+        "InferStep '{}': trimmed {}->{} messages (~{} tokens) to fit context budget {}",
         stepId,
         messages.size(),
         trimmed.size(),
@@ -289,7 +289,7 @@ final class PromptAssembler {
   ) {
     // Tools are NOT passed separately: buildJinjaContext already placed the
     // special-token-escaped list in the context, and a raw tools argument
-    // would overwrite it — reopening the prompt-structure injection the
+    // would overwrite it, reopening the prompt-structure injection the
     // escaping exists to close.
     try {
       return chatTemplateRenderer.renderFromVariables(templateString, jinjaCtx);
@@ -298,7 +298,7 @@ final class PromptAssembler {
         throw new IllegalArgumentException(
           "InferStep '" +
             stepId +
-            "': chat_template override is not a valid Jinja template — " +
+            "': chat_template override is not a valid Jinja template, " +
             e.getMessage(),
           e
         );
@@ -330,7 +330,7 @@ final class PromptAssembler {
     ctx.put("bos_token", tge.bosToken() != null ? tge.bosToken() : "");
     ctx.put("eos_token", tge.eosToken() != null ? tge.eosToken() : "");
 
-    // Tools — structured OpenAI format.
+    // Tools: structured OpenAI format.
     // When the step sets `inject_tools: false` in YAML, we skip this entirely
     // so {{tools}} is undefined in raw templates and empty for chat templates.
     if (shouldInjectTools(cfg)) {
@@ -366,7 +366,7 @@ final class PromptAssembler {
   private String resolveJinjaString(String templateString, Map<String, Object> context) {
     if (LOGGER.isTraceEnabled()) {
       LOGGER.trace(
-        "InferStep raw_template render — context:\n{}",
+        "InferStep raw_template render, context:\n{}",
         JinjaContextHelper.dump(context, 200)
       );
     }
@@ -383,7 +383,7 @@ final class PromptAssembler {
    * <p>Controlled by the optional {@code inject_tools} field on
    * {@link InferStepConfig}. Defaults to {@code true} when unset, so existing
    * workspaces continue to forward tools as before. When set to {@code false},
-   * the step receives no tools — handy for response branches that should let
+   * the step receives no tools, handy for response branches that should let
    * the model's native chat template handle everything EXCEPT tool injection.
    */
   static boolean shouldInjectTools(InferStepConfig cfg) {
@@ -395,7 +395,7 @@ final class PromptAssembler {
    * was written to the pipeline context ({@code KEY_SELECTED_TOOLS}).
    *
    * <ul>
-   *   <li>No shortlist ({@code selectedTools() == null}): all tools —
+   *   <li>No shortlist ({@code selectedTools() == null}): all tools,
    *       behavior identical to before tool selection existed.</li>
    *   <li>Empty shortlist: no tools are injected (conversational turn).</li>
    *   <li>Otherwise: only tools whose name is in the shortlist.</li>
@@ -422,8 +422,8 @@ final class PromptAssembler {
         .map(t -> withCondensedDescription(t, condensed))
         .toList();
     }
-    // Server-owned tools (e.g. the todo tools) ride along by default —
-    // tool_select shortlists and condensation never apply to them — unless the
+    // Server-owned tools (e.g. the todo tools) ride along by default;
+    // tool_select shortlists and condensation never apply to them, unless the
     // step opts out (expose_server_tools: false, e.g. a prose-only summarize
     // step where a schema in the prompt only invites a call that can leak).
     boolean exposeServerTools = !cfg.hasExposeServerTools() || cfg.getExposeServerTools();
@@ -437,7 +437,7 @@ final class PromptAssembler {
 
   /**
    * Server tools minus the DELEGABLE ones the caller declared itself: a client
-   * that brings its own ask_user schema owns that tool for the request — the
+   * that brings its own ask_user schema owns that tool for the request; the
    * model must see the client's schema, not two competing ones. Non-delegable
    * server tools (the plan tools) are always injected, even on a name clash.
    */
@@ -454,7 +454,7 @@ final class PromptAssembler {
    * Rewrites a {@link ToolDefinition} with its
    * condensed injection description (from a tool-select step with
    * {@code trim_descriptions}): sets {@code description} AND patches the
-   * {@code description} inside the original tool template JSON — both the
+   * {@code description} inside the original tool template JSON; both the
    * nested {@code {type: function, function: {...}}} and the flat shape are
    * handled, mirroring PipelineRequestBuilder.buildToolDefinition. On template
    * parse failure the original template is kept. Tools without a condensed
@@ -479,7 +479,7 @@ final class PromptAssembler {
         }
       } catch (JacksonException e) {
         LOGGER.debug(
-          "tool '{}': template JSON unparseable — keeping original template: {}",
+          "tool '{}': template JSON unparseable, keeping original template: {}",
           tool.getName(),
           e.toString()
         );
@@ -497,7 +497,7 @@ final class PromptAssembler {
    *
    * <p>{@code tool_calls} and the {@code tool_call_id} of a tool result are what let a template
    * show the model what it already did. Omit them and a tool-using conversation replays as a
-   * question the assistant never acted on, so it issues the same call again — and again.
+   * question the assistant never acted on, so it issues the same call again, and again.
    *
    * <p>Arguments are handed over as a parsed map, not as their JSON text: templates iterate them
    * as a mapping, and some raise outright on a string. Unparseable arguments degrade to an
@@ -619,7 +619,7 @@ final class PromptAssembler {
    *
    * <p>{@code content} is not the only caller-controlled text that reaches the prompt. A tool
    * call's name and arguments, a tool result's id and name, and the tool definitions themselves
-   * are all serialized into the transcript by the chat template — so a control sequence hidden in
+   * are all serialized into the transcript by the chat template, so a control sequence hidden in
    * any of them is tokenized as a real transcript marker, which is the same forging avenue that
    * escaping {@code content} was meant to close. Walking the whole structure is the only way to
    * be sure a newly-passed field does not silently reopen it.

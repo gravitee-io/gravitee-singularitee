@@ -13,7 +13,7 @@
 {%- set out = output | split('<|observation|>') | first | split('<|user|>') | first -%}
 {#- The call may follow an inline <|assistant|> marker, with the model's reasoning in front of
     it ("Let's run this:<|assistant|>bash\n{...}"). Take the segment AFTER the last one: the
-    text before it is prose, and treating that as the call renders [] — the call is dropped and
+    text before it is prose, and treating that as the call renders []: the call is dropped and
     the turn ends as a plain answer, which is indistinguishable from the model not calling. -#}
 {%- set out = out | split('<|assistant|>') | last | trim -%}
 {%- set name = out | regex_first('^([^\n]+)', 1) -%}

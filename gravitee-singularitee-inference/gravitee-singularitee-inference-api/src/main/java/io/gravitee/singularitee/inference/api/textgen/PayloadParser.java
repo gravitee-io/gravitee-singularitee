@@ -22,8 +22,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Shared payload parsing utilities for generation requests.
- * Extracts and validates fields from deserialized Map payloads (event bus messages).
+ * Lenient accessors over the untyped maps of event-bus generation payloads.
+ *
+ * <p>Every parser returns {@code null} rather than throwing when a field is absent or has an
+ * unexpected shape, so callers fall back to engine defaults.
+ *
+ * @author Rémi SULTAN (remi.sultan at graviteesource.com)
+ * @author GraviteeSource Team
  */
 public final class PayloadParser {
 
@@ -31,22 +36,26 @@ public final class PayloadParser {
 
   private PayloadParser() {}
 
+  /** {@code value} as a string, or {@code null} if it is not one. */
   public static String stringValue(Object value) {
     return value instanceof String s ? s : null;
   }
 
+  /** Any {@link Number} narrowed to an integer, or {@code null}. */
   public static Integer intValue(Object value) {
     if (value instanceof Integer i) return i;
     if (value instanceof Number n) return n.intValue();
     return null;
   }
 
+  /** Any {@link Number} narrowed to a float, or {@code null}. */
   public static Float floatValue(Object value) {
     if (value instanceof Float f) return f;
     if (value instanceof Number n) return n.floatValue();
     return null;
   }
 
+  /** Stop strings from either a single string or a list of strings, or {@code null}. */
   @SuppressWarnings("unchecked")
   public static List<String> parseStop(Object value) {
     if (value instanceof String s) {
@@ -58,6 +67,7 @@ public final class PayloadParser {
     return null;
   }
 
+  /** Tool definitions (a list of maps), or {@code null} when absent or empty. */
   @SuppressWarnings("unchecked")
   public static List<Map<String, Object>> parseTools(Object value) {
     if (!(value instanceof List<?> list) || list.isEmpty()) {
@@ -72,6 +82,7 @@ public final class PayloadParser {
     return result.isEmpty() ? null : result;
   }
 
+  /** Parses a role name case-insensitively; unknown or {@code null} names become {@link Role#USER}. */
   public static Role toRole(String role) {
     if (role == null) {
       return Role.USER;
@@ -88,6 +99,12 @@ public final class PayloadParser {
     };
   }
 
+  /**
+   * Parses OpenAI-shaped chat messages. {@code content} may be a string or a list of
+   * {@code text} / {@code image_url} / {@code input_audio} parts; text parts are joined with
+   * newlines and media parts become {@link ImageContent} / {@link AudioContent}. Messages without
+   * a role or without any content are dropped; returns {@code null} when nothing remains.
+   */
   @SuppressWarnings("unchecked")
   public static List<ChatMessage> parseMessages(Object value) {
     if (!(value instanceof List<?> list)) {

@@ -15,17 +15,17 @@
 #
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Server — safety / classifier backend (:9092)
+# Server: safety / classifier backend (:9092)
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# Hosts the lightweight ONNX classifiers — "pii" (bert-small token classifier),
+# Hosts the lightweight ONNX classifiers, "pii" (bert-small token classifier),
 # "toxicity" (distilbert sequence classifier) and "router" (GLiNER zero-shot
 # intent classifier). No LLM, no pipelines: these are leaf models a client
 # stitches into a guard or routing pipeline alongside a generation model that
 # lives on a SEPARATE server. Cross-platform (ONNX Runtime, CPU).
 #
 # Swap the PII backend: replace "classifier/pii-bert.yaml" with "classifier/pii-gliner.yaml"
-# (both declare id "pii" — include exactly one).
+# (both declare id "pii", include exactly one).
 #
 # Launch (port via -Dgrpc.port):
 #   java -Dgrpc.port=9092 -Dai.workspace.path=examples/modular/server-safety.yaml \

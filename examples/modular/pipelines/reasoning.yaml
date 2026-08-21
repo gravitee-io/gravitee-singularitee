@@ -14,10 +14,10 @@
 # limitations under the License.
 #
 
-# Pipeline — single-step Qwen3 generation that SEPARATES reasoning.
+# Pipeline: single-step Qwen3 generation that SEPARATES reasoning.
 #
 # Same as infer.yaml, but the infer step declares the model's reasoning tags
-# (<think>…</think>) and does NOT strip them (strip_thinking omitted → default
+# (<think>…</think>) and does NOT strip them (strip_thinking omitted -> default
 # false). The executor then ROUTEs the reasoning onto a separate
 # STEP_ROLE_THINKING stream instead of leaving it inline in the output.
 #

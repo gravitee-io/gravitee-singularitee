@@ -27,23 +27,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 /**
- * Regression tests for a backend that dies holding live sequences.
+ * Tests for a backend that dies holding live sequences.
  *
- * <p>A failed native decode (llama.cpp {@code llama_decode: failed to decode, ret = -3})
- * leaves the batch unable to produce tokens while the conversations are still registered.
- * {@code processNextBatch()} then returns empty — indistinguishable, to the worker loop,
- * from an idle engine. Nothing completed those sequences, so callers waited on a stream
- * that never closed; and because the loop only parks while {@code sequences} is empty, it
- * spun instead of sleeping. Observed live as a request that hung until the client timed
- * out, with the server logging nothing at all.
+ * <p>A failed native decode leaves the batch unable to produce tokens while the sequences are
+ * still registered. {@code processNextBatch()} then returns empty, which the worker loop cannot
+ * tell from an idle engine, and because the loop only parks while {@code sequences} is empty it
+ * spins while callers wait on a stream that never closes.
  *
  * <p>{@link EngineAdapter#hasStalled()} lets an adapter distinguish the two, so the engine
  * fails the stranded callers with a terminal token (finish reason {@code "stalled"}; the
- * OpenAI surface maps it to {@code "stop"} since OpenAI defines no error reason, with the
- * failure recorded in the log) and releases their slots.
+ * OpenAI-compatible surface maps it to {@code "stop"}) and releases their slots.
  */
 class AbstractBatchEngineStallTest {
 
+  /** Bare generation request. */
   private record FakeRequest(String prompt) implements GenerationRequest {
     @Override
     public Integer maxTokens() {
@@ -99,7 +96,7 @@ class AbstractBatchEngineStallTest {
 
     @Override
     public Optional<EngineOutput<String, Object>> processNextBatch() {
-      return Optional.empty(); // no output — exactly what a dead batch looks like
+      return Optional.empty(); // no output: exactly what a dead batch looks like
     }
 
     @Override
@@ -134,6 +131,7 @@ class AbstractBatchEngineStallTest {
     public void shutdown() {}
   }
 
+  /** Concrete engine over the stalling adapter. */
   private static final class TestEngine
     extends AbstractBatchEngine<Void, FakeRequest, String, Object> {
 
@@ -160,8 +158,7 @@ class AbstractBatchEngineStallTest {
       adapter.stalled.set(true);
       engine.addSequence(1, new FakeRequest("bonjour"));
 
-      // The whole point: this returns rather than timing out. Before the fix the
-      // sequence was never completed and no token was ever emitted.
+      // This must return rather than time out: a stalled sequence must still emit its final token.
       assertThat(finalToken.await(5, TimeUnit.SECONDS))
         .as("a stalled backend must terminate the caller's stream, not leave it open")
         .isTrue();
@@ -180,7 +177,7 @@ class AbstractBatchEngineStallTest {
   @Test
   void stalled_backend_fails_every_in_flight_caller() throws Exception {
     // A decode failure takes down the whole batch, so every sequence sharing the
-    // engine must be failed — not just the one that happened to be sampled.
+    // engine must be failed, not just the one that happened to be sampled.
     var adapter = new StallingAdapter();
     var engine = new TestEngine(BatchEngineConfig.of(3), adapter);
 
@@ -219,7 +216,7 @@ class AbstractBatchEngineStallTest {
   @Test
   void a_healthy_idle_engine_is_never_failed() throws Exception {
     // processNextBatch() returning empty is normal while idle. Only an adapter
-    // reporting hasStalled() may trigger the failure path — otherwise a quiet
+    // reporting hasStalled() may trigger the failure path; otherwise a quiet
     // engine would kill its own live sequences.
     var adapter = new StallingAdapter();
     var engine = new TestEngine(BatchEngineConfig.of(1), adapter);

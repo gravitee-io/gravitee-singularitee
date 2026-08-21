@@ -27,16 +27,19 @@ package io.gravitee.singularitee.inference.api.textgen;
  *
  * <p>Do not add a constant here without a decoder behind it: an unsupported
  * payload is dropped without an error, and the model then answers from the text
- * alone — an empty or plausible-but-blind response rather than a failure.
+ * alone: an empty or plausible-but-blind response rather than a failure.
+ *
+ * @author Rémi SULTAN (remi.sultan at graviteesource.com)
+ * @author GraviteeSource Team
  */
 public enum MediaType {
-  // Image types — stb_image
+  // Image types (stb_image)
   IMAGE_JPEG("image/jpeg"),
   IMAGE_PNG("image/png"),
   IMAGE_GIF("image/gif"),
   IMAGE_BMP("image/bmp"),
 
-  // Audio types — javax.sound.sampled
+  // Audio types (javax.sound.sampled)
   AUDIO_WAV("audio/wav"),
 
   // Generic binary
@@ -48,10 +51,12 @@ public enum MediaType {
     this.value = value;
   }
 
+  /** The IANA media type string. */
   public String value() {
     return value;
   }
 
+  /** Parses a media type string; unknown values map to {@link #APPLICATION_OCTET_STREAM}. */
   public static MediaType fromString(String value) {
     for (MediaType type : MediaType.values()) {
       if (type.value.equals(value)) {

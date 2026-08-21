@@ -107,11 +107,11 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
     if (todoCalls.isEmpty()) {
       if (!clientCalls.isEmpty()) {
         // Client-bound tool calls END the pipeline turn: the client must
-        // execute them and reply — looping onward would swallow the call
+        // execute them and reply; looping onward would swallow the call
         // (and a later tag-less step would leak its raw span as text).
         return haltForClientCalls(stepId, pctx, ctx);
       }
-      LOGGER.debug("TodoStep '{}': no todo tool call — passing through", stepId);
+      LOGGER.debug("TodoStep '{}': no todo tool call, passing through", stepId);
       return ctx.rxNextStep(stepId);
     }
 
@@ -131,7 +131,7 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
     }
 
     // The consumed calls must never reach the client: keep only client-bound
-    // calls, and when none remain, the generation was purely internal — the
+    // calls, and when none remain, the generation was purely internal; the
     // finish reason reverts to a plain stop.
     pctx.setExtractedToolCalls(List.copyOf(clientCalls));
     if (clientCalls.isEmpty()) {
@@ -142,7 +142,7 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
 
     var todos = pctx.todos();
     LOGGER.info(
-      "TodoStep '{}': executed {} call(s) — plan now {}/{} done{}",
+      "TodoStep '{}': executed {} call(s), plan now {}/{} done{}",
       stepId,
       todoCalls.size(),
       pctx.get(PipelineContext.KEY_TODOS_COMPLETED),
@@ -160,11 +160,11 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
     if (askUserQuestion != null) {
       // ask_user wins over everything: stream the question as the visible
       // assistant answer, then halt the pipeline. BREAK_CONDITION maps to a
-      // plain "stop" on the OpenAI surface — a normal end-of-turn.
+      // plain "stop" on the OpenAI surface, a normal end-of-turn.
       streamText(ctx, askUserQuestion);
       pctx.set(stepId + ".question", askUserQuestion);
       pctx.signalHalt(stepId + ".question", FinishReason.FINISH_REASON_BREAK_CONDITION);
-      LOGGER.info("TodoStep '{}': paused for user input — plan saved for resume", stepId);
+      LOGGER.info("TodoStep '{}': paused for user input, plan saved for resume", stepId);
       return ctx.rxNextStep(stepId); // halt flag short-circuits the walk regardless
     }
 
@@ -193,7 +193,7 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
     pctx.setLastEngineFinishReason(FinishReason.FINISH_REASON_TOOL_CALLS);
     pctx.signalHalt(stepId + ".client_tool_calls", FinishReason.FINISH_REASON_TOOL_CALLS);
     LOGGER.info(
-      "TodoStep '{}': {} client tool call(s) — ending the turn for the client to execute",
+      "TodoStep '{}': {} client tool call(s), ending the turn for the client to execute",
       stepId,
       pctx.extractedToolCalls().size()
     );
@@ -329,14 +329,14 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
     if (parsed.isEmpty()) {
       // A plan either has items or does not exist. Installing an empty list
       // would put the pipeline into the work loop with "0/0 done" and nothing
-      // to do — models do call set_todos with an empty array. Refuse it: the
+      // to do; models do call set_todos with an empty array. Refuse it: the
       // model gets the error and can re-plan or answer directly, and
       // plan_check keeps routing planless requests correctly.
       return error("todos must contain at least one item with a title");
     }
     pctx.setTodos(parsed);
     // Plan-level constraints (locked user decisions) ride along optionally.
-    // Absence on a re-send keeps the existing ones — a plan update must not
+    // Absence on a re-send keeps the existing ones; a plan update must not
     // silently drop what the user already decided.
     JsonNode constraints = args.get("constraints");
     if (constraints != null && constraints.isTextual() && !constraints.asText().isBlank()) {
@@ -377,7 +377,7 @@ public final class TodoStepExecutor implements StepExecutor<TodoStepConfig> {
       .filter(t -> t.status() == TodoStatus.IN_PROGRESS)
       .map(PipelineContext.TodoItem::title)
       .findFirst()
-      .orElse("none — all items done");
+      .orElse("none (all items done)");
   }
 
   /** A fresh {@code {"ok": <ok>}} result node to extend fluently. */

@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
  * <p>It reads the function name off the front of the captured span with a bare
  * {@code ^\s*([\w.-]+)} match. Applied to a real span that is correct; applied to ordinary prose
  * it will happily return the first word as a function name. Since a non-empty extraction nulls
- * {@code content} in the response, such a phantom does not merely add a bogus call — it deletes
+ * {@code content} in the response, such a phantom does not merely add a bogus call, it deletes
  * the answer the model actually produced. Hence the name must be checked against the request's
  * declared tools, exactly as the {@code glm-name-json} built-in does.
  *
@@ -94,7 +94,7 @@ class HarmonyToolTemplateTest {
   /**
    * The span the engine captures starts after the `to=functions.` marker, so it begins with the
    * function name whichever channel the model chose. gpt-oss is instructed to use `commentary`
-   * but does not always comply — an `analysis` channel call must extract identically, or the whole
+   * but does not always comply; an `analysis` channel call must extract identically, or the whole
    * call leaks into the answer as text.
    */
   @Test

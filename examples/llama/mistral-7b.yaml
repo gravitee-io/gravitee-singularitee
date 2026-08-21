@@ -16,7 +16,7 @@
 
 # Mistral-7B-Instruct-v0.3 · general purpose
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/llama/mistral-7b.yaml
 #
 # A larger, higher-quality alternative to the reference Qwen3-0.6B when you have

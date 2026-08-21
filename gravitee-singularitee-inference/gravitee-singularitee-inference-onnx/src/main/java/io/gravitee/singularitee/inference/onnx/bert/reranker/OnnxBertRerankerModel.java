@@ -28,20 +28,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Cross-encoder reranker model backed by a BERT classification head (e.g. BAAI/bge-reranker-v2-m3).
+ * Cross-encoder reranker backed by a BERT classification head (e.g. bge-reranker, MiniLM).
  *
- * <p>A cross-encoder takes a {@code (query, document)} pair as a single sequence and emits
- * a classification logit directly. It does not produce a pooled hidden-state vector, so it
- * cannot be used as an embedder. The input type is {@link RerankPair} (structured pair),
- * avoiding {@code UnsupportedOperationException}-style workarounds.
+ * <p>A cross-encoder scores a {@code (query, document)} pair as one sequence and emits a
+ * relevance logit directly; it produces no pooled vector and cannot serve as an embedder. The
+ * input type is {@link RerankPair}.
  *
- * <p>The inherited {@link #inferAll(List)} is overridden to batch all pairs that share
- * the same query into a single padded forward pass — matching the common rerank use case
- * of "one query, many documents". Pairs with different queries fall back to the default
- * sequential iteration.
+ * <p>{@link #inferAll(List)} batches all pairs that share one query into padded forward passes,
+ * the common "one query, many documents" shape. Pairs with different queries are scored one by one.
  *
- * <p>Auto-detects output shape: {@code [batch, 1]} → SIGMOID default; {@code [batch, 2]} →
- * SOFTMAX default. Other shapes are rejected.
+ * <p>Output shape selects the default scoring: {@code [batch, 1]} is SIGMOID, {@code [batch, 2]}
+ * is SOFTMAX. Other shapes are rejected with {@link IllegalArgumentException}.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -135,7 +132,7 @@ public class OnnxBertRerankerModel extends OnnxBertInference<RerankPair, RerankT
     return splitDocument(countTokens(query), document);
   }
 
-  /** As above, with the query already measured — it is the same for every document in a batch. */
+  /** As above, with the query already measured; it is the same for every document in a batch. */
   private List<String> splitDocument(int queryTokens, String document) {
     int docBudget = Math.max(sequenceBudget - queryTokens - 1, 1);
     return newSplitter(docBudget).split(document).stream().map(Chunk::text).toList();
@@ -147,19 +144,14 @@ public class OnnxBertRerankerModel extends OnnxBertInference<RerankPair, RerankT
    * <p>The shape of a rerank request is one query against many documents, so the documents that
    * fit are encoded together and sent to ONNX in as few forward passes as the budget allows.
    *
-   * <p>Three things this deliberately does <em>not</em> do:
+   * <p>Packing rules:
    * <ul>
-   *   <li><strong>Fall back wholesale.</strong> A single oversized document used to demote the
-   *       entire request to one-pair-at-a-time — 100 forward passes instead of one. Oversized
-   *       documents are now scored individually (each splitting and batching internally) while
-   *       everything else still goes through the batched path.</li>
-   *   <li><strong>Build one unbounded batch.</strong> The padded tensor costs
-   *       {@code rows x longest}, and the row count comes straight from the caller, so a
-   *       thousand-document rerank was a thousand-row forward pass. Batches are now capped on
-   *       that padded-token product.</li>
-   *   <li><strong>Ignore length spread.</strong> Padding is to the longest row, so one 512-token
-   *       document dragged every other row up with it. Documents are grouped by length before
-   *       packing, which keeps the padding close to the real content.</li>
+   *   <li>An oversized document is scored on its own through {@link #infer(RerankPair)} (which
+   *       splits it and takes the best passage); the other documents still take the batched path.</li>
+   *   <li>A batch is capped on its padded-token product ({@code rows x longest}, the real cost of
+   *       the forward pass) and on {@code MAX_BATCH_ROWS}.</li>
+   *   <li>Documents are sorted by length before packing, so padding stays close to the real
+   *       content instead of every row being padded to the longest document in the request.</li>
    * </ul>
    *
    * <p>Results are returned in input order regardless of the order they were computed in.
@@ -176,8 +168,7 @@ public class OnnxBertRerankerModel extends OnnxBertInference<RerankPair, RerankT
       return input.stream().map(this::infer).toList();
     }
 
-    // Measured once — it used to be recomputed for every document, twice over
-    // (documentFits and splitDocument).
+    // The query is the same for every row: measure it once.
     int queryTokens = countTokens(query);
     int docBudget = Math.max(sequenceBudget - queryTokens - 1, 1);
 
@@ -241,7 +232,7 @@ public class OnnxBertRerankerModel extends OnnxBertInference<RerankPair, RerankT
     var tensor = FloatTensor.of(result.get(0));
     if (tensor.shape().length != 2) {
       throw new IllegalArgumentException(
-        "Reranker output must be [batch, N] float32 — got rank " + tensor.shape().length
+        "Reranker output must be [batch, N] float32, got rank " + tensor.shape().length
       );
     }
     float[][] logits = tensor.rows(0, tensor.dim(0), tensor.dim(1));

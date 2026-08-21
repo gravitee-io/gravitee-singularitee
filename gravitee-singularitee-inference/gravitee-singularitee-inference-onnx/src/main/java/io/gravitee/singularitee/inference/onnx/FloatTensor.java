@@ -25,12 +25,10 @@ import java.nio.FloatBuffer;
 /**
  * A flat, row-major float tensor: one contiguous {@link FloatBuffer} plus its shape.
  *
- * <p>Replaces nested {@code float[][]...} reads of ONNX outputs on the inference hot path:
- * {@link #of(OnnxValue)} is a single bulk copy into a direct buffer, versus
- * {@code OnnxValue.getValue()}'s reflective element-by-element materialization
- * ({@code OrtUtil.fillArrayFromBuffer} + {@code Array.get} boxing). Consumers then copy out
- * only the rows they actually use (skipping padding), instead of materializing the whole
- * padded batch.
+ * <p>{@link #of(OnnxValue)} is a single bulk copy into a direct buffer, whereas
+ * {@code OnnxValue.getValue()} materializes nested {@code float[][]...} arrays element by
+ * element through reflection. Consumers copy out only the rows they use (skipping padding)
+ * instead of the whole padded batch.
  *
  * <p>Accessors use absolute indexing; the buffer's position/limit are not part of the
  * contract. Not thread-safe for writes; concurrent absolute reads are safe.
@@ -76,7 +74,7 @@ public record FloatTensor(FloatBuffer data, long[] shape) {
 
   /**
    * Materializes rows {@code [0, rowCount)} of a rank-2 view starting at {@code base} with
-   * {@code rowLength} elements per row — e.g. one batch entry's unpadded sequence rows.
+   * {@code rowLength} elements per row, e.g. one batch entry's unpadded sequence rows.
    */
   public float[][] rows(long base, int rowCount, int rowLength) {
     var out = new float[rowCount][];

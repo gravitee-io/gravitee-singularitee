@@ -126,7 +126,7 @@ class TodoStepExecutorTest {
     executor.execute("track", config(), stepContext(pctx)).test().assertComplete();
 
     // The pipeline ends with finish_reason tool_calls and the call attached:
-    // the client must execute it — looping onward would swallow the call.
+    // the client must execute it; looping onward would swallow the call.
     assertThat(pctx.isHalted()).isTrue();
     assertThat(pctx.haltReason()).isEqualTo(FinishReason.FINISH_REASON_TOOL_CALLS);
     assertThat(pctx.extractedToolCalls()).containsExactly(clientCall);
@@ -169,7 +169,7 @@ class TodoStepExecutorTest {
 
     String next = executor.execute("track", config(), stepContext(pctx)).blockingGet();
 
-    assertThat(next).isEqualTo("work"); // still handled — the model retries with the error
+    assertThat(next).isEqualTo("work"); // still handled; the model retries with the error
     assertThat(pctx.get("track.todo_error")).isNotBlank();
     // The error rides back to the model as the TOOL result.
     assertThat(pctx.messages()).hasSize(turnsBefore + 2);
@@ -475,10 +475,8 @@ class TodoStepExecutorTest {
   @Test
   @SuppressWarnings("unchecked")
   void jinja_todos_variable_is_the_item_list_not_the_mirrored_field_map() {
-    // Regression: the mirrored condition fields (todos.total/completed/remaining)
-    // nest into a map under the "todos" key in the step-output context and used
-    // to REPLACE the todo list — templates then iterated three key strings and
-    // the model never saw its plan.
+    // The mirrored condition fields (todos.total/completed/remaining) nest into a
+    // map under the "todos" key and must not replace the todo list itself.
     var pctx = pctx();
     pctx.setTodos(
       List.of(

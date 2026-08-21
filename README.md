@@ -8,72 +8,65 @@
   <a href="https://community.gravitee.io"><img src="https://img.shields.io/badge/community-forum-FFFFFF?style=flat-square&labelColor=555555" alt="Community"></a>
 </p>
 
-**Gravitee's Inference Server.**
+**Gravitee's inference server.**
 
-A production-grade inference server for running LLM pipelines outside the Gravitee gateway process — built on [gravitee-node](https://github.com/gravitee-io/gravitee-node) with Vert.x 5 and RxJava 3. It can also expose an optional **OpenAI-compatible HTTP API** over the same models and pipelines (see [Calling it](#calling-it)).
+Singularitee hosts LLMs, classifiers, embedders and rerankers in a process of its own and runs multi-step pipelines over them. Whatever calls it (a Gravitee gateway, an OpenAI SDK, `curl`) stays lightweight; Singularitee owns the GPU, the native libraries and the model lifecycle. It is built on [gravitee-node](https://github.com/gravitee-io/gravitee-node) with Vert.x 5 and RxJava 3.
 
 ## Why the name
 
-A play on **Gravitee**. Models are heavy — and a singularity is what gravity produces at its extreme: all that mass collapsed into one single point. That is exactly what this server is. Every heavy thing the gateway cannot carry — the GPU, the native libraries, the model weights — is pulled out of the gateway and concentrated into one process. Gravitee attracts; Singularitee is where it all ends up.
-
-## Why this exists
-
-Singularitee runs model-hosting and inference as a **separate process**. Whatever calls it — a Gravitee gateway, an OpenAI SDK, `curl` — stays lightweight; Singularitee owns the GPU, the native libraries, and the model lifecycle.
+A play on Gravitee. Models are heavy, and a singularity is what gravity produces at its extreme: all that mass collapsed into one point. Everything the gateway cannot carry (the GPU, the native libraries, the weights) is pulled out of it and concentrated into one process. Gravitee attracts; Singularitee is where it all ends up.
 
 ## What it does
 
-Models and pipelines are published declaratively from a workspace YAML at startup (weights download from HuggingFace automatically), then served with streaming as a first-class primitive:
+A workspace YAML declares the models and pipelines to publish. Weights download from HuggingFace on first start, then everything is served with streaming as a first-class primitive.
 
 | Capability | Notes |
-|---|---|
-| **Text generation** | Streamed token by token, from a model or a named pipeline. |
-| **Pipelines** | A DAG of steps over those models — guards, classifiers, routers, loops, sub-pipelines. |
-| **Classification** | ONNX BERT, GLiNER zero-shot, regex, composite. |
-| **Embeddings & reranking** | Vectors, cross-encoder reranking, similarity. |
-| **Discovery** | List and inspect the published models and pipelines. |
+| --- | --- |
+| Text generation | Streamed token by token, from a model or from a pipeline. |
+| Pipelines | A DAG of steps over those models: guards, classifiers, routers, loops, tool calling, sub-pipelines. |
+| Classification | ONNX sequence and token classifiers, GLiNER zero-shot, regex, composite. |
+| Embeddings and reranking | Vectors, cross-encoder reranking, similarity. |
+| Discovery | List and inspect what a server publishes. |
 
-Two front-ends over the same registries and engines, so a capability behaves identically on either:
+Two fronts serve the same registries and engines, so a capability behaves identically on either:
 
-- **gRPC** (default, port 9090) — the primary API → [gRPC API & client](./docs/grpc-api-and-client/README.md)
-- **OpenAI-compatible HTTP** (opt-in, port 8080) — point any OpenAI SDK at it → [OpenAI HTTP API](./docs/openai-http-api/README.md)
+- **gRPC** (default, port 9090), the primary API: [gRPC API](./docs/api/grpc/README.md)
+- **HTTP** (opt-in, port 8080), OpenAI-compatible: [HTTP API](./docs/api/http/README.md), schemas in [openapi/](./openapi/README.md)
 
 ### Engines
 
-| Engine | Backend                                                 | Use case |
-|--------|---------------------------------------------------------|----------|
-| **llama.cpp** | [llamaj.cpp](https://github.com/gravitee-io/llamaj.cpp) | GGUF models on CPU/Metal/CUDA. Single binary, no Python. |
-| **vLLM** | [vLLM4j](https://github.com/gravitee-io/vLLM4j)      | HF Transformers via vLLM. Full CUDA, PagedAttention, continuous batching. |
-| **ONNX** | ONNX Runtime                                            | Classifier, embedding, and reranker models. CPU with optional GPU. |
-| **GLiNER** | [gliner4j](https://github.com/gravitee-io/gliner4j)  | Zero-shot NER and classification. |
-
-Text-generation engines share a unified `BatchEngine` abstraction — vendored in-tree under `gravitee-singularitee-inference/` — for loading, batched inference, and token streaming.
-
-Built on [gravitee-node](https://github.com/gravitee-io/gravitee-node) with Vert.x 5 and RxJava 3. The execution model, module breakdown, and **how pipelines work** are documented in **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+| Engine | Backend | Use case |
+| --- | --- | --- |
+| llama.cpp | [llamaj.cpp](https://github.com/gravitee-io/llamaj.cpp) | GGUF models on CPU, Metal or CUDA. No Python. The default. |
+| vLLM | [vLLM4j](https://github.com/gravitee-io/vLLM4j) | HuggingFace Transformers checkpoints through vLLM. CUDA first. |
+| ONNX | ONNX Runtime | Classifiers, embedders and rerankers. CPU with optional GPU. |
+| GLiNER | [gliner4j](https://github.com/gravitee-io/gliner4j) | Zero-shot NER and classification. |
 
 ## Documentation
 
-Full documentation lives in **[`docs/`](./docs/README.md)** — one page per capability. New here, read in this order:
+Everything lives under [`docs/`](./docs/README.md). Read in this order:
 
-- **[Getting Started](./docs/getting-started/README.md)** — build, run, and every `gravitee.yml` key
-- **[Workspaces](./docs/workspaces/README.md)** — the YAML that declares what to publish
-- **[Pipelines](./docs/pipelines/README.md)** — composing models into a DAG of steps
+1. [Getting Started](./docs/getting-started/README.md): build, run, first calls.
+2. [Concepts](./docs/concepts/README.md): workspaces, models, pipelines, templates, engines.
+3. [Workspaces](./docs/workspaces/README.md): the YAML format.
 
-Then, by topic:
+Then, by need:
 
-- **APIs** — [gRPC & Java client](./docs/grpc-api-and-client/README.md) · [OpenAI HTTP API](./docs/openai-http-api/README.md) · [OpenAPI spec](./docs/openapi/singularitee.openapi.yaml)
-- **Capabilities** — [text generation](./docs/text-generation/README.md) · [classification](./docs/classification/README.md) · [embeddings & reranking](./docs/embeddings-and-reranking/README.md) · [multimodal](./docs/multimodal/README.md)
-- **Pipeline building blocks** — [guards & redaction](./docs/guards-and-redaction/README.md) · [routing](./docs/routing/README.md) · [loops & chain-of-thought](./docs/loops-and-cot/README.md) · [sub-pipelines](./docs/sub-pipelines/README.md)
-- **Running it** — [validated models](./docs/models/README.md) · [remote & multi-server](./docs/remote-and-multi-server/README.md) · [observability](./docs/observability/README.md) · [deployment](./docs/deployment/README.md)
+- **Reference**: [model types](./docs/reference/models/README.md), [step types](./docs/reference/steps/README.md), [templates](./docs/reference/templates/README.md), [context fields](./docs/reference/context-fields.md), [configuration](./docs/reference/configuration.md)
+- **APIs**: [overview and conventions](./docs/api/README.md), [gRPC](./docs/api/grpc/README.md), [HTTP](./docs/api/http/README.md), [Java client](./docs/api/java-client/README.md), [OpenAPI specs](./openapi/README.md)
+- **Guides**: [text generation](./docs/guides/text-generation/README.md), [classification](./docs/guides/classification/README.md), [embeddings and reranking](./docs/guides/embeddings-and-reranking/README.md), [guards and redaction](./docs/guides/guards-and-redaction/README.md), [routing](./docs/guides/routing/README.md), [loops and chain-of-thought](./docs/guides/loops-and-cot/README.md), [tool calling](./docs/guides/tool-calling/README.md), [todos](./docs/guides/todos/README.md), [sub-pipelines](./docs/guides/sub-pipelines/README.md), [multimodal](./docs/guides/multimodal/README.md), [remote and multi-server](./docs/guides/remote-and-multi-server/README.md)
+- **Operations**: [deployment](./docs/operations/deployment/README.md), [observability](./docs/operations/observability/README.md), [validated models](./docs/operations/models/README.md)
+- **Internals**: [Architecture](./docs/architecture/README.md)
 
 ## Quick start
 
-From a fresh clone (Java 25 + Maven):
+From a fresh clone, with Java 25 and Maven:
 
 ```bash
 ./install.sh
 ```
 
-That checks prerequisites, downloads the llama.cpp native libraries into `~/.llama.cpp` (they are **not** bundled in the jar, for size reasons), builds the distribution, and starts the server with the OpenAI-compatible API on port 8080. From then on, switch workspaces with:
+This checks prerequisites, downloads the llama.cpp native libraries into `~/.llama.cpp` (they are not bundled in the jar), builds the distribution and starts the server with the HTTP API on port 8080. From then on:
 
 ```bash
 ./run-server.sh --list                                          # every runnable workspace
@@ -81,35 +74,12 @@ That checks prerequisites, downloads the llama.cpp native libraries into `~/.lla
 ./run-server.sh --debug                                         # TRACE-log rendered prompts
 ```
 
-Model weights download from HuggingFace on first start into `~/.cache/gravitee-singularitee/models`, so the first run of a new workspace is slow and later ones are not.
-
-**→ [Getting Started](./docs/getting-started/README.md)** covers the manual build-and-run path, the distribution layout, the full `gravitee.yml` reference, and boot order. IntelliJ run configurations are committed under `.run/` (start a `Server` first, wait for it to load its model — the port binds immediately but calls return "Model server is still loading" until then).
-
-## Configuration
-
-Everything is configured in `gravitee.yml`, and **every key** also accepts a `GRAVITEE_`-prefixed
-environment variable or a `-D` system property (`grpc.port` → `GRAVITEE_GRPC_PORT`,
-`ai.workspace.path` → `GRAVITEE_AI_WORKSPACE_PATH`).
-
-The few you need to start:
-
-| Key | Default | |
-|---|---|---|
-| `grpc.port` | `9090` | The primary API. |
-| `http.enabled` / `http.port` | `false` / `8080` | The OpenAI-compatible HTTP API — opt-in. |
-| `ai.workspace.path` | — | Workspace loaded at startup. Unset = start empty. |
-| `ai.huggingface.token` | `$HF_TOKEN` | Needed for gated repos. |
-
-TLS and mTLS, gRPC Basic and HTTP Bearer auth, the model cache, streaming back-pressure, the
-management port and OpenTelemetry are all covered — with defaults and every key — in
-**[Getting Started](./docs/getting-started/README.md)**.
+Weights download on first start into `~/.cache/gravitee-singularitee/models`. The port binds immediately; calls answer "Model server is still loading" until the workspace is loaded, so poll `/v1/models` rather than the TCP port.
 
 ## Calling it
 
-Point any OpenAI SDK — or `curl` — at the HTTP API once `http.enabled` is on:
-
 ```bash
-curl -s localhost:8080/v1/models | jq                    # what this server publishes
+curl -s localhost:8080/v1/models | jq
 
 curl -s localhost:8080/v1/chat/completions -H 'content-type: application/json' \
   -d '{"model":"agent","messages":[{"role":"user","content":"Say hi in 3 words"}]}' | jq
@@ -117,33 +87,35 @@ curl -s localhost:8080/v1/chat/completions -H 'content-type: application/json' \
 
 ```python
 from openai import OpenAI
-client = OpenAI(base_url="http://localhost:8080/v1", api_key="sk-local-…")
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="sk-local")
 client.chat.completions.create(model="agent", messages=[{"role": "user", "content": "hi"}], stream=True)
 ```
 
-The `model` field takes a model id or a pipeline id. Beyond the standard OpenAI routes the server
-adds `/v1/classify`, `/v1/rerank` and `/v1/similarity`; the full endpoint reference, streaming
-semantics, auth, and the error envelope are in
-**[OpenAI HTTP API](./docs/openai-http-api/README.md)** (machine-readable schema:
-[OpenAPI spec](./docs/openapi/singularitee.openapi.yaml)).
+`model` takes a model id or a pipeline id. Beyond the standard routes the server adds `/v1/classify`, `/v1/rerank` and `/v1/similarity`. Over gRPC, use `SingulariteeClient` ([Java client](./docs/api/java-client/README.md)) or `grpcurl` ([gRPC API](./docs/api/grpc/README.md)).
 
-Over gRPC, use `SingulariteeClient` — see **[gRPC API & client](./docs/grpc-api-and-client/README.md)**.
-
-Ready-to-run smoke tests live in [`examples/scripts/`](examples/scripts/) and need only
-[uv](https://docs.astral.sh/uv/):
+Smoke tests need only [uv](https://docs.astral.sh/uv/):
 
 ```bash
 BASE_URL=http://localhost:8080/v1 uv run --with openai examples/scripts/openai_test.py
 BASE_URL=http://localhost:8080/v1 uv run --with requests examples/scripts/classify_test.py
 ```
 
-## Workspaces & examples
+## Configuration
 
-A **workspace** YAML declares the models and pipelines to publish at startup (`ai.workspace.path`). Models are referenced by a stable logical `id`, so the same pipeline runs against any backend bound to that id.
+Every key in `gravitee.yml` also accepts a `GRAVITEE_`-prefixed environment variable or a `-D` system property (`grpc.port` becomes `GRAVITEE_GRPC_PORT`). The ones needed to start:
 
-Every ready-made workspace lives in **[`examples/`](examples/README.md)** — one folder per kind (`llama/`, `vllm/`, `classifier/`, `embedding/`, `reranker/`), multi-step `pipelines/` (guards, routers, chain-of-thought), and a `modular/` tree showing how to compose one server from shared include fragments. Run any of them with `./run-server.sh --workspace <file>` (`--list` prints them all).
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `grpc.port` | `9090` | The primary API. |
+| `http.enabled` / `http.port` | `false` / `8080` | The OpenAI-compatible HTTP API, opt-in. |
+| `ai.workspace.path` | unset | Workspace loaded at startup. Unset starts an empty server. |
+| `ai.huggingface.token` | `$HF_TOKEN` | Gated repositories. |
 
-### Workspace format
+The full list, with TLS, auth, the model cache, streaming back-pressure, the management port and OpenTelemetry, is in [Configuration](./docs/reference/configuration.md).
+
+## Workspaces
+
+A workspace declares what to publish. Models carry a stable logical id, so the same pipeline runs against any backend bound to that id.
 
 ```yaml
 workspace:
@@ -185,30 +157,20 @@ workspace:
             output_field: generate.output
 ```
 
-A workspace can also pull shared `models:` / `pipelines:` / `templates:` from sibling folders via `includes:`, and declare `remote:` endpoints for client-side / multi-server execution. See the step types, guard/routing/loop semantics, and the full schema in **[ARCHITECTURE.md → How pipelines work](ARCHITECTURE.md#how-pipelines-work)**.
+Ready-made workspaces live in [`examples/`](./examples/README.md): one folder per model family, multi-step `pipelines/`, and a `modular/` tree composing servers from shared include fragments. Run any with `./run-server.sh --workspace <file>`.
 
-## Production deployment
+## Production
 
-Host models in **separate Singularitee processes** rather than packing many into one JVM, and compose them with remote / multi-server workspaces (see [ARCHITECTURE.md → Remote & multi-server](ARCHITECTURE.md#remote--multi-server)). Each model then has its own lifecycle, memory, and failure domain.
-
-This matters most on **CUDA / GPU**: the engines (llama.cpp, vLLM, ONNX Runtime) each load their own native CUDA bindings, so co-locating different engines — or several large models — in a single process invites native library/version conflicts and GPU-memory contention. Run **one model (or engine) per process/GPU** and let them talk over gRPC, so you can scale, place, and restart each independently.
+Host one model (or one engine) per Singularitee process and compose them over gRPC with remote workspaces. Each engine loads its own native libraries, so co-locating engines or several large models in one JVM invites library conflicts and GPU-memory contention. See [Deployment](./docs/operations/deployment/README.md) and [Remote and multi-server](./docs/guides/remote-and-multi-server/README.md).
 
 ## Contributing
 
-Contributions are welcome. **[CONTRIBUTING.md](CONTRIBUTING.md)** covers setting up a dev
-environment, running the server and the tests, our commit conventions, and how to open a pull
-request. In short:
-
-- Bugs and feature requests go to the central [gravitee-io/issues](https://github.com/gravitee-io/issues/issues) repository — search the archive first
-- Branch from `main` as `issue/<issue-id>-my-fix-branch`, and use [Conventional Commits](https://conventionalcommits.org/)
-- Include tests, and run `mvn clean install` before opening the PR — CI builds with `-DskipTests`
-- The build validates formatting and license headers; `mvn prettier:write license:format` fixes both
+See [CONTRIBUTING.md](CONTRIBUTING.md). In short: issues go to [gravitee-io/issues](https://github.com/gravitee-io/issues/issues); branch from `main` as `issue/<id>-<name>`; use [Conventional Commits](https://conventionalcommits.org/); run `mvn clean install` before opening a PR. The build enforces formatting and license headers; `mvn prettier:write license:format` fixes both.
 
 ## Security
 
-To report a security vulnerability, follow the central Gravitee process described in
-**[SECURITY.md](SECURITY.md)**. Please do not open a public issue for security reports.
+Report vulnerabilities through the process in [SECURITY.md](SECURITY.md), not through a public issue.
 
 ## License
 
-[Apache License 2.0](LICENSE) — Copyright © 2015 The Gravitee team (http://gravitee.io)
+[Apache License 2.0](LICENSE). Copyright 2015 The Gravitee team (http://gravitee.io)

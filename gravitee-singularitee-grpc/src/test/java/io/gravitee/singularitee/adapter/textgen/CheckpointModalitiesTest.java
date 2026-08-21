@@ -79,7 +79,7 @@ class CheckpointModalitiesTest {
 
   @Test
   void an_empty_block_is_not_a_capability(@TempDir Path dir) throws IOException {
-    // A key present but empty says nothing was configured — treating it as a
+    // A key present but empty says nothing was configured; treating it as a
     // projector would advertise a capability the model does not have.
     writeConfig(
       dir,

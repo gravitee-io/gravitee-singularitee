@@ -16,6 +16,8 @@
 package io.gravitee.singularitee.inference.api.service;
 
 /**
+ * Event-bus reply envelope carrying an inference result.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

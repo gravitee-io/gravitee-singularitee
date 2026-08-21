@@ -20,9 +20,9 @@ package io.gravitee.singularitee.inference.api.memory;
  * may not fit in available GPU memory.
  *
  * <ul>
- *   <li>{@link #FAIL}     — abort loading and throw {@link InsufficientVramException}.</li>
- *   <li>{@link #WARN}     — log a warning and continue loading (default).</li>
- *   <li>{@link #DISABLED} — skip the memory check entirely.</li>
+ *   <li>{@link #FAIL}: abort loading and throw {@link InsufficientVramException}.</li>
+ *   <li>{@link #WARN}: log a warning and continue loading (default).</li>
+ *   <li>{@link #DISABLED}: skip the memory check entirely.</li>
  * </ul>
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)

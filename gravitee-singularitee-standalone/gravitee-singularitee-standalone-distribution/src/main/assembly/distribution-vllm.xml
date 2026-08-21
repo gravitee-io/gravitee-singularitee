@@ -17,10 +17,10 @@
 
 -->
 <!--
-    vLLM flavour — HF checkpoints through vLLM4j, for the vllm/vllm-openai base
+    vLLM flavour: HF checkpoints through vLLM4j, for the vllm/vllm-openai base
     image which already carries Python, CUDA and vLLM itself.
 
-    Drops llama.cpp, ONNX Runtime and GLiNER — this image runs one engine.
+    Drops llama.cpp, ONNX Runtime and GLiNER; this image runs one engine.
 -->
 <assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -49,7 +49,7 @@
                 <exclude>io.gravitee.singularitee.inference:gravitee-singularitee-inference-onnx</exclude>
             </excludes>
         </dependencySet>
-        <!-- Third-party JARs → lib/ext/ -->
+        <!-- Third-party JARs go to lib/ext/ -->
         <dependencySet>
             <outputDirectory>lib/ext</outputDirectory>
             <excludes>

@@ -18,11 +18,10 @@ package io.gravitee.singularitee.workspace.config;
 /**
  * vLLM engine configuration, as a plain record.
  *
- * <p>Never on the wire; proto3 semantics preserved (zero / empty = engine
- * default). {@code enablePrefixCaching} and {@code enableSleepMode} are boxed:
- * {@code null} means "unset — engine default applies", and an explicit
- * {@code false} is a real disable, which is what the proto3 bool could not
- * express and what made {@code enable_prefix_caching: false} a silent no-op.
+ * <p>Never on the wire. Numeric zero and empty string mean "engine default".
+ * {@code enablePrefixCaching} and {@code enableSleepMode} are boxed: {@code null}
+ * means "unset, engine default applies" and an explicit {@code false} is a real
+ * disable.
  */
 public record VllmConfig(
   String dtype,
@@ -56,15 +55,17 @@ public record VllmConfig(
       : distributedExecutorBackend;
   }
 
-  /** All engine defaults — what an absent YAML block means. */
+  /** All engine defaults: what an absent YAML block means. */
   public static VllmConfig getDefaultInstance() {
     return DEFAULT;
   }
 
+  /** Returns a builder with every field at its default. */
   public static Builder newBuilder() {
     return new Builder();
   }
 
+  /** Fluent builder; unset fields keep the engine defaults. */
   public static final class Builder {
 
     private String dtype = "";

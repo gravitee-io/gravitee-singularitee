@@ -25,8 +25,8 @@ import java.util.regex.Pattern;
  *
  * <p>Glob rather than regex because these are written by hand in YAML, next to
  * file names: {@code *} matches within a path segment, {@code **} across
- * segments, {@code ?} a single character. Everything else — {@code .} very much
- * included — is literal.
+ * segments, {@code ?} a single character. Everything else ({@code .} very much
+ * included) is literal.
  *
  * <p>A pattern containing no {@code /} is also matched against the file name
  * alone, so {@code "*.pth"} excludes {@code original/consolidated.00.pth} without

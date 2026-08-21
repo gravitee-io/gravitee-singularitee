@@ -37,10 +37,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Executes an LLM_GUARD step: sends content to a guard LLM (e.g. Llama Guard)
+ * Executes an LLM_GUARD step: asks a judge LLM for a verdict on the content
  * and applies the configured action (REJECT or WARN) based on the verdict.
  *
- * <p>Fully reactive — no {@code CountDownLatch} or blocking. Chains on the
+ * <p>Fully reactive, no {@code CountDownLatch} or blocking. Chains on the
  * {@link Completable} from {@link TextGenEngine#rxAddSequence}.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -101,7 +101,7 @@ public final class LlmGuardStepExecutor
         .map(md -> new ChatTurn(toChatRole(md.getRole()), resolveJinja(md.getContent(), jinjaCtx)))
         .toList();
     } else {
-      LOGGER.warn("LlmGuardStep '{}': no messages or raw_template configured — skipping", stepId);
+      LOGGER.warn("LlmGuardStep '{}': no messages or raw_template configured, skipping", stepId);
       return ctx.rxNextStep(stepId);
     }
 
@@ -181,12 +181,12 @@ public final class LlmGuardStepExecutor
         // Flat dot-keys are split by JinjaContextHelper#buildStepOutputContext on
         // the FIRST dot only to form nested `stepId.field` maps. A key like
         // `input_guard.verdict.full` would therefore produce
-        // `input_guard = { "verdict.full": ... }` — unreachable via Jinja's
+        // `input_guard = { "verdict.full": ... }`, unreachable via Jinja's
         // `.` navigation. Use `verdict_full` so `{{ input_guard.verdict_full }}`
         // resolves as `input_guard["verdict_full"]`.
         pctx.set(stepId + ".verdict", verdictFirstLine);
         pctx.set(stepId + ".verdict_full", verdict);
-        // Append to the verdicts log — preserved in execution order,
+        // Append to the verdicts log, preserved in execution order and
         // kept separate from generated_messages so templates can
         // distinguish conversation content from safety metadata.
         pctx.addVerdict(stepId, verdictFirstLine, verdict);
@@ -240,10 +240,10 @@ public final class LlmGuardStepExecutor
       pctx.signalHalt(stepId, FinishReason.FINISH_REASON_GUARD_BLOCKED);
     } else if (action == GuardAction.GUARD_ACTION_WARN) {
       pctx.set(PipelineContext.KEY_GUARD_TRIGGERED, stepId);
-      LOGGER.warn("LlmGuardStep '{}': warning — verdict='{}'", stepId, verdict);
+      LOGGER.warn("LlmGuardStep '{}': warning, verdict='{}'", stepId, verdict);
     } else if (action == GuardAction.GUARD_ACTION_REDACT) {
       LOGGER.warn(
-        "LlmGuardStep '{}': GUARD_ACTION_REDACT is not supported for LLM guards — falling back to WARN",
+        "LlmGuardStep '{}': GUARD_ACTION_REDACT is not supported for LLM guards, falling back to WARN",
         stepId
       );
       pctx.set(PipelineContext.KEY_GUARD_TRIGGERED, stepId);
@@ -318,10 +318,7 @@ public final class LlmGuardStepExecutor
 
   private String resolveJinja(String templateString, Map<String, Object> context) {
     if (LOGGER.isTraceEnabled()) {
-      LOGGER.trace(
-        "LlmGuard template render — context:\n{}",
-        JinjaContextHelper.dump(context, 200)
-      );
+      LOGGER.trace("LlmGuard template render, context:\n{}", JinjaContextHelper.dump(context, 200));
     }
     return jinjaRenderer.render(templateString, "<guard>", context);
   }

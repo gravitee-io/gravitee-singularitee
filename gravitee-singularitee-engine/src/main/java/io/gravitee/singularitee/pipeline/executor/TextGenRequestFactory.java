@@ -29,10 +29,10 @@ import java.util.Map;
  * Builds the {@link TextGenRequest} for an INFER step: resolves each sampling
  * parameter across the override chain (request override wins over the
  * loop-retry override, which wins over the step's sampling params), maps the
- * step's reasoning/tool tag pairs onto the engine's {@link TagConfig} —
+ * step's reasoning/tool tag pairs onto the engine's {@link TagConfig},
  * carrying everything the proto defines, alternatives and the repeatable flag
  * included, so the pipeline path and the direct Infer path share one tag
- * contract — and assembles the per-step template context.
+ * contract, and assembles the per-step template context.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -134,7 +134,7 @@ final class TextGenRequestFactory {
 
   /**
    * Maps a proto tag pair to the engine's {@link TagConfig}, carrying every
-   * field the proto defines — the open/close alternatives and the repeatable
+   * field the proto defines, the open/close alternatives and the repeatable
    * flag included. A blank open tag means the pair is unset: returns
    * {@code null}. (The proto message shares the {@code TagConfig} name with
    * the engine type, hence the qualified parameter.)

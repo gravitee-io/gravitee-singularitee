@@ -24,7 +24,7 @@ import java.util.List;
 /**
  * llama.cpp-backed embedding model. Produces a single pooled dense vector per input text.
  *
- * <p>Supports both encoder (BERT, ModernBERT, Jina) and decoder (Qwen3-Embedding)
+ * <p>Supports both encoder (BERT, ModernBERT) and decoder (Qwen3-Embedding)
  * architectures. Pooling strategy (CLS, MEAN, LAST) is determined by the
  * {@link ModelConfig#poolingType()} setting.
  *
@@ -43,6 +43,7 @@ public class LlamaCppEmbeddingModel extends LlamaCppInference<String, EmbeddingT
     this(config, gioMaths, EmbeddingTemplate.IDENTITY);
   }
 
+  /** Loads the model; {@code template} wraps every input before tokenization. */
   public LlamaCppEmbeddingModel(ModelConfig config, GioMaths gioMaths, EmbeddingTemplate template) {
     super(config);
     this.gioMaths = gioMaths;

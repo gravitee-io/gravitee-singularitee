@@ -15,6 +15,12 @@
  */
 package io.gravitee.singularitee.inference.api.textgen;
 
+/**
+ * Base64-encoded audio attached to a chat message.
+ *
+ * @param mediaType declared media type; the decoder is picked from the bytes, not from it
+ * @param data base64 payload, never blank
+ */
 public record AudioContent(MediaType mediaType, String data) implements Content {
   public AudioContent {
     if (data == null || data.trim().isEmpty()) {
@@ -27,6 +33,7 @@ public record AudioContent(MediaType mediaType, String data) implements Content 
     return "audio";
   }
 
+  /** Whether both media type and payload are present. */
   public boolean isValid() {
     return mediaType != null && data != null && !data.trim().isEmpty();
   }

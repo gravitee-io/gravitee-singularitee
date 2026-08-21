@@ -15,11 +15,11 @@
 #
 
 
-# Generation model — Mistral-7B (vLLM / vllm4j)
+# Generation model: Mistral-7B (vLLM / vllm4j)
 #
 # Logical id: "llm". Dense 7.2B, bf16, 32k context. Fits a single 24GB card with room for KV.
 #
-# Linux/CUDA only — needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
+# Linux/CUDA only: needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
 # unless you run the -vllm-cuda image, which bundles it.
 #
 # Swap-in for server-vllm-gptq.yaml / server-vllm-awq.yaml: replace the included

@@ -25,7 +25,7 @@ import java.util.List;
  * Remote proxy for {@link EmbeddingEngine} that calls the server's {@code Embed} RPC.
  *
  * <p>Fully non-blocking: delegates directly to the gRPC {@link Single} returned by the client
- * — no {@code blockingGet()} required.
+ * with no {@code blockingGet()} required.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -35,6 +35,7 @@ public final class RemoteEmbeddingEngine implements EmbeddingEngine {
   private final SingulariteeClient client;
   private final String modelId;
 
+  /** Creates a proxy for {@code modelId} on the server behind {@code client}. */
   public RemoteEmbeddingEngine(SingulariteeClient client, String modelId) {
     this.client = client;
     this.modelId = modelId;
@@ -95,6 +96,6 @@ public final class RemoteEmbeddingEngine implements EmbeddingEngine {
 
   @Override
   public void close() {
-    // Nothing to close — the client is shared
+    // Nothing to close: the client is shared
   }
 }

@@ -16,18 +16,18 @@
 
 # Gemma 4 26B · vLLM backend
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/vllm/gemma4-26b.yaml
 #
 # MoE 26.5B (4B active, 128 experts) with a vision tower, bf16. ~53GB of bf16
-# weights plus the vision encoder — tensor_parallel_size 2 unless you have an
+# weights plus the vision encoder, tensor_parallel_size 2 unless you have an
 # 80GB card.
 #
 # ⚠ Linux + CUDA only. vLLM runs from a host venv (scripts/setup-venv.sh) unless
 #   you use the -vllm-cuda image, which bundles it:
 #     ./run-server.sh --workspace examples/vllm/gemma4-26b.yaml   -Dvllm4j.venv=/path/to/.venv
 #
-# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each loads its own
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM: each loads its own
 # native CUDA bindings. One backend per server, composed over gRPC.
 
 workspace:

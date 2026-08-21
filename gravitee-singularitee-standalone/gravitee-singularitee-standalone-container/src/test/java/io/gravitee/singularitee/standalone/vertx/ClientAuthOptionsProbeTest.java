@@ -27,7 +27,7 @@ import org.springframework.core.env.StandardEnvironment;
 
 /**
  * Probes gravitee-node's option parsing directly: does {@code grpc.ssl.clientAuth}
- * survive from the environment into the Vert.x {@link io.vertx.core.http.HttpServerOptions}
+ * survive from the environment into the Vert.x {@code HttpServerOptions}
  * the gRPC server is created from? This is the mechanism {@code GrpcServerComponent}
  * relies on for mTLS enforcement.
  */

@@ -16,6 +16,9 @@
 package io.gravitee.singularitee.inference.api.classifier;
 
 /**
+ * One label with its score; token-classification results also carry the matched token text and
+ * its character span, which are {@code null} for sequence classification.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -26,6 +29,7 @@ public record ClassifierResult(
   Integer start,
   Integer end
 ) {
+  /** Sequence-classification result without a token span. */
   public ClassifierResult(String label, float score) {
     this(label, score, null, null, null);
   }

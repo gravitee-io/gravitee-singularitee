@@ -106,7 +106,7 @@ public final class WriteStreamTokenAdapter implements WriteStream<InferResponse>
 
   @Override
   public WriteStream<InferResponse> setWriteQueueMaxSize(int maxSize) {
-    // No queue throttling needed — UnicastProcessor handles backpressure downstream.
+    // No queue throttling needed: UnicastProcessor handles backpressure downstream.
     return this;
   }
 
@@ -142,7 +142,7 @@ public final class WriteStreamTokenAdapter implements WriteStream<InferResponse>
     }
   }
 
-  // ── Proto → TokenMessage conversion ──
+  // ── Proto to TokenMessage conversion ──
 
   private static TokenMessage toTokenMessage(InferResponse response) {
     return switch (response.getEventType()) {
@@ -170,7 +170,7 @@ public final class WriteStreamTokenAdapter implements WriteStream<InferResponse>
     if (response.getStepRole() == StepRole.STEP_ROLE_TOOL) {
       return TokenMessage.toolDelta(delta);
     }
-    // Per-token logprobs ride only on content deltas — OpenAI logprobs cover
+    // Per-token logprobs ride only on content deltas: OpenAI logprobs cover
     // the answer, not reasoning or tool spans.
     var logprobs = response.getResponseOutputTextDelta().getLogprobsList();
     return TokenMessage.builder()

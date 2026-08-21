@@ -15,12 +15,12 @@
 #
 
 
-# Generation model — Qwen3-0.6B (vLLM / vllm4j)
+# Generation model: Qwen3-0.6B (vLLM / vllm4j)
 #
-# Logical id: "llm". Dense 0.6B, bf16. The smallest useful text model — start here when
+# Logical id: "llm". Dense 0.6B, bf16. The smallest useful text model, start here when
 # bringing up a vLLM server.
 #
-# Linux/CUDA only — needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
+# Linux/CUDA only: needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
 # unless you run the -vllm-cuda image, which bundles it.
 #
 # Swap-in for server-vllm-gptq.yaml / server-vllm-awq.yaml: replace the included

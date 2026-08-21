@@ -16,17 +16,17 @@
 
 # Qwen2.5-0.5B · vLLM backend
 #
-# Standalone workspace — run it with:
+# Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/vllm/qwen2.5-0.5b.yaml
 #
-# Dense 0.5B, bf16, 32k context. No thinking mode — Qwen2.5 predates it, so no
+# Dense 0.5B, bf16, 32k context. No thinking mode, Qwen2.5 predates it, so no
 # reasoning tags are configured; tool calls still use the ChatML markers.
 #
 # ⚠ Linux + CUDA only. vLLM runs from a host venv (scripts/setup-venv.sh) unless
 #   you use the -vllm-cuda image, which bundles it:
 #     ./run-server.sh --workspace examples/vllm/qwen2.5-0.5b.yaml   -Dvllm4j.venv=/path/to/.venv
 #
-# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM — each loads its own
+# NEVER co-locate vLLM with llama.cpp or ONNX in one JVM: each loads its own
 # native CUDA bindings. One backend per server, composed over gRPC.
 
 workspace:

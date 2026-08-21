@@ -15,6 +15,8 @@
  */
 package io.gravitee.singularitee.engine;
 
+import java.util.List;
+
 /**
  * Top-level abstraction for all model engines managed by Singularitee.
  *
@@ -24,10 +26,10 @@ package io.gravitee.singularitee.engine;
  *
  * <p>Permitted subtypes cover the four engine categories:
  * <ul>
- *   <li>{@link TextGenEngine} — streaming token generation (llama.cpp, vLLM)</li>
- *   <li>{@link ClassifierEngine} — synchronous label + score classification (ONNX BERT)</li>
- *   <li>{@link EmbeddingEngine} — synchronous dense vector embedding (ONNX BERT)</li>
- *   <li>{@link RerankerEngine} — synchronous cross-encoder reranking (ONNX BERT)</li>
+ *   <li>{@link TextGenEngine}: streaming token generation (llama.cpp, vLLM)</li>
+ *   <li>{@link ClassifierEngine}: synchronous label + score classification (ONNX BERT)</li>
+ *   <li>{@link EmbeddingEngine}: synchronous dense vector embedding (ONNX BERT)</li>
+ *   <li>{@link RerankerEngine}: synchronous cross-encoder reranking (ONNX BERT)</li>
  * </ul>
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -58,7 +60,7 @@ public sealed interface ModelEngine
   String task();
 
   /**
-   * Returns the input modalities this engine accepts — always containing
+   * Returns the input modalities this engine accepts: always
    * {@link Modalities#TEXT}, plus {@link Modalities#IMAGE} / {@link Modalities#AUDIO}
    * when a projector able to decode them is loaded.
    *
@@ -69,7 +71,7 @@ public sealed interface ModelEngine
    *
    * @return the accepted modalities; never {@code null} or empty
    */
-  default java.util.List<String> inputModalities() {
+  default List<String> inputModalities() {
     return Modalities.TEXT_ONLY;
   }
 

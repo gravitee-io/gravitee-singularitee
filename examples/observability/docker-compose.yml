@@ -18,8 +18,8 @@
 #
 #   docker compose -f examples/observability/docker-compose.yml up -d
 #
-# Then open Grafana at http://localhost:3000 (admin / admin) — the
-# "Singularitee — GPU & Inference" dashboard is provisioned automatically
+# Then open Grafana at http://localhost:3000 (admin / admin), the
+# "Singularitee - GPU & Inference" dashboard is provisioned automatically
 # and wired to the bundled Prometheus, which scrapes the server on the host at
 # :18092 (see prometheus/prometheus.yml).
 #
@@ -30,9 +30,9 @@
 services:
   # Host networking so both containers reach the server over loopback
   # (localhost:18092). On Linux this sidesteps the host firewall dropping
-  # container→host bridge traffic. Prometheus serves its UI on :9090, Grafana
+  # container->host bridge traffic. Prometheus serves its UI on :9090, Grafana
   # on :3000, directly on the host.
-  # Docker Desktop (macOS/Windows): host networking is limited — instead drop
+  # Docker Desktop (macOS/Windows): host networking is limited, instead drop
   # `network_mode: host`, add `ports:` mappings and `extra_hosts:
   # ["host.docker.internal:host-gateway"]`, and set the Prometheus target /
   # Grafana datasource url to host.docker.internal.

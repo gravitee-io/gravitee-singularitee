@@ -29,11 +29,9 @@ import io.vertx.rxjava3.core.Vertx;
 import org.springframework.context.annotation.Bean;
 
 /**
- * Main Spring configuration for Singularitee.
- *
- * <p>Replaces all manual wiring previously in {@code Singularitee.java}. All beans
- * are created with the managed Vert.x RxJava3 instance from gravitee-node's
- * {@code VertxConfiguration}.
+ * Bootstrap-phase beans required by gravitee-node that Singularitee does not use:
+ * a no-op {@link KubernetesClient} (the Kubernetes configurations are excluded by
+ * {@code SingulariteeContainer}) and a plain {@link ObjectMapper}.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -41,6 +39,7 @@ import org.springframework.context.annotation.Bean;
 @org.springframework.context.annotation.Configuration
 public class UtilsConfiguration {
 
+  /** No-op client: every lookup is empty and watches never emit. */
   @Bean
   public KubernetesClient kubernetesClient() {
     return new KubernetesClient() {

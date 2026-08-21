@@ -39,6 +39,10 @@ public final class LegacyCompletionsFormatter {
 
   private LegacyCompletionsFormatter() {}
 
+  /**
+   * Streams {@code text_completion} SSE chunks, then a usage chunk when requested and the
+   * {@code [DONE]} sentinel. {@code onFinal} receives the final token before it is rendered.
+   */
   public static Flowable<ServerEvent> completionStreamEvents(
     Flowable<TokenMessage> tokenStream,
     String modelName,
@@ -61,7 +65,7 @@ public final class LegacyCompletionsFormatter {
     long created = Instant.now().getEpochSecond();
     String responseId = "cmpl-" + created;
 
-    // Progress updates are not part of the Completions contract — dropped.
+    // Progress updates are not part of the Completions contract: dropped.
     return tokenStream
       .filter(t -> t.progress() == null)
       .flatMap(token -> {
@@ -93,6 +97,7 @@ public final class LegacyCompletionsFormatter {
       });
   }
 
+  /** Builds the non-streaming {@code text_completion} object from an accumulated stream. */
   public static ObjectNode buildCompletionResponse(
     String modelName,
     SequenceAccumulator accumulator

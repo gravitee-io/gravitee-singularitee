@@ -28,7 +28,14 @@ import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
 import java.util.List;
 
-/** {@code POST /v1/rerank} — Cohere-style reranking (cross-encoder, or bi-encoder fallback). */
+/**
+ * {@code POST /v1/rerank}: cross-encoder rerank endpoint (bi-encoder fallback).
+ *
+ * <p>Accepts {@code model}, {@code query}, {@code documents} (array of strings), optional
+ * {@code top_k} (0 = all) and {@code return_documents} (default {@code true}). Emits 400
+ * {@code invalid_request_error} for a malformed payload, 400 {@code model_not_found} for an
+ * unknown or hidden model, and 500 {@code internal_error} on engine failure.
+ */
 public final class RerankHandler implements Handler<RoutingContext> {
 
   private final GraviteeVectorServiceImpl vector;

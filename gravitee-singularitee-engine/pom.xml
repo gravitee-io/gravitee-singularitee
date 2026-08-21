@@ -49,19 +49,19 @@
             <artifactId>jinja4j</artifactId>
         </dependency>
 
-        <!-- RxJava3 — reactive types used in engine interfaces -->
+        <!-- RxJava3: reactive types used in engine interfaces -->
         <dependency>
             <groupId>io.reactivex.rxjava3</groupId>
             <artifactId>rxjava</artifactId>
         </dependency>
 
-        <!-- JSON (de)serialization — patching tool template JSON on injection -->
+        <!-- JSON (de)serialization: patching tool template JSON on injection -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
-        <!-- Gravitee Node API — OpenTelemetry Tracer / Span / InternalRequest types used
+        <!-- Gravitee Node API: OpenTelemetry Tracer / Span / InternalRequest types used
              for the (nullable) pipeline/step/model tracing seam. Pulls io.opentelemetry.api
              (SpanKind) transitively. -->
         <dependency>
@@ -89,7 +89,7 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Micrometer — inference metrics API (MeterRegistry / Counter / Timer). The
+        <!-- Micrometer: inference metrics API (MeterRegistry / Counter / Timer). The
              Prometheus backend stays in the container; the engine only references the API. -->
         <dependency>
             <groupId>io.micrometer</groupId>

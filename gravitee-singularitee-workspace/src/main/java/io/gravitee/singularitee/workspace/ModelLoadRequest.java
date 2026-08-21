@@ -27,18 +27,12 @@ import io.gravitee.singularitee.workspace.config.VllmConfig;
 import java.util.List;
 
 /**
- * Internal DTO carrying the information needed to construct a local {@link io.gravitee.singularitee.engine.ModelEngine}.
+ * Internal DTO carrying what the engine factory layer needs to construct a local model engine.
  *
- * <p>Replaces {@code PublishModelRequest} (the removed gRPC wire message) as the
- * handoff type between {@link YamlWorkspaceLoader} and the engine factory layer.
- * Exactly one of the engine-config fields is non-{@code null}; all others are
- * {@code null}. The non-null field determines which {@link ModelEngineFactoryType}
- * is selected.
- *
- * <p>Engine configs ({@link io.gravitee.singularitee.workspace.config.LlamaCppConfig},
- * {@link io.gravitee.singularitee.workspace.config.VllmConfig}, etc.) are plain
- * records — they carry only configuration and never touch an RPC, so they no
- * longer live in proto at all.
+ * <p>This is the handoff type between {@link YamlWorkspaceLoader} and the engine factories.
+ * Exactly one of the engine-config fields is non-{@code null}; the non-null field selects
+ * the factory. Engine configs ({@link LlamaCppConfig}, {@link VllmConfig}, etc.) are plain
+ * records that never travel over the wire.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -55,7 +49,7 @@ public record ModelLoadRequest(
   String modelPath,
   /** Memory-check behaviour at load time. */
   MemoryCheckPolicyType memoryCheckPolicy,
-  // ── Engine configs — exactly one is non-null ──────────────────────────
+  // Engine configs: exactly one is non-null.
   LlamaCppConfig llamaCppConfig,
   VllmConfig vllmConfig,
   OnnxClassifierConfig onnxClassifier,
@@ -67,7 +61,7 @@ public record ModelLoadRequest(
   LlamaCppRerankerConfig llamaCppReranker,
   /**
    * Glob patterns for repository files to skip when downloading this model, from
-   * {@code download.exclude:} in the workspace. Never {@code null} — an empty
+   * {@code download.exclude:} in the workspace. Never {@code null}; an empty
    * list means "download whatever the engine's own selection rules picked".
    *
    * @see WorkspaceDefinition.DownloadDef
@@ -164,8 +158,8 @@ public record ModelLoadRequest(
   }
 
   /**
-   * Returns a copy of this request carrying the workspace's publication metadata —
-   * the declared task override and catalogue visibility.
+   * Returns a copy of this request carrying the workspace's publication metadata:
+   * the declared task override, catalogue visibility and input modalities.
    *
    * <p>Applied by {@link YamlWorkspaceLoader} for the same reason as
    * {@link #withDownloadExclude(List)}: both are model-level and mean the same

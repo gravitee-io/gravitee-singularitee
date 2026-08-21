@@ -24,7 +24,7 @@ import java.util.List;
  *
  * <p>{@code token} carries a content delta; {@code reasoning} carries a thinking/reasoning
  * delta (rendered as OpenAI {@code reasoning_content}); {@code tool} carries a tool-call
- * payload delta ({@code STEP_ROLE_TOOL} on the wire — the BARE payload, tag markers
+ * payload delta ({@code STEP_ROLE_TOOL} on the wire: the BARE payload, tag markers
  * suppressed engine-side; buffered and parsed into structured {@code tool_calls}).
  * At most one of them is set on a non-final token; all are {@code null} on the final token,
  * which instead carries usage, finish reason and performance.
@@ -74,7 +74,7 @@ public record TokenMessage(
     return builder().progress(progress).build();
   }
 
-  /** Fluent builder replacing the former telescoping constructors. */
+  /** Fluent builder for {@link TokenMessage}. */
   public static final class Builder {
 
     private String token;

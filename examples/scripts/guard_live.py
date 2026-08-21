@@ -53,7 +53,7 @@ INSTRUCT = os.environ.get(
 THRESHOLD = float(os.environ.get("THRESHOLD", "0.5"))
 FONT_SCALE = float(os.environ.get("FONT_SCALE", "1.1"))
 
-# Fixed Shieldstral system message — do not reword it, the model was trained on it.
+# Fixed Shieldstral system message: do not reword it, the model was trained on it.
 SYSTEM = (
     "Judge whether the Document meets the requirements based on the Query "
     'and the Instruction provided. Note that the answer can only be "yes" or "no".'
@@ -172,7 +172,7 @@ def overlay(frame):
     panel = frame.copy()
     cv2.rectangle(panel, (0, h - box_h), (w, h), (0, 0, 0), -1)
     frame = cv2.addWeighted(panel, 0.55, frame, 0.45, 0)
-    # Thin full-frame border in the verdict colour — visible even at a distance.
+    # Thin full-frame border in the verdict colour, visible even at a distance.
     cv2.rectangle(frame, (0, 0), (w - 1, h - 1), color, max(2, thick * 2))
     y = h - box_h + line_h
     cv2.putText(frame, label, (12, y), FONT, fs * 1.3, color, thick + 1, cv2.LINE_AA)
@@ -201,7 +201,7 @@ def preflight():
     """Prove the guard answers yes/no on an image before opening the camera.
 
     A text-only server drops image parts silently, and a chat model would reply
-    with prose — either way the verdict parsing would quietly misbehave. Probe
+    with prose, either way the verdict parsing would quietly misbehave. Probe
     with a plain black image: any single-token yes/no answer means the sandwich
     round-trips. Set SKIP_PREFLIGHT=1 to bypass.
     """
@@ -231,13 +231,13 @@ def preflight():
         raise SystemExit(
             f"Preflight: expected a yes/no verdict, got {reply!r}.\n"
             f"Is {MODEL!r} on {BASE_URL} really Shieldstral with mmproj enabled?\n"
-            "(examples/llama/shieldstral-3b.yaml — uncomment mmproj_path)\n"
+            "(examples/llama/shieldstral-3b.yaml, uncomment mmproj_path)\n"
             "SKIP_PREFLIGHT=1 to bypass."
         )
 
 
 preflight()
-print("preflight ok — the guard returned a yes/no verdict on the test image")
+print("preflight ok: the guard returned a yes/no verdict on the test image")
 
 cap = cv2.VideoCapture(CAMERA)
 if not cap.isOpened():
@@ -252,7 +252,7 @@ try:
         with _lock:
             _recent.append(frame.copy())
 
-        cv2.imshow("guard live — SPACE=check  q=quit", overlay(frame))
+        cv2.imshow("guard live  SPACE=check  q=quit", overlay(frame))
         key = cv2.waitKey(1) & 0xFF
         if key in (ord("q"), 27):  # q or ESC
             break
@@ -268,7 +268,7 @@ finally:
     cv2.destroyAllWindows()
     with _lock:
         if _dropped:
-            print(f"\n{_dropped} tick(s) dropped — the guard could not keep up with {INTERVAL}s.")
+            print(f"\n{_dropped} tick(s) dropped: the guard could not keep up with {INTERVAL}s.")
             print("Raise INTERVAL or lower IMG_WIDTH to close the gap.")
 
 print("\nDONE")

@@ -25,8 +25,8 @@ import java.util.Map;
  * The full score distribution across all labels is available via {@link #allScores()}.
  *
  * @param topLabel   the label with the highest score
- * @param topScore   the score of the top label (0.0–1.0)
- * @param allScores  full map of label → score for all classes
+ * @param topScore   the score of the top label (0.0 to 1.0)
+ * @param allScores  full map of label to score for all classes
  * @param results    ordered list of individual {@link ClassifyResult} entries (may include
  *                   token-level results for NER / token-classification models)
  *

@@ -18,10 +18,7 @@ package io.gravitee.singularitee.workspace.config;
 /**
  * Draft-model speculative decoding parameters.
  *
- * <p>Plain configuration, never on the wire — one of the former
- * {@code model-config.proto} messages, converted to a record. Numeric zero means
- * "engine default", mirroring the proto3 semantics every consumer was written
- * against.
+ * <p>Plain configuration, never on the wire. Numeric zero means "engine default".
  */
 public record SpeculativeConfig(
   int nDraft,
@@ -32,11 +29,13 @@ public record SpeculativeConfig(
   float topP,
   long seed
 ) {
+  /** Returns a builder with every field at its default. */
   public static Builder newBuilder() {
     return new Builder();
   }
 
-  /** Kept proto-shaped so the YAML-to-config layer reads unchanged. */
+  /** Mirrors the record components; unset fields keep the engine defaults. */
+  /** Fluent builder; unset fields keep the engine defaults. */
   public static final class Builder {
 
     private int nDraft;

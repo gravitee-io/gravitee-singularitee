@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
  * <p>{@code TextGenEngine} requires longest-first, and the reason is a real
  * failure rather than tidiness: neutralisation replaces these markers in order,
  * so if a short token is replaced first it can consume part of a longer one and
- * leave a fragment behind — which is exactly the forged turn boundary the
+ * leave a fragment behind, which is exactly the forged turn boundary the
  * neutralisation exists to prevent. vLLM's tokenizer returns
  * {@code all_special_tokens} in declaration order, not by length, so the engine
  * has to sort.
@@ -51,7 +51,7 @@ class VllmSpecialTokenOrderTest {
 
   @Test
   void longer_tokens_come_first() {
-    // Declaration order as Qwen3's tokenizer actually reports it — <|im_end|>
+    // Declaration order as Qwen3's tokenizer actually reports it: <|im_end|>
     // precedes the longer <|object_ref_start|>.
     var normalised = normalise(
       List.of(

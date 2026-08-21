@@ -35,6 +35,11 @@ public final class BearerTokenAuthHandler implements Handler<RoutingContext> {
 
   private final List<byte[]> tokenDigests;
 
+  /**
+   * Creates a handler accepting any of {@code tokens}.
+   *
+   * @throws IllegalArgumentException when {@code tokens} is null or empty
+   */
   public BearerTokenAuthHandler(Collection<String> tokens) {
     if (tokens == null || tokens.isEmpty()) {
       throw new IllegalArgumentException(

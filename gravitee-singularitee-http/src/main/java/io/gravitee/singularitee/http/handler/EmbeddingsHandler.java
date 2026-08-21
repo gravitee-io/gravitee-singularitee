@@ -31,7 +31,15 @@ import java.nio.ByteOrder;
 import java.util.Base64;
 import java.util.List;
 
-/** {@code POST /v1/embeddings} — OpenAI embeddings ({@code float} or {@code base64} encoding). */
+/**
+ * {@code POST /v1/embeddings}: OpenAI embeddings.
+ *
+ * <p>Accepts {@code model}, {@code input} (string or array of strings) and
+ * {@code encoding_format} ({@code float}, the default, or {@code base64} little-endian
+ * float32). Emits 400 {@code invalid_request_error} for a malformed payload, 400
+ * {@code model_not_found} for an unknown or hidden model, and 500 {@code internal_error} on
+ * engine failure.
+ */
 public final class EmbeddingsHandler implements Handler<RoutingContext> {
 
   private final GraviteeVectorServiceImpl vector;

@@ -24,6 +24,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Compact-constructor validation and defaults of {@link VllmConfig}.
+ *
+ * @author Rémi SULTAN (remi.sultan at graviteesource.com)
+ * @author GraviteeSource Team
+ */
 class VllmConfigTest {
 
   @Nested

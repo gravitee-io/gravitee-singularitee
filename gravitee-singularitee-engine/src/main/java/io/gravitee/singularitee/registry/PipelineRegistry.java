@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
  * the lifetime of the process. The registry only validates that every model
  * reference in a pipeline resolves against the {@link ModelRegistry} at
  * register time and serves look-ups thereafter. There is no runtime lifecycle
- * (no retirement, no updates) — the deployment is static.
+ * (no retirement, no updates): the deployment is static.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -45,6 +45,7 @@ public final class PipelineRegistry {
   private final ModelRegistry modelRegistry;
   private final ConcurrentHashMap<String, PipelineEntry> pipelines = new ConcurrentHashMap<>();
 
+  /** Creates a registry that resolves step models through {@code modelRegistry}. */
   public PipelineRegistry(ModelRegistry modelRegistry) {
     this.modelRegistry = modelRegistry;
   }
@@ -99,6 +100,7 @@ public final class PipelineRegistry {
   // Get
   // ---------------------------------------------------------------------------
 
+  /** Looks up a registered pipeline by id. */
   public Optional<PipelineEntry> get(String pipelineId) {
     return Optional.ofNullable(pipelines.get(pipelineId));
   }
@@ -107,10 +109,12 @@ public final class PipelineRegistry {
   // List
   // ---------------------------------------------------------------------------
 
+  /** Returns a snapshot of every registered pipeline. */
   public List<PipelineEntry> list() {
     return List.copyOf(pipelines.values());
   }
 
+  /** Returns the live id-to-entry view of the registry. */
   public java.util.Set<java.util.Map.Entry<String, PipelineEntry>> entries() {
     return pipelines.entrySet();
   }
@@ -120,13 +124,13 @@ public final class PipelineRegistry {
   // ---------------------------------------------------------------------------
 
   /**
-   * Resolves the model behind a pipeline's output step — the one that decides what
+   * Resolves the model behind a pipeline's output step, the one that decides what
    * the pipeline is, i.e. its task.
    *
    * <p>A pipeline's public surface is the surface of whatever produces its answer:
    * a pipeline ending in a text-gen model is a text-generation endpoint no matter
    * how many guards and routers precede it. So the derivation asks the engine
-   * rather than the step type — only the engine can tell sequence-level
+   * rather than the step type: only the engine can tell sequence-level
    * classification from token-level.
    *
    * <p>Falls back to the entry step when no step claims {@code role: output}, and
@@ -160,7 +164,7 @@ public final class PipelineRegistry {
    *
    * <p>Unlike the task, this is not a property of the output step. Media rides on
    * the request's messages and reaches whichever step feeds those messages to a
-   * model — a caption-then-polish pipeline decodes its image in the entry step and
+   * model: a caption-then-polish pipeline decodes its image in the entry step and
    * answers from a text-only model. A union rather than an intersection because
    * that is how media flows: a text-only guard in front of a vision model does not
    * stop the image reaching the model that can read it.
@@ -210,6 +214,7 @@ public final class PipelineRegistry {
   // PipelineEntry record
   // ---------------------------------------------------------------------------
 
+  /** A registered pipeline with its lifecycle status and in-flight request counter. */
   public record PipelineEntry(
     Pipeline pipeline,
     PipelineStatus status,

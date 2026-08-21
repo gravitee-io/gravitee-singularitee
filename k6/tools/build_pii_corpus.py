@@ -115,7 +115,7 @@ def main() -> None:
                 total += r[1]
             if n_pii and not chosen:
                 if pii:
-                    pii.popleft()  # front row alone can never fit — discard it
+                    pii.popleft()  # front row alone can never fit; discard it
                 return None
             seeds = set(id(r) for r in chosen)
             skipped = []
@@ -130,7 +130,7 @@ def main() -> None:
             if total < lo:
                 return None
             rng.shuffle(chosen)
-            # joining retokenizes differently than the per-row sum — trim clean rows
+            # joining retokenizes differently than the per-row sum; trim clean rows
             # until the real paragraph token count fits the window
             text, spans = finalize(chosen)
             real = ntok(text)

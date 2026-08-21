@@ -18,10 +18,13 @@ package io.gravitee.singularitee.inference.onnx.bert.embedding;
 import io.gravitee.singularitee.inference.math.api.GioMaths;
 
 /**
+ * Per-chunk embedding vectors with the weight of each chunk (its content-token count).
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
 public record EmbeddingsWithWeights(float[][] embeddings, float[] weights) {
+  /** The L2-normalized, weight-averaged vector. */
   public float[] toNormalizedWeighted(GioMaths gioMath) {
     var weightedMean = gioMath.weightedMean(embeddings, weights);
     return gioMath.normalize(weightedMean);

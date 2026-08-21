@@ -26,8 +26,8 @@ import java.util.concurrent.Callable;
  *
  * <p>Provides the idiomatic Vert.x RxJava3 scheduling pattern:
  * <ul>
- *   <li>{@code subscribeOn(blockingScheduler)} — offloads to a Vert.x worker thread</li>
- *   <li>{@code observeOn(eventLoopScheduler)} — delivers results back on the event loop</li>
+ *   <li>{@code subscribeOn(blockingScheduler)}: offloads to a Vert.x worker thread</li>
+ *   <li>{@code observeOn(eventLoopScheduler)}: delivers results back on the event loop</li>
  * </ul>
  *
  * <p>Subclasses call {@link #rxInfer(Callable)} to wrap any blocking inference call.
@@ -43,6 +43,9 @@ public abstract class BlockingEngineAdapter<D> {
   private final Scheduler workerScheduler;
   private final Scheduler eventLoopScheduler;
 
+  /**
+   * Binds the blocking delegate and derives the worker and event-loop schedulers from {@code vertx}.
+   */
   protected BlockingEngineAdapter(D delegate, Vertx vertx) {
     this.delegate = delegate;
     this.workerScheduler = RxHelper.blockingScheduler(vertx);
@@ -65,7 +68,7 @@ public abstract class BlockingEngineAdapter<D> {
 
   /**
    * The Vert.x event-loop scheduler, for delivering results produced off-Vert.x (e.g. by a
-   * {@link io.reactivex.rxjava3.core.Single} whose value is completed on a foreign thread) back onto
+   * {@link Single} whose value is completed on a foreign thread) back onto
    * the event loop.
    */
   protected Scheduler eventLoopScheduler() {

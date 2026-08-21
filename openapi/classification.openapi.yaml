@@ -1,0 +1,197 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+openapi: 3.1.0
+info:
+  title: Singularitee Classification API
+  version: "1.0"
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  description: |
+    Text classification over the HTTP API of `gravitee-singularitee-http`. This is
+    an additional endpoint.
+
+    - The path is served under `/v1` (documented here) and bare (`/classify`).
+    - `model` is the id of a published classifier (`onnx_classifier`,
+      `gliner_classifier`, `gliner_ner`, `regex`, `composite_classifier`,
+      `remote_classifier`). Pipelines are not accepted here. An unknown id or an
+      entry published with `visible: false` returns `400` with
+      `code: model_not_found`; a model of another task returns `400` with
+      `code: unsupported_model`.
+    - Validation is lenient: unknown fields are accepted; required fields, types and
+      enums are enforced and every violation is joined into one `400`.
+    - The server is opt-in (`http.enabled: false` by default) and listens on port `8080`.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+tags:
+  - name: Classification
+    description: Sequence, token and zero-shot classification.
+
+paths:
+  /v1/classify:
+    post:
+      tags: [Classification]
+      operationId: classify
+      summary: Classify text
+      description: |
+        Sequence classification (one label set per input), token classification
+        (NER and PII spans with character offsets), and zero-shot classification
+        via per-request `labels` (GLiNER models; labels without a `name` are ignored).
+        Each input is classified independently; results are returned in input order.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClassifyRequest"
+      responses:
+        "200":
+          description: One result per input.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClassifyResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Opt-in API-key auth (`http.auth.enabled: true`, `http.auth.type: bearer`,
+        keys in `http.auth.tokens`). When disabled, requests need no credentials.
+        Failures return 401 with `WWW-Authenticate: Bearer` and `code: invalid_api_key`.
+
+  responses:
+    BadRequest:
+      description: |
+        Invalid JSON or schema violation (`code: invalid_request_error`), missing
+        `model` or empty `input` (`param` names the field), unknown or hidden model
+        (`code: model_not_found`), or a model that is not a classifier
+        (`code: unsupported_model`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: "Missing or invalid bearer token (`code: invalid_api_key`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: "Unexpected server error (`type: internal_error`, `code: internal_error`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotReady:
+      description: "Workspace still loading (`type: server_error`, `code: model_not_ready`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, type, param, code]
+          properties:
+            message: { type: string }
+            type:
+              type: string
+              enum: [invalid_request_error, internal_error, server_error]
+            param:
+              type: [string, "null"]
+              description: The offending field, or `null`.
+            code:
+              type: [string, "null"]
+              enum:
+                - invalid_request_error
+                - model_not_found
+                - unsupported_model
+                - invalid_api_key
+                - model_not_ready
+                - not_found
+                - method_not_allowed
+                - internal_error
+                - null
+
+    ClassifyRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+          description: Id of a published classifier model.
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              minItems: 1
+              items: { type: string }
+        labels:
+          type: array
+          description: Zero-shot labels (GLiNER models); replace the model's default labels for this request. Omit for fixed-label models.
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
+              description: { type: string }
+
+    ClassifyResponse:
+      type: object
+      properties:
+        id: { type: string, description: "`cls-<epoch seconds>`" }
+        object: { type: string, const: classification }
+        model: { type: string }
+        results:
+          type: array
+          description: One result per input, in order.
+          items:
+            type: object
+            properties:
+              top_label: { type: string }
+              top_score: { type: number }
+              scores:
+                type: object
+                description: Score per label.
+                additionalProperties: { type: number }
+              spans:
+                type: array
+                description: Present only for token-classification results (entries that carry a character offset).
+                items:
+                  type: object
+                  required: [label, score, start]
+                  properties:
+                    label: { type: string }
+                    score: { type: number }
+                    token: { type: string, description: Matched text; absent when the engine does not report it. }
+                    start: { type: integer, description: "Character offset, inclusive." }
+                    end: { type: integer, description: "Character offset, exclusive; absent when the engine does not report it." }

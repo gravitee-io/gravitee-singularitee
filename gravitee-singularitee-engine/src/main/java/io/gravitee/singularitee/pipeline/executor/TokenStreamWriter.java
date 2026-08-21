@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
  * <p>Shared by the direct {@code Infer} path (the gRPC client response stream) and the
  * pipeline path (a {@code TokenCaptureStream}). The subscriber writes CREATED / DELTA /
  * COMPLETED events on the stream's Vert.x context and applies real write-queue
- * backpressure — it pulls the next token only once the queue drains, so a slow client
+ * backpressure: it pulls the next token only once the queue drains, so a slow client
  * backs up only its own bounded per-sequence buffer (never the engine's decode loop).
  * On buffer overflow or engine error it cancels the sequence and emits a terminal FAILED.
  *
@@ -85,7 +85,10 @@ public final class TokenStreamWriter {
     return subscriber;
   }
 
-  // Package-private (not private) so the streaming behaviour can be unit-tested directly.
+  /**
+   * Pulls tokens from the engine one at a time and writes them to the client stream,
+   * requesting the next only when the write queue has room. Package-private for tests.
+   */
   static final class WriteStreamSubscriber
     implements FlowableSubscriber<ModelEngineToken>, TokenStreamHandle {
 
@@ -160,7 +163,7 @@ public final class TokenStreamWriter {
         abort();
         return;
       }
-      // Pull the next token only when the write queue has room — real backpressure
+      // Pull the next token only when the write queue has room: real backpressure
       // from the socket back to the per-sequence buffer.
       if (response.writeQueueFull()) {
         response.drainHandler(d -> subscription.request(1));
@@ -178,7 +181,7 @@ public final class TokenStreamWriter {
           return;
         }
         LOGGER.warn(
-          "Token stream for seq {} failed: {} — cancelling sequence",
+          "Token stream for seq {} failed: {}, cancelling sequence",
           seqId,
           t.getMessage()
         );
@@ -204,7 +207,7 @@ public final class TokenStreamWriter {
     public void cancel() {
       Subscription s = subscription;
       if (s != null) {
-        s.cancel(); // → rxStream doOnCancel → cancelSequence
+        s.cancel(); // rxStream doOnCancel then cancelSequence
       }
     }
 
@@ -264,7 +267,7 @@ public final class TokenStreamWriter {
    * Builds an OUTPUT_TEXT_DELTA event, stamped {@code STEP_ROLE_THINKING} when the
    * engine classified the token as {@link TokenChannel#REASONING} and
    * {@code STEP_ROLE_TOOL} for {@link TokenChannel#TOOL}. With engine-side tag
-   * suppression the tool-span text is the BARE payload — the role stamp is the only
+   * suppression the tool-span text is the BARE payload; the role stamp is the only
    * signal downstream tool parsing has.
    */
   static InferResponse delta(String text, TokenChannel channel) {

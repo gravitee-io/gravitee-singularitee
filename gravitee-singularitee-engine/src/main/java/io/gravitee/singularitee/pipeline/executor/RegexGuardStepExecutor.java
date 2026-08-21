@@ -50,15 +50,15 @@ import org.slf4j.LoggerFactory;
  * When a match fires, the executor scans the groups {@code P0}, {@code P1}, …
  * to find the matching index, then maps it back to the corresponding entry's
  * {@code name}. Users never write named-group syntax in their patterns and
- * there are no Java identifier restrictions on the entry names — spaces,
+ * there are no Java identifier restrictions on the entry names: spaces,
  * dashes, slashes, and other characters are all valid labels.
  *
  * <p>Context variables written on match:
  * <ul>
- *   <li>{@code <stepId>.triggered}   — {@code "true"}</li>
- *   <li>{@code <stepId>.match}       — the first matched substring</li>
- *   <li>{@code <stepId>.pattern}     — the first matched pattern string</li>
- *   <li>{@code <stepId>.entity_type} — the name of the first matched entry</li>
+ *   <li>{@code <stepId>.triggered}: {@code "true"}</li>
+ *   <li>{@code <stepId>.match}: the first matched substring</li>
+ *   <li>{@code <stepId>.pattern}: the first matched pattern string</li>
+ *   <li>{@code <stepId>.entity_type}: the name of the first matched entry</li>
  * </ul>
  *
  * <h3>REDACT</h3>
@@ -73,8 +73,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Context variables written on match:
  * <ul>
- *   <li>{@code <stepId>.triggered}    — {@code "true"}</li>
- *   <li>{@code <stepId>.entity_types} — CSV of matched entry names</li>
+ *   <li>{@code <stepId>.triggered}: {@code "true"}</li>
+ *   <li>{@code <stepId>.entity_types}: CSV of matched entry names</li>
  * </ul>
  *
  * <h3>Compiled-pattern cache</h3>
@@ -120,7 +120,7 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
   @Override
   public Maybe<String> execute(String stepId, RegexGuardStepConfig cfg, StepContext ctx) {
     if (cfg.getPatternsCount() == 0) {
-      LOGGER.debug("RegexGuard '{}': no patterns configured — skipping", stepId);
+      LOGGER.debug("RegexGuard '{}': no patterns configured, skipping", stepId);
       return ctx.rxNextStep(stepId);
     }
 
@@ -134,7 +134,7 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
     }
   }
 
-  // ── REJECT / WARN — single combined alternation with positional groups ────
+  // REJECT / WARN: single combined alternation with positional groups
 
   private Maybe<String> executeTrigger(
     String stepId,
@@ -150,7 +150,7 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
       return ctx.rxNextStep(stepId);
     }
 
-    // Find which P{i} group matched — the first non-null group is the winner
+    // Find which P{i} group matched; the first non-null group is the winner
     int matchedIdx = -1;
     for (int i = 0; i < entries.size(); i++) {
       if (m.group("P" + i) != null) {
@@ -168,7 +168,7 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
     String matchedText = m.group("P" + matchedIdx);
 
     LOGGER.info(
-      "RegexGuard '{}': triggered — name='{}', match='{}', action={}",
+      "RegexGuard '{}': triggered: name='{}', match='{}', action={}",
       stepId,
       matched.getName(),
       matchedText,
@@ -191,7 +191,7 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
       case GUARD_ACTION_WARN -> {
         pctx.set(PipelineContext.KEY_GUARD_TRIGGERED, stepId);
         LOGGER.warn(
-          "RegexGuard '{}': warning — name='{}', match='{}'",
+          "RegexGuard '{}': warning: name='{}', match='{}'",
           stepId,
           matched.getName(),
           matchedText
@@ -207,7 +207,7 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
     return ctx.rxNextStep(stepId);
   }
 
-  // ── REDACT — per-entry span collection ───────────────────────────────────
+  // REDACT: per-entry span collection
 
   private Maybe<String> executeRedact(
     String stepId,
@@ -258,7 +258,7 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
     String entityTypesCsv = String.join(", ", matchedNames);
 
     LOGGER.info(
-      "RegexGuard '{}': redacting {} span(s) — types=[{}]",
+      "RegexGuard '{}': redacting {} span(s), types=[{}]",
       stepId,
       mergedBounds.size(),
       entityTypesCsv
@@ -354,7 +354,7 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
       : inputField;
     String value = ctx.pipelineContext().get(field);
     if (value == null || value.isBlank()) {
-      LOGGER.debug("RegexGuard '{}': input field '{}' is empty — skipping", stepId, field);
+      LOGGER.debug("RegexGuard '{}': input field '{}' is empty, skipping", stepId, field);
       return null;
     }
     return value;

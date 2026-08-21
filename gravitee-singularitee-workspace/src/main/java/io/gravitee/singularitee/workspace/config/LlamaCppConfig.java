@@ -18,11 +18,9 @@ package io.gravitee.singularitee.workspace.config;
 /**
  * llama.cpp engine configuration, as a plain record.
  *
- * <p>Never on the wire. Semantics mirror the proto3 message this replaces:
- * numeric zero and empty string mean "engine default". The three-valued flags
- * ({@code offloadKqv}, {@code useMlock}, {@code promptCache}) are boxed —
- * {@code null} means "unset", which a proto3 plain bool could not say and which
- * is exactly why this stopped being proto.
+ * <p>Never on the wire. Numeric zero and empty string mean "engine default".
+ * The three-valued flags ({@code offloadKqv}, {@code useMlock}, {@code promptCache})
+ * are boxed: {@code null} means "unset" so the engine default applies.
  */
 public record LlamaCppConfig(
   int nCtx,
@@ -68,15 +66,17 @@ public record LlamaCppConfig(
     eagle3Path = eagle3Path == null ? "" : eagle3Path;
   }
 
-  /** All engine defaults — what an absent YAML block means. */
+  /** All engine defaults: what an absent YAML block means. */
   public static LlamaCppConfig getDefaultInstance() {
     return DEFAULT;
   }
 
+  /** Returns a builder with every field at its default. */
   public static Builder newBuilder() {
     return new Builder();
   }
 
+  /** Fluent builder; unset fields keep the engine defaults. */
   public static final class Builder {
 
     private int nCtx;

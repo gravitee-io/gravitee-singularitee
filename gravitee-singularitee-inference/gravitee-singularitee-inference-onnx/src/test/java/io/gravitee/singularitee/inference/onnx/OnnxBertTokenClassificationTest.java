@@ -33,6 +33,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
 /**
+ * {@link OnnxBertClassifierModel} in token mode on a DistilBERT NER head.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
@@ -195,7 +197,7 @@ public class OnnxBertTokenClassificationTest extends OnnxBertBaseTest {
     String sentence = "My name is Laura and I live in Houston, Texas";
 
     // tiny budget forces the sentence to span several chunks, so detected spans live in chunks
-    // whose start offset is non-zero — exercising the offset re-mapping in combineToken
+    // whose start offset is non-zero, exercising the offset re-mapping
     var chunkedModel = new OnnxBertClassifierModel(
       new OnnxBertConfig(
         TOKEN_ONNX_BERT_RESOURCE,

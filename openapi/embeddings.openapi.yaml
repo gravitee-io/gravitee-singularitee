@@ -1,0 +1,342 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+openapi: 3.1.0
+info:
+  title: Singularitee Embeddings and Reranking API
+  version: "1.0"
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  description: |
+    Embeddings, reranking and text similarity over the HTTP API of
+    `gravitee-singularitee-http`. `/v1/embeddings` is OpenAI-compatible;
+    `/v1/rerank` and `/v1/similarity` are additional extensions.
+
+    - Every path is served under `/v1` (documented here) and bare (`/embeddings`).
+    - `model` is the id of a published embedding model (`onnx_embedding`,
+      `llama_cpp_embedding`, `remote_embedding`) or, on `/v1/rerank` only, a reranker
+      model (`onnx_reranker`, `llama_cpp_reranker`, `remote_reranker`). A cross-encoder
+      reranker scores query-document pairs directly; an embedding model ranks by cosine
+      similarity. Pipelines are not accepted here. An unknown id or an entry published
+      with `visible: false` returns `400` with `code: model_not_found`; a model of
+      another task returns `400` with `code: unsupported_model`.
+    - Validation is lenient: unknown fields are accepted; required fields, types and
+      enums are enforced and every violation is joined into one `400`.
+    - The server is opt-in (`http.enabled: false` by default) and listens on port `8080`.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+tags:
+  - name: Embeddings
+    description: Dense vector embeddings.
+  - name: Reranking
+    description: Reranking and text similarity.
+
+paths:
+  /v1/embeddings:
+    post:
+      tags: [Embeddings]
+      operationId: createEmbedding
+      summary: Create embeddings
+      description: |
+        One vector per input, in input order. `encoding_format: base64` returns each
+        vector as a base64 string of little-endian float32 values. `dimensions` is
+        accepted by validation but ignored by the server. `usage` counts the tokens
+        of every input.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingsRequest"
+      responses:
+        "200":
+          description: Embedding list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingsResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/rerank:
+    post:
+      tags: [Reranking]
+      operationId: rerank
+      summary: Rerank documents against a query
+      description: |
+        Returns the documents sorted by relevance score, descending. `top_k: 0`
+        (the default) returns every document. Non-string entries in `documents`
+        are dropped before scoring, so `index` refers to the filtered list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RerankRequest"
+      responses:
+        "200":
+          description: Documents ranked by relevance score, descending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RerankResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/similarity:
+    post:
+      tags: [Reranking]
+      operationId: similarity
+      summary: Compute text similarity
+      description: |
+        Cosine similarity between embedded texts. `mode: cross` (default) scores
+        every input against every candidate and returns a matrix (rows are inputs,
+        columns are candidates). `mode: zipped` pairs inputs and candidates
+        element-wise and requires equal lengths, otherwise `400`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimilarityRequest"
+      responses:
+        "200":
+          description: Similarity scores.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimilarityResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Opt-in API-key auth (`http.auth.enabled: true`, `http.auth.type: bearer`,
+        keys in `http.auth.tokens`). When disabled, requests need no credentials.
+        Failures return 401 with `WWW-Authenticate: Bearer` and `code: invalid_api_key`.
+
+  responses:
+    BadRequest:
+      description: |
+        Invalid JSON or schema violation (`code: invalid_request_error`), a missing or
+        empty required field (`param` names it), `zipped` mode with unequal lengths
+        (`param: candidates`), unknown or hidden model (`code: model_not_found`), or a
+        model of the wrong task (`code: unsupported_model`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: "Missing or invalid bearer token (`code: invalid_api_key`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: "Unexpected server error (`type: internal_error`, `code: internal_error`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotReady:
+      description: "Workspace still loading (`type: server_error`, `code: model_not_ready`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, type, param, code]
+          properties:
+            message: { type: string }
+            type:
+              type: string
+              enum: [invalid_request_error, internal_error, server_error]
+            param:
+              type: [string, "null"]
+              description: The offending field, or `null`.
+            code:
+              type: [string, "null"]
+              enum:
+                - invalid_request_error
+                - model_not_found
+                - unsupported_model
+                - invalid_api_key
+                - model_not_ready
+                - not_found
+                - method_not_allowed
+                - internal_error
+                - null
+
+    EmbeddingsRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+          description: Id of a published embedding model.
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              minItems: 1
+              items: { type: string }
+        encoding_format:
+          type: string
+          enum: [float, base64]
+          default: float
+        dimensions:
+          type: integer
+          description: Accepted by validation but ignored by the server.
+
+    EmbeddingsResponse:
+      type: object
+      properties:
+        object: { type: string, const: list }
+        model: { type: string }
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              object: { type: string, const: embedding }
+              index: { type: integer, description: Position in the request `input`. }
+              embedding:
+                oneOf:
+                  - type: array
+                    items: { type: number }
+                  - type: string
+                    description: "With `encoding_format: base64`: base64 of little-endian float32."
+        usage:
+          type: object
+          properties:
+            prompt_tokens: { type: integer }
+            total_tokens: { type: integer }
+
+    # ---- rerank ----
+
+    RerankRequest:
+      type: object
+      required: [model, query, documents]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+          description: Id of a published reranker or embedding model.
+        query: { type: string }
+        documents:
+          type: array
+          minItems: 1
+          items: { type: string }
+        top_k:
+          type: integer
+          default: 0
+          description: Number of results to return; `0` returns all.
+        return_documents:
+          type: boolean
+          default: true
+          description: Echo each ranked document's text in `document`.
+
+    RerankResponse:
+      type: object
+      properties:
+        object: { type: string, const: rerank }
+        model: { type: string }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+                description: Index into the request `documents` array.
+              score: { type: number }
+              document:
+                type: string
+                description: "Present unless `return_documents: false`."
+        usage:
+          type: object
+          properties:
+            total_tokens: { type: integer, description: Tokens of the query and every document. }
+
+    # ---- similarity ----
+
+    SimilarityRequest:
+      type: object
+      required: [model, input, candidates]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+          description: Id of a published embedding model.
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              minItems: 1
+              items: { type: string }
+        candidates:
+          oneOf:
+            - type: string
+            - type: array
+              minItems: 1
+              items: { type: string }
+        mode:
+          type: string
+          enum: [cross, zipped]
+          default: cross
+          description: "`zipped` requires equal input and candidate lengths."
+
+    SimilarityResponse:
+      type: object
+      properties:
+        object: { type: string, const: similarity }
+        model: { type: string }
+        mode: { type: string, enum: [cross, zipped] }
+        results:
+          oneOf:
+            - type: array
+              items: { type: number }
+              description: "`zipped`: one score per pair."
+            - type: array
+              items:
+                type: array
+                items: { type: number }
+              description: "`cross`: matrix, rows are inputs, columns are candidates."
+        usage:
+          type: object
+          properties:
+            total_tokens: { type: integer, description: Tokens of every input and candidate. }

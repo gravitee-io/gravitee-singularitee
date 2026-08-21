@@ -16,11 +16,10 @@
 package io.gravitee.singularitee.inference.api.textgen;
 
 /**
- * Emission result from processing a token.
- * Contains the text that should be emitted and whether a stop sequence was matched.
+ * Outcome of feeding one decoded token through stop-string buffering.
  *
- * @param text The text to emit (may be empty if buffering)
- * @param stopMatched Whether a stop sequence was detected
+ * @param text text safe to emit now (empty while text is held back)
+ * @param stopMatched whether a stop string was detected, ending the sequence
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

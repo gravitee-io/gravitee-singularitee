@@ -15,12 +15,12 @@
 #
 
 
-# Generation model — Qwen3.6-35B (vLLM / vllm4j)
+# Generation model: Qwen3.6-35B (vLLM / vllm4j)
 #
 # Logical id: "llm". MoE 36B (256 experts), multimodal-capable architecture. ~72GB of weights,
 # so tensor_parallel_size 2 at minimum.
 #
-# Linux/CUDA only — needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
+# Linux/CUDA only: needs the vLLM virtualenv (-Dvllm4j.venv=/path/to/.venv)
 # unless you run the -vllm-cuda image, which bundles it.
 #
 # Swap-in for server-vllm-gptq.yaml / server-vllm-awq.yaml: replace the included

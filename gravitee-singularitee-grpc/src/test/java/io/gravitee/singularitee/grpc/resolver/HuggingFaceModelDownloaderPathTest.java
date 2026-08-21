@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * File names come from the HuggingFace API response — i.e. from whoever controls the
+ * File names come from the HuggingFace API response, i.e. from whoever controls the
  * repository a workspace names. They must never escape the model cache directory.
  */
 class HuggingFaceModelDownloaderPathTest {

@@ -28,7 +28,16 @@ import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
 
-/** {@code POST /v1/chat/completions} — OpenAI Chat Completions, streaming and buffered. */
+/**
+ * {@code POST /v1/chat/completions}: OpenAI Chat Completions, streaming and buffered.
+ *
+ * <p>Accepts the OpenAI request shape ({@code model}, {@code messages} with text, image and
+ * audio content parts, {@code tools}, {@code stream}, {@code stream_options}, sampling
+ * fields). {@code model} may name a text-generation model or a pipeline. Emits 400
+ * {@code invalid_request_error} for a malformed payload, 400 {@code model_not_found} for an
+ * unknown or hidden target, 400 {@code unsupported_modality} for media the target cannot
+ * read, and 500 {@code internal_error} on engine failure.
+ */
 public final class ChatCompletionsHandler implements Handler<RoutingContext> {
 
   private final GraviteeInferenceServiceImpl inference;
