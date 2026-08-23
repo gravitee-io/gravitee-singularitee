@@ -79,12 +79,7 @@ public class SequenceState<STATE> {
     this.engineState = engineState;
     this.stopStrings = stopStrings == null ? List.of() : stopStrings;
     this.maxStopLength = this.stopStrings.stream().mapToInt(String::length).max().orElse(0);
-
-    this.tokenType = String.class;
   }
-
-  @SuppressWarnings("unused")
-  final Class<?> tokenType;
 
   /**
    * Buffers a decoded token and returns the text safe to emit.

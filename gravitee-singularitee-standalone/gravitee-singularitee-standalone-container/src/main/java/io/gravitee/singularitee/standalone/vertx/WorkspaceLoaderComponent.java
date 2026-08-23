@@ -301,7 +301,10 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     var modelType = io.gravitee.singularitee.workspace.ModelType.parse(modelDef.type());
     ModelEngine engine = switch (modelType) {
       case REMOTE_LLM -> new RemoteTextGenEngine(client, modelDef.id());
-      case REMOTE_CLASSIFIER -> new RemoteClassifierEngine(client, modelDef.id());
+      // The proxy cannot probe the remote's task at registration (lazy by design, see
+      // above), so the declared task is what distinguishes a NER proxy from a sequence
+      // classifier; blank falls back to the engine's text-classification default.
+      case REMOTE_CLASSIFIER -> new RemoteClassifierEngine(client, modelDef.id(), modelDef.task());
       case REMOTE_EMBEDDING -> new RemoteEmbeddingEngine(client, modelDef.id());
       case REMOTE_RERANKER -> new RemoteRerankerEngine(client, modelDef.id());
       default -> throw new IllegalArgumentException("Not a remote model type: " + modelType);

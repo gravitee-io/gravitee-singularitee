@@ -21,37 +21,7 @@ package io.gravitee.singularitee.http.translation;
  * response formatter is used.
  */
 public enum EndpointType {
-  CHAT("/chat/completions"),
-  COMPLETION("/completions"),
-  RESPONSES("/responses"),
-  EMBEDDINGS("/embeddings"),
-  CLASSIFY("/classify"),
-  SIMILARITY("/similarity"),
-  RERANK("/rerank"),
-  UNKNOWN(null);
-
-  /** Cached values array to avoid allocation on every call. */
-  private static final EndpointType[] VALUES = values();
-
-  private final String pathSuffix;
-
-  EndpointType(String pathSuffix) {
-    this.pathSuffix = pathSuffix;
-  }
-
-  /**
-   * Resolves the {@link EndpointType} from a request path suffix. Order matters:
-   * {@code /chat/completions} is tested before {@code /completions} to avoid a false match.
-   */
-  public static EndpointType fromPath(String path) {
-    if (path == null) {
-      return UNKNOWN;
-    }
-    for (EndpointType type : VALUES) {
-      if (type.pathSuffix != null && path.endsWith(type.pathSuffix)) {
-        return type;
-      }
-    }
-    return UNKNOWN;
-  }
+  CHAT,
+  COMPLETION,
+  RESPONSES,
 }

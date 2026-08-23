@@ -37,6 +37,8 @@ grpc:
   # decides WHAT to present. Unset = JVM default trust store, no client cert.
   # client:
   #   ssl:
+  #     trustAll: false        # dev escape hatch: skip server verification (logs a warning)
+  #     verifyHostname: true   # certificate must match the host dialled
   #     truststore:            # verify the peer (a private CA)
   #       type: PKCS12         # PEM | JKS | PKCS12
   #       path: /certs/ca.p12
@@ -142,6 +144,14 @@ ai:
   #todos:
   #  session-ttl: 1800
   #  session-max-entries: 10000
+
+  # Deployment-wide vLLM GPU topology, applied to every vllm model that does not set
+  # its own tensor_parallel_size / pipeline_parallel_size / distributed_executor_backend.
+  # Unset (or < 1) leaves the per-model value or vLLM's default in force.
+  #vllm:
+  #  tensor-parallel-size: 1
+  #  pipeline-parallel-size: 1
+  #  distributed-executor-backend: mp   # mp | ray
 
   # Stored conversations for the OpenAI Responses continuation model
   # (previous_response_id / store). ttl is the idle timeout in seconds; 0 disables.

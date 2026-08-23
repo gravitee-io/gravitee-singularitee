@@ -31,15 +31,4 @@
     <name>Gravitee.io - Singularitee - Inference Math - Api</name>
     <description>API interface of io.gravitee.singularitee.inference.math</description>
 
-    <properties>
-        <oshi-core.version>6.8.2</oshi-core.version>
-    </properties>
-
-    <dependencies>
-        <dependency>
-            <groupId>com.github.oshi</groupId>
-            <artifactId>oshi-core</artifactId>
-            <version>${oshi-core.version}</version>
-        </dependency>
-    </dependencies>
 </project>

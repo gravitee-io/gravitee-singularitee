@@ -37,6 +37,11 @@
             <artifactId>gravitee-singularitee-inference-math-native</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- CPU feature probes behind SIMDMathFactory -->
+        <dependency>
+            <groupId>com.github.oshi</groupId>
+            <artifactId>oshi-core</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

@@ -391,13 +391,6 @@ public final class Model implements AutoCloseable {
     return mtmdContext != null && mtmdContext.supportsAudio();
   }
 
-  /**
-   * Returns the MtmdContext for multimodal operations, or null if not multimodal.
-   */
-  public MtmdContext getMtmdContext() {
-    return mtmdContext;
-  }
-
   /** Every string this model's vocabulary parses as a special token (cached by LlamaVocab). */
   public java.util.List<String> specialTokenTexts() {
     return vocab.specialTokenTexts();
@@ -681,18 +674,6 @@ public final class Model implements AutoCloseable {
         context.nCtx()
       );
     }
-  }
-
-  /**
-   * Builds the list of {@link MtmdMedia} from chat messages, in message order.
-   *
-   * @deprecated Use {@link #processMediaContent(List)}.
-   */
-  @Deprecated(since = "1.0", forRemoval = false)
-  private List<MtmdMedia> buildMedia(
-    List<io.gravitee.singularitee.inference.api.textgen.ChatMessage> messages
-  ) {
-    return processMediaContent(messages).media();
   }
 
   /** Frees every media resource in the list, continuing past individual failures. */

@@ -34,6 +34,7 @@
 
     <properties>
         <commons-math3.version>3.6.1</commons-math3.version>
+        <oshi-core.version>6.8.2</oshi-core.version>
     </properties>
 
     <modules>
@@ -42,11 +43,18 @@
         <module>gravitee-singularitee-inference-math-simd</module>
     </modules>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-math3</artifactId>
-            <version>${commons-math3.version}</version>
-        </dependency>
-    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-math3</artifactId>
+                <version>${commons-math3.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.oshi</groupId>
+                <artifactId>oshi-core</artifactId>
+                <version>${oshi-core.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 </project>

@@ -54,17 +54,6 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
     this.task = (task == null || task.isBlank()) ? ModelTasks.TEXT_CLASSIFICATION : task;
   }
 
-  /**
-   * Backwards-compatible constructor that assumes sequence-level classification.
-   *
-   * @deprecated use {@link #RemoteClassifierEngine(SingulariteeClient, String, String)}
-   * to propagate the remote model's task metadata.
-   */
-  @Deprecated
-  public RemoteClassifierEngine(SingulariteeClient client, String modelId) {
-    this(client, modelId, ModelTasks.TEXT_CLASSIFICATION);
-  }
-
   @Override
   public String task() {
     return task;

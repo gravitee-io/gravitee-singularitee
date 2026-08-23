@@ -95,7 +95,7 @@ message RankResponse {
 // ---------------------------------------------------------------------------
 
 message EmbedRequest {
-  // model_id returned by PublishModel (must be MODEL_TYPE_ONNX_EMBEDDING).
+  // id of a published embedding model (see ListModels).
   string model_id = 1;
   string text     = 2;
 }

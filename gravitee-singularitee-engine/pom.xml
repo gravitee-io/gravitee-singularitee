@@ -68,6 +68,12 @@
             <groupId>io.gravitee.node</groupId>
             <artifactId>gravitee-node-api</artifactId>
         </dependency>
+        <!-- Tracing API used directly (io.opentelemetry.api.trace); declared rather than
+             relied on through gravitee-node. -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+        </dependency>
         <!-- Standalone in-memory cache impl, tests only: TodoSessionStore tests run
              against the real thing instead of a mock. Production wiring lives in the
              container (pluggable CacheManager bean). -->

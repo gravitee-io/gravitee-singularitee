@@ -18,8 +18,6 @@ package io.gravitee.singularitee.service;
 import io.gravitee.singularitee.protocol.*;
 import io.gravitee.singularitee.registry.PipelineRegistry;
 import io.vertx.core.Future;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Vert.x gRPC service implementation for pipeline lifecycle management (read-only: Get / List).
@@ -35,8 +33,6 @@ import org.slf4j.LoggerFactory;
  * @author GraviteeSource Team
  */
 public class GraviteePipelineServiceImpl extends GraviteePipelineServiceGrpcService {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(GraviteePipelineServiceImpl.class);
 
   private final PipelineRegistry registry;
 

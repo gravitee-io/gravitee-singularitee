@@ -80,23 +80,6 @@ public final class InferenceResponseFormatter {
     );
   }
 
-  /** See {@link ChatCompletionsFormatter#chatBufferedStreamEvents}. */
-  public static Flowable<ServerEvent> chatBufferedStreamEvents(
-    Flowable<TokenMessage> tokenStream,
-    String modelName,
-    boolean includeUsage,
-    Consumer<TokenMessage> onFinal,
-    Map<String, JsonNode> toolParameterSchemas
-  ) {
-    return ChatCompletionsFormatter.chatBufferedStreamEvents(
-      tokenStream,
-      modelName,
-      includeUsage,
-      onFinal,
-      toolParameterSchemas
-    );
-  }
-
   /** See {@link ChatCompletionsFormatter#buildChatResponse}. */
   public static ObjectNode buildChatResponse(
     String modelName,

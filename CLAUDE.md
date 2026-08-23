@@ -94,7 +94,7 @@ Metal applies `gpu_memory_utilization` to *total* unified memory rather than wha
 | `standalone` | `bootstrap` (classloader), `container` (node, Spring, components), `distribution` (assembly). |
 
 Non-module directories: `examples/` (runnable workspaces), `docs/` (see below),
-`prod/` (production workspaces, gitignored), `k6/` (load tests), `docker/`, `release/`.
+`prod/` (production workspaces, gitignored), `k6/` (load tests), `docker/`.
 
 ---
 

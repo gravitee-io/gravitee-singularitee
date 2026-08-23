@@ -218,7 +218,7 @@ public final class PipelineRequestBuilder {
    * and no {@code top_logprobs}, only the chosen token's logprob is returned;
    * internally that is a collection depth of 1.
    */
-  public static int resolveTopLogprobs(JsonNode payload) {
+  private static int resolveTopLogprobs(JsonNode payload) {
     if (!payload.path("logprobs").asBoolean(false)) {
       return 0;
     }
@@ -590,7 +590,7 @@ public final class PipelineRequestBuilder {
    * {@code name}/{@code description}/{@code parameters} are also populated. Supports both the nested
    * Chat Completions shape and the flat Responses shape.
    */
-  public static ToolDefinition buildToolDefinition(JsonNode toolNode) {
+  private static ToolDefinition buildToolDefinition(JsonNode toolNode) {
     JsonNode functionNode = toolNode.at("/function");
     if (functionNode.isMissingNode() || !functionNode.isObject()) {
       functionNode = toolNode;

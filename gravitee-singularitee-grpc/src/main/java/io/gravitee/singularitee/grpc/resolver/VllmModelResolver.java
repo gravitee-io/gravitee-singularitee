@@ -260,9 +260,4 @@ public final class VllmModelResolver {
       );
     }
   }
-
-  /** Exposed for the engine factory, which needs the same cache layout. */
-  public Path cacheDir() {
-    return cacheDir;
-  }
 }

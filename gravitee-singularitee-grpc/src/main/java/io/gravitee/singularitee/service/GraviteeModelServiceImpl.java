@@ -167,14 +167,6 @@ public class GraviteeModelServiceImpl
   // ---------------------------------------------------------------------------
 
   /**
-   * Registers a pre-built {@link ModelEngine} directly into the model registry
-   * and stream map. Used for remote models declared in workspace YAML.
-   */
-  public String registerPrebuiltModel(String modelId, String modelName, ModelEngine engine) {
-    return registerPrebuiltModel(modelId, modelName, engine, "", true, List.of());
-  }
-
-  /**
    * Registers a pre-built {@link ModelEngine} along with the publication metadata
    * its workspace entry declared: the task override, catalogue visibility and
    * declared input modalities. Remote proxies and pure-Java engines have nothing

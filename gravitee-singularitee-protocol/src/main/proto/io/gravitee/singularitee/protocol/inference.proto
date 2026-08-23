@@ -116,7 +116,7 @@ message ClassifyBatchResponse {
 // ---------------------------------------------------------------------------
 
 message InferRequest {
-  // model_id returned by PublishModel.
+  // id of a published model (see ListModels).
   string model_id    = 1;
   // 2 retired: sequence_id.
   reserved 2; reserved "sequence_id";
@@ -155,7 +155,7 @@ message InferRequest {
 // ---------------------------------------------------------------------------
 
 message InferPipelineRequest {
-  // pipeline_id returned by PublishPipeline.
+  // id of a published pipeline (see ListPipelines).
   string pipeline_id = 1;
   // 2 retired: sequence_id.
   reserved 2; reserved "sequence_id";

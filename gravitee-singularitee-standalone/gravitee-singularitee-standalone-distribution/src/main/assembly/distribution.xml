@@ -25,34 +25,9 @@
     </formats>
     <includeBaseDirectory>false</includeBaseDirectory>
 
-    <!-- Static resources: bin/, config/ -->
-    <fileSets>
-        <fileSet>
-            <directory>src/main/resources/bin</directory>
-            <outputDirectory>bin</outputDirectory>
-            <fileMode>0755</fileMode>
-        </fileSet>
-        <fileSet>
-            <directory>src/main/resources/config</directory>
-            <outputDirectory>config</outputDirectory>
-            <filtered>true</filtered>
-        </fileSet>
-        <!-- Empty directories -->
-        <fileSet>
-            <directory>.</directory>
-            <outputDirectory>logs</outputDirectory>
-            <excludes>
-                <exclude>**/*</exclude>
-            </excludes>
-        </fileSet>
-        <fileSet>
-            <directory>.</directory>
-            <outputDirectory>plugins</outputDirectory>
-            <excludes>
-                <exclude>**/*</exclude>
-            </excludes>
-        </fileSet>
-    </fileSets>
+    <componentDescriptors>
+        <componentDescriptor>src/main/assembly/component-layout.xml</componentDescriptor>
+    </componentDescriptors>
 
     <!-- Gravitee JARs go to lib/ -->
     <dependencySets>

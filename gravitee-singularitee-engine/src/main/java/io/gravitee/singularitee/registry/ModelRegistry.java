@@ -16,7 +16,6 @@
 package io.gravitee.singularitee.registry;
 
 import io.gravitee.singularitee.engine.*;
-import io.reactivex.rxjava3.core.Maybe;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -146,25 +145,6 @@ public final class ModelRegistry {
   // ---------------------------------------------------------------------------
   // Get
   // ---------------------------------------------------------------------------
-
-  /**
-   * Reactively looks up a published model by its identifier.
-   *
-   * <p>Emits the {@link ModelEntry} if found, or completes empty if the model has
-   * not been published. All models are registered at startup and remain active for
-   * the lifetime of the process, so no draining/waiting is ever required.
-   *
-   * @param modelId the model identifier returned at registration
-   * @return a {@link Maybe} emitting the entry, or empty if not found
-   */
-  public Maybe<ModelEntry> rxGet(String modelId) {
-    ModelEntry entry = models.get(modelId);
-    if (entry == null) {
-      LOGGER.debug("rxGet('{}'): not found in registry (size={})", modelId, models.size());
-      return Maybe.empty();
-    }
-    return Maybe.just(entry);
-  }
 
   /**
    * Looks up a published model by its identifier.

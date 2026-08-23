@@ -82,17 +82,15 @@ import org.slf4j.LoggerFactory;
  * patterns so recompilation only occurs when the pattern list changes.
  * Individual patterns for REDACT are also cached separately.
  *
- * @deprecated Prefer declaring a {@code regex} model in the workspace and
- * using a generic {@code type: guard} step that references it. The
- * {@link io.gravitee.singularitee.engine.classifier.RegexClassifierEngine}
- * exposes the same matching logic as a {@code ClassifierEngine} and composes
- * naturally with {@link io.gravitee.singularitee.engine.classifier.CompositeClassifierEngine}.
- * This dedicated step type is kept for backward compatibility only.
+ * <h3>Relationship to {@code regex} models</h3>
+ * <p>A {@code regex} model behind a generic {@code type: guard} step exposes the
+ * same matching logic as a {@code ClassifierEngine} and composes with
+ * {@link io.gravitee.singularitee.engine.classifier.CompositeClassifierEngine};
+ * this dedicated step is the lighter option when no composition is needed.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-@Deprecated(since = "next", forRemoval = false)
 public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStepConfig> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RegexGuardStepExecutor.class);
