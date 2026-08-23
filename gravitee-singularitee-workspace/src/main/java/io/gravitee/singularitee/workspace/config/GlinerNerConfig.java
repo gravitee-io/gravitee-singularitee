@@ -70,11 +70,6 @@ public record GlinerNerConfig(
       return this;
     }
 
-    public Builder addAllEntities(java.util.Collection<GlinerEntityDef> v) {
-      this.entities.addAll(v);
-      return this;
-    }
-
     public Builder setThreshold(float v) {
       this.threshold = v;
       return this;

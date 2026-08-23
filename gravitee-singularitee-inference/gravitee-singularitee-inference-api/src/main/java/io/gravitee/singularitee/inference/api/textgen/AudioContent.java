@@ -32,9 +32,4 @@ public record AudioContent(MediaType mediaType, String data) implements Content 
   public String type() {
     return "audio";
   }
-
-  /** Whether both media type and payload are present. */
-  public boolean isValid() {
-    return mediaType != null && data != null && !data.trim().isEmpty();
-  }
 }

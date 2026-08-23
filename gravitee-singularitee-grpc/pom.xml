@@ -50,6 +50,12 @@
             <groupId>io.gravitee.node</groupId>
             <artifactId>gravitee-node-api</artifactId>
         </dependency>
+        <!-- Tracing API used directly (io.opentelemetry.api.trace); declared rather than
+             relied on through gravitee-node. -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+        </dependency>
 
         <!-- Workspace YAML parsing -->
         <dependency>
@@ -96,6 +102,8 @@
             <groupId>com.microsoft.onnxruntime</groupId>
             <artifactId>${onnxruntime.artifactId}</artifactId>
             <version>${onnxruntime.version}</version>
+            <!-- Nothing here compiles against ORT; only the classpath probe needs it present. -->
+            <scope>runtime</scope>
         </dependency>
         <!-- GLiNER4j (zero-shot NER + classifier) -->
         <dependency>
@@ -129,6 +137,10 @@
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-web-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-web</artifactId>
         </dependency>
 
         <!-- Logging (override BOM's 'provided' scope for fat JAR) -->

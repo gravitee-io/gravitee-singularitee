@@ -26,8 +26,6 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import java.util.ArrayList;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Vert.x gRPC service implementation for vector operations (embed, cosine similarity, rank).
@@ -43,8 +41,6 @@ import org.slf4j.LoggerFactory;
  * @author GraviteeSource Team
  */
 public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(GraviteeVectorServiceImpl.class);
 
   private final ModelRegistry registry;
   private final io.gravitee.singularitee.inference.math.api.GioMaths gioMaths;

@@ -532,29 +532,6 @@ public class EngineAdapter
     return fallback;
   }
 
-  /**
-   * Resolves the context length to use for KV-cache sizing in the pre-flight
-   * VRAM estimate.
-   *
-   * <p>Priority:
-   * <ol>
-   *   <li>User-configured {@code maxModelLen} (explicit override).</li>
-   *   <li>{@code max_position_embeddings} from the model's {@code config.json}:
-   *       the maximum sequence length the positional encoding supports, and
-   *       vLLM's default context length when no override is provided.</li>
-   *   <li>Fallback to {@code 4096} if neither is available.</li>
-   * </ol>
-   */
-  private static int resolveContextLength(VllmConfig config) {
-    if (config.maxModelLen() > 0) {
-      return config.maxModelLen();
-    }
-    if (config.maxPositionEmbeddings() > 0) {
-      return config.maxPositionEmbeddings();
-    }
-    return 4096;
-  }
-
   @Override
   public VllmSequenceState createSequenceState(int internalId, VllmRequest request)
     throws Exception {
@@ -852,23 +829,6 @@ public class EngineAdapter
     // torch.cuda.synchronize() + empty_cache() after every request destroys
     // pipeline overlap, forces cudaMalloc round-trips, and can race with vLLM's
     // background engine_core loop that allocates and frees blocks asynchronously.
-  }
-
-  /**
-   * Runs heavier GPU memory maintenance, intended for periodic scheduling
-   * (every 60-300 seconds) in low-memory deployments.
-   *
-   * <p>Does not restart the engine or release model weights; it only frees
-   * temporary allocations and breaks reference cycles in the Python runtime.
-   * Best-effort: errors are logged and swallowed.
-   */
-  public void performMemoryMaintenance() {
-    try {
-      engine.reset();
-      LOGGER.debug("Performed aggressive GPU memory maintenance");
-    } catch (Exception e) {
-      LOGGER.warn("Error during GPU memory maintenance: {}", e.getMessage());
-    }
   }
 
   @Override

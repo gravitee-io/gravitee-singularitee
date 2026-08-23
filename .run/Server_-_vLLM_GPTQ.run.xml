@@ -7,7 +7,7 @@
       <env name="GRAVITEE_HTTP_ENABLED" value="true" />
       <env name="GRAVITEE_HTTP_PORT" value="8091" />
     </envs>
-    <option name="VM_PARAMETERS" value="--enable-preview --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -Dgravitee.home=$PROJECT_DIR$/gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution -Dlogback.configurationFile=$PROJECT_DIR$/gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution/config/logback.xml -Dvertx.disableDnsResolver=true -Dvllm4j.venv=$PROJECT_DIR$/../vLLM4j/.venv" />
+    <option name="VM_PARAMETERS" value="--enable-preview --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -Dgravitee.home=$PROJECT_DIR$/gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution -Dlogback.configurationFile=$PROJECT_DIR$/gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution/config/logback.xml -Dvertx.disableDnsResolver=true -Dvllm4j.venv=$USER_HOME$/.venv-gravitee-ai/.venv" />
     <option name="PROGRAM_PARAMETERS" value="" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <module name="gravitee-singularitee-standalone-container" />

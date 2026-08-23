@@ -171,7 +171,10 @@ public class SingulariteeConfiguration {
 
   // --- Math / Vector ---
 
-  /** Vector maths used by embedding, reranking and routing. */
+  /**
+   * Vector maths used by embedding, reranking and routing. The native implementation is
+   * the deliberate choice; the SIMD module is built and tested but not wired here.
+   */
   @Bean
   public GioMaths gioMaths() {
     return NativeMath.INSTANCE;

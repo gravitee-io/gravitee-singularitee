@@ -97,21 +97,6 @@ public final class RemoteTextGenEngine implements TextGenEngine {
   }
 
   /**
-   * Creates an engine with caller-supplied chat-template metadata. No remote
-   * probe is ever made; the caller (e.g. {@code ClientPipelineExecutor},
-   * which already validated the model via {@code GetModel}) has authority.
-   */
-  public RemoteTextGenEngine(
-    SingulariteeClient client,
-    String modelId,
-    String chatTemplate,
-    String bosToken,
-    String eosToken
-  ) {
-    this(client, modelId, chatTemplate, bosToken, eosToken, Modalities.TEXT_ONLY);
-  }
-
-  /**
    * Creates an engine with caller-supplied chat-template metadata and the input
    * modalities the caller already read off {@code GetModel}. No remote probe is
    * ever made.

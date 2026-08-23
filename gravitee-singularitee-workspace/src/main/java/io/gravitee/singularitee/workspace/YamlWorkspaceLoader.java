@@ -152,22 +152,6 @@ public final class YamlWorkspaceLoader {
     return buildRequests(def, basePath, templatesPath, "<inline>");
   }
 
-  /**
-   * Builds {@link WorkspaceRequests} from a pre-assembled {@link WorkspaceDefinition.WorkspaceRoot},
-   * bypassing all YAML parsing and file I/O.
-   *
-   * <p>Used by the APIM gateway plugin when the workspace is constructed programmatically
-   * from structured configuration fields rather than read from a YAML file or inline string.
-   * Templates are always inline {@code content:} strings in this path; no {@code template_file:}
-   * resolution is performed.
-   *
-   * @param root the fully-assembled workspace root
-   * @return parsed result containing model load requests and pipeline definitions
-   */
-  public static WorkspaceRequests loadFromRoot(WorkspaceDefinition.WorkspaceRoot root) {
-    return buildRequests(new WorkspaceDefinition(root), null, null, "<assembled>");
-  }
-
   private static WorkspaceRequests buildRequests(
     WorkspaceDefinition def,
     Path basePath,

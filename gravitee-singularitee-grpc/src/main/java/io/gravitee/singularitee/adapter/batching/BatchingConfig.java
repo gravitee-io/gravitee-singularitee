@@ -87,18 +87,6 @@ public final class BatchingConfig {
     return maxBatchSize;
   }
 
-  public long maxBatchTokens() {
-    return maxBatchTokens;
-  }
-
-  public long bucketTokens() {
-    return bucketTokens;
-  }
-
-  public long lingerMillis() {
-    return lingerMillis;
-  }
-
   /** Builds a {@link MicroBatcher} shaped by this config. */
   public <I, O> MicroBatcher<I, O> newBatcher(String name, Function<List<I>, List<O>> batchFn) {
     return new MicroBatcher<>(

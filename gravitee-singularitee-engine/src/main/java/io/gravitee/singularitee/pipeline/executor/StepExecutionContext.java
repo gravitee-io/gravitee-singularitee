@@ -18,7 +18,6 @@ package io.gravitee.singularitee.pipeline.executor;
 import io.gravitee.singularitee.pipeline.PipelineContext;
 import io.gravitee.singularitee.registry.ModelRegistry;
 import io.gravitee.singularitee.registry.PipelineRegistry;
-import io.reactivex.rxjava3.core.Maybe;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,17 +61,6 @@ public final class StepExecutionContext {
    */
   public StreamRegistry streamRegistry() {
     return streamRegistry;
-  }
-
-  /**
-   * Looks up a model by ID from the registry, returning a {@link Maybe} that
-   * emits the entry if found or completes empty if not registered.
-   *
-   * @param modelId the model ID
-   * @return a {@link Maybe} emitting the model entry, or empty if not found
-   */
-  public Maybe<ModelRegistry.ModelEntry> rxLookupModel(String modelId) {
-    return modelRegistry.rxGet(modelId);
   }
 
   /**

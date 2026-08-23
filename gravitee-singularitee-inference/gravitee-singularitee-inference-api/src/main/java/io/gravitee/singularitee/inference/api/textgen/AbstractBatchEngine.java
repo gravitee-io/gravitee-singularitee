@@ -828,13 +828,8 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     int index,
     boolean isFinal
   ) {
-    TOKEN token;
-    if (state.tokenType == String.class) {
-      token = (TOKEN) text;
-    } else {
-      // Only String tokens are materialized; other token types carry no text payload.
-      token = null;
-    }
+    // Tokens are always materialised as their decoded text.
+    TOKEN token = (TOKEN) text;
 
     var finishReason = adapter.getFinishReason(state.engineState);
     // Channel is read at production time. Under fused multi-token rounds the
