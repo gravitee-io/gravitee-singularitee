@@ -42,7 +42,7 @@ workspace:
             output_field: generate.output
 ```
 
-A quantised checkpoint (`examples/vllm/qwen3-awq.yaml`) adds `quantization: awq` and
+A quantised checkpoint (`examples/modular/models/vllm/llm-qwen3-awq.yaml`) adds `quantization: awq` and
 `trust_remote_code: true`. A repository carrying duplicate weights
 (`examples/vllm/gpt-oss-20b-mac.yaml`) trims the transfer:
 
@@ -108,8 +108,8 @@ non-positive properties count as unset.
   `--venv` or `$VLLM_VENV` point elsewhere. vLLM4j is compiled against one vLLM Python API:
   keep the venv's vLLM at the pinned version (`0.26.0`, matching `Dockerfile.vllm-cuda`).
 - **`gpu_memory_utilization` is a fraction of total memory.** On Apple Silicon it applies to
-  total unified memory, so use the `*-mac.yaml` examples there; the other files are sized for
-  an 80 GB card. When the budget cannot hold the weights the load is refused up front with
+  total unified memory, so use the `*-mac.yaml` examples there; the other files are sized
+  for datacenter cards (40 to 80 GB). When the budget cannot hold the weights the load is refused up front with
   the numbers, before vLLM's own cache-block error.
 - **Memory check reads the checkpoint.** `memory_check` sizes the model from `config.json`
   (layers, KV heads, head dimension, context) and the safetensors index, honouring
