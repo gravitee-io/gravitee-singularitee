@@ -26,7 +26,6 @@ import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter.Chunk;
 import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.core.Single;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -261,7 +260,7 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
     return new ClassifyResponse(
       topLabel,
       topScore,
-      Collections.unmodifiableMap(mergedScores),
+      Map.copyOf(mergedScores),
       List.copyOf(mergedResults)
     );
   }

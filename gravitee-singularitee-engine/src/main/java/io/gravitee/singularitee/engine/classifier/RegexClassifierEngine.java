@@ -25,7 +25,6 @@ import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter;
 import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter.Chunk;
 import io.reactivex.rxjava3.core.Single;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -256,12 +255,7 @@ public final class RegexClassifierEngine implements ClassifierEngine {
       if (results.isEmpty()) {
         return EMPTY_RESPONSE;
       }
-      return new ClassifyResponse(
-        firstLabel,
-        1.0f,
-        Collections.unmodifiableMap(allScores),
-        List.copyOf(results)
-      );
+      return new ClassifyResponse(firstLabel, 1.0f, Map.copyOf(allScores), List.copyOf(results));
     }
   }
 

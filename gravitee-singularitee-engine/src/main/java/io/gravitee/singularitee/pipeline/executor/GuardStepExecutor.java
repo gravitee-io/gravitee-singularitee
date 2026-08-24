@@ -294,9 +294,9 @@ public final class GuardStepExecutor
 
     var merged = new java.util.ArrayList<int[]>();
     var mergedLabels = new java.util.ArrayList<String>();
-    int[] current = { spans.get(0).start(), spans.get(0).end() };
-    String currentLabel = spans.get(0).label();
-    float currentScore = spans.get(0).score();
+    int[] current = { spans.getFirst().start(), spans.getFirst().end() };
+    String currentLabel = spans.getFirst().label();
+    float currentScore = spans.getFirst().score();
     for (int i = 1; i < spans.size(); i++) {
       int nextStart = spans.get(i).start();
       int nextEnd = spans.get(i).end();

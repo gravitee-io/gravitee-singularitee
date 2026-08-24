@@ -370,14 +370,14 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
         }
 
         // Process next batch
-        var optOutput = adapter.processNextBatch();
-        if (optOutput.isPresent()) {
-          EngineAdapter.EngineOutput<TOKEN, STATE> output = optOutput.get();
-          SequenceState<STATE> state = sequences.get(output.sequenceId());
-          if (state != null) {
-            processOutput(state, output.token(), out);
-          }
-        }
+        adapter
+          .processNextBatch()
+          .ifPresent(output -> {
+            SequenceState<STATE> state = sequences.get(output.sequenceId());
+            if (state != null) {
+              processOutput(state, output.token(), out);
+            }
+          });
 
         emitFinals(out);
 
@@ -427,7 +427,7 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     publishPrefixOnce(state);
 
     // Handle null or empty tokens
-    if (token == null || (token instanceof String && ((String) token).isEmpty())) {
+    if (token == null || (token instanceof String s && s.isEmpty())) {
       return;
     }
 

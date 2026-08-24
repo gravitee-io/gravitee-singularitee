@@ -15,8 +15,6 @@
  */
 package io.gravitee.singularitee.inference.api;
 
-import static java.util.Collections.singletonMap;
-
 import java.util.Map;
 
 /**
@@ -71,7 +69,7 @@ public final class Constants {
   public static final String POOLING_MODE = "poolingMode";
 
   public static final String PADDING = "padding";
-  public static final Map<String, String> DEFAULT_TOKENIZER_CONFIG = singletonMap(PADDING, "false");
+  public static final Map<String, String> DEFAULT_TOKENIZER_CONFIG = Map.of(PADDING, "false");
   public static final String MAX_SEQUENCE_LENGTH = "maxSequenceLength";
 
   // Token-classification overlap (in tokens) between sliding windows; >= longest expected entity

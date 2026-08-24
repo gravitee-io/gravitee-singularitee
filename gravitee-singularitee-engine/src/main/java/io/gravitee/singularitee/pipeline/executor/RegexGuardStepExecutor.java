@@ -236,8 +236,8 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
     List<int[]> mergedBounds = new ArrayList<>();
     List<String> mergedNames = new ArrayList<>();
 
-    int[] cur = { allSpans.get(0).start(), allSpans.get(0).end() };
-    String curName = allSpans.get(0).name();
+    int[] cur = { allSpans.getFirst().start(), allSpans.getFirst().end() };
+    String curName = allSpans.getFirst().name();
     for (int i = 1; i < allSpans.size(); i++) {
       Span s = allSpans.get(i);
       if (s.start() <= cur[1] + 1) {

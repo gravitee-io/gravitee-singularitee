@@ -101,7 +101,7 @@ public class OnnxBertRerankerModel extends OnnxBertInference<RerankPair, RerankT
       var enc = encodePair(input.query(), input.document());
       try (Result result = enc.result()) {
         float[] scores = extractScores(result);
-        int tokens = enc.encoding().get(0).getIds().length;
+        int tokens = enc.encoding().getFirst().getIds().length;
         return new RerankTokenCount(scores[0], tokens);
       } catch (OrtException e) {
         throw new IllegalArgumentException(e);
