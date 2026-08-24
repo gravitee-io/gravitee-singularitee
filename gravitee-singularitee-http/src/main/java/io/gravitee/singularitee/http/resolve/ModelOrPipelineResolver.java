@@ -74,8 +74,8 @@ public final class ModelOrPipelineResolver {
         );
     }
 
-    var model = modelRegistry.get(rawModel).filter(ModelRegistry.ModelEntry::visible);
-    if (model.isPresent() && model.get().engine() instanceof TextGenEngine) {
+    var model = modelRegistry.get(rawModel).filter(ModelRegistry.ModelEntry::visible).orElse(null);
+    if (model != null && model.engine() instanceof TextGenEngine) {
       return Optional.of(
         new Resolution(
           false,
@@ -83,7 +83,7 @@ public final class ModelOrPipelineResolver {
           null,
           rawModel,
           hasTools,
-          model.get().inputModalities()
+          model.inputModalities()
         )
       );
     }

@@ -213,8 +213,8 @@ public final class ToolSelectStepExecutor
       return pctx.get(cfg.getInputField());
     }
     if (pctx.messages() != null) {
-      var last = ChatTurn.lastUserContent(pctx.messages());
-      if (last.isPresent() && !last.get().isBlank()) return last.get();
+      var last = ChatTurn.lastUserContent(pctx.messages()).filter(s -> !s.isBlank());
+      if (last.isPresent()) return last.get();
     }
     return pctx.get(PipelineContext.KEY_PROMPT);
   }

@@ -137,9 +137,7 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
 
   @Override
   protected void doStart() throws Exception {
-    boolean enabled = Boolean.TRUE.equals(
-      environment.getProperty(HTTP_PREFIX + ".enabled", Boolean.class, false)
-    );
+    boolean enabled = environment.getProperty(HTTP_PREFIX + ".enabled", Boolean.class, false);
     if (!enabled) {
       LOGGER.info("Native HTTP API disabled (set http.enabled=true to enable)");
       return;
@@ -161,8 +159,10 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
     this.vertxHttpServer = (VertxHttpServer) rawServer;
     this.httpServer = vertxHttpServer.newInstance();
 
-    boolean exposePipelines = Boolean.TRUE.equals(
-      environment.getProperty(HTTP_PREFIX + ".expose-pipelines", Boolean.class, true)
+    boolean exposePipelines = environment.getProperty(
+      HTTP_PREFIX + ".expose-pipelines",
+      Boolean.class,
+      true
     );
 
     Router router = Router.router(vertx.getDelegate());
@@ -186,8 +186,10 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
         }
       });
 
-    final boolean authEnabled = Boolean.TRUE.equals(
-      environment.getProperty(AUTH_PREFIX + ".enabled", Boolean.class, false)
+    final boolean authEnabled = environment.getProperty(
+      AUTH_PREFIX + ".enabled",
+      Boolean.class,
+      false
     );
     if (authEnabled) {
       router.route().handler(buildAuthHandler());

@@ -725,7 +725,7 @@ public final class PipelineContext {
         if (todos.get(i).status() == TodoStatus.IN_PROGRESS) active.add(i);
       }
       if (active.size() == 1) {
-        int i = active.get(0);
+        int i = active.getFirst();
         todos.set(i, completed(todos.get(i), proof));
         found = true;
       }

@@ -167,12 +167,12 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
     tracer.start();
 
     // Determine if ALPN should be forced on (gRPC over TLS requires ALPN for h2 negotiation).
-    boolean securedInConfig = Boolean.TRUE.equals(
-      environment.getProperty(GRPC_PREFIX + ".secured", Boolean.class, false)
+    boolean securedInConfig = environment.getProperty(
+      GRPC_PREFIX + ".secured",
+      Boolean.class,
+      false
     );
-    boolean alpnInConfig = Boolean.TRUE.equals(
-      environment.getProperty(GRPC_PREFIX + ".alpn", Boolean.class, false)
-    );
+    boolean alpnInConfig = environment.getProperty(GRPC_PREFIX + ".alpn", Boolean.class, false);
     boolean forceAlpn = securedInConfig && !alpnInConfig;
     if (forceAlpn) {
       LOGGER.info("gRPC over TLS requires ALPN: enabling automatically");
@@ -211,8 +211,10 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
     vectorService.bind(grpcServer);
 
     // Optionally wrap the gRPC server with HTTP Basic authentication.
-    final boolean authEnabled = Boolean.TRUE.equals(
-      environment.getProperty(AUTH_PREFIX + ".enabled", Boolean.class, false)
+    final boolean authEnabled = environment.getProperty(
+      AUTH_PREFIX + ".enabled",
+      Boolean.class,
+      false
     );
     // The tracing decorator sits OUTSIDE the auth handler so rejected/unauthenticated calls
     // are still traced (their gRPC UNAUTHENTICATED response ends the span cleanly).

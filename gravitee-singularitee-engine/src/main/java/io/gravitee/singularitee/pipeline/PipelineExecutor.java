@@ -229,7 +229,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
       if (!restoredTodos.isEmpty()) {
         boolean allDone = restoredTodos.stream().allMatch(t -> t.status() == TodoStatus.DONE);
         var turns = context.messages();
-        var last = (turns == null || turns.isEmpty()) ? null : turns.get(turns.size() - 1);
+        var last = (turns == null || turns.isEmpty()) ? null : turns.getLast();
         boolean freshUserMessage =
           last != null && last.role() == ChatRole.USER && last.toolCallId() == null;
         context.setPlanLocked(!(allDone && freshUserMessage));
@@ -309,7 +309,7 @@ public class PipelineExecutor implements SubPipelineStepExecutor.PipelineExecuto
       }
       var calls = turn.toolCalls();
       if (calls.size() != 1) break;
-      var call = calls.get(0);
+      var call = calls.getFirst();
       if (TodoTools.ASK_USER.equals(call.name())) break;
       String sig = call.name() + "\u0000" + call.argumentsJson();
       if (signature == null) {

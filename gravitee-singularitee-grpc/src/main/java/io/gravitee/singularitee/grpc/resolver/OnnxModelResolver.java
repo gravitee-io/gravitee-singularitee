@@ -26,7 +26,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -342,7 +341,7 @@ public final class OnnxModelResolver {
           .stream()
           .filter(f -> dirPrefix.isEmpty() ? f.equals(filePath) : f.startsWith(dirPrefix))
           .filter(f -> f.equals(filePath) || !excluded.test(f))
-          .collect(Collectors.toList());
+          .toList();
 
         if (filesToDownload.isEmpty()) {
           return Single.<List<Path>>error(
@@ -441,7 +440,7 @@ public final class OnnxModelResolver {
           .stream()
           .filter(f -> f.startsWith(normalizedPrefix) || isWellKnownTokenizerFile(f, tokenizerPath))
           .filter(f -> f.equals(tokenizerPath) || !excluded.test(f))
-          .collect(Collectors.toList());
+          .toList();
 
         // If nothing matched the prefix, treat tokenizerPath itself as a single file
         if (tokenizerFiles.isEmpty()) {
@@ -470,7 +469,7 @@ public final class OnnxModelResolver {
           .stream()
           .map(f -> f.startsWith(normalizedPrefix) ? f.substring(normalizedPrefix.length()) : f)
           .filter(f -> !f.isBlank())
-          .collect(Collectors.toList());
+          .toList();
 
         return downloader
           .download(modelName, flatNames.isEmpty() ? tokenizerFiles : flatNames, tokenizerTargetDir)

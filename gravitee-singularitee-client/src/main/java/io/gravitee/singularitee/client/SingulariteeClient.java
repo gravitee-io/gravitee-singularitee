@@ -462,7 +462,7 @@ public final class SingulariteeClient implements AutoCloseable {
   /**
    * Retrieves the status and metadata of a published model.
    *
-   * @param modelId the model identifier returned by {@link #publishModel}
+   * @param modelId the model identifier
    * @return a {@link Single} that emits the model metadata
    */
   public Single<GetModelResponse> getModel(String modelId) {
@@ -495,7 +495,7 @@ public final class SingulariteeClient implements AutoCloseable {
   /**
    * Retrieves the definition and status of a published pipeline.
    *
-   * @param pipelineId the pipeline identifier returned by {@link #publishPipeline}
+   * @param pipelineId the pipeline identifier
    * @return a {@link Single} that emits the pipeline definition and status
    */
   public Single<GetPipelineResponse> getPipeline(String pipelineId) {
