@@ -75,7 +75,6 @@ projection GGUF. Set it and the engine loads the multimodal context.
 | File | Model | Notes |
 | --- | --- | --- |
 | `qwen3-0.6b.yaml` | Qwen/Qwen3-0.6B | Dense 0.6B; the one to smoke-test a deployment with. |
-| `qwen2.5-0.5b.yaml` | Qwen/Qwen2.5-0.5B-Instruct | Dense 0.5B, no thinking mode. |
 | `mistral-7b.yaml` | mistralai/Mistral-7B-Instruct-v0.3 | Dense 7.2B, fits one 24 GB card at bf16. |
 | `glm-4-9b.yaml` | THUDM/GLM-4-9B-0414 | Dense 9.4B. |
 | `moonlight-16b.yaml` | moonshotai/Moonlight-16B-A3B-Instruct | MoE 16B on DeepSeek-V3; needs `trust_remote_code`, 8k window. |
@@ -83,15 +82,12 @@ projection GGUF. Set it and the engine loads the multimodal context.
 | `gpt-oss-20b-80gb.yaml` | openai/gpt-oss-20b | The same model sized for an 80 GB card: higher concurrency. |
 | `gpt-oss-20b-mac.yaml` | openai/gpt-oss-20b | Apple Silicon (Metal): shorter window, chunked prefill, smaller memory share. |
 | `gemma4-12b.yaml` | google/gemma-4-12B-it | Dense 12B with a vision tower. |
-| `gemma4-26b.yaml` | google/gemma-4-26B-A4B-it | MoE 26.5B plus vision, `tensor_parallel_size: 2`. |
-| `qwen3-30b.yaml` | Qwen/Qwen3-30B-A3B-Instruct-2507 | MoE 30.5B, `tensor_parallel_size: 2`. |
-| `qwen3.6-35b.yaml` | Qwen/Qwen3.6-35B-A3B | MoE 36B, `tensor_parallel_size: 2`. |
 | `qwen3-vl-2b.yaml` | Qwen/Qwen3-VL-2B-Instruct | Vision; no mmproj to configure, unlike llama.cpp. |
-| `qwen3-gptq.yaml` | Qwen/Qwen3-0.6B-GPTQ-Int8 | 8-bit GPTQ. |
-| `qwen3-awq.yaml` | Qwen/Qwen3-4B-AWQ | 4-bit AWQ. |
+| `qwen3.8-27b.yaml` | Qwen/Qwen3.8-27B-FP8 | Dense 27.8B, official FP8 checkpoint; fits one 40 GB card. |
 
-These mirror `llama/` family for family (minus `voxtral-3b`, which is audio). Parameter
-counts and context windows in each file were read from the checkpoints.
+A representative subset of the `llama/` families; quantised (AWQ/GPTQ) variants live as
+fragments under `modular/models/vllm/`. Parameter counts and context windows in each file
+were read from the checkpoints.
 
 Two things differ from the llama.cpp equivalents:
 
@@ -193,7 +189,7 @@ several servers include, so one model definition is written once and reused.
 modular/
 ├── models/
 │   ├── llama/      llm-qwen3-0.6b.yaml, llm-mistral-7b.yaml
-│   ├── vllm/       llm-qwen3-0.6b.yaml, llm-mistral-7b.yaml, llm-qwen3-30b.yaml, ... (13)
+│   ├── vllm/       llm-qwen3-0.6b.yaml, llm-qwen3-awq.yaml, llm-qwen3-gptq.yaml, ... (9)
 │   └── classifier/ pii-bert.yaml, pii-gliner.yaml, toxicity-bert.yaml, router-gliner.yaml
 ├── pipelines/      infer, tool-calling, pii-redact, toxicity-guard, routing, cot, reasoning
 ├── templates/      tool-system.yaml, glm-4-9b-compact.jinja

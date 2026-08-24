@@ -74,7 +74,7 @@ vLLM4j reads, so a venv merely on `PATH` is not enough) plus the `libpython`/`li
 preloads. `--venv` or `$VLLM_VENV` point elsewhere. Maven can bootstrap it instead:
 `mvn verify -Pvllm-integration,metal`, or `-Dvllm.venv.path=` to reuse one.
 
-On Apple Silicon use `examples/vllm/*-mac.yaml`: the others are sized for an 80 GB card, and
+On Apple Silicon use `examples/vllm/*-mac.yaml`: the others are sized for datacenter cards (40 to 80 GB), and
 Metal applies `gpu_memory_utilization` to *total* unified memory rather than what is free.
 
 ---
