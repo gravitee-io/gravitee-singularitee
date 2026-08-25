@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.2.0...1.2.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* remove dead code and deprecated members, tidy deps and config ([dafaee7](https://github.com/gravitee-io/gravitee-singularitee/commit/dafaee75915d025a962f8a47bdd254e974ffdec0))
+
 # [1.2.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.1.0...1.2.0) (2026-08-20)
 
 
