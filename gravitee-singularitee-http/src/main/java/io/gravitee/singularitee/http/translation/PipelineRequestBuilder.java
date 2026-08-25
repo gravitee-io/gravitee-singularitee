@@ -124,6 +124,20 @@ public final class PipelineRequestBuilder {
       builder.putContext("reasoning_effort", reasoningEffort);
     }
 
+    // Client metadata (OpenAI `metadata`, a small string map) is exposed to the pipeline as
+    // context under a `meta.` namespace so it can never clobber an engine-reserved context key.
+    // A step or template reads `meta.<key>`; the platform itself never interprets it.
+    JsonNode metadata = payload.at("/metadata");
+    if (metadata.isObject()) {
+      metadata
+        .fields()
+        .forEachRemaining(e -> {
+          if (e.getValue().isValueNode() && !e.getValue().isNull()) {
+            builder.putContext("meta." + e.getKey(), e.getValue().asText());
+          }
+        });
+    }
+
     return builder.build();
   }
 

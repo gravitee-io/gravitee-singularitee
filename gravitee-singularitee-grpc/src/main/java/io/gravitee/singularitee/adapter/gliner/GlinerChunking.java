@@ -15,8 +15,8 @@
  */
 package io.gravitee.singularitee.adapter.gliner;
 
-import io.gravitee.singularitee.engine.ClassifyResponse;
-import io.gravitee.singularitee.engine.ClassifyResult;
+import io.gravitee.singularitee.engine.api.ClassifyResponse;
+import io.gravitee.singularitee.engine.api.ClassifyResult;
 import io.gravitee.singularitee.inference.api.text.EstimatedTokens;
 import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter;
 import java.util.Collection;

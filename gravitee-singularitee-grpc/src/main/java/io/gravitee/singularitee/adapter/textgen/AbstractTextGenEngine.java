@@ -17,12 +17,13 @@ package io.gravitee.singularitee.adapter.textgen;
 
 import static java.util.stream.Collectors.toUnmodifiableList;
 
-import io.gravitee.singularitee.engine.*;
-import io.gravitee.singularitee.engine.template.Jinja4jChatTemplateRenderer;
+import io.gravitee.singularitee.engine.api.*;
+import io.gravitee.singularitee.engine.api.pipeline.executor.ChatWindowTrimmer;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TokenCounter;
+import io.gravitee.singularitee.engine.template.DelegatingChatTemplateRenderer;
+import io.gravitee.singularitee.engine.template.JinjaTemplateRenderer;
 import io.gravitee.singularitee.inference.api.template.ChatTemplateRenderer;
 import io.gravitee.singularitee.inference.api.textgen.*;
-import io.gravitee.singularitee.pipeline.executor.ChatWindowTrimmer;
-import io.gravitee.singularitee.pipeline.executor.TokenCounter;
 import io.reactivex.rxjava3.core.BackpressureOverflowStrategy;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
@@ -81,7 +82,9 @@ abstract sealed class AbstractTextGenEngine<CFG, REQ extends GenerationRequest, 
    * caller hands us messages without a pre-rendered prompt (e.g. the CLI
    * invoked with {@code --model-id}).
    */
-  private static final ChatTemplateRenderer RENDERER = new Jinja4jChatTemplateRenderer();
+  private static final ChatTemplateRenderer RENDERER = new DelegatingChatTemplateRenderer(
+    new JinjaTemplateRenderer()
+  );
 
   protected final AbstractBatchEngine<CFG, REQ, String, STATE> delegate;
 

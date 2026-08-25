@@ -155,6 +155,31 @@ The workspace decides which endpoints are reached over TLS (`ssl: true` on the e
 | `ai.conversations.ttl` | `3600` | `GRAVITEE_AI_CONVERSATIONS_TTL` | Idle timeout in seconds for conversations stored for `previous_response_id`. `0` disables. |
 | `ai.conversations.max-entries` | `10000` | `GRAVITEE_AI_CONVERSATIONS_MAXENTRIES` | Maximum stored conversations. |
 
+### `ai.tools.*` (server-tool display names)
+
+Presentation only: the model and the wire see these names, while internal identity, stored state and the proto contract never change with them. Two tools may not share a name.
+
+| Key | Default | Env var | Purpose |
+| --- | --- | --- | --- |
+| `ai.tools.set-todos.name` | `set_todos` | `GRAVITEE_AI_TOOLS_SETTODOS_NAME` | Display name of the plan-install tool. |
+| `ai.tools.complete-todo.name` | `complete_todo` | `GRAVITEE_AI_TOOLS_COMPLETETODO_NAME` | Display name of the item-completion tool. |
+| `ai.tools.ask-user.name` | `ask_user` | `GRAVITEE_AI_TOOLS_ASKUSER_NAME` | Display name of the pause-for-user tool. A client delegating it must declare the configured name. |
+
+### `http.events.*` (wire event type strings)
+
+| Key | Default | Env var | Purpose |
+| --- | --- | --- | --- |
+| `http.events.progress-type` | `gravitee.progress` | `GRAVITEE_HTTP_EVENTS_PROGRESSTYPE` | The `type` string of progress events on the Responses API, including the elicitation payload they carry. |
+
+### `plugins.*` and `license.*` (step plugins)
+
+| Key | Default | Env var | Purpose |
+| --- | --- | --- | --- |
+| `plugins.path` | `${gravitee.home}/plugins` | `GRAVITEE_PLUGINS_PATH` | Directory whose plugin zips are loaded as gravitee step plugins by the node's plugin registry (parent-first classloading). The twelve core steps must be present or startup fails. |
+| `plugins.workDir` | temp dir | `GRAVITEE_PLUGINS_WORKDIR` | Where plugin zips are extracted. The distribution sets `${gravitee.home}/.plugins-work`. |
+| `step.<id>.enabled` | `true` | `GRAVITEE_STEP_<ID>_ENABLED` | Switch off a step plugin by its manifest id (for example `step.route.enabled: false`). |
+| `license.key` | `${gravitee.home}/license/license.key` | `GRAVITEE_LICENSE_KEY` | Platform license file. Absent means the OSS license: every core step registers. A step whose `plugin.properties` declares a `feature=` must have that feature listed in the license's `features` to register; a workspace declaring such a step without the feature fails to load with the feature named. |
+
 ### `ai.vllm.*` (deployment-wide GPU topology)
 
 A model's own `vllm:` value wins; these apply when the workspace leaves the field unset; when both are unset vLLM decides.
@@ -249,7 +274,7 @@ These are read straight from the process environment by the engine adapters.
 | `--workspace FILE` | `examples/llama/qwen3-0.6b.yaml` | Workspace to load; relative to the repo or absolute. Include fragments under `examples/modular/{models,pipelines,templates}/` are refused. |
 | `--port PORT` | `8080` | HTTP API port. The script always enables the HTTP API. |
 | `--venv DIR` | `$VLLM_VENV`, then `~/.venv-gravitee-ai/.venv` | vLLM virtualenv, passed as `-Dvllm4j.venv`. Only consulted when the workspace is a vLLM one. |
-| `--debug` | off | Switch the `io.gravitee.singularitee.pipeline` and `.inference` loggers to TRACE in the distribution's `logback.xml`: rendered prompts and streamed tokens are logged. |
+| `--debug` | off | Switch the `io.gravitee.singularitee.engine.pipeline` and `.inference` loggers to TRACE in the distribution's `logback.xml`: rendered prompts and streamed tokens are logged. |
 | `--list` | | Print every runnable example workspace and exit. |
 | `VLLM_VENV` | unset | Same as `--venv`. |
 | `NATIVE_DIR` | `~/.llama.cpp` | Directory prepended to `LD_LIBRARY_PATH` so the ggml backends resolve on Linux. |

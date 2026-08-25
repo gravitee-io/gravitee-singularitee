@@ -16,9 +16,9 @@
 package io.gravitee.singularitee.engine.remote;
 
 import io.gravitee.singularitee.client.SingulariteeClient;
-import io.gravitee.singularitee.engine.ClassifierEngine;
-import io.gravitee.singularitee.engine.ClassifyResult;
-import io.gravitee.singularitee.engine.ModelTasks;
+import io.gravitee.singularitee.engine.api.ClassifierEngine;
+import io.gravitee.singularitee.engine.api.ClassifyResult;
+import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.reactivex.rxjava3.core.Single;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,15 +60,15 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
   }
 
   @Override
-  public Single<io.gravitee.singularitee.engine.ClassifyResponse> rxClassify(
-    io.gravitee.singularitee.engine.ClassifyRequest request
+  public Single<io.gravitee.singularitee.engine.api.ClassifyResponse> rxClassify(
+    io.gravitee.singularitee.engine.api.ClassifyRequest request
   ) {
     return rxClassify(request, List.of());
   }
 
   @Override
-  public Single<io.gravitee.singularitee.engine.ClassifyResponse> rxClassify(
-    io.gravitee.singularitee.engine.ClassifyRequest request,
+  public Single<io.gravitee.singularitee.engine.api.ClassifyResponse> rxClassify(
+    io.gravitee.singularitee.engine.api.ClassifyRequest request,
     List<ClassifyLabel> labels
   ) {
     var builder = io.gravitee.singularitee.protocol.ClassifyRequest.newBuilder()
@@ -105,7 +105,7 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
           )
           .toList();
 
-        return new io.gravitee.singularitee.engine.ClassifyResponse(
+        return new io.gravitee.singularitee.engine.api.ClassifyResponse(
           protoResp.getTopLabel(),
           protoResp.getTopScore(),
           allScores,
@@ -115,21 +115,21 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
   }
 
   @Override
-  public Single<List<io.gravitee.singularitee.engine.ClassifyResponse>> rxClassifyBatch(
-    List<io.gravitee.singularitee.engine.ClassifyRequest> requests
+  public Single<List<io.gravitee.singularitee.engine.api.ClassifyResponse>> rxClassifyBatch(
+    List<io.gravitee.singularitee.engine.api.ClassifyRequest> requests
   ) {
     return rxClassifyBatch(requests, List.of());
   }
 
   @Override
-  public Single<List<io.gravitee.singularitee.engine.ClassifyResponse>> rxClassifyBatch(
-    List<io.gravitee.singularitee.engine.ClassifyRequest> requests,
+  public Single<List<io.gravitee.singularitee.engine.api.ClassifyResponse>> rxClassifyBatch(
+    List<io.gravitee.singularitee.engine.api.ClassifyRequest> requests,
     List<ClassifyLabel> labels
   ) {
     var builder = io.gravitee.singularitee.protocol.ClassifyBatchRequest.newBuilder()
       .setModelId(modelId)
       .addAllTexts(
-        requests.stream().map(io.gravitee.singularitee.engine.ClassifyRequest::text).toList()
+        requests.stream().map(io.gravitee.singularitee.engine.api.ClassifyRequest::text).toList()
       );
 
     if (labels != null && !labels.isEmpty()) {
@@ -164,7 +164,7 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
                 )
               )
               .toList();
-            return new io.gravitee.singularitee.engine.ClassifyResponse(
+            return new io.gravitee.singularitee.engine.api.ClassifyResponse(
               protoResp.getTopLabel(),
               protoResp.getTopScore(),
               allScores,

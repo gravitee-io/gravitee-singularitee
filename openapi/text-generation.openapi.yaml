@@ -699,9 +699,11 @@ components:
         Vendor extension event (`type: "gravitee.progress"`) emitted on the
         Responses stream when a pipeline's engine-managed todo plan changes.
         Never emitted on Chat Completions.
-      required: [type, sequence_number, todos, completed, total]
+      required: [type, sequence_number]
       properties:
-        type: { type: string, const: gravitee.progress }
+        type:
+          type: string
+          description: "`gravitee.progress` by default; deployments may rename it via `http.events.progress-type`."
         sequence_number: { type: integer }
         step_id:
           type: string
@@ -721,3 +723,23 @@ components:
         text:
           type: string
           description: "Preformatted plan, one line per item: `[x]` done, `[>]` in progress, `[ ]` pending."
+        elicitation:
+          type: object
+          description: |
+            Present when a step paused to ask the user something. The core
+            ask_user tool emits `kind: ask` with the question and, when the
+            question is closed, the enumerated `options`. A step plugin may emit
+            other `kind` values and attach its own entries under `metadata`. The
+            gateway obtains the answer and continues the conversation with the
+            next request.
+          required: [kind, question]
+          properties:
+            kind: { type: string, description: "The elicitation kind; `ask` for the core ask_user tool." }
+            question: { type: string }
+            options:
+              type: array
+              items: { type: string }
+            metadata:
+              type: object
+              additionalProperties: { type: string }
+              description: Free-form entries a step plugin attached; ignorable by clients that do not understand a key.

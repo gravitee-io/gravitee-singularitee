@@ -18,7 +18,8 @@ package io.gravitee.singularitee.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.gravitee.singularitee.protocol.InferStepConfig;
+import io.gravitee.singularitee.plugin.infer.InferStepConfig;
+import io.gravitee.singularitee.plugin.test.TestStepPlugins;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,10 +35,10 @@ import org.junit.jupiter.api.io.TempDir;
 class NamedTagsYamlTest {
 
   private static InferStepConfig loadInferStep(Path workspace) throws IOException {
-    var result = YamlWorkspaceLoader.load(workspace);
+    var result = YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs());
     assertThat(result.pipelines()).hasSize(1);
     var pipeline = result.pipelines().get(0);
-    return pipeline.getSteps(0).getInferConfig();
+    return (InferStepConfig) pipeline.steps().get(0).config();
   }
 
   @Test
@@ -70,14 +71,12 @@ class NamedTagsYamlTest {
     );
 
     var cfg = loadInferStep(workspace);
-    assertThat(cfg.getReasoningTags().getOpenTag()).isEqualTo("<think>");
-    assertThat(cfg.getReasoningTags().getCloseTag()).isEqualTo("</think>");
-    assertThat(cfg.getReasoningTags().getRepeatable()).isTrue();
-    assertThat(cfg.getToolCallTags().getOpenTag()).isEqualTo("<tool_call>");
-    assertThat(cfg.getToolCallTags().getOpenTagAlternativesList()).containsExactly(
-      "<function_call>"
-    );
-    assertThat(cfg.getToolCallTags().getCloseTag()).isEqualTo("</tool_call>");
+    assertThat(cfg.reasoningTags().getOpenTag()).isEqualTo("<think>");
+    assertThat(cfg.reasoningTags().getCloseTag()).isEqualTo("</think>");
+    assertThat(cfg.reasoningTags().getRepeatable()).isTrue();
+    assertThat(cfg.toolCallTags().getOpenTag()).isEqualTo("<tool_call>");
+    assertThat(cfg.toolCallTags().getOpenTagAlternativesList()).containsExactly("<function_call>");
+    assertThat(cfg.toolCallTags().getCloseTag()).isEqualTo("</tool_call>");
   }
 
   @Test
@@ -103,7 +102,7 @@ class NamedTagsYamlTest {
     );
 
     var cfg = loadInferStep(workspace);
-    assertThat(cfg.getReasoningTags().getOpenTag()).isEqualTo("<think>");
+    assertThat(cfg.reasoningTags().getOpenTag()).isEqualTo("<think>");
   }
 
   @Test
@@ -126,7 +125,7 @@ class NamedTagsYamlTest {
       """
     );
 
-    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace))
+    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs()))
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessageContaining("nope");
   }
@@ -148,7 +147,7 @@ class NamedTagsYamlTest {
       """
     );
 
-    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace))
+    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs()))
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessageContaining("dup");
   }

@@ -16,25 +16,29 @@
 package io.gravitee.singularitee.engine.remote;
 
 import io.gravitee.singularitee.client.SingulariteeClient;
-import io.gravitee.singularitee.engine.ModelEngine;
-import io.gravitee.singularitee.engine.ModelEnginePerformance;
-import io.gravitee.singularitee.engine.ModelEngineToken;
-import io.gravitee.singularitee.pipeline.PipelineExecutor;
-import io.gravitee.singularitee.pipeline.executor.JinjaRenderer;
-import io.gravitee.singularitee.pipeline.executor.StepExecutorFactory;
-import io.gravitee.singularitee.pipeline.executor.SubPipelineStepExecutor;
+import io.gravitee.singularitee.engine.api.ModelEngine;
+import io.gravitee.singularitee.engine.api.ModelEngineToken;
+import io.gravitee.singularitee.engine.api.pipeline.executor.PipelineExecutorCallback;
+import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
+import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
+import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.engine.pipeline.PipelineExecutor;
+import io.gravitee.singularitee.engine.pipeline.executor.StepExecutorFactory;
+import io.gravitee.singularitee.engine.template.DelegatingChatTemplateRenderer;
+import io.gravitee.singularitee.engine.template.JinjaTemplateRenderer;
+import io.gravitee.singularitee.plugin.api.StepExecutorServices;
+import io.gravitee.singularitee.plugin.api.StepPluginRegistry;
+import io.gravitee.singularitee.plugin.api.StepPlugins;
 import io.gravitee.singularitee.protocol.*;
-import io.gravitee.singularitee.registry.ModelRegistry;
-import io.gravitee.singularitee.registry.PipelineRegistry;
 import io.gravitee.singularitee.workspace.ModelType;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition;
 import io.gravitee.singularitee.workspace.YamlWorkspaceLoader;
-import io.vertx.core.streams.WriteStream;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,6 +61,10 @@ public final class ClientPipelineExecutor {
   private static final Logger LOGGER = LoggerFactory.getLogger(ClientPipelineExecutor.class);
 
   private ClientPipelineExecutor() {}
+
+  private static ClassLoader loader() {
+    return ClientPipelineExecutor.class.getClassLoader();
+  }
 
   /**
    * Result of building a client-side pipeline executor.
@@ -94,8 +102,13 @@ public final class ClientPipelineExecutor {
    * @throws IOException           if the YAML file cannot be read
    * @throws IllegalStateException if a remote model does not exist on its server
    */
-  public static Result create(Path workspaceYaml) throws IOException {
-    return create(YamlWorkspaceLoader.load(workspaceYaml), null);
+  public static Result create(Path workspaceYaml, Path pluginsDir) throws IOException {
+    var plugins = StepPluginRegistry.bootstrap(
+      pluginsDir,
+      pluginsDir.resolveSibling(".plugins-work")
+    );
+    var codecs = StepPlugins.codecsOf(plugins.stepPlugins(), plugins.loaders(), loader());
+    return create(YamlWorkspaceLoader.load(workspaceYaml, null, codecs), null, plugins);
   }
 
   /**
@@ -110,8 +123,17 @@ public final class ClientPipelineExecutor {
    * @throws IOException           if the YAML cannot be parsed
    * @throws IllegalStateException if a remote model does not exist on its server
    */
-  public static Result createFromString(String workspaceYaml) throws IOException {
-    return create(YamlWorkspaceLoader.loadFromString(workspaceYaml), null);
+  public static Result createFromString(String workspaceYaml, Path pluginsDir) throws IOException {
+    var plugins = StepPluginRegistry.bootstrap(
+      pluginsDir,
+      pluginsDir.resolveSibling(".plugins-work")
+    );
+    var codecs = StepPlugins.codecsOf(plugins.stepPlugins(), plugins.loaders(), loader());
+    return create(
+      YamlWorkspaceLoader.loadFromString(workspaceYaml, null, null, codecs),
+      null,
+      plugins
+    );
   }
 
   /**
@@ -129,9 +151,12 @@ public final class ClientPipelineExecutor {
    * @throws IOException           if the YAML cannot be parsed
    * @throws IllegalStateException if a remote model does not exist on its server
    */
-  public static Result createFromString(String workspaceYaml, io.vertx.core.Vertx vertx)
-    throws IOException {
-    return createFromString(workspaceYaml, vertx, null);
+  public static Result createFromString(
+    String workspaceYaml,
+    io.vertx.core.Vertx vertx,
+    Path pluginsDir
+  ) throws IOException {
+    return createFromString(workspaceYaml, vertx, null, pluginsDir);
   }
 
   /**
@@ -150,9 +175,19 @@ public final class ClientPipelineExecutor {
   public static Result createFromString(
     String workspaceYaml,
     io.vertx.core.Vertx vertx,
-    Path templatesPath
+    Path templatesPath,
+    Path pluginsDir
   ) throws IOException {
-    return create(YamlWorkspaceLoader.loadFromString(workspaceYaml, null, templatesPath), vertx);
+    var plugins = StepPluginRegistry.bootstrap(
+      pluginsDir,
+      pluginsDir.resolveSibling(".plugins-work")
+    );
+    var codecs = StepPlugins.codecsOf(plugins.stepPlugins(), plugins.loaders(), loader());
+    return create(
+      YamlWorkspaceLoader.loadFromString(workspaceYaml, null, templatesPath, codecs),
+      vertx,
+      plugins
+    );
   }
 
   /**
@@ -166,7 +201,11 @@ public final class ClientPipelineExecutor {
    * @return a result containing the executor and all gRPC clients
    * @throws IllegalStateException if a remote model does not exist on its server
    */
-  public static Result create(YamlWorkspaceLoader.WorkspaceRequests ws, io.vertx.core.Vertx vertx) {
+  public static Result create(
+    YamlWorkspaceLoader.WorkspaceRequests ws,
+    io.vertx.core.Vertx vertx,
+    StepPluginRegistry plugins
+  ) {
     LOGGER.info(
       "Loaded workspace '{}': {} local model(s), {} remote model(s), {} pipeline(s), {} remote endpoint(s)",
       ws.name(),
@@ -196,24 +235,50 @@ public final class ClientPipelineExecutor {
         modelRegistry.register(id, name, engine, token -> {}, task, visible, modalities)
     );
 
-    // 5. Build PipelineRegistry from local YAML
+    // 5. Assemble the step plugins before any pipeline registers: registration is where an
+    // unlicensed step is refused, so availability has to be known first. No license on a
+    // client: license-gated steps are server-only, and a workspace naming one fails here
+    // rather than running with the step skipped.
     var pipelineRegistry = new PipelineRegistry(modelRegistry);
+    var factory = new StepExecutorFactory(
+      modelRegistry,
+      pipelineRegistry,
+      streamRegistry,
+      new JinjaTemplateRenderer(),
+      null
+    );
+    var services = new StepExecutorServices(
+      factory.executionContext(),
+      factory.templateRenderer(),
+      new DelegatingChatTemplateRenderer(factory.templateRenderer()),
+      modelRegistry,
+      pipelineRegistry,
+      null,
+      null,
+      factory.subPipelineCallbacks()
+    );
+    var assembled = StepPlugins.assemble(
+      plugins.stepPlugins(),
+      plugins.loaders(),
+      loader(),
+      feature -> false,
+      plugin -> true,
+      services
+    );
+    factory.addExecutors(assembled.executors());
+    factory.addDecorators(assembled.decorators());
+    pipelineRegistry.setStepAvailability(type ->
+      Optional.ofNullable(assembled.unlicensed().get(type))
+    );
+
+    // 6. Register the local pipelines
     for (var pipeline : ws.pipelines()) {
       String id = pipelineRegistry.register(pipeline);
       LOGGER.info("Registered pipeline: {}", id);
     }
 
-    // 6. Build remote pipeline callbacks
+    // 7. Build remote pipeline callbacks
     var remoteCallbacks = buildRemoteCallbacks(clients);
-
-    // 7. Wire step executor factory
-    var factory = new StepExecutorFactory(
-      modelRegistry,
-      pipelineRegistry,
-      streamRegistry,
-      new JinjaRenderer(),
-      null
-    );
 
     var dispatcher = factory.createDispatcher();
     var executor = new PipelineExecutor(pipelineRegistry, dispatcher);
@@ -229,7 +294,7 @@ public final class ClientPipelineExecutor {
       } catch (Exception e) {
         LOGGER.warn(
           "KNN embedding warmup failed for pipeline '{}': {}",
-          pipeline.getPipelineId(),
+          pipeline.id(),
           e.getMessage()
         );
       }
@@ -242,7 +307,7 @@ public final class ClientPipelineExecutor {
       clients.size()
     );
 
-    var pipelineIds = ws.pipelines().stream().map(Pipeline::getPipelineId).toList();
+    var pipelineIds = ws.pipelines().stream().map(PipelineModel::id).toList();
 
     return new Result(executor, clients, pipelineIds, modelRegistry);
   }
@@ -476,7 +541,7 @@ public final class ClientPipelineExecutor {
   }
 
   private static InferencePerformance toProtoPerformance(
-    io.gravitee.singularitee.engine.ModelEnginePerformance p
+    io.gravitee.singularitee.engine.api.ModelEnginePerformance p
   ) {
     return InferencePerformance.newBuilder()
       .setStartTimeMs(p.startTimeMs())
@@ -495,10 +560,10 @@ public final class ClientPipelineExecutor {
   // Remote pipeline callbacks
   // -----------------------------------------------------------------------
 
-  private static Map<String, SubPipelineStepExecutor.PipelineExecutorCallback> buildRemoteCallbacks(
+  private static Map<String, PipelineExecutorCallback> buildRemoteCallbacks(
     Map<String, SingulariteeClient> clients
   ) {
-    var callbacks = new HashMap<String, SubPipelineStepExecutor.PipelineExecutorCallback>();
+    var callbacks = new HashMap<String, PipelineExecutorCallback>();
     for (var entry : clients.entrySet()) {
       callbacks.put(entry.getKey(), new RemotePipelineCallback(entry.getValue()));
     }

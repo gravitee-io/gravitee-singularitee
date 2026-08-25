@@ -20,7 +20,7 @@ step is silent and only mutates the context.
 
 | Type | Module | Role |
 | --- | --- | --- |
-| `Pipeline`, `PipelineStep`, `StepType`, `StepRole` | `protocol` (`pipeline.proto`, `inference.proto`) | The compiled graph. |
+| `PipelineModel`, `StepModel`, `StepTypes` | `engine` (`pipeline.model`) | The compiled graph: a server-internal Java model, never on the wire. `StepRole` stays a proto enum (`inference.proto`) because it labels streamed events. |
 | `PipelineExecutor` | `engine` | Builds the context from the request, emits `CREATED`, walks the graph, ends the stream with a finish reason. Also the local `sub_pipeline` callback. |
 | `PipelineContext` | `engine` | Per-request scratchpad: string fields, `messages()`, `generatedMessages()`, `verdicts()`, tools, todo plan, usage totals, halt state. |
 | `StepDispatcher`, `StepExecutorFactory`, `StepExecutor<C>` | `engine` | Type-to-executor table; each step runs inside an `ai.step` span. |

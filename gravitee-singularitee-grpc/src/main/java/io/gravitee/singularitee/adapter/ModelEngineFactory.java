@@ -15,7 +15,7 @@
  */
 package io.gravitee.singularitee.adapter;
 
-import io.gravitee.singularitee.engine.ModelEngine;
+import io.gravitee.singularitee.engine.api.ModelEngine;
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
 
 /**

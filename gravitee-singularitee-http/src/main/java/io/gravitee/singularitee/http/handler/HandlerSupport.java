@@ -16,13 +16,13 @@
 package io.gravitee.singularitee.http.handler;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.http.json.JsonResponses;
 import io.gravitee.singularitee.http.json.Utils;
 import io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver.Resolution;
 import io.gravitee.singularitee.http.resolve.RequestModalities;
 import io.gravitee.singularitee.http.validation.PayloadValidator;
 import io.gravitee.singularitee.http.validation.SchemaName;
-import io.gravitee.singularitee.registry.ModelRegistry;
 import io.vertx.ext.web.RoutingContext;
 import java.util.ArrayList;
 import java.util.List;

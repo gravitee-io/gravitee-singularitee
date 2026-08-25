@@ -19,7 +19,7 @@ import io.gravitee.llama.cpp.AttentionType;
 import io.gravitee.llama.cpp.FlashAttentionType;
 import io.gravitee.llama.cpp.PoolingType;
 import io.gravitee.singularitee.adapter.ModelEngineFactory;
-import io.gravitee.singularitee.engine.ModelEngine;
+import io.gravitee.singularitee.engine.api.ModelEngine;
 import io.gravitee.singularitee.inference.api.memory.MemoryCheckPolicy;
 import io.gravitee.singularitee.inference.api.reranker.RerankScoring;
 import io.gravitee.singularitee.inference.api.reranker.RerankTemplate;

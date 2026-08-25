@@ -26,13 +26,19 @@
         <version>1.2.1</version>
     </parent>
 
+    <groupId>io.gravitee.singularitee.engine</groupId>
     <artifactId>gravitee-singularitee-engine</artifactId>
 
-    <name>Gravitee.io - Singularitee - Engine API</name>
-    <description>Domain model for AI inference engines: interfaces, records, enums, pipeline context, evaluators, and registries. Shared across all modules without pulling in gRPC or Vert.x infrastructure.</description>
+    <name>Gravitee.io - Singularitee - Engine</name>
+    <description>The engine runtime that wires and executes pipelines: StepExecutorFactory, StepDispatcher and the platform decorators, PipelineExecutor, ConversationStore, and the pure-Java classifier engines. Depends on engine-api; contains no step executors.</description>
 
     <dependencies>
-        <!-- Protocol (protobuf-generated classes used by PipelineContext, evaluators, registries) -->
+        <!-- The engine runtime wires and executes the API contracts (models, registries, step SPI). -->
+        <dependency>
+            <groupId>io.gravitee.singularitee.engine.api</groupId>
+            <artifactId>gravitee-singularitee-engine-api</artifactId>
+        </dependency>
+        <!-- Protocol (protobuf-generated classes used by ConversationStore, PipelineExecutor) -->
         <dependency>
             <groupId>io.gravitee.singularitee</groupId>
             <artifactId>gravitee-singularitee-protocol</artifactId>

@@ -15,8 +15,9 @@
  */
 package io.gravitee.singularitee.service;
 
+import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
+import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.protocol.*;
-import io.gravitee.singularitee.registry.PipelineRegistry;
 import io.vertx.core.Future;
 
 /**
@@ -26,7 +27,7 @@ import io.vertx.core.Future;
  * persistence to {@link PipelineRegistry}.
  *
  * <p>Pipelines are registered at startup by {@code WorkspaceLoaderComponent} via
- * {@link PipelineRegistry#register(Pipeline)} directly; there is no public gRPC
+ * {@link PipelineRegistry#register(PipelineModel)} directly; there is no public gRPC
  * endpoint to publish pipelines at runtime.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -55,10 +56,21 @@ public class GraviteePipelineServiceImpl extends GraviteePipelineServiceGrpcServ
     var entry = entryOpt.get();
     return Future.succeededFuture(
       GetPipelineResponse.newBuilder()
-        .setPipeline(entry.pipeline())
+        .setPipeline(toProto(entry.pipeline()))
         .setStatus(entry.status())
         .build()
     );
+  }
+
+  /** Discovery metadata only: the DAG itself is server-internal and never crosses the wire. */
+  private static Pipeline toProto(PipelineModel pipeline) {
+    return Pipeline.newBuilder()
+      .setPipelineId(pipeline.id())
+      .setPipelineName(pipeline.name() == null ? "" : pipeline.name())
+      .setTask(pipeline.task() == null ? "" : pipeline.task())
+      .setHidden(pipeline.hidden())
+      .addAllInputModalities(pipeline.inputModalities())
+      .build();
   }
 
   // ---------------------------------------------------------------------------
@@ -70,10 +82,10 @@ public class GraviteePipelineServiceImpl extends GraviteePipelineServiceGrpcServ
   public Future<ListPipelinesResponse> listPipelines(ListPipelinesRequest request) {
     var builder = ListPipelinesResponse.newBuilder();
     for (var kv : registry.entries()) {
-      if (kv.getValue().pipeline().getHidden()) continue;
+      if (kv.getValue().pipeline().hidden()) continue;
       builder.addPipelines(
         GetPipelineResponse.newBuilder()
-          .setPipeline(kv.getValue().pipeline())
+          .setPipeline(toProto(kv.getValue().pipeline()))
           .setStatus(kv.getValue().status())
           .build()
       );

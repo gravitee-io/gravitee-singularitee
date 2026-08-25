@@ -18,7 +18,7 @@ package io.gravitee.singularitee.service;
 import io.gravitee.node.api.opentelemetry.Span;
 import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.node.api.opentelemetry.internal.InternalRequest;
-import io.gravitee.singularitee.metrics.InferenceMetrics;
+import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
 import io.opentelemetry.api.trace.SpanKind;
 import io.vertx.core.Context;
 import io.vertx.core.Future;

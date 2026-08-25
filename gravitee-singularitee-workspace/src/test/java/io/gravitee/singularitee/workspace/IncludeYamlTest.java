@@ -18,6 +18,7 @@ package io.gravitee.singularitee.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.gravitee.singularitee.plugin.test.TestStepPlugins;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,6 +26,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class IncludeYamlTest {
+
+  private static io.gravitee.singularitee.plugin.infer.InferStepConfig inferConfig(
+    YamlWorkspaceLoader.WorkspaceRequests result
+  ) {
+    return (io.gravitee.singularitee.plugin.infer.InferStepConfig) result
+      .pipelines()
+      .get(0)
+      .steps()
+      .get(0)
+      .config();
+  }
 
   // ---------------------------------------------------------------------------
   // Include-merge tests
@@ -85,16 +97,14 @@ class IncludeYamlTest {
     Files.writeString(modelsDir.resolve("includes.yaml"), includeContent);
     Files.writeString(pipelinesDir.resolve("includes.yaml"), includeContent);
 
-    var result = YamlWorkspaceLoader.load(mainYaml);
+    var result = YamlWorkspaceLoader.load(mainYaml, null, TestStepPlugins.codecs());
 
     assertThat(result.models()).hasSize(2);
     var modelIds = result.models().stream().map(ModelLoadRequest::modelId).toList();
     assertThat(modelIds).containsExactlyInAnyOrder("main-model", "included-model");
     assertThat(result.pipelines()).hasSize(1);
-    assertThat(result.pipelines().get(0).getPipelineId()).isEqualTo("test-pipeline");
-    assertThat(result.pipelines().get(0).getSteps(0).getInferConfig().getModelId()).isEqualTo(
-      "included-model"
-    );
+    assertThat(result.pipelines().get(0).id()).isEqualTo("test-pipeline");
+    assertThat(inferConfig(result).modelId()).isEqualTo("included-model");
   }
 
   @Test
@@ -120,7 +130,7 @@ class IncludeYamlTest {
       """
     );
 
-    var result = YamlWorkspaceLoader.load(mainYaml);
+    var result = YamlWorkspaceLoader.load(mainYaml, null, TestStepPlugins.codecs());
     assertThat(result.models()).hasSize(1);
     assertThat(result.models().get(0).modelId()).isEqualTo("main-only-model");
   }
@@ -179,11 +189,11 @@ class IncludeYamlTest {
       """
     );
 
-    var result = YamlWorkspaceLoader.load(mainYaml);
+    var result = YamlWorkspaceLoader.load(mainYaml, null, TestStepPlugins.codecs());
     assertThat(result.models()).hasSize(1);
     assertThat(result.pipelines()).hasSize(1);
     assertThat(result.models().get(0).modelId()).isEqualTo("model-from-include1");
-    assertThat(result.pipelines().get(0).getPipelineId()).isEqualTo("pipeline-from-include2");
+    assertThat(result.pipelines().get(0).id()).isEqualTo("pipeline-from-include2");
   }
 
   // ---------------------------------------------------------------------------
@@ -224,11 +234,9 @@ class IncludeYamlTest {
       """
     );
 
-    var result = YamlWorkspaceLoader.load(ws);
+    var result = YamlWorkspaceLoader.load(ws, null, TestStepPlugins.codecs());
     assertThat(result.pipelines()).hasSize(1);
-    assertThat(result.pipelines().get(0).getSteps(0).getInferConfig().getRawTemplate()).isEqualTo(
-      "Hello, {{ name }}!"
-    );
+    assertThat(inferConfig(result).rawTemplate()).isEqualTo("Hello, {{ name }}!");
   }
 
   @Test
@@ -276,10 +284,8 @@ class IncludeYamlTest {
       """
     );
 
-    var result = YamlWorkspaceLoader.load(ws);
-    assertThat(result.pipelines().get(0).getSteps(0).getInferConfig().getRawTemplate()).isEqualTo(
-      "Hi {{ user }}!"
-    );
+    var result = YamlWorkspaceLoader.load(ws, null, TestStepPlugins.codecs());
+    assertThat(inferConfig(result).rawTemplate()).isEqualTo("Hi {{ user }}!");
   }
 
   @Test
@@ -319,10 +325,8 @@ class IncludeYamlTest {
       """
     );
 
-    var result = YamlWorkspaceLoader.load(ws);
-    assertThat(result.pipelines().get(0).getSteps(0).getInferConfig().getRawTemplate()).isEqualTo(
-      "Answer: {{ answer }}"
-    );
+    var result = YamlWorkspaceLoader.load(ws, null, TestStepPlugins.codecs());
+    assertThat(inferConfig(result).rawTemplate()).isEqualTo("Answer: {{ answer }}");
   }
 
   @Test
@@ -355,6 +359,8 @@ class IncludeYamlTest {
       """
     );
 
-    assertThatThrownBy(() -> YamlWorkspaceLoader.load(ws)).hasMessageContaining("does-not-exist");
+    assertThatThrownBy(() ->
+      YamlWorkspaceLoader.load(ws, null, TestStepPlugins.codecs())
+    ).hasMessageContaining("does-not-exist");
   }
 }

@@ -21,7 +21,7 @@ A guard is a step placed before (or between) generation steps. Three step types 
 ## Key types
 
 - `GuardStepExecutor`, `LlmGuardStepExecutor`, `RegexGuardStepExecutor` (engine).
-- `GuardStepConfig`, `GuardTrigger`, `LlmGuardStepConfig`, `RegexGuardStepConfig`, `RegexEntityDef`, `GuardAction` (`pipeline.proto`).
+- `GuardStepConfig`, `LlmGuardStepConfig`, `RegexGuardStepConfig`: the guard plugins' config records; `GuardAction` is an engine model enum shared by all three.
 - `FinishReason.FINISH_REASON_GUARD_BLOCKED` (`inference.proto`).
 
 ## Usage

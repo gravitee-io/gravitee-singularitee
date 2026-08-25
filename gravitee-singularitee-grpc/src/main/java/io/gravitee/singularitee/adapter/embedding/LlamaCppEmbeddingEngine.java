@@ -16,9 +16,9 @@
 package io.gravitee.singularitee.adapter.embedding;
 
 import io.gravitee.singularitee.adapter.BlockingEngineAdapter;
-import io.gravitee.singularitee.engine.EmbedRequest;
-import io.gravitee.singularitee.engine.EmbedResponse;
-import io.gravitee.singularitee.engine.EmbeddingEngine;
+import io.gravitee.singularitee.engine.api.EmbedRequest;
+import io.gravitee.singularitee.engine.api.EmbedResponse;
+import io.gravitee.singularitee.engine.api.EmbeddingEngine;
 import io.gravitee.singularitee.inference.api.embedding.EmbeddingTokenCount;
 import io.gravitee.singularitee.inference.llama.cpp.encoder.LlamaCppEmbeddingModel;
 import io.reactivex.rxjava3.core.Single;

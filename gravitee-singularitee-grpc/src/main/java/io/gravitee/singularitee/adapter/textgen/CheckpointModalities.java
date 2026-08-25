@@ -15,7 +15,7 @@
  */
 package io.gravitee.singularitee.adapter.textgen;
 
-import io.gravitee.singularitee.engine.Modalities;
+import io.gravitee.singularitee.engine.api.Modalities;
 import io.vertx.core.json.JsonObject;
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -84,7 +84,10 @@ Metal applies `gpu_memory_utilization` to *total* unified memory rather than wha
 | Module | Role |
 | --- | --- |
 | `protocol` | `.proto` contract + generated Vert.x gRPC stubs. **Source of truth for the wire.** |
-| `engine` | Pipeline execution: `ModelRegistry`, `PipelineRegistry`, `PipelineExecutor`, step executors. |
+| `engine-api` | The plugin-facing contracts: step SPI, pipeline/step model, `PipelineContext`/`StepContext`, engine model interfaces, registries, template rendering. Its own coordinate `io.gravitee.singularitee.engine.api` and package namespace `io.gravitee.singularitee.engine.api.*` (no split package with `engine`). |
+| `engine` | The runtime that wires and executes them: `StepExecutorFactory`, `StepDispatcher` + platform decorators, `PipelineExecutor`, `ConversationStore`. Depends on `engine-api`; no step executors. Coordinate `io.gravitee.singularitee.engine`, package namespace `io.gravitee.singularitee.engine.*` (the pipeline runtime lives under `engine.pipeline`). |
+| `plugin-api` | Step plugin SPI (`StepExecutorPlugin`, `StepDecoratorPlugin`, `StepExecutorServices`) + assembly and license gate. Depends on `engine-api`, so plugins never pull the engine runtime. |
+| `plugins` | One module per core step: the 12 core OSS steps. Further steps can live in their own separate plugin repos, loaded the same way. |
 | `engine-remote` | `remote_*` proxy engines + `ClientPipelineExecutor` (client-side DAG, remote models). |
 | `inference` | Vendored engines (`-api`, `-llama-cpp`, `-vllm`, `-onnx`, `-math`) behind `AbstractBatchEngine`. |
 | `workspace` | `YamlWorkspaceLoader`: YAML to model/pipeline definitions. `ModelType` lives here. |
@@ -217,8 +220,9 @@ workspace:
 `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker`,
 the `remote_*` proxies, and `regex` / `composite_classifier` (pure Java, run anywhere).
 
-**Step types** (`StepExecutorFactory.createHandlers`): `infer`, `classify`, `embed`, `route`,
+**Step types** (one plugin module each under `gravitee-singularitee-plugins/`): `infer`, `classify`, `embed`, `route`,
 `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`.
+Further steps can ship as separate plugin repos, loaded the same way.
 
 **Publication**: `task:`, `visible:` and `modalities:` apply to both a model and a pipeline entry.
 `task` is the slug `/v1/models` advertises (`text-generation`, `text-classification`,
@@ -285,10 +289,19 @@ constant with its wire name, a config record in `WorkspaceDefinition`, the proto
 distribution flavour can omit an engine and fail with "no factory for type" rather than
 `NoClassDefFoundError`.
 
-**Add a pipeline step**: add `STEP_TYPE_*` to `pipeline.proto` (never reuse a retired tag;
-see the `reserved` entries), a config message beside it, the config record + parsing in
-`WorkspaceDefinition`/`YamlWorkspaceLoader`, a `StepExecutor` in `engine`, and register it in
-`StepExecutorFactory.createHandlers`. Document it in the docs/architecture/README.md step table.
+**Add a pipeline step**: a step is a gravitee plugin module under
+`gravitee-singularitee-plugins/` (copy `gravitee-singularitee-plugin-break` as the smallest
+template). It holds a config record (implement `ModelBoundConfig` if it names a model,
+`BranchingConfig` if it names branch targets, `MonitorGateConfig` if it needs a downstream
+monitor), a `StepConfigCodec` parsing the YAML `config:` block, the `StepExecutor`, a
+`StepExecutorPlugin` (type string, its codec and executor), and `src/main/resources/plugin.properties`
+(`type=step`, `class=` the plugin, and an optional `feature=` a step declares to require a license feature). The aggregator
+manages the assembly, so the module just opts into `maven-assembly-plugin` to build its zip.
+Register the module in the plugins aggregator, the root `dependencyManagement`, the
+distribution pom (as `<type>zip</type>`, it lands in `plugins/`), and, for a core step,
+`StepTypes.CORE` (in `engine-api`). The step contracts (`StepExecutor`, `StepConfigCodec`,
+`ModelBoundConfig`, model types) live in `engine-api`; nothing in the `engine` runtime,
+`workspace` or the proto changes. Document it in the docs/architecture/README.md step table.
 
 **Add an HTTP endpoint**: `http` is a translator only. Route + request/response records +
 JSON↔proto mapping; it must drive the same local service the gRPC path uses, so metrics,
@@ -327,6 +340,20 @@ When a model won't fit, check `n_seq_max` before blaming the weights.
 returns the unprocessed token stream; for dialect models (gpt-oss/Harmony) that includes
 channel markers in `content`. The channel/tool handling lives in the pipeline step's `tags:`,
 so use the pipeline id for client-facing traffic.
+
+**Plugins are decorators; natives stay in the main classloader.** Step plugins are gravitee
+plugins loaded by the node's `PluginRegistry`; gravitee's own `PluginClassLoader` delegates
+parent-first, so a plugin must never bundle or load an engine or a native library: llama.cpp,
+ONNX Runtime and CPython are process-global singletons and a second classloader touching them
+fails with `UnsatisfiedLinkError` or a double init. Keep engine/protocol/plugin-api at
+`provided` scope so they resolve from the parent. Two providers for one step type, or a missing
+core step plugin, fail startup on purpose.
+
+**An unlicensed step fails the workspace load.** Unlike a failed model load, a pipeline
+declaring a step whose `plugin.properties` names a `feature=` that the platform license from
+`license.key` does not list
+makes `WorkspaceLoaderComponent` fail `doStart`: a safety gate silently absent is worse than a
+node that refuses to serve.
 
 **One backend per process.** llama.cpp, vLLM and ONNX Runtime each load their own native
 (CUDA) libraries; co-locating them invites library conflicts and GPU-memory contention.

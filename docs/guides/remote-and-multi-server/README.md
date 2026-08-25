@@ -15,7 +15,7 @@ Two ways to run such a workspace:
 | Mode | How | Notes |
 | --- | --- | --- |
 | As a server | `./run-server.sh --workspace examples/modular/client-safety-llamacpp.yaml` | `WorkspaceLoaderComponent` registers the remote proxies like any model; the pipeline is published over gRPC and HTTP. Full tracing and metrics. |
-| Embedded | `ClientPipelineExecutor.create(path)` from `gravitee-singularitee-engine-remote` | For a gateway or another JVM; no gRPC server of its own, no tracing. |
+| Embedded | `ClientPipelineExecutor.create(workspacePath, pluginsDir)` from `gravitee-singularitee-engine-remote` | For a gateway or another JVM; no gRPC server of its own, no tracing. `pluginsDir` holds the step plugin zips the client loads through its own registry. |
 
 The standard topology keeps one backend per process (llama.cpp, vLLM and ONNX Runtime each
 load their own native libraries) and composes across processes from a client workspace.

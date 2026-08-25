@@ -18,7 +18,7 @@ package io.gravitee.singularitee.adapter.classifier;
 import io.gravitee.singularitee.adapter.BlockingEngineAdapter;
 import io.gravitee.singularitee.adapter.batching.BatchingConfig;
 import io.gravitee.singularitee.adapter.batching.MicroBatcher;
-import io.gravitee.singularitee.engine.*;
+import io.gravitee.singularitee.engine.api.*;
 import io.gravitee.singularitee.inference.api.classifier.ClassifierMode;
 import io.gravitee.singularitee.inference.api.classifier.ClassifierResult;
 import io.gravitee.singularitee.inference.api.classifier.ClassifierResults;

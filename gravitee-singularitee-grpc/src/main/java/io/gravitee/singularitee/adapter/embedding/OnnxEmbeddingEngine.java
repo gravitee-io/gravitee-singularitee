@@ -18,7 +18,7 @@ package io.gravitee.singularitee.adapter.embedding;
 import io.gravitee.singularitee.adapter.BlockingEngineAdapter;
 import io.gravitee.singularitee.adapter.batching.BatchingConfig;
 import io.gravitee.singularitee.adapter.batching.MicroBatcher;
-import io.gravitee.singularitee.engine.*;
+import io.gravitee.singularitee.engine.api.*;
 import io.gravitee.singularitee.inference.api.text.EstimatedTokens;
 import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter;
 import io.gravitee.singularitee.inference.onnx.bert.embedding.OnnxBertEmbeddingModel;

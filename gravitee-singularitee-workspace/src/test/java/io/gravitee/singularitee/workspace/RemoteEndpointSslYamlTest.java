@@ -17,6 +17,7 @@ package io.gravitee.singularitee.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.gravitee.singularitee.plugin.test.TestStepPlugins;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -56,7 +57,7 @@ class RemoteEndpointSslYamlTest {
       """
     );
 
-    var remotes = YamlWorkspaceLoader.load(workspace).remotes();
+    var remotes = YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs()).remotes();
     var plain = remotes.get("plain");
     var secured = remotes.get("secured");
 
@@ -85,7 +86,7 @@ class RemoteEndpointSslYamlTest {
       """
     );
 
-    var remotes = YamlWorkspaceLoader.load(workspace).remotes();
+    var remotes = YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs()).remotes();
     assertThat(remotes).hasSize(1);
     assertThat(remotes.values().iterator().next().effectiveSsl()).isTrue();
   }

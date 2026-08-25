@@ -16,7 +16,7 @@
 package io.gravitee.singularitee.engine.remote;
 
 import io.gravitee.singularitee.client.SingulariteeClient;
-import io.gravitee.singularitee.pipeline.executor.SubPipelineStepExecutor;
+import io.gravitee.singularitee.engine.api.pipeline.executor.PipelineExecutorCallback;
 import io.gravitee.singularitee.protocol.*;
 import io.reactivex.rxjava3.core.Completable;
 import io.vertx.core.Context;
@@ -25,7 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * {@link SubPipelineStepExecutor.PipelineExecutorCallback} that executes
+ * {@link PipelineExecutorCallback} that executes
  * a pipeline on a remote Singularitee via the {@code InferPipeline} RPC.
  *
  * <p>Fully non-blocking: returns a {@link Completable} that completes when the
@@ -35,8 +35,7 @@ import org.slf4j.LoggerFactory;
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public final class RemotePipelineCallback
-  implements SubPipelineStepExecutor.PipelineExecutorCallback {
+public final class RemotePipelineCallback implements PipelineExecutorCallback {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RemotePipelineCallback.class);
 

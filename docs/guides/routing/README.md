@@ -15,7 +15,7 @@ A `route` step reads a context field (`prompt` by default), resolves it to a lab
 ## Key types
 
 - `RouteStepExecutor` (engine), including `rxWarmupEmbeddings`, which embeds every rule's sentences at workspace load.
-- `RouteStepConfig`, `RouteRule`, `RoutingStrategy` (`pipeline.proto`).
+- `RouteStepConfig`, `RouteStepConfig.RouteRule`, `RoutingStrategy`: the route plugin's config records.
 - `ClassifierEngine` and `EmbeddingEngine` behind the first two strategies.
 
 ## Usage

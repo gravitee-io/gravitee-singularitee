@@ -16,7 +16,7 @@
 package io.gravitee.singularitee.engine.remote;
 
 import io.gravitee.singularitee.client.SingulariteeClient;
-import io.gravitee.singularitee.engine.EmbeddingEngine;
+import io.gravitee.singularitee.engine.api.EmbeddingEngine;
 import io.reactivex.rxjava3.core.Single;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,8 +42,8 @@ public final class RemoteEmbeddingEngine implements EmbeddingEngine {
   }
 
   @Override
-  public Single<io.gravitee.singularitee.engine.EmbedResponse> rxEmbed(
-    io.gravitee.singularitee.engine.EmbedRequest request
+  public Single<io.gravitee.singularitee.engine.api.EmbedResponse> rxEmbed(
+    io.gravitee.singularitee.engine.api.EmbedRequest request
   ) {
     var protoReq = io.gravitee.singularitee.protocol.EmbedRequest.newBuilder()
       .setModelId(modelId)
@@ -58,7 +58,7 @@ public final class RemoteEmbeddingEngine implements EmbeddingEngine {
         for (int i = 0; i < embedding.length; i++) {
           embedding[i] = protoVec.getValues(i);
         }
-        return new io.gravitee.singularitee.engine.EmbedResponse(
+        return new io.gravitee.singularitee.engine.api.EmbedResponse(
           embedding,
           protoResp.getTokenCount()
         );
@@ -66,7 +66,7 @@ public final class RemoteEmbeddingEngine implements EmbeddingEngine {
   }
 
   @Override
-  public Single<List<io.gravitee.singularitee.engine.EmbedResponse>> rxEmbedBatch(
+  public Single<List<io.gravitee.singularitee.engine.api.EmbedResponse>> rxEmbedBatch(
     List<String> texts
   ) {
     var protoReq = io.gravitee.singularitee.protocol.EmbedBatchRequest.newBuilder()
@@ -77,7 +77,7 @@ public final class RemoteEmbeddingEngine implements EmbeddingEngine {
     return client
       .embedBatch(protoReq)
       .map(batchResp -> {
-        List<io.gravitee.singularitee.engine.EmbedResponse> responses = new ArrayList<>(
+        List<io.gravitee.singularitee.engine.api.EmbedResponse> responses = new ArrayList<>(
           batchResp.getItemsCount()
         );
         for (var item : batchResp.getItemsList()) {
@@ -87,7 +87,7 @@ public final class RemoteEmbeddingEngine implements EmbeddingEngine {
             embedding[i] = protoVec.getValues(i);
           }
           responses.add(
-            new io.gravitee.singularitee.engine.EmbedResponse(embedding, item.getTokenCount())
+            new io.gravitee.singularitee.engine.api.EmbedResponse(embedding, item.getTokenCount())
           );
         }
         return responses;

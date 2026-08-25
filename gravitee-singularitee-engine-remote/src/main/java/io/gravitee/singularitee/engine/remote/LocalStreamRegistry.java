@@ -15,7 +15,7 @@
  */
 package io.gravitee.singularitee.engine.remote;
 
-import io.gravitee.singularitee.pipeline.executor.StreamRegistry;
+import io.gravitee.singularitee.engine.api.pipeline.executor.StreamRegistry;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**

@@ -19,15 +19,15 @@ import io.gravitee.singularitee.adapter.ModelEngineFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerClassifierFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerNerFactory;
 import io.gravitee.singularitee.adapter.textgen.LlamaCppEngineFactory;
-import io.gravitee.singularitee.engine.ModelEngine;
-import io.gravitee.singularitee.engine.ModelEngineToken;
-import io.gravitee.singularitee.engine.TextGenEngine;
+import io.gravitee.singularitee.engine.api.ModelEngine;
+import io.gravitee.singularitee.engine.api.ModelEngineToken;
+import io.gravitee.singularitee.engine.api.TextGenEngine;
+import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.grpc.resolver.GgufModelResolver;
 import io.gravitee.singularitee.grpc.resolver.GlinerModelResolver;
 import io.gravitee.singularitee.grpc.resolver.OnnxModelResolver;
 import io.gravitee.singularitee.grpc.resolver.VllmModelResolver;
 import io.gravitee.singularitee.protocol.*;
-import io.gravitee.singularitee.registry.ModelRegistry;
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
 import io.reactivex.rxjava3.core.Single;
 import io.vertx.core.Future;
@@ -57,7 +57,7 @@ import org.slf4j.LoggerFactory;
  */
 public class GraviteeModelServiceImpl
   extends GraviteeModelServiceGrpcService
-  implements io.gravitee.singularitee.pipeline.executor.StreamRegistry {
+  implements io.gravitee.singularitee.engine.api.pipeline.executor.StreamRegistry {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(GraviteeModelServiceImpl.class);
 
@@ -477,7 +477,7 @@ public class GraviteeModelServiceImpl
   }
 
   private static InferencePerformance toProtoPerformance(
-    io.gravitee.singularitee.engine.ModelEnginePerformance perf
+    io.gravitee.singularitee.engine.api.ModelEnginePerformance perf
   ) {
     return InferencePerformance.newBuilder()
       .setStartTimeMs(perf.startTimeMs())

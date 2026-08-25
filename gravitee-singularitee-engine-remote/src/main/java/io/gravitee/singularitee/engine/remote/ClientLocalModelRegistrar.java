@@ -15,11 +15,11 @@
  */
 package io.gravitee.singularitee.engine.remote;
 
-import io.gravitee.singularitee.engine.ClassifierEngine;
-import io.gravitee.singularitee.engine.ModelEngine;
+import io.gravitee.singularitee.engine.api.ClassifierEngine;
+import io.gravitee.singularitee.engine.api.ModelEngine;
+import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.classifier.CompositeClassifierEngine;
 import io.gravitee.singularitee.engine.classifier.RegexClassifierEngine;
-import io.gravitee.singularitee.registry.ModelRegistry;
 import io.gravitee.singularitee.workspace.ModelType;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition.CompositeClassifierDef;

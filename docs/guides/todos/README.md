@@ -22,9 +22,10 @@ A pipeline that contains a `todo` step gets three things:
 
 | Type | Where | Purpose |
 | --- | --- | --- |
-| `STEP_TYPE_TODO`, `TodoStepConfig` | `pipeline.proto` | Consumes todo calls; goes to `handled_step` after consuming, `next_step` otherwise. |
+| `TodoStepConfig` | `plugins/todo` | Consumes todo calls; goes to `handled_step` after consuming, `next_step` otherwise. |
 | `TodoStepExecutor` | `engine` | Executes calls, records turns, clears consumed calls, emits `PROGRESS`, halts for `ask_user` or client-bound calls. |
-| `TodoTools` | `engine` | The three tool definitions; `DELEGABLE = {ask_user}`. |
+| `TodoTools` | `engine-api` | The three tool definitions; `DELEGABLE = {ask_user}`. |
+| `ServerToolNames` | `engine-api` | The deployment's display names for those tools (`ai.tools.*.name`), carried on the `PipelineContext`; canonical by default. |
 | `PipelineContext.TodoItem`, `TodoStatus` | `engine` | `{id, title, status, proof}`; `pending`, `in_progress`, `done`. |
 | `ResponseProgress`, `TodoItem` | `inference.proto` | The progress payload. |
 | `TodoSessionStore`, `ConversationStore` | `engine` | Cross-turn persistence (session key, `previous_response_id`). |
@@ -121,9 +122,9 @@ curl -s localhost:8080/v1/chat/completions -H 'content-type: application/json' -
 
 | Tool | Arguments | Effect |
 | --- | --- | --- |
-| `set_todos` | `todos: [{id, title}]` (plain strings accepted), `constraints?` | Installs the plan; first item becomes `in_progress`. A re-send keeps the status of ids it already knows. Refused while a plan is locked. |
-| `complete_todo` | `id`, `note?` | Marks the item `done`; the next `pending` item becomes `in_progress`. `note` becomes the item's `proof`. Unknown id: the single `in_progress` item if there is one, else an error result. |
-| `ask_user` | `question` | Streams the question as the visible answer, ends the turn with `finish_reason: stop`, saves the plan. |
+| `set_todos` | `todos: [{id, title}]` (plain strings accepted), `constraints?` | Installs the plan; first item becomes `in_progress`. A re-send keeps the status of ids it already knows. Refused while a plan is locked. The result echoes the compact plan (`[x]` done / `[>]` in_progress / `[ ]` pending). |
+| `complete_todo` | `id`, `note?` | Marks the item `done`; the next `pending` item becomes `in_progress`. `note` becomes the item's `proof`. Unknown id: the single `in_progress` item if there is one, else an error result. The result echoes the updated compact plan. |
+| `ask_user` | `question`, `options?` | Streams the question (plus enumerated `options`, when given) as the visible answer, emits an `ask` elicitation on the progress event, ends the turn with `finish_reason: stop`, saves the plan. |
 
 Tool results go back to the model as a tool turn; argument errors are returned as an error
 result and written to `<step>.todo_error`.
@@ -131,8 +132,11 @@ result and written to `<step>.todo_error`.
 ### Pausing for the user
 
 Default: `ask_user` streams the question as ordinary assistant content and the pipeline halts
-with `BREAK_CONDITION`, which HTTP renders as `stop`. The next user message continues the
-conversation.
+with `BREAK_CONDITION`, which HTTP renders as `stop`. The structured question and its closed
+`options` also ride the progress event as an `ask` elicitation, so a gateway can render a
+choice dialog. The next user message continues the conversation. The tool names are
+deployment-renamable (`ai.tools.ask-user.name` and siblings); delegation matches the
+configured name.
 
 Client-owned `ask_user`: declare a tool named `ask_user` in the request's `tools[]` with your
 own schema (for example `{questions: [{question, options[]}]}`). The model sees your schema,
@@ -191,6 +195,12 @@ Context fields: `todos.total`, `todos.completed`, `todos.remaining` (numeric str
   state and stream as content.
 - Bound the work loop with `max_iterations` and a `fallback_step`; `ask_user` wins over
   `handled_step`.
+- Keep the live plan at the context tail, not in the `system:` prompt. The system prompt anchors
+  the KV prefix cache that `prompt_cache_key` routing reuses, so rendering the mutating `{{ todos }}`
+  there re-prefills the whole prompt every turn. The `set_todos`/`complete_todo` results already
+  echo the compact plan on the (tail) TOOL turn, so the model sees its current plan each turn with
+  no prefix-cache cost; render `{{ todos }}` in a `system:` block only when the plan is small and
+  the extra prefill is acceptable.
 
 ## See also
 

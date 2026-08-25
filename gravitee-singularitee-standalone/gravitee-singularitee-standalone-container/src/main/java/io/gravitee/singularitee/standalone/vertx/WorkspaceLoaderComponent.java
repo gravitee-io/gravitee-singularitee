@@ -18,16 +18,18 @@ package io.gravitee.singularitee.standalone.vertx;
 import io.gravitee.common.service.AbstractService;
 import io.gravitee.node.api.configuration.Configuration;
 import io.gravitee.singularitee.client.SingulariteeClient;
-import io.gravitee.singularitee.engine.ModelEngine;
+import io.gravitee.singularitee.engine.api.ModelEngine;
+import io.gravitee.singularitee.engine.api.pipeline.executor.PipelineExecutorCallback;
+import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.engine.api.registry.UnlicensedStepException;
+import io.gravitee.singularitee.engine.pipeline.PipelineExecutor;
+import io.gravitee.singularitee.engine.pipeline.executor.StepExecutorFactory;
 import io.gravitee.singularitee.engine.remote.RemoteClassifierEngine;
 import io.gravitee.singularitee.engine.remote.RemoteEmbeddingEngine;
 import io.gravitee.singularitee.engine.remote.RemotePipelineCallback;
 import io.gravitee.singularitee.engine.remote.RemoteRerankerEngine;
 import io.gravitee.singularitee.engine.remote.RemoteTextGenEngine;
-import io.gravitee.singularitee.pipeline.PipelineExecutor;
-import io.gravitee.singularitee.pipeline.executor.StepExecutorFactory;
-import io.gravitee.singularitee.pipeline.executor.SubPipelineStepExecutor;
-import io.gravitee.singularitee.registry.PipelineRegistry;
+import io.gravitee.singularitee.plugin.api.StepPlugins;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition;
 import io.gravitee.singularitee.workspace.YamlWorkspaceLoader;
@@ -59,6 +61,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
   private final PipelineExecutor pipelineExecutor;
   private final PipelineRegistry pipelineRegistry;
   private final ReadinessState readinessState;
+  private final StepPlugins stepPlugins;
 
   /** gRPC clients created for remote endpoints. Held so they can be closed on stop. */
   private Map<String, SingulariteeClient> remoteClients = Map.of();
@@ -70,7 +73,8 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     StepExecutorFactory stepExecutorFactory,
     PipelineExecutor pipelineExecutor,
     PipelineRegistry pipelineRegistry,
-    ReadinessState readinessState
+    ReadinessState readinessState,
+    StepPlugins stepPlugins
   ) {
     this.configuration = configuration;
     this.modelService = modelService;
@@ -78,6 +82,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     this.pipelineExecutor = pipelineExecutor;
     this.pipelineRegistry = pipelineRegistry;
     this.readinessState = readinessState;
+    this.stepPlugins = stepPlugins;
   }
 
   @Override
@@ -99,7 +104,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
 
     YamlWorkspaceLoader.WorkspaceRequests ws;
     try {
-      ws = YamlWorkspaceLoader.load(path, templatesPath);
+      ws = YamlWorkspaceLoader.load(path, templatesPath, stepPlugins.codecs());
     } catch (Exception e) {
       LOGGER.error("Failed to parse workspace file {}: {}", path, e.getMessage(), e);
       stepExecutorFactory.setSubPipelineCallbacks(pipelineExecutor, Map.of());
@@ -149,19 +154,21 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       modelService::registerPrebuiltModel
     );
 
-    // Pipelines
+    // Pipelines. A model that failed to load leaves an inert pipeline (WARN and carry on),
+    // but a step whose license feature is missing is a different class of error: the
+    // node must not come up serving a workspace with a safety-relevant step silently
+    // absent, so the load fails.
     for (var pipeline : ws.pipelines()) {
       try {
         String resolvedId = pipelineRegistry.register(pipeline);
-        LOGGER.info(
-          "Workspace pipeline registered: id={}, name={}",
-          resolvedId,
-          pipeline.getPipelineName()
-        );
+        LOGGER.info("Workspace pipeline registered: id={}, name={}", resolvedId, pipeline.name());
+      } catch (UnlicensedStepException e) {
+        LOGGER.error("Workspace load failed: {}", e.getMessage());
+        throw e;
       } catch (Exception e) {
         LOGGER.warn(
           "Workspace pipeline '{}' failed to register: {}",
-          pipeline.getPipelineName(),
+          pipeline.name(),
           e.getMessage()
         );
       }
@@ -178,7 +185,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       } catch (Exception e) {
         LOGGER.warn(
           "KNN embedding warmup failed for pipeline '{}': {}",
-          pipeline.getPipelineId(),
+          pipeline.id(),
           e.getMessage()
         );
       }
@@ -327,11 +334,10 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     );
   }
 
-  private static Map<
-    String,
-    SubPipelineStepExecutor.PipelineExecutorCallback
-  > buildRemotePipelineCallbacks(Map<String, SingulariteeClient> clients) {
-    var callbacks = new HashMap<String, SubPipelineStepExecutor.PipelineExecutorCallback>();
+  private static Map<String, PipelineExecutorCallback> buildRemotePipelineCallbacks(
+    Map<String, SingulariteeClient> clients
+  ) {
+    var callbacks = new HashMap<String, PipelineExecutorCallback>();
     for (var entry : clients.entrySet()) {
       callbacks.put(entry.getKey(), new RemotePipelineCallback(entry.getValue()));
     }

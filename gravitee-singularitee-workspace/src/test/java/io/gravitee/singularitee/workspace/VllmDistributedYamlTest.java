@@ -17,6 +17,7 @@ package io.gravitee.singularitee.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.gravitee.singularitee.plugin.test.TestStepPlugins;
 import io.gravitee.singularitee.workspace.config.VllmConfig;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -56,7 +57,7 @@ class VllmDistributedYamlTest {
       yaml.append("        ").append(entry).append('\n');
     }
     Files.writeString(workspace, yaml.toString());
-    var result = YamlWorkspaceLoader.load(workspace);
+    var result = YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs());
     assertThat(result.models()).hasSize(1);
     return result.models().get(0).vllmConfig();
   }

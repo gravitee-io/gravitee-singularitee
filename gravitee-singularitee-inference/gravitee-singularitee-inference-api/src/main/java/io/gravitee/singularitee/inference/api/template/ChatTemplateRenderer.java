@@ -56,4 +56,13 @@ public interface ChatTemplateRenderer {
   ) {
     return render(templateString, messages, tools, addGenerationPrompt, null);
   }
+
+  /**
+   * Renders a template whose {@code messages} / {@code tools} the caller already placed
+   * in {@code variables}: nothing outside the variable map is injected, so pre-sanitised
+   * entries (special-token-escaped tools) cannot be clobbered by raw parameters.
+   */
+  default String renderFromVariables(String templateString, Map<String, Object> variables) {
+    return render(templateString, null, null, true, variables);
+  }
 }

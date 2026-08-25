@@ -16,12 +16,12 @@
 package io.gravitee.singularitee.service;
 
 import io.gravitee.node.api.opentelemetry.Tracer;
-import io.gravitee.singularitee.engine.*;
-import io.gravitee.singularitee.metrics.InferenceMetrics;
-import io.gravitee.singularitee.pipeline.PipelineExecutor;
-import io.gravitee.singularitee.pipeline.executor.TokenStreamWriter;
+import io.gravitee.singularitee.engine.api.*;
+import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TokenStreamWriter;
+import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
+import io.gravitee.singularitee.engine.pipeline.PipelineExecutor;
 import io.gravitee.singularitee.protocol.*;
-import io.gravitee.singularitee.registry.ModelRegistry;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -47,7 +47,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
 
   private final Vertx vertx;
   private final ModelRegistry registry;
-  private final io.gravitee.singularitee.pipeline.PipelineExecutor pipelineExecutor;
+  private final io.gravitee.singularitee.engine.pipeline.PipelineExecutor pipelineExecutor;
   private final InferenceMetrics metrics;
   private final ServiceInstrumentation instrumentation;
 
@@ -296,7 +296,10 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
 
     Promise<io.gravitee.singularitee.protocol.ClassifyResponse> promise = Promise.promise();
     ce
-      .rxClassify(new io.gravitee.singularitee.engine.ClassifyRequest(request.getText()), labels)
+      .rxClassify(
+        new io.gravitee.singularitee.engine.api.ClassifyRequest(request.getText()),
+        labels
+      )
       .map(result -> {
         var responseBuilder = io.gravitee.singularitee.protocol.ClassifyResponse.newBuilder()
           .setTopLabel(result.topLabel() == null ? "" : result.topLabel())
@@ -363,7 +366,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
     var requests = request
       .getTextsList()
       .stream()
-      .map(text -> new io.gravitee.singularitee.engine.ClassifyRequest(text))
+      .map(text -> new io.gravitee.singularitee.engine.api.ClassifyRequest(text))
       .toList();
 
     var labels = request
@@ -432,7 +435,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
       req.hasLora() ? req.getLora().getLoraName() : null,
       req.hasLora() ? req.getLora().getLoraPath() : null,
       req.hasTemplateContext()
-        ? io.gravitee.singularitee.pipeline.executor.JinjaContextHelper.structToMap(
+        ? io.gravitee.singularitee.engine.api.pipeline.executor.TemplateContextHelper.structToMap(
           req.getTemplateContext()
         )
         : null,

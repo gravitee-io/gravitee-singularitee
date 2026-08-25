@@ -16,13 +16,14 @@
         </encoder>
     </appender>
 
-    <logger name="io.gravitee.singularitee.pipeline" level="INFO"/>
+    <logger name="io.gravitee.singularitee.engine.pipeline" level="INFO"/>
     <logger name="io.gravitee.singularitee.inference" level="INFO"/>
     <logger name="io.gravitee.singularitee.service" level="INFO"/>
     <logger name="io.gravitee.singularitee.standalone" level="INFO"/>
     <logger name="io.gravitee.singularitee.workspace" level="INFO"/>
     <logger name="io.gravitee.singularitee.adapter" level="WARN"/>
-    <logger name="io.gravitee.singularitee.registry" level="INFO"/>
+    <logger name="io.gravitee.singularitee.engine.api.registry" level="INFO"/>
+    <logger name="io.gravitee.singularitee.plugin" level="INFO"/>
     <logger name="io.gravitee.singularitee.grpc.resolver" level="INFO"/>
     <logger name="io.gravitee.node" level="INFO"/>
     <logger name="io.gravitee.inference" level="WARN"/>
