@@ -59,6 +59,19 @@
             <groupId>io.gravitee.node</groupId>
             <artifactId>gravitee-node-vertx</artifactId>
         </dependency>
+        <!-- gravitee-node's keystore managers need Bouncy Castle at runtime but declare it test-scope;
+             before the plugin split it rode along inside the grpc fat jar. Declared here so the thin
+             jars ship it under lib/ext. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <scope>runtime</scope>
+        </dependency>
 
         <!-- Singularitee modules -->
         <dependency>
@@ -70,8 +83,16 @@
             <artifactId>gravitee-singularitee-http</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.gravitee.singularitee</groupId>
+            <groupId>io.gravitee.singularitee.engine</groupId>
             <artifactId>gravitee-singularitee-engine</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-plugin-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.plugin</groupId>
+            <artifactId>gravitee-plugin-core</artifactId>
         </dependency>
         <dependency>
             <groupId>io.gravitee.singularitee</groupId>

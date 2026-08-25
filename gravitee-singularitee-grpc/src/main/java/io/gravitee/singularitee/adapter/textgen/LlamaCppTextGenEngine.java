@@ -16,10 +16,10 @@
 package io.gravitee.singularitee.adapter.textgen;
 
 import io.gravitee.llama.cpp.ConversationState;
-import io.gravitee.singularitee.engine.Modalities;
-import io.gravitee.singularitee.engine.ModelEngineType;
-import io.gravitee.singularitee.engine.TextGenEngine;
-import io.gravitee.singularitee.engine.TextGenRequest;
+import io.gravitee.singularitee.engine.api.Modalities;
+import io.gravitee.singularitee.engine.api.ModelEngineType;
+import io.gravitee.singularitee.engine.api.TextGenEngine;
+import io.gravitee.singularitee.engine.api.TextGenRequest;
 import io.gravitee.singularitee.inference.llama.cpp.BatchEngine;
 import io.gravitee.singularitee.inference.llama.cpp.ModelConfig;
 import io.gravitee.singularitee.inference.llama.cpp.Request;

@@ -16,10 +16,10 @@
 package io.gravitee.singularitee.engine.remote;
 
 import io.gravitee.singularitee.client.SingulariteeClient;
-import io.gravitee.singularitee.engine.RerankRequest;
-import io.gravitee.singularitee.engine.RerankResponse;
-import io.gravitee.singularitee.engine.RerankResult;
-import io.gravitee.singularitee.engine.RerankerEngine;
+import io.gravitee.singularitee.engine.api.RerankRequest;
+import io.gravitee.singularitee.engine.api.RerankResponse;
+import io.gravitee.singularitee.engine.api.RerankResult;
+import io.gravitee.singularitee.engine.api.RerankerEngine;
 import io.reactivex.rxjava3.core.Single;
 import java.util.ArrayList;
 import java.util.List;

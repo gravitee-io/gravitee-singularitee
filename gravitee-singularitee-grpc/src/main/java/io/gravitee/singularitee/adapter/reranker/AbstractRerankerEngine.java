@@ -16,10 +16,10 @@
 package io.gravitee.singularitee.adapter.reranker;
 
 import io.gravitee.singularitee.adapter.BlockingEngineAdapter;
-import io.gravitee.singularitee.engine.RerankRequest;
-import io.gravitee.singularitee.engine.RerankResponse;
-import io.gravitee.singularitee.engine.RerankResult;
-import io.gravitee.singularitee.engine.RerankerEngine;
+import io.gravitee.singularitee.engine.api.RerankRequest;
+import io.gravitee.singularitee.engine.api.RerankResponse;
+import io.gravitee.singularitee.engine.api.RerankResult;
+import io.gravitee.singularitee.engine.api.RerankerEngine;
 import io.gravitee.singularitee.inference.api.InferenceModel;
 import io.gravitee.singularitee.inference.api.reranker.RerankPair;
 import io.gravitee.singularitee.inference.api.reranker.RerankScoring;

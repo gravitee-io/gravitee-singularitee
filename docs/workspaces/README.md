@@ -113,6 +113,7 @@ Point the same loader at your own file with `YamlWorkspaceLoader.load(path, temp
 | `workspace.templates` | list | `[]` | Named Jinja templates. |
 | `workspace.tags` | list | `[]` | Named tag sets an `infer` step references by id as its whole `tags:` value. Base file only; not merged from includes. |
 | `workspace.includes` | object | unset | `models:`, `pipelines:`, `templates:` lists of file names or globs. |
+| unmodeled top-level sections | list | unset | Any section this loader does not model (a list of `{id, ...}` entries) passes through untyped to a step plugin, which owns its schema and reads it by name. Base file only. |
 
 ### `remote` endpoints
 

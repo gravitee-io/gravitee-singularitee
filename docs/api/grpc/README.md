@@ -183,8 +183,8 @@ model (cosine ranking) or a reranker model (cross-encoder scoring).
 | `GetPipeline` | `GetPipelineRequest { pipeline_id }` | `GetPipelineResponse { Pipeline pipeline, PipelineStatus status }` |
 | `ListPipelines` | `ListPipelinesRequest {}` | `ListPipelinesResponse { repeated GetPipelineResponse pipelines }` |
 
-`Pipeline { pipeline_id, pipeline_name, entry_step_id, repeated PipelineStep steps, map<string,string> edges, task, hidden, input_modalities }`.
-Each `PipelineStep { step_id, StepType type, StepRole role, oneof config }` carries one of
+`Pipeline { pipeline_id, pipeline_name, task, hidden, input_modalities }`: discovery metadata only. The DAG (steps, edges, step configs) is server-internal, built from the workspace YAML, and never crosses the wire.
+Steps are not on the wire. (Historical note: each step used to carry one of
 `infer_config`, `classify_config`, `embed_config`, `route_config`, `sub_pipeline`,
 `guard_config`, `break_config`, `loop_config`, `llm_guard_config`, `regex_guard_config`,
 `tool_select_config`, `todo_config`. The step vocabulary is documented in

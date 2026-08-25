@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Copyright © 2015 The Gravitee team (http://gravitee.io)
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.gravitee.singularitee</groupId>
+        <artifactId>gravitee-singularitee</artifactId>
+        <version>1.2.1</version>
+    </parent>
+
+    <artifactId>gravitee-singularitee-plugins</artifactId>
+    <packaging>pom</packaging>
+
+    <name>Gravitee.io - Singularitee - Plugins</name>
+    <description>One module per core pipeline step. Every step executes from a gravitee plugin; the twelve steps here are OSS and always shipped. Further steps can live in their own repositories, loaded the same way. A plugin is a decorator over parent-loaded engine APIs and never loads a model or a native library.</description>
+
+    <modules>
+        <module>gravitee-singularitee-plugin-break</module>
+        <module>gravitee-singularitee-plugin-embed</module>
+        <module>gravitee-singularitee-plugin-classify</module>
+        <module>gravitee-singularitee-plugin-regex-guard</module>
+        <module>gravitee-singularitee-plugin-guard</module>
+        <module>gravitee-singularitee-plugin-llm-guard</module>
+        <module>gravitee-singularitee-plugin-tool-select</module>
+        <module>gravitee-singularitee-plugin-route</module>
+        <module>gravitee-singularitee-plugin-loop</module>
+        <module>gravitee-singularitee-plugin-sub-pipeline</module>
+        <module>gravitee-singularitee-plugin-todo</module>
+        <module>gravitee-singularitee-plugin-infer</module>
+    </modules>
+
+    <dependencies>
+        <!-- Every plugin implements the SPI and executes against the engine. Provided: the
+             container ships plugin-api, engine and protocol in lib/, and the plugin class loader
+             is parent-first, so these never travel inside a plugin zip. -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-plugin-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!-- Every step plugin is packaged as a gravitee plugin zip; each module opts in
+             (the aggregator itself packages nothing). -->
+        <pluginManagement>
+            <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-assembly-plugin</artifactId>
+                        <version>3.7.1</version>
+                        <configuration>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <descriptors>
+                                <descriptor>${project.parent.basedir}/step-plugin-assembly.xml</descriptor>
+                            </descriptors>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>make-plugin-zip</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>single</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+            </plugins>
+        </pluginManagement>
+        <!-- plugin.properties carries the module version; nothing else is filtered. -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>plugin.properties</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>plugin.properties</exclude>
+                </excludes>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <release>21</release>
+                    <compilerArgs combine.self="override"/>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <release>21</release>
+                    <additionalOptions combine.self="override"/>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -19,7 +19,7 @@ import io.gravitee.lab.gliner4j.GLiNER4jNER;
 import io.gravitee.lab.gliner4j.runtime.RuntimeConfig;
 import io.gravitee.lab.gliner4j.schema.EntityDefinition;
 import io.gravitee.singularitee.adapter.ModelEngineFactory;
-import io.gravitee.singularitee.engine.ModelEngine;
+import io.gravitee.singularitee.engine.api.ModelEngine;
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
 import io.gravitee.singularitee.workspace.config.GlinerNerConfig;
 import io.vertx.rxjava3.core.Vertx;

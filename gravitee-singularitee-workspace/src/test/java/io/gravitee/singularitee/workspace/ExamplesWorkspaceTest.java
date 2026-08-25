@@ -17,6 +17,7 @@ package io.gravitee.singularitee.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.gravitee.singularitee.plugin.test.TestStepPlugins;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -100,7 +101,7 @@ class ExamplesWorkspaceTest {
   @ParameterizedTest(name = "{0}")
   @MethodSource("modelFragments")
   void model_fragment_declares_exactly_one_model(Path yaml) throws IOException {
-    var requests = YamlWorkspaceLoader.load(yaml);
+    var requests = YamlWorkspaceLoader.load(yaml, null, TestStepPlugins.codecs());
     var declared = requests.models().size() + requests.remoteModels().size();
 
     // One model per fragment is the whole contract: they share a logical id, so
@@ -115,7 +116,7 @@ class ExamplesWorkspaceTest {
   @ParameterizedTest(name = "{0}")
   @MethodSource("standaloneWorkspaces")
   void example_workspace_loads(Path yaml) throws IOException {
-    var requests = YamlWorkspaceLoader.load(yaml);
+    var requests = YamlWorkspaceLoader.load(yaml, null, TestStepPlugins.codecs());
 
     assertThat(requests).as("loader returned nothing for %s", yaml).isNotNull();
     boolean publishesNothing =
@@ -136,53 +137,60 @@ class ExamplesWorkspaceTest {
   void tool_router_example_really_wires_a_tool_select_step() throws IOException {
     var pipeline = onlyPipeline("pipelines/tool-router.yaml");
     var step = pipeline
-      .getStepsList()
+      .steps()
       .stream()
-      .filter(s -> s.getType() == io.gravitee.singularitee.protocol.StepType.STEP_TYPE_TOOL_SELECT)
+      .filter(s -> "tool_select".equals(s.type()))
       .findFirst()
       .orElseThrow(() -> new AssertionError("no tool_select step parsed"));
 
-    assertThat(step.getToolSelectConfig().getModelId()).isEqualTo("tool-router");
-    assertThat(step.getToolSelectConfig().getBatchSize()).isPositive();
-    assertThat(step.getToolSelectConfig().getTrimDescriptions()).isTrue();
+    var config = (io.gravitee.singularitee.plugin.toolselect.ToolSelectStepConfig) step.config();
+    assertThat(config.modelId()).isEqualTo("tool-router");
+    assertThat(config.batchSize()).isPositive();
+    assertThat(config.trimDescriptions()).isTrue();
   }
 
   @Test
   void router_examples_really_wire_their_routing_strategies() throws IOException {
     assertThat(routeStrategyOf("pipelines/gliner-router.yaml")).isEqualTo(
-      io.gravitee.singularitee.protocol.RoutingStrategy.ROUTING_STRATEGY_CLASSIFIER
+      io.gravitee.singularitee.plugin.route.RoutingStrategy.CLASSIFIER
     );
     assertThat(routeStrategyOf("pipelines/embedding-router.yaml")).isEqualTo(
-      io.gravitee.singularitee.protocol.RoutingStrategy.ROUTING_STRATEGY_EMBEDDING_KNN
+      io.gravitee.singularitee.plugin.route.RoutingStrategy.EMBEDDING_KNN
     );
 
     // embedding_knn routes on reference sentences; without them there is nothing to match against.
-    var route = routeStepOf("pipelines/embedding-router.yaml");
-    assertThat(route.getRouteConfig().getRulesList()).allSatisfy(rule ->
-      assertThat(rule.getSentencesList()).isNotEmpty()
-    );
+    var route = routeConfigOf("pipelines/embedding-router.yaml");
+    assertThat(route.rules()).allSatisfy(rule -> assertThat(rule.sentences()).isNotEmpty());
   }
 
-  private static io.gravitee.singularitee.protocol.Pipeline onlyPipeline(String relative)
-    throws IOException {
-    var requests = YamlWorkspaceLoader.load(examplesDir().resolve(relative));
+  private static io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel onlyPipeline(
+    String relative
+  ) throws IOException {
+    var requests = YamlWorkspaceLoader.load(
+      examplesDir().resolve(relative),
+      null,
+      TestStepPlugins.codecs()
+    );
     assertThat(requests.pipelines()).hasSize(1);
     return requests.pipelines().get(0);
   }
 
-  private static io.gravitee.singularitee.protocol.PipelineStep routeStepOf(String relative)
-    throws IOException {
-    return onlyPipeline(relative)
-      .getStepsList()
+  private static io.gravitee.singularitee.plugin.route.RouteStepConfig routeConfigOf(
+    String relative
+  ) throws IOException {
+    return (io.gravitee.singularitee.plugin.route.RouteStepConfig) onlyPipeline(relative)
+      .steps()
       .stream()
-      .filter(s -> s.getType() == io.gravitee.singularitee.protocol.StepType.STEP_TYPE_ROUTE)
+      .filter(s -> "route".equals(s.type()))
       .findFirst()
-      .orElseThrow(() -> new AssertionError("no route step parsed in " + relative));
+      .orElseThrow(() -> new AssertionError("no route step parsed in " + relative))
+      .config();
   }
 
-  private static io.gravitee.singularitee.protocol.RoutingStrategy routeStrategyOf(String relative)
-    throws IOException {
-    return routeStepOf(relative).getRouteConfig().getStrategy();
+  private static io.gravitee.singularitee.plugin.route.RoutingStrategy routeStrategyOf(
+    String relative
+  ) throws IOException {
+    return routeConfigOf(relative).strategy();
   }
 
   @Test
@@ -209,7 +217,10 @@ class ExamplesWorkspaceTest {
       "vllm/gpt-oss-20b-mac.yaml",
       "vllm/gpt-oss-20b-80gb.yaml"
     )) {
-      var tags = onlyPipeline(file).getStepsList().getFirst().getInferConfig().getReasoningTags();
+      var tags = ((io.gravitee.singularitee.plugin.infer.InferStepConfig) onlyPipeline(file)
+          .steps()
+          .getFirst()
+          .config()).reasoningTags();
 
       assertThat(tags.getRepeatable()).as("%s: reasoning_repeatable", file).isTrue();
       assertThat(tags.getOpenTagAlternativesList())
@@ -222,11 +233,12 @@ class ExamplesWorkspaceTest {
   void a_workspace_that_is_silent_leaves_re_entry_to_the_engine() throws IOException {
     // Unset must not arrive as an explicit false: the tool channel repeats by
     // default, and forwarding false would forbid a second tool call.
-    var tags = onlyPipeline("llama/qwen3-0.6b.yaml")
-      .getStepsList()
-      .getFirst()
-      .getInferConfig()
-      .getReasoningTags();
+    var tags = ((io.gravitee.singularitee.plugin.infer.InferStepConfig) onlyPipeline(
+        "llama/qwen3-0.6b.yaml"
+      )
+        .steps()
+        .getFirst()
+        .config()).reasoningTags();
 
     assertThat(tags.hasRepeatable()).isFalse();
   }

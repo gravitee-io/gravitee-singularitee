@@ -39,11 +39,58 @@
     </componentDescriptors>
 
     <dependencySets>
+        <!-- Step plugin zips go to plugins/: the node's plugin registry loads them at boot. -->
+        <dependencySet>
+            <outputDirectory>plugins</outputDirectory>
+            <includes>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-break:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-embed:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-classify:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-regex-guard:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-guard:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-llm-guard:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-tool-select:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-route:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-loop:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-sub-pipeline:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-todo:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-infer:zip</include>
+            </includes>
+            <excludes>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-break:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-embed:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-classify:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-regex-guard:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-guard:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-llm-guard:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-tool-select:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-route:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-loop:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-sub-pipeline:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-todo:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-infer:jar</exclude>
+            </excludes>
+            <useTransitiveDependencies>false</useTransitiveDependencies>
+        </dependencySet>
         <dependencySet>
             <outputDirectory>lib</outputDirectory>
             <includes>
                 <include>io.gravitee.*:*:jar</include>
             </includes>
+            <excludes>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-break:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-embed:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-classify:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-regex-guard:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-guard:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-llm-guard:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-tool-select:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-route:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-loop:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-sub-pipeline:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-todo:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-infer:*</exclude>
+            </excludes>
             <excludes>
                 <exclude>io.gravitee.llama.cpp:llamaj.cpp</exclude>
                 <exclude>io.gravitee.singularitee.inference:gravitee-singularitee-inference-llama-cpp</exclude>

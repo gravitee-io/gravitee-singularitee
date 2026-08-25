@@ -26,7 +26,7 @@ continues a real dialogue: the model sees its previous attempt and the feedback 
 | --- | --- |
 | `LoopStepExecutor` | Exit check, iteration counter, loopback message, retry sampling override. |
 | `BreakStepExecutor` / `BreakStepEvaluator` | Condition evaluation shared by both steps; `evaluate` signals the halt for `break`. |
-| `LoopStepConfig`, `BreakStepConfig`, `BreakCondition` | Proto definitions in `pipeline.proto`. |
+| `LoopStepConfig`, `BreakStepConfig`, `StepCondition`, `ConditionKind` | The loop and break plugins' config records; the condition types are engine model classes shared by both. |
 | `StepRole` | `STEP_ROLE_THINKING` / `OUTPUT` / `INTERNAL`, set per infer step with `role:`. |
 | `JinjaRenderer` | Renders `loopback_message.content` against the full pipeline context. |
 

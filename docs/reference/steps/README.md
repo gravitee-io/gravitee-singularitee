@@ -4,7 +4,7 @@
 
 ## Overview
 
-A pipeline is `entry` plus a list of `steps`. `PipelineExecutor` walks the graph one step at a time: `StepDispatcher` looks up the executor registered for the step's `type` (`StepExecutorFactory.createHandlers`), the executor runs against the shared `PipelineContext`, and returns either the id of the next step or nothing (terminal). The YAML `type` slugs are defined in `StepTypeKey`; the wire contract is `PipelineStep` in `pipeline.proto`.
+A pipeline is `entry` plus a list of `steps`. `PipelineExecutor` walks the graph one step at a time: `StepDispatcher` looks up the executor the step's `type` plugin registered, runs it inside the platform decorator chain (tracing, diagnostics, then plugin decorators) against the shared `PipelineContext`, and takes either the id of the next step or nothing (terminal). Every step type is a plugin (`gravitee-singularitee-plugins/`): the plugin's `StepConfigCodec` parses the YAML `config:` block at load and its `StepExecutor` runs it. The graph is a Java model (`PipelineModel`/`StepModel`), never a wire type.
 
 | `type` | Executor | Purpose | Model-bound | Next step |
 | --- | --- | --- | --- | --- |
@@ -24,8 +24,9 @@ A pipeline is `entry` plus a list of `steps`. `PipelineExecutor` walks the graph
 ## Key types
 
 - `StepDefinition` (`WorkspaceDefinition`): the YAML envelope; `config` is deserialised into the `StepConfig` record selected by `type`.
-- `StepTypeKey` / `StepRoleKey`: YAML slug to proto enum mapping for `type` and `role`.
-- `PipelineStep` (`pipeline.proto`): `step_id`, `type`, `role` and a `oneof config`.
+- `StepTypes` (engine): the core type strings; `StepRoleKey`: YAML slug to `StepRole`.
+- `StepModel` (engine): `id`, `type`, `role` and the plugin-owned `config` object.
+- `StepExecutorPlugin` / `StepConfigCodec` (plugin-api, engine): how a plugin contributes a type.
 - `StepExecutor<C>` / `ModelBoundStepExecutor<C, E>`: the executor contract. Model-bound executors look the model up in `ModelRegistry` and check the engine type before running.
 - `StepContext`: what every executor receives: the `PipelineContext`, the `Pipeline` (for the `edges` map), the response stream, tracer and metrics.
 - `BreakStepEvaluator` / `ConditionEvaluatorFactory` / `ScoreResolver`: the `condition:` block shared by `break` and `loop`.
@@ -60,7 +61,7 @@ Step order in the list has no execution meaning. Execution is defined by `entry`
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
 | `id` | string | required | Step id. Must match `[A-Za-z_][A-Za-z0-9_]*` (the loader rejects anything else) because it prefixes the step's context fields (`<id>.output`) and is a Jinja identifier (`{{ generate.output }}`). |
-| `type` | string | required | One of `infer`, `classify`, `embed`, `route`, `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`. Case-insensitive. |
+| `type` | string | required | One of `infer`, `classify`, `embed`, `route`, `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`, or any type an installed plugin provides. Case-insensitive. |
 | `role` | string | `output` | `infer` steps only: `output`, `thinking` or `internal`. Unknown values fall back to `output`. Other step types ignore it. |
 | `next_step` | string | unset | Linear edge, stored in `Pipeline.edges`. Unset makes the step terminal. `loop` reads it as its exit edge. |
 | `config` | object | per type | The type-specific block. Unknown keys are ignored (`@JsonIgnoreProperties(ignoreUnknown = true)`), so a typo silently drops the option. |

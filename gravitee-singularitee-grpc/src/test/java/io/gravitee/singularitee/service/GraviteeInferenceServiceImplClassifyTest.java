@@ -19,11 +19,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import io.gravitee.node.api.opentelemetry.Tracer;
-import io.gravitee.singularitee.engine.ClassifierEngine;
-import io.gravitee.singularitee.engine.ClassifyRequest;
-import io.gravitee.singularitee.engine.ClassifyResponse;
-import io.gravitee.singularitee.metrics.InferenceMetrics;
-import io.gravitee.singularitee.registry.ModelRegistry;
+import io.gravitee.singularitee.engine.api.ClassifierEngine;
+import io.gravitee.singularitee.engine.api.ClassifyRequest;
+import io.gravitee.singularitee.engine.api.ClassifyResponse;
+import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
+import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.reactivex.rxjava3.core.Single;
 import io.vertx.core.Vertx;
 import java.util.List;

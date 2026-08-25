@@ -17,6 +17,13 @@ package io.gravitee.singularitee.workspace;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.gravitee.singularitee.engine.api.pipeline.model.BranchingConfig;
+import io.gravitee.singularitee.engine.api.pipeline.model.MonitorGateConfig;
+import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
+import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
+import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
+import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
+import io.gravitee.singularitee.engine.api.pipeline.model.StepTypes;
 import io.gravitee.singularitee.protocol.*;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition.*;
 import java.io.IOException;
@@ -47,8 +54,8 @@ public final class YamlWorkspaceLoader {
   private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
 
   /**
-   * Step IDs become Jinja2 identifiers (e.g. {@code {{ pii_guard.output }}})
-   * in downstream templates. Jinja2 identifiers must match {@code [A-Za-z_][A-Za-z0-9_]*},
+   * Step IDs become Jinja identifiers (e.g. {@code {{ pii_guard.output }}})
+   * in downstream templates. Jinja identifiers must match {@code [A-Za-z_][A-Za-z0-9_]*},
    * so hyphens and other non-identifier characters would produce cryptic parse
    * errors at render time. We fail fast at load time instead.
    */
@@ -63,34 +70,16 @@ public final class YamlWorkspaceLoader {
   // ---------------------------------------------------------------------------
 
   /**
-   * Parses the workspace YAML at the given path.
-   *
-   * <p>{@code template_file} references are resolved relative to the
-   * YAML file's parent directory.
-   *
-   * <p>{@code includes} are resolved relative to the YAML file's parent
-   * directory, and their contents are merged with the main workspace.
-   *
-   * @param path path to the {@code .yaml} / {@code .yml} workspace file
-   * @return parsed result containing model and pipeline publish requests
-   * @throws IOException if the file cannot be read or parsed
+   * Parses the workspace YAML at the given path. {@code codecs} maps each step type string
+   * to the codec that parses that step's {@code config:} block: the codecs of the step
+   * plugins the caller's plugin registry assembled (the server's node registry, the
+   * client's own, or a test suite's).
    */
-  public static WorkspaceRequests load(Path path) throws IOException {
-    return load(path, null);
-  }
-
-  /**
-   * Parses the workspace YAML at the given path, resolving
-   * {@code template_file} references against the given templates directory
-   * and {@code includes} against the YAML file's parent directory.
-   *
-   * @param path              path to the {@code .yaml} / {@code .yml} workspace file
-   * @param templatesPath     base directory for {@code template_file} resolution;
-   *                          when {@code null}, defaults to the YAML file's parent directory
-   * @return parsed result containing model and pipeline publish requests
-   * @throws IOException if the file cannot be read or parsed
-   */
-  public static WorkspaceRequests load(Path path, Path templatesPath) throws IOException {
+  public static WorkspaceRequests load(
+    Path path,
+    Path templatesPath,
+    Map<String, StepConfigCodec<?>> codecs
+  ) throws IOException {
     LOGGER.info("Loading workspace: {}", path.toAbsolutePath());
     WorkspaceDefinition def = YAML_MAPPER.readValue(path.toFile(), WorkspaceDefinition.class);
 
@@ -101,62 +90,27 @@ public final class YamlWorkspaceLoader {
     // Override workspace root with merged version
     def = new WorkspaceDefinition(mergedRoot);
 
-    return buildRequests(def, workspaceDir, templatesPath, path.toString());
+    return buildRequests(def, workspaceDir, templatesPath, path.toString(), codecs);
   }
 
-  /**
-   * Parses a workspace YAML from an inline string.
-   *
-   * <p>Use this when the workspace definition is embedded directly in the endpoint
-   * configuration rather than stored as a file on disk.
-   *
-   * @param yaml the YAML content (the full workspace document)
-   * @return parsed result containing model and pipeline publish requests
-   * @throws IOException if the content cannot be parsed
-   */
-  public static WorkspaceRequests loadFromString(String yaml) throws IOException {
-    return loadFromString(yaml, null, null);
-  }
-
-  /**
-   * Parses a workspace YAML from an inline string, resolving any
-   * {@code template_file} references relative to the given base path.
-   *
-   * @param yaml     the YAML content (the full workspace document)
-   * @param basePath base directory for relative file references; may be
-   *                 {@code null} when no file references are expected
-   * @return parsed result containing model and pipeline publish requests
-   * @throws IOException if the content cannot be parsed
-   */
-  public static WorkspaceRequests loadFromString(String yaml, Path basePath) throws IOException {
-    return loadFromString(yaml, basePath, null);
-  }
-
-  /**
-   * Parses a workspace YAML from an inline string, resolving
-   * {@code template_file} references against the given templates directory
-   * and other file references against the base path.
-   *
-   * @param yaml              the YAML content (the full workspace document)
-   * @param basePath          base directory for general file references; may be
-   *                          {@code null} when no file references are expected
-   * @param templatesPath     base directory for {@code template_file} resolution;
-   *                          when {@code null}, defaults to {@code basePath}
-   * @return parsed result containing model and pipeline publish requests
-   * @throws IOException if the content cannot be parsed
-   */
-  public static WorkspaceRequests loadFromString(String yaml, Path basePath, Path templatesPath)
-    throws IOException {
+  /** Inline-string variant of {@link #load(Path, Path, Map)}. */
+  public static WorkspaceRequests loadFromString(
+    String yaml,
+    Path basePath,
+    Path templatesPath,
+    Map<String, StepConfigCodec<?>> codecs
+  ) throws IOException {
     LOGGER.info("Loading workspace from inline YAML string");
     WorkspaceDefinition def = YAML_MAPPER.readValue(yaml, WorkspaceDefinition.class);
-    return buildRequests(def, basePath, templatesPath, "<inline>");
+    return buildRequests(def, basePath, templatesPath, "<inline>", codecs);
   }
 
   private static WorkspaceRequests buildRequests(
     WorkspaceDefinition def,
     Path basePath,
     Path templatesPath,
-    String source
+    String source,
+    Map<String, StepConfigCodec<?>> codecs
   ) {
     if (def.workspace() == null) {
       throw new IllegalArgumentException(
@@ -180,14 +134,21 @@ public final class YamlWorkspaceLoader {
     // Templates declared in the root (or merged from includes) are resolved here
     // once, before pipelines are parsed, so template_id references resolve correctly.
     Map<String, String> templateRegistry = buildTemplateRegistry(root, basePath, templatesBasePath);
-    Map<String, TagsDef> tagRegistry = buildTagRegistry(root);
 
-    List<Pipeline> pipelines = parsePipelines(
-      root,
-      templatesBasePath,
+    // Named workspace sections travel to the codecs as raw maps: a codec is plugin code and
+    // knows nothing of this module's records. Building the typed registries first keeps
+    // their validation (ids required, no duplicates).
+    Map<String, Map<String, Map<String, Object>>> namedSections = new LinkedHashMap<>();
+    namedSections.put("tags", rawSection(buildTagRegistry(root)));
+    namedSections.putAll(rawExtraSections(root.extras()));
+    var codecContext = new StepCodecContext(
       templateRegistry,
-      tagRegistry
+      templatesBasePath,
+      namedSections,
+      null
     );
+
+    List<PipelineModel> pipelines = parsePipelines(root, codecContext, codecs);
     var remotes = parseRemotes(root);
 
     LOGGER.info(
@@ -221,7 +182,7 @@ public final class YamlWorkspaceLoader {
   public record WorkspaceRequests(
     String name,
     List<ModelLoadRequest> models,
-    List<Pipeline> pipelines,
+    List<PipelineModel> pipelines,
     List<WorkspaceDefinition.ModelDefinition> remoteModels,
     List<ClientLocalModelData> clientLocalModels,
     java.util.Map<String, WorkspaceDefinition.RemoteEndpoint> remotes
@@ -345,21 +306,20 @@ public final class YamlWorkspaceLoader {
   // Pipeline parsing
   // ---------------------------------------------------------------------------
 
-  private static List<Pipeline> parsePipelines(
+  private static List<PipelineModel> parsePipelines(
     WorkspaceDefinition.WorkspaceRoot root,
-    Path templatesBasePath,
-    Map<String, String> templateRegistry,
-    Map<String, TagsDef> tagRegistry
+    StepCodecContext ctx,
+    Map<String, StepConfigCodec<?>> codecs
   ) {
     if (root.pipelines() == null) return List.of();
-    List<Pipeline> result = new ArrayList<>();
+    List<PipelineModel> result = new ArrayList<>();
     for (PipelineDefinition p : root.pipelines()) {
       try {
         if (p.isRemote()) {
-          result.add(toRemotePipelineProxy(p));
+          result.add(toRemotePipelineProxy(p, ctx, codecs));
           LOGGER.info("Remote pipeline declared: id='{}', server='{}'", p.id(), p.server());
         } else {
-          result.add(toPipeline(p, templatesBasePath, templateRegistry, tagRegistry));
+          result.add(toPipeline(p, ctx, codecs));
         }
       } catch (IllegalArgumentException e) {
         throw e;
@@ -370,236 +330,137 @@ public final class YamlWorkspaceLoader {
     return result;
   }
 
-  private static Pipeline toRemotePipelineProxy(PipelineDefinition p) {
+  /**
+   * A remote pipeline is a one-step local pipeline whose sub_pipeline step executes the
+   * named pipeline on the remote server; its config is built through the sub_pipeline
+   * codec like any other step, so the loader knows nothing of that step's shape.
+   */
+  private static PipelineModel toRemotePipelineProxy(
+    PipelineDefinition p,
+    StepCodecContext ctx,
+    Map<String, StepConfigCodec<?>> codecs
+  ) {
     String stepId = "_remote";
-
-    var subPipelineBuilder = SubPipelineStepConfig.newBuilder()
-      .setPipelineId(p.id())
-      .setRemoteId(p.server());
-
+    StepConfigCodec<?> codec = codecs.get(StepTypes.SUB_PIPELINE);
+    if (codec == null) {
+      throw new IllegalArgumentException(
+        "Remote pipeline '" + p.id() + "': no plugin provides step type 'sub_pipeline'"
+      );
+    }
+    Map<String, Object> raw = new LinkedHashMap<>();
+    raw.put("pipeline_id", p.id());
+    raw.put("server", p.server());
     if (p.remote() != null) {
-      subPipelineBuilder.setForwardMessages(p.remote().forwardMessages());
+      raw.put("forward_messages", p.remote().forwardMessages());
       if (p.remote().systemPrompt() != null && !p.remote().systemPrompt().isBlank()) {
-        subPipelineBuilder.setSystemPrompt(p.remote().systemPrompt());
+        raw.put("system_prompt", p.remote().systemPrompt());
       }
     }
+    var step = new StepModel(
+      stepId,
+      StepTypes.SUB_PIPELINE,
+      StepRole.STEP_ROLE_UNSPECIFIED,
+      codec.parse(stepId, raw, ctx)
+    );
 
-    var step = PipelineStep.newBuilder()
-      .setStepId(stepId)
-      .setType(StepType.STEP_TYPE_SUB_PIPELINE)
-      .setSubPipeline(subPipelineBuilder.build())
-      .build();
-
-    return Pipeline.newBuilder()
-      .setPipelineId(p.id())
-      .setPipelineName(p.name() != null ? p.name() : p.id() + " (remote)")
-      .setEntryStepId(stepId)
-      .addSteps(step)
-      .setTask(Publication.validatedTask(p.id(), p.task()))
-      .setHidden(!p.isVisible())
-      .addAllInputModalities(Publication.validatedModalities(p.id(), p.modalities()))
-      .build();
+    return new PipelineModel(
+      p.id(),
+      p.name() != null ? p.name() : p.id() + " (remote)",
+      stepId,
+      List.of(step),
+      Map.of(),
+      Publication.validatedTask(p.id(), p.task()),
+      !p.isVisible(),
+      Publication.validatedModalities(p.id(), p.modalities())
+    );
   }
 
-  private static Pipeline toPipeline(
+  private static PipelineModel toPipeline(
     PipelineDefinition p,
-    Path templatesBasePath,
-    Map<String, String> templateRegistry,
-    Map<String, TagsDef> tagRegistry
+    StepCodecContext ctx,
+    Map<String, StepConfigCodec<?>> codecs
   ) {
-    var pipelineBuilder = Pipeline.newBuilder();
-
-    if (p.id() != null && !p.id().isBlank()) pipelineBuilder.setPipelineId(p.id());
-    if (p.name() != null) pipelineBuilder.setPipelineName(p.name());
-    if (p.entry() != null) pipelineBuilder.setEntryStepId(p.entry());
-    pipelineBuilder.setTask(Publication.validatedTask(p.id(), p.task()));
-    pipelineBuilder.setHidden(!p.isVisible());
-    pipelineBuilder.addAllInputModalities(Publication.validatedModalities(p.id(), p.modalities()));
-
+    List<StepModel> steps = new ArrayList<>();
+    Map<String, String> edges = new LinkedHashMap<>();
     if (p.steps() != null) {
       for (StepDefinition s : p.steps()) {
-        pipelineBuilder.addSteps(toStep(s, templatesBasePath, templateRegistry, tagRegistry));
+        steps.add(toStep(s, ctx, codecs));
         if (s.nextStep() != null && !s.nextStep().isBlank()) {
-          pipelineBuilder.putEdges(s.id(), s.nextStep());
+          edges.put(s.id(), s.nextStep());
         }
       }
     }
 
-    return pipelineBuilder.build();
+    PipelineModel pipeline = new PipelineModel(
+      p.id(),
+      p.name(),
+      p.entry(),
+      steps,
+      edges,
+      Publication.validatedTask(p.id(), p.task()),
+      !p.isVisible(),
+      Publication.validatedModalities(p.id(), p.modalities())
+    );
+    validateMonitorGates(pipeline);
+    return pipeline;
   }
 
-  private static PipelineStep toStep(
+  private static StepModel toStep(
     StepDefinition s,
-    Path templatesBasePath,
-    Map<String, String> templateRegistry,
-    Map<String, TagsDef> tagRegistry
+    StepCodecContext ctx,
+    Map<String, StepConfigCodec<?>> codecs
   ) {
-    var b = PipelineStep.newBuilder();
     if (s.id() != null) {
       validateStepId(s.id());
-      b.setStepId(s.id());
     }
-    if (s.role() != null && !s.role().isBlank()) {
-      b.setRole(StepRoleKey.parse(s.role()));
+    StepRole role = s.role() != null && !s.role().isBlank()
+      ? StepRoleKey.parse(s.role())
+      : StepRole.STEP_ROLE_UNSPECIFIED;
+
+    String type = s.type() == null ? "" : s.type().trim().toLowerCase(java.util.Locale.ENGLISH);
+    if (type.isBlank()) {
+      throw new IllegalArgumentException("Step '" + s.id() + "' requires a type");
+    }
+    StepConfigCodec<?> codec = codecs.get(type);
+    if (codec == null) {
+      throw new IllegalArgumentException(
+        "Step '" +
+          s.id() +
+          "': no plugin provides step type '" +
+          type +
+          "'. Available: " +
+          new java.util.TreeSet<>(codecs.keySet())
+      );
     }
 
-    String typeStr = s.type() == null ? "" : s.type();
-    StepTypeKey stepType = StepTypeKey.parse(typeStr);
-    b.setType(stepType.getProtoType());
-
-    if (s.config() != null) {
-      switch (s.config()) {
-        case InferConfig d -> b.setInferConfig(
-          toInferStep(d, templatesBasePath, templateRegistry, tagRegistry)
-        );
-        case ClassifyConfig d -> b.setClassifyConfig(toClassifyStep(d));
-        case EmbedConfig d -> b.setEmbedConfig(toEmbedStep(d));
-        case RouteConfig d -> b.setRouteConfig(toRouteStep(d));
-        case GuardConfig d -> b.setGuardConfig(toGuardStep(d));
-        case LlmGuardConfig d -> b.setLlmGuardConfig(
-          toLlmGuardStep(d, templatesBasePath, templateRegistry)
-        );
-        case BreakConfig d -> b.setBreakConfig(toBreakStep(d));
-        case LoopConfig d -> b.setLoopConfig(toLoopStep(s, d));
-        case SubPipelineConfig d -> b.setSubPipeline(toSubPipelineStep(d));
-        case RegexGuardConfig d -> b.setRegexGuardConfig(toRegexGuardStep(d));
-        case ToolSelectConfig d -> b.setToolSelectConfig(toToolSelectStep(d));
-        case TodoConfig d -> b.setTodoConfig(toTodoStep(d));
-      }
+    // The envelope's next_step is visible to the codec as "next_step": a loop reads its
+    // exit edge from it. Records ignore unknown keys, so other codecs are unaffected.
+    Map<String, Object> raw = new LinkedHashMap<>();
+    if (s.config() != null) raw.putAll(s.config());
+    if (s.nextStep() != null && !s.nextStep().isBlank()) {
+      raw.putIfAbsent(NEXT_STEP_KEY, s.nextStep());
     }
-    return b.build();
+    Object config = codec.parse(s.id(), raw, ctx);
+
+    return new StepModel(s.id(), type, role, config);
   }
 
-  private static InferStepConfig toInferStep(
-    InferConfig d,
-    Path basePath,
-    Map<String, String> templateRegistry,
-    Map<String, TagsDef> tagRegistry
-  ) {
-    var b = InferStepConfig.newBuilder();
-    if (d.modelId() != null) b.setModelId(d.modelId());
-    if (d.outputField() != null) b.setOutputField(d.outputField());
+  /** Key under which a codec sees the step envelope's {@code next_step}. */
+  public static final String NEXT_STEP_KEY = "next_step";
 
-    // Raw template: template_id > template_file > inline template (mutually exclusive).
-    String resolvedTemplate = resolveTemplate(d.prompt(), basePath, templateRegistry);
-    if (resolvedTemplate != null && !resolvedTemplate.isBlank()) {
-      b.setRawTemplate(resolvedTemplate);
-    } else {
-      List<MessageEntry> messages = d.prompt() != null ? d.prompt().messages() : null;
-      if (messages != null) {
-        for (var msg : messages) {
-          b.addMessages(
-            MessageDef.newBuilder()
-              .setRole(msg.role() != null ? msg.role() : "user")
-              .setContent(msg.content() != null ? msg.content() : "")
-              .build()
-          );
-        }
-      }
+  /** A typed registry as the raw maps a codec consumes. */
+  private static <T> Map<String, Map<String, Object>> rawSection(Map<String, T> registry) {
+    Map<String, Map<String, Object>> raw = new LinkedHashMap<>();
+    for (var e : registry.entrySet()) {
+      @SuppressWarnings("unchecked")
+      Map<String, Object> value = YAML_MAPPER.convertValue(e.getValue(), Map.class);
+      raw.put(e.getKey(), value);
     }
-
-    SamplingDef sampling = d.sampling();
-    var sp = toSamplingParams(sampling);
-    b.setSamplingParams(sp);
-    if (sampling != null && sampling.stop() != null) {
-      b.addAllStop(sampling.stop());
-    }
-
-    // Tags section: a bare string value is a reference into the workspace's
-    // named `tags:` entries, resolved here so the proto always carries the
-    // expanded TagConfig.
-    var tags = resolveTags(d.tags(), tagRegistry);
-    if (tags != null) {
-      var reasoningOpens = nonBlank(tags.reasoningOpen());
-      if (!reasoningOpens.isEmpty()) {
-        // First entry is the primary open_tag; any others ride along as alternatives.
-        var closes = nonBlank(tags.reasoningClose());
-        var reasoning = TagConfig.newBuilder()
-          .setOpenTag(reasoningOpens.getFirst())
-          .setCloseTag(closes.isEmpty() ? "" : closes.getFirst());
-        reasoningOpens.stream().skip(1).forEach(reasoning::addOpenTagAlternatives);
-        closes.stream().skip(1).forEach(reasoning::addCloseTagAlternatives);
-        // Left unset when the workspace is silent, so the engine's own rule applies.
-        if (tags.reasoningRepeatable() != null) {
-          reasoning.setRepeatable(tags.reasoningRepeatable());
-        }
-        b.setReasoningTags(reasoning.build());
-      }
-      var toolOpens = tags.toolOpen() == null
-        ? java.util.List.<String>of()
-        : tags
-          .toolOpen()
-          .stream()
-          .filter(t -> t != null && !t.isBlank())
-          .toList();
-      if (!toolOpens.isEmpty()) {
-        // First entry is the primary open_tag; any others ride along as alternatives.
-        var toolCloses = nonBlank(tags.toolClose());
-        var toolTags = TagConfig.newBuilder()
-          .setOpenTag(toolOpens.getFirst())
-          .setCloseTag(toolCloses.isEmpty() ? "" : toolCloses.getFirst());
-        toolOpens.stream().skip(1).forEach(toolTags::addOpenTagAlternatives);
-        toolCloses.stream().skip(1).forEach(toolTags::addCloseTagAlternatives);
-        b.setToolCallTags(toolTags.build());
-      }
-    }
-
-    // Per-step context variables (arbitrary typed values for Jinja4j)
-    if (d.context() != null && !d.context().isEmpty()) {
-      b.setContext(mapToStruct(d.context()));
-    }
-
-    // Per-step tool injection toggle. Omitting the key leaves the proto's
-    // optional field unset, which the executor treats as "true".
-    if (d.injectTools() != null) {
-      b.setInjectTools(d.injectTools());
-    }
-
-    if (d.serverTools() != null) {
-      b.setExposeServerTools(d.serverTools());
-    }
-
-    // Per-step thinking suppression. When true, tokens emitted between the
-    // reasoning open/close tags are neither streamed to the client nor stored
-    // in the pipeline context. The tag pair is taken from reasoning_tags;
-    // when unset the executor defaults to <think> and </think>.
-    if (d.stripThinking() != null) {
-      b.setStripThinking(d.stripThinking());
-    }
-
-    // Live deliberation for internal steps: forward ONLY the thinking channel.
-    if (d.streamThinking() != null) {
-      b.setStreamThinking(d.streamThinking());
-    }
-
-    // One-liner default system prompt: the executor prepends it only when the
-    // request carries no system message.
-    if (d.system() != null && !d.system().isBlank()) {
-      b.setSystemPrompt(d.system());
-    }
-
-    // Context-window history trimming. Omitting the key leaves the proto's
-    // optional field unset, which the executor treats as "true" (enabled).
-    if (d.trimHistory() != null) {
-      b.setTrimHistory(d.trimHistory());
-    }
-
-    // Tool-call extraction template: built-in name or inline Jinja source.
-    if (d.toolExtractionTemplate() != null && !d.toolExtractionTemplate().isBlank()) {
-      b.setToolExtractionTemplate(d.toolExtractionTemplate());
-    }
-
-    // Per-step chat-template override: a workspace `templates:` id resolves to
-    // the registered content; anything else is treated as inline Jinja source.
-    if (d.chatTemplate() != null && !d.chatTemplate().isBlank()) {
-      b.setChatTemplate(templateRegistry.getOrDefault(d.chatTemplate(), d.chatTemplate()));
-    }
-
-    return b.build();
+    return raw;
   }
 
   /** Named tag sets declared at workspace level, keyed by id. */
-  private static Map<String, TagsDef> buildTagRegistry(WorkspaceDefinition.WorkspaceRoot root) {
+  static Map<String, TagsDef> buildTagRegistry(WorkspaceDefinition.WorkspaceRoot root) {
     Map<String, TagsDef> registry = new LinkedHashMap<>();
     if (root.tags() == null) return registry;
     for (var t : root.tags()) {
@@ -613,258 +474,106 @@ public final class YamlWorkspaceLoader {
     return registry;
   }
 
-  /** Resolves a reference-only TagsDef (bare string in YAML) against the registry. */
-  private static TagsDef resolveTags(TagsDef tags, Map<String, TagsDef> tagRegistry) {
-    if (tags == null || !tags.isReference()) {
-      return tags;
+  /**
+   * Turns unmodeled top-level sections (workspace {@code extras}) into raw named sections a
+   * step codec reads through {@link StepCodecContext#section}. A section is recognised only when
+   * its value is a list whose every entry is a non-blank {@code id}-bearing map; anything else
+   * (a scalar, a map, a list of non-{@code id} entries) is left untouched so an unrelated or
+   * mistyped top-level key does not fail the load. The module never interprets the entries, so a
+   * step plugin owns its own section schema; a malformed real section surfaces as an empty
+   * {@link StepCodecContext#section} and the plugin's codec reports the domain error.
+   */
+  @SuppressWarnings("unchecked")
+  static Map<String, Map<String, Map<String, Object>>> rawExtraSections(
+    Map<String, Object> extras
+  ) {
+    Map<String, Map<String, Map<String, Object>>> sections = new LinkedHashMap<>();
+    if (extras == null) return sections;
+    for (var section : extras.entrySet()) {
+      if (!(section.getValue() instanceof List<?> entries) || entries.isEmpty()) {
+        continue;
+      }
+      boolean allIdMaps = entries
+        .stream()
+        .allMatch(
+          e -> e instanceof Map<?, ?> m && m.get("id") instanceof String id && !id.isBlank()
+        );
+      if (!allIdMaps) {
+        continue;
+      }
+      Map<String, Map<String, Object>> byId = new LinkedHashMap<>();
+      for (Object entry : entries) {
+        Map<String, Object> map = (Map<String, Object>) entry;
+        String id = (String) map.get("id");
+        if (byId.put(id, map) != null) {
+          throw new IllegalArgumentException(
+            "duplicate workspace " + section.getKey() + " id: " + id
+          );
+        }
+      }
+      sections.put(section.getKey(), byId);
     }
-    var named = tagRegistry.get(tags.id());
-    if (named == null) {
-      throw new IllegalArgumentException(
-        "unknown tags id '" + tags.id() + "': declare it under workspace tags:"
-      );
-    }
-    return named;
+    return sections;
   }
 
-  /** Converts a {@link SamplingDef} to proto {@link SamplingParams}; stop tokens are handled separately. */
-  private static SamplingParams toSamplingParams(SamplingDef sampling) {
-    var sp = SamplingParams.newBuilder();
-    if (sampling != null) {
-      if (sampling.maxTokens() > 0) sp.setMaxTokens(sampling.maxTokens());
-      if (sampling.temperature() > 0) sp.setTemperature(sampling.temperature());
-      if (sampling.topP() > 0) sp.setTopP(sampling.topP());
-      if (sampling.presencePenalty() != 0) sp.setPresencePenalty(sampling.presencePenalty());
-      if (sampling.frequencyPenalty() != 0) sp.setFrequencyPenalty(sampling.frequencyPenalty());
+  /**
+   * Enforces the monitor_only contract at load time: a step that gates an action on a
+   * downstream monitor (a {@link MonitorGateConfig}) must have a
+   * guard or llm_guard step reachable from it, otherwise the monitor tier would silently
+   * mean "unmonitored". Reachability follows the plain edges plus every branch target a step
+   * config declares.
+   */
+  private static void validateMonitorGates(PipelineModel pipeline) {
+    Map<String, StepModel> byId = new LinkedHashMap<>();
+    for (StepModel s : pipeline.steps()) {
+      byId.put(s.id(), s);
     }
-    return sp.build();
+    for (StepModel s : pipeline.steps()) {
+      boolean hasMonitorTier =
+        s.config() instanceof MonitorGateConfig gate && gate.requiresMonitor();
+      if (!hasMonitorTier) continue;
+
+      var visited = new java.util.HashSet<String>();
+      var queue = new java.util.ArrayDeque<>(successors(pipeline, s));
+      boolean monitored = false;
+      while (!queue.isEmpty() && !monitored) {
+        String next = queue.poll();
+        if (next == null || next.isBlank() || !visited.add(next)) continue;
+        StepModel step = byId.get(next);
+        if (step == null) continue;
+        if (StepTypes.GUARD.equals(step.type()) || StepTypes.LLM_GUARD.equals(step.type())) {
+          monitored = true;
+        } else {
+          queue.addAll(successors(pipeline, step));
+        }
+      }
+      if (!monitored) {
+        throw new IllegalArgumentException(
+          "Pipeline '" +
+            pipeline.id() +
+            "': step '" +
+            s.id() +
+            "' gates an action on a monitor but no guard or llm_guard step is reachable " +
+            "after it. Add a monitor step on that branch or raise the gate."
+        );
+      }
+    }
+  }
+
+  /** Every step id execution can branch to from the given step. */
+  private static List<String> successors(PipelineModel pipeline, StepModel s) {
+    List<String> next = new ArrayList<>();
+    String edge = pipeline.edges().get(s.id());
+    if (edge != null) next.add(edge);
+    if (s.config() instanceof BranchingConfig branching) {
+      next.addAll(branching.branchTargets());
+    }
+    return next;
   }
 
   // ---------------------------------------------------------------------------
   // Step config builders
   // ---------------------------------------------------------------------------
-
-  private static ClassifyStepConfig toClassifyStep(ClassifyConfig d) {
-    var b = ClassifyStepConfig.newBuilder();
-    if (d.modelId() != null) b.setModelId(d.modelId());
-    if (d.inputField() != null) b.setInputField(d.inputField());
-    if (d.outputField() != null) b.setOutputField(d.outputField());
-    if (d.threshold() > 0) b.setThreshold(d.threshold());
-    return b.build();
-  }
-
-  private static TodoStepConfig toTodoStep(TodoConfig d) {
-    var b = TodoStepConfig.newBuilder();
-    if (d.handledStep() != null && !d.handledStep().isBlank()) {
-      b.setHandledStepId(d.handledStep());
-    }
-    return b.build();
-  }
-
-  private static ToolSelectStepConfig toToolSelectStep(ToolSelectConfig d) {
-    var b = ToolSelectStepConfig.newBuilder();
-    if (d.modelId() != null) b.setModelId(d.modelId());
-    if (d.inputField() != null) b.setInputField(d.inputField());
-    if (d.batchSize() > 0) b.setBatchSize(d.batchSize());
-    if (d.threshold() > 0) b.setThreshold(d.threshold());
-    if (d.labelTemplate() != null) b.setLabelTemplate(d.labelTemplate());
-    if (d.alwaysInclude() != null) b.addAllAlwaysInclude(d.alwaysInclude());
-    if (d.trimDescriptions() != null) b.setTrimDescriptions(d.trimDescriptions());
-    if (d.descriptionTemplate() != null) b.setDescriptionTemplate(d.descriptionTemplate());
-    return b.build();
-  }
-
-  private static EmbedStepConfig toEmbedStep(EmbedConfig d) {
-    var b = EmbedStepConfig.newBuilder();
-    if (d.modelId() != null) b.setModelId(d.modelId());
-    if (d.inputField() != null) b.setInputField(d.inputField());
-    if (d.outputField() != null) b.setOutputField(d.outputField());
-    return b.build();
-  }
-
-  private static RouteStepConfig toRouteStep(RouteConfig d) {
-    var b = RouteStepConfig.newBuilder();
-    if (d.modelId() != null) b.setModelId(d.modelId());
-    if (d.strategy() != null) b.setStrategy(parseRoutingStrategy(d.strategy()));
-    if (d.inputField() != null) b.setInputField(d.inputField());
-    if (d.defaultStep() != null) b.setDefaultStepId(d.defaultStep());
-    if (d.rules() != null) {
-      for (var rule : d.rules()) {
-        var ruleBuilder = RouteRule.newBuilder()
-          .setLabel(rule.label() != null ? rule.label() : "")
-          .setNextStepId(rule.nextStep() != null ? rule.nextStep() : "");
-        if (rule.sentences() != null && !rule.sentences().isEmpty()) {
-          ruleBuilder.addAllSentences(rule.sentences());
-        }
-        b.addRules(ruleBuilder.build());
-      }
-    }
-    return b.build();
-  }
-
-  private static GuardStepConfig toGuardStep(GuardConfig d) {
-    var b = GuardStepConfig.newBuilder();
-    if (d.modelId() != null) b.setModelId(d.modelId());
-    if (d.inputField() != null) b.setInputField(d.inputField());
-    b.setAction(parseGuardAction(d.action()));
-    if (d.outputField() != null && !d.outputField().isBlank()) b.setOutputField(d.outputField());
-
-    // triggers: wins over the single trigger: form.
-    if (d.triggers() != null && !d.triggers().isEmpty()) {
-      for (var t : d.triggers()) {
-        var tb = GuardTrigger.newBuilder();
-        if (t.label() != null) tb.setLabel(t.label());
-        if (t.score() > 0) tb.setScore(t.score());
-        b.addTriggers(tb.build());
-      }
-    } else if (d.trigger() != null) {
-      // Single trigger: populate the triggers list too, so executors read one shape.
-      var tb = GuardTrigger.newBuilder();
-      if (d.trigger().label() != null) tb.setLabel(d.trigger().label());
-      if (d.trigger().score() > 0) tb.setScore(d.trigger().score());
-      b.addTriggers(tb.build());
-      // The deprecated single-trigger proto fields are still filled in.
-      if (d.trigger().label() != null) b.setTriggerLabel(d.trigger().label());
-      if (d.trigger().score() > 0) b.setTriggerScore(d.trigger().score());
-    }
-    if (d.message() != null && !d.message().isBlank()) b.setMessage(d.message());
-    b.setRedactWithEntityType(d.redactWithEntityType());
-    return b.build();
-  }
-
-  private static LlmGuardStepConfig toLlmGuardStep(
-    LlmGuardConfig d,
-    Path basePath,
-    Map<String, String> templateRegistry
-  ) {
-    var b = LlmGuardStepConfig.newBuilder();
-    if (d.modelId() != null) b.setModelId(d.modelId());
-    b.setAction(parseGuardAction(d.action()));
-    if (d.safeToken() != null && !d.safeToken().isBlank()) b.setSafeToken(d.safeToken());
-    if (d.message() != null && !d.message().isBlank()) b.setMessage(d.message());
-
-    // Raw template: template_id > template_file > inline template (mutually exclusive).
-    String resolvedTemplate = resolveTemplate(d.prompt(), basePath, templateRegistry);
-    if (resolvedTemplate != null && !resolvedTemplate.isBlank()) {
-      b.setRawTemplate(resolvedTemplate);
-    } else {
-      List<MessageEntry> messages = d.prompt() != null ? d.prompt().messages() : null;
-      if (messages != null) {
-        for (var msg : messages) {
-          b.addMessages(
-            MessageDef.newBuilder()
-              .setRole(msg.role() != null ? msg.role() : "user")
-              .setContent(msg.content() != null ? msg.content() : "")
-              .build()
-          );
-        }
-      }
-    }
-
-    SamplingDef sampling = d.sampling();
-    if (sampling != null) {
-      b.setSamplingParams(toSamplingParams(sampling));
-    }
-
-    // Per-step template variables (merged into the Jinja2 rendering context
-    // by LlmGuardStepExecutor, e.g. `context: { categories: [...] }`).
-    if (d.context() != null && !d.context().isEmpty()) {
-      b.setContext(mapToStruct(d.context()));
-    }
-
-    return b.build();
-  }
-
-  private static BreakStepConfig toBreakStep(BreakConfig d) {
-    var b = BreakStepConfig.newBuilder();
-    if (d.outputField() != null) b.setOutputField(d.outputField());
-
-    // Condition sub-group
-    if (d.condition() != null) {
-      b.setCondition(parseBreakCondition(d.condition().type()));
-      if (d.condition().inputField() != null) b.setInputField(d.condition().inputField());
-      if (d.condition().matchValue() != null) b.setMatchValue(d.condition().matchValue());
-      if (d.condition().threshold() != 0) b.setThreshold(d.condition().threshold());
-    }
-    return b.build();
-  }
-
-  private static LoopStepConfig toLoopStep(StepDefinition step, LoopConfig d) {
-    var b = LoopStepConfig.newBuilder();
-    if (d.loopbackStep() != null) b.setTargetStepId(d.loopbackStep());
-
-    // next_step (exit) comes from the top-level step definition
-    if (step.nextStep() != null) b.setNextStepId(step.nextStep());
-
-    if (d.maxIterations() > 0) b.setMaxIterations(d.maxIterations());
-
-    if (d.fallbackStep() != null) b.setFallbackStepId(d.fallbackStep());
-
-    // Condition sub-group
-    if (d.condition() != null) {
-      b.setCondition(parseBreakCondition(d.condition().type()));
-      if (d.condition().inputField() != null) b.setInputField(d.condition().inputField());
-      if (d.condition().matchValue() != null) b.setMatchValue(d.condition().matchValue());
-      if (d.condition().threshold() != 0) b.setThreshold(d.condition().threshold());
-    }
-
-    // Optional message injected as a USER (or configured role) turn into
-    // pctx.messages() every time the loop branches back to target_step_id.
-    // Enables conversational refinement (e.g. CoT). The content supports
-    // Jinja2 interpolation and is rendered by LoopStepExecutor at loop-back time.
-    if (d.loopbackMessage() != null) {
-      var m = d.loopbackMessage();
-      b.setLoopbackMessage(
-        MessageDef.newBuilder()
-          .setRole(m.role() != null && !m.role().isBlank() ? m.role() : "user")
-          .setContent(m.content() != null ? m.content() : "")
-          .build()
-      );
-    }
-
-    // Retry-edge sampling override: applied by LoopStepExecutor only when
-    // branching back to loopback_step (request override still wins).
-    if (d.retrySamplingParams() != null) {
-      b.setRetrySamplingParams(toSamplingParams(d.retrySamplingParams()));
-    }
-
-    return b.build();
-  }
-
-  private static SubPipelineStepConfig toSubPipelineStep(SubPipelineConfig d) {
-    var b = SubPipelineStepConfig.newBuilder();
-    if (d.pipelineId() != null) b.setPipelineId(d.pipelineId());
-    if (d.inputField() != null) b.setInputField(d.inputField());
-    if (d.outputField() != null) b.setOutputField(d.outputField());
-    if (d.server() != null && !d.server().isBlank()) b.setRemoteId(d.server());
-    if (d.systemPrompt() != null && !d.systemPrompt().isBlank()) b.setSystemPrompt(
-      d.systemPrompt()
-    );
-    b.setForwardMessages(d.forwardMessages());
-    return b.build();
-  }
-
-  private static RegexGuardStepConfig toRegexGuardStep(WorkspaceDefinition.RegexGuardConfig d) {
-    var b = RegexGuardStepConfig.newBuilder();
-    if (d.inputField() != null) b.setInputField(d.inputField());
-    b.setAction(parseGuardAction(d.action()));
-    b.setRedactWithEntityType(d.redactWithEntityType());
-    if (d.outputField() != null && !d.outputField().isBlank()) b.setOutputField(d.outputField());
-    if (d.message() != null && !d.message().isBlank()) b.setMessage(d.message());
-
-    if (d.patterns() != null) {
-      for (var e : d.patterns()) {
-        b.addPatterns(
-          io.gravitee.singularitee.protocol.RegexEntityDef.newBuilder()
-            .setName(e.name() != null ? e.name() : "")
-            .setPattern(e.pattern() != null ? e.pattern() : "")
-            .build()
-        );
-      }
-    }
-
-    return b.build();
-  }
 
   // ---------------------------------------------------------------------------
   // Remote endpoint parsing
@@ -893,47 +602,6 @@ public final class YamlWorkspaceLoader {
   // ---------------------------------------------------------------------------
   // File-loading helpers
   // ---------------------------------------------------------------------------
-
-  /**
-   * Resolves a {@link PromptDef} to a raw template string.
-   *
-   * <p>Precedence (mutually exclusive; more than one set is a load-time error):
-   * <ol>
-   *   <li>{@code template_id}: looks up a named template from the workspace registry.</li>
-   *   <li>{@code template_file}: reads the file content (UTF-8) from disk.</li>
-   *   <li>{@code template}: returns the inline string as-is.</li>
-   *   <li>Otherwise {@code null} is returned (the messages path applies).</li>
-   * </ol>
-   */
-  private static String resolveTemplate(
-    PromptDef prompt,
-    Path basePath,
-    Map<String, String> templateRegistry
-  ) {
-    if (prompt == null) return null;
-    boolean hasId = prompt.templateId() != null && !prompt.templateId().isBlank();
-    boolean hasFile = prompt.templateFile() != null && !prompt.templateFile().isBlank();
-    boolean hasInline = prompt.template() != null && !prompt.template().isBlank();
-    long setCount = (hasId ? 1 : 0) + (hasFile ? 1 : 0) + (hasInline ? 1 : 0);
-    if (setCount > 1) {
-      throw new IllegalArgumentException(
-        "prompt.template_id, prompt.template_file and prompt.template are mutually exclusive, use only one"
-      );
-    }
-    if (hasId) {
-      String content = templateRegistry.get(prompt.templateId());
-      if (content == null) {
-        throw new IllegalArgumentException(
-          "prompt.template_id '" + prompt.templateId() + "' not found in workspace templates"
-        );
-      }
-      return content;
-    }
-    if (hasFile) {
-      return readFileContent(prompt.templateFile(), basePath, "template_file");
-    }
-    return hasInline ? prompt.template() : null;
-  }
 
   /**
    * Builds an id to content registry from all {@code templates:} declared in the
@@ -1033,83 +701,6 @@ public final class YamlWorkspaceLoader {
   // ---------------------------------------------------------------------------
   // Enum helpers
   // ---------------------------------------------------------------------------
-
-  private static RoutingStrategy parseRoutingStrategy(String value) {
-    if (value == null) return RoutingStrategy.ROUTING_STRATEGY_CLASSIFIER;
-    return switch (value.toLowerCase()) {
-      case "embedding_knn" -> RoutingStrategy.ROUTING_STRATEGY_EMBEDDING_KNN;
-      case "llm_structured" -> RoutingStrategy.ROUTING_STRATEGY_LLM_STRUCTURED;
-      default -> RoutingStrategy.ROUTING_STRATEGY_CLASSIFIER;
-    };
-  }
-
-  private static GuardAction parseGuardAction(String value) {
-    if (value == null) return GuardAction.GUARD_ACTION_REJECT;
-    return switch (value.toLowerCase()) {
-      case "redact" -> GuardAction.GUARD_ACTION_REDACT;
-      case "warn" -> GuardAction.GUARD_ACTION_WARN;
-      default -> GuardAction.GUARD_ACTION_REJECT;
-    };
-  }
-
-  private static BreakCondition parseBreakCondition(String value) {
-    if (value == null) return BreakCondition.BREAK_CONDITION_UNSPECIFIED;
-    return switch (value.toLowerCase()) {
-      case "equals" -> BreakCondition.BREAK_CONDITION_EQUALS;
-      case "contains" -> BreakCondition.BREAK_CONDITION_CONTAINS;
-      case "label_equals" -> BreakCondition.BREAK_CONDITION_LABEL_EQUALS;
-      case "score_above" -> BreakCondition.BREAK_CONDITION_SCORE_ABOVE;
-      case "score_below" -> BreakCondition.BREAK_CONDITION_SCORE_BELOW;
-      case "not_empty" -> BreakCondition.BREAK_CONDITION_NOT_EMPTY;
-      case "empty" -> BreakCondition.BREAK_CONDITION_EMPTY;
-      default -> BreakCondition.BREAK_CONDITION_UNSPECIFIED;
-    };
-  }
-
-  /**
-   * Converts a Java {@code Map<String, Object>} to a protobuf {@code Struct}.
-   * Supports String, Number, Boolean, List, and nested Map values.
-   */
-  @SuppressWarnings("unchecked")
-  private static com.google.protobuf.Struct mapToStruct(java.util.Map<String, Object> map) {
-    var builder = com.google.protobuf.Struct.newBuilder();
-    for (var entry : map.entrySet()) {
-      builder.putFields(entry.getKey(), toProtoValue(entry.getValue()));
-    }
-    return builder.build();
-  }
-
-  @SuppressWarnings("unchecked")
-  private static com.google.protobuf.Value toProtoValue(Object obj) {
-    if (obj == null) {
-      return com.google.protobuf.Value.newBuilder()
-        .setNullValue(com.google.protobuf.NullValue.NULL_VALUE)
-        .build();
-    }
-    if (obj instanceof String s) {
-      return com.google.protobuf.Value.newBuilder().setStringValue(s).build();
-    }
-    if (obj instanceof Boolean b) {
-      return com.google.protobuf.Value.newBuilder().setBoolValue(b).build();
-    }
-    if (obj instanceof Number n) {
-      return com.google.protobuf.Value.newBuilder().setNumberValue(n.doubleValue()).build();
-    }
-    if (obj instanceof java.util.Map<?, ?> m) {
-      return com.google.protobuf.Value.newBuilder()
-        .setStructValue(mapToStruct((java.util.Map<String, Object>) m))
-        .build();
-    }
-    if (obj instanceof java.util.List<?> list) {
-      var listBuilder = com.google.protobuf.ListValue.newBuilder();
-      for (Object item : list) {
-        listBuilder.addValues(toProtoValue(item));
-      }
-      return com.google.protobuf.Value.newBuilder().setListValue(listBuilder.build()).build();
-    }
-    // Fallback: toString
-    return com.google.protobuf.Value.newBuilder().setStringValue(obj.toString()).build();
-  }
 
   /**
    * Resolves typed include directives and merges them with the main workspace.
@@ -1221,7 +812,8 @@ public final class YamlWorkspaceLoader {
       pipelines.isEmpty() ? null : pipelines,
       templates.isEmpty() ? null : templates,
       mainRoot.tags(), // named tag sets come from the base file only (not merged from includes)
-      null // clear includes: no recursive processing
+      null, // clear includes: no recursive processing
+      mainRoot.extras() // plugin-owned sections come from the base file only
     );
   }
 
@@ -1280,7 +872,7 @@ public final class YamlWorkspaceLoader {
   }
 
   /**
-   * Fails fast when a step ID cannot be used as a Jinja2 identifier.
+   * Fails fast when a step ID cannot be used as a Jinja identifier.
    * Step outputs are exposed in the rendering context under a key derived from
    * the step ID (e.g. {@code {{ my_step.output }}}); hyphens, dots and other
    * non-identifier characters would produce hard-to-debug template parse errors.
@@ -1291,7 +883,7 @@ public final class YamlWorkspaceLoader {
       throw new IllegalArgumentException(
         "Invalid step id '" +
           stepId +
-          "': must match [A-Za-z_][A-Za-z0-9_]* so it can be referenced as a Jinja2 identifier " +
+          "': must match [A-Za-z_][A-Za-z0-9_]* so it can be referenced as a Jinja identifier " +
           "(e.g. '{{ " +
           stepId +
           ".output }}'). Replace hyphens with underscores."

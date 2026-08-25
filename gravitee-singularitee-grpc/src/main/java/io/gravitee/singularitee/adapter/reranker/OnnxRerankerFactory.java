@@ -16,7 +16,7 @@
 package io.gravitee.singularitee.adapter.reranker;
 
 import io.gravitee.singularitee.adapter.ModelEngineFactory;
-import io.gravitee.singularitee.engine.ModelEngine;
+import io.gravitee.singularitee.engine.api.ModelEngine;
 import io.gravitee.singularitee.inference.api.reranker.RerankScoring;
 import io.gravitee.singularitee.inference.math.api.GioMaths;
 import io.gravitee.singularitee.inference.onnx.bert.config.OnnxBertConfig;

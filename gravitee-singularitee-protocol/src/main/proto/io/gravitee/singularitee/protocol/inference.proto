@@ -343,6 +343,28 @@ message ResponseProgress {
   // Convenience counters (derivable from todos, duplicated for cheap display).
   int32 completed           = 3;
   int32 total               = 4;
+  // Structured elicitation payload, set when a step pauses to ask the user
+  // something (the todo step's ask_user tool call). Additive and ignorable.
+  Elicitation elicitation   = 5;
+}
+
+// A question the user is asked to answer before the conversation continues.
+// Closed options are preferred where possible: enumerated choices are cheap
+// for the user to answer and cheap for a gateway to render as a dialog.
+message Elicitation {
+  // The kind of elicitation. "ask" is emitted by the core ask_user tool; a
+  // step plugin may define other values.
+  string kind               = 1;
+  // The question, verbatim as shown to the user.
+  string question           = 2;
+  // Enumerated answers when the question is closed (e.g. the branches of an
+  // ambiguity). Empty for open questions.
+  repeated string options   = 3;
+  reserved 4, 5, 6, 7;
+  reserved "risk", "tool", "args_digest", "verdicts";
+  // Free-form entries a step plugin attaches to the elicitation. Ignorable by
+  // clients that do not understand a given key.
+  map<string, string> metadata = 8;
 }
 
 // One item of an engine-managed todo plan.

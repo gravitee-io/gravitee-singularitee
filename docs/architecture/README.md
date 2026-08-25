@@ -23,10 +23,13 @@ A pipeline is a directed graph of steps that the engine walks reactively. The sa
 | Module (`gravitee-singularitee-*`) | Role |
 | --- | --- |
 | `protocol` | `.proto` contract and generated Vert.x gRPC stubs. Source of truth for the wire. |
-| `engine` | `ModelRegistry`, `PipelineRegistry`, `PipelineExecutor` (reactive DAG walker), one `StepExecutor` per step type. |
+| `engine-api` | The contracts a step plugin compiles against: the step SPI (`StepExecutor`, `StepConfigCodec`), the pipeline/step model, `PipelineContext`/`StepContext`, the engine model interfaces, the registries and template rendering. |
+| `engine` | The runtime that wires and executes those contracts: `StepExecutorFactory`, `StepDispatcher` (the decorator chain), the platform decorators, `PipelineExecutor` (reactive DAG walker) and `ConversationStore`. Depends on `engine-api`; holds no step executors (those are plugins). |
+| `plugin-api` | The step plugin SPI (`StepExecutorPlugin`, `StepDecoratorPlugin`, `StepExecutorServices`) and the plugin assembly with its license gate. |
+| `plugins` | One module per core step: the twelve OSS steps, always shipped. Further steps can live in their own plugin repositories, loaded the same way. |
 | `engine-remote` | `Remote*Engine` proxies for `remote_*` model types and `ClientPipelineExecutor`. |
 | `inference` | Vendored engines (`-api`, `-llama-cpp`, `-vllm`, `-onnx`, `-math`) behind `EngineAdapter` and `AbstractBatchEngine`. |
-| `workspace` | `YamlWorkspaceLoader`: YAML to model and pipeline definitions. `ModelType` lives here. |
+| `workspace` | `YamlWorkspaceLoader`: YAML to model load requests and the Java pipeline model; step configs are parsed by the plugins' codecs. `ModelType` lives here. |
 | `grpc` | gRPC service implementations, engine-adapter factories, HuggingFace resolvers. |
 | `http` | OpenAI-compatible HTTP API. Pure translation, no inference logic. |
 | `client` | `SingulariteeClient`: thin gRPC client, the only dependency a caller needs. |
@@ -35,6 +38,15 @@ A pipeline is a directed graph of steps that the engine walks reactively. The sa
 ## Boot order
 
 `GrpcServerComponent` and `HttpApiServerComponent` bind their ports before `WorkspaceLoaderComponent` loads the workspace, so `/health` answers immediately while weights download and load. Until loading completes, a shared `ReadinessState` gates inference: gRPC calls fail with `UNAVAILABLE` and the HTTP API returns `503 model_not_ready`. A model that fails to load is logged at WARN and skipped; the server stays up.
+
+Before any of that, the node's boot phase bootstraps its `PluginRegistry` (it scans
+`plugins/` for plugin zips) and reads the platform license (`license.key`, OSS when absent);
+the main context then assembles the step executors from those plugins, gating each on its
+manifest `feature`, and creates the dispatcher only once every core step type has an executor.
+Two failures deliberately do not follow the WARN-and-continue rule: a misassembled plugin set
+(two providers for a type, or a missing core step) fails at boot, and a workspace declaring a
+step whose license feature is missing fails the workspace load with the feature named, so the
+node never reports ready with a safety step silently absent.
 
 ## Execution modes
 
@@ -74,6 +86,34 @@ A pipeline is an `entry` step plus a list of `steps`. Linear steps follow their 
 | `todo` | Execute server-owned plan tools and stream progress | [todo](../reference/steps/todo.md) |
 
 Semantics of guards, routing, loops and sub-pipelines are in the [guides](../README.md#guides).
+
+## Plugins
+
+Every pipeline step executes from a gravitee plugin: a zip under `${gravitee.home}/plugins`
+whose jar carries a `plugin.properties` (`type=step`, `class=` the `StepExecutorPlugin`
+implementation, and an optional `feature=` when the step requires a license feature). The node's `PluginRegistry` scans the
+directory at boot; gravitee's `PluginClassLoader` gives each plugin a `URLClassLoader` whose
+parent is the container classloader, delegating parent-first: engine APIs, models and native
+libraries (llama.cpp, ONNX Runtime, the embedded CPython of vLLM) always resolve from the main
+classloader. This is not a style choice: those natives are process-global singletons, and a
+second classloader touching them means an `UnsatisfiedLinkError` or a doubly initialised
+interpreter. A plugin is therefore a decorator over parent-loaded APIs and nothing else, and
+its jar carries only its own extra runtime deps (engine, protocol and plugin-api are
+`provided`).
+
+A `StepExecutorPlugin` contributes a step type, the `StepConfigCodec` that parses the step's
+YAML `config:` block, and the `StepExecutor` built from the parent-owned
+`StepExecutorServices`. Cross-cutting behaviour comes from `StepDecoratorPlugin`s
+(`type=step-decorator`), applied to every step inside the platform decorators (tracing,
+diagnostics), so a plugin step is always observed. `StepPlugins.assemble` turns the plugins
+the registry discovered into the engine's executors and codecs. Rules enforced at boot: two
+providers for one type is a misassembly and fails; a core type without an executor fails
+("core step types without an executor"); a step can be switched off with
+`step.<id>.enabled: false`; and a step whose manifest
+`feature` the platform license does not enable stays unregistered, so a workspace declaring it fails to load with the feature
+named (node licensing, the same `LicenseManager` the rest of Gravitee uses). Steps never cross
+the wire: the pipeline DAG is a Java model built from YAML, and the proto only carries pipeline
+metadata.
 
 ## Workspaces
 

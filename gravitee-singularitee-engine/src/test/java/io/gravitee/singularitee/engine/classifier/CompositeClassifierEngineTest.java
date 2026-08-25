@@ -17,8 +17,8 @@ package io.gravitee.singularitee.engine.classifier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.gravitee.singularitee.engine.ClassifierEngine;
-import io.gravitee.singularitee.engine.ClassifyRequest;
+import io.gravitee.singularitee.engine.api.ClassifierEngine;
+import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.classifier.RegexClassifierEngine.PatternEntry;
 import java.util.List;
 import org.junit.jupiter.api.Nested;

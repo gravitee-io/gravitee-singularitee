@@ -16,8 +16,8 @@
 package io.gravitee.singularitee.engine.remote;
 
 import io.gravitee.singularitee.client.SingulariteeClient;
-import io.gravitee.singularitee.engine.*;
-import io.gravitee.singularitee.pipeline.executor.JinjaContextHelper;
+import io.gravitee.singularitee.engine.api.*;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateContextHelper;
 import io.gravitee.singularitee.protocol.*;
 import io.reactivex.rxjava3.core.BackpressureOverflowStrategy;
 import io.reactivex.rxjava3.core.Completable;
@@ -281,7 +281,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
       inferReqBuilder.setMessages(chatList.build());
       if (request.templateContext() != null && !request.templateContext().isEmpty()) {
         inferReqBuilder.setTemplateContext(
-          JinjaContextHelper.mapToStruct(request.templateContext())
+          TemplateContextHelper.mapToStruct(request.templateContext())
         );
       }
     } else if (request.prompt() != null) {

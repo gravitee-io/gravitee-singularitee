@@ -20,7 +20,7 @@
     Directory layout shared by every distribution flavour.
 
     The flavours (full / onnx / llama / vllm) differ only in which engine JARs
-    they carry, so the bin/, config/, logs/ and plugins/ layout lives here once
+    they carry, so the bin/, config/, logs/, plugins/ and license/ layout lives here once
     rather than being repeated in each descriptor.
 -->
 <component xmlns="http://maven.apache.org/ASSEMBLY-COMPONENT/2.2.0"
@@ -47,6 +47,13 @@
         <fileSet>
             <directory>.</directory>
             <outputDirectory>plugins</outputDirectory>
+            <excludes>
+                <exclude>**/*</exclude>
+            </excludes>
+        </fileSet>
+        <fileSet>
+            <directory>.</directory>
+            <outputDirectory>license</outputDirectory>
             <excludes>
                 <exclude>**/*</exclude>
             </excludes>

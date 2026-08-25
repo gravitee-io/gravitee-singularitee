@@ -20,7 +20,7 @@ import io.gravitee.lab.gliner4j.schema.EntityDefinition;
 import io.gravitee.lab.gliner4j.schema.EntitySpan;
 import io.gravitee.singularitee.adapter.BlockingEngineAdapter;
 import io.gravitee.singularitee.adapter.batching.MicroBatcher;
-import io.gravitee.singularitee.engine.*;
+import io.gravitee.singularitee.engine.api.*;
 import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Single;

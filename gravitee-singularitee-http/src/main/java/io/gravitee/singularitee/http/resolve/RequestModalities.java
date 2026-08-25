@@ -16,7 +16,7 @@
 package io.gravitee.singularitee.http.resolve;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.gravitee.singularitee.engine.Modalities;
+import io.gravitee.singularitee.engine.api.Modalities;
 import java.util.LinkedHashSet;
 import java.util.Set;
 

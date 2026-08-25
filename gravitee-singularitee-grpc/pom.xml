@@ -40,7 +40,7 @@
 
         <!-- Internal engine API (records, interfaces, enums, InferenceMetrics) -->
         <dependency>
-            <groupId>io.gravitee.singularitee</groupId>
+            <groupId>io.gravitee.singularitee.engine</groupId>
             <artifactId>gravitee-singularitee-engine</artifactId>
         </dependency>
 
@@ -186,6 +186,13 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <!-- The fat jar is an attached artifact: the main artifact stays a thin
+                                 jar so no consumer ever sees a second copy of the engine classes
+                                 (plugins and the container resolve them from one loader). -->
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <!-- Keep the real POM: consumers of the thin jar need the transitive deps. -->
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedClassifierName>all</shadedClassifierName>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>io.gravitee.singularitee.grpc.Singularitee</mainClass>

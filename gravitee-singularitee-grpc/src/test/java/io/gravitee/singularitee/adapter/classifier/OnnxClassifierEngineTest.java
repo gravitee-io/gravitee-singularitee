@@ -23,7 +23,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.gravitee.singularitee.engine.ClassifyRequest;
+import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.inference.api.classifier.ClassifierMode;
 import io.gravitee.singularitee.inference.api.classifier.ClassifierResult;
 import io.gravitee.singularitee.inference.api.classifier.ClassifierResults;

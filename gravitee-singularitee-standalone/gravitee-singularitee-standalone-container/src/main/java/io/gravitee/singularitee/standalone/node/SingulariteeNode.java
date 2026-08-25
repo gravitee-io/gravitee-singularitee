@@ -29,8 +29,6 @@ import io.gravitee.node.monitoring.monitor.gpu.GpuMonitorEventHandler;
 import io.gravitee.node.opentelemetry.exporter.SpanExporterFactory;
 import io.gravitee.node.plugins.service.ServiceManager;
 import io.gravitee.node.reporter.ReporterManager;
-import io.gravitee.plugin.core.api.PluginRegistry;
-import io.gravitee.plugin.core.internal.PluginEventListener;
 import io.gravitee.singularitee.standalone.vertx.GrpcServerComponent;
 import io.gravitee.singularitee.standalone.vertx.HttpApiServerComponent;
 import io.gravitee.singularitee.standalone.vertx.WorkspaceLoaderComponent;

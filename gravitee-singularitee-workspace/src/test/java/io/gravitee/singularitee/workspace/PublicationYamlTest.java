@@ -18,6 +18,7 @@ package io.gravitee.singularitee.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.gravitee.singularitee.plugin.test.TestStepPlugins;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -92,8 +93,8 @@ class PublicationYamlTest {
     // Undeclared on the llama.cpp model: the engine is asked at registration instead.
     assertThat(result.models().get(0).modalities()).isEmpty();
 
-    assertThat(result.pipelines().get(0).getInputModalitiesList()).isEmpty();
-    assertThat(result.pipelines().get(1).getInputModalitiesList()).containsExactly("text", "image");
+    assertThat(result.pipelines().get(0).inputModalities()).isEmpty();
+    assertThat(result.pipelines().get(1).inputModalities()).containsExactly("text", "image");
   }
 
   @Test
@@ -101,14 +102,14 @@ class PublicationYamlTest {
     var pipelines = load(tmp).pipelines();
 
     var agent = pipelines.get(0);
-    assertThat(agent.getPipelineId()).isEqualTo("agent");
-    assertThat(agent.getHidden()).isFalse();
+    assertThat(agent.id()).isEqualTo("agent");
+    assertThat(agent.hidden()).isFalse();
     // Undeclared: left blank here, derived at registration from the output model.
-    assertThat(agent.getTask()).isEmpty();
+    assertThat(agent.task()).isEmpty();
 
     var internal = pipelines.get(1);
-    assertThat(internal.getHidden()).isTrue();
-    assertThat(internal.getTask()).isEqualTo("text-generation");
+    assertThat(internal.hidden()).isTrue();
+    assertThat(internal.task()).isEqualTo("text-generation");
   }
 
   @Test
@@ -119,10 +120,10 @@ class PublicationYamlTest {
       YAML.replace("      visible: false\n", "").replace("          visible: false\n", "")
     );
 
-    var result = YamlWorkspaceLoader.load(workspace);
+    var result = YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs());
 
     assertThat(result.models().get(0).visible()).isTrue();
-    assertThat(result.pipelines()).allSatisfy(p -> assertThat(p.getHidden()).isFalse());
+    assertThat(result.pipelines()).allSatisfy(p -> assertThat(p.hidden()).isFalse());
   }
 
   @Test
@@ -133,7 +134,7 @@ class PublicationYamlTest {
       YAML.replace("task: token-classification", "task: token_classification")
     );
 
-    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace))
+    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs()))
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessageContaining("pii")
       .hasMessageContaining("token_classification");
@@ -147,7 +148,7 @@ class PublicationYamlTest {
       YAML.replace("modalities: [text, image]", "modalities: [text, vision]")
     );
 
-    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace))
+    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs()))
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessageContaining("internal")
       .hasMessageContaining("vision");
@@ -156,6 +157,6 @@ class PublicationYamlTest {
   private static YamlWorkspaceLoader.WorkspaceRequests load(Path tmp) throws IOException {
     Path workspace = tmp.resolve("workspace.yaml");
     Files.writeString(workspace, YAML);
-    return YamlWorkspaceLoader.load(workspace);
+    return YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs());
   }
 }

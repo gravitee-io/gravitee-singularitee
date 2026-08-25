@@ -19,11 +19,16 @@ import io.gravitee.node.api.Node;
 import io.gravitee.node.api.cache.CacheManager;
 import io.gravitee.node.api.cluster.ClusterManager;
 import io.gravitee.node.api.configuration.Configuration;
+import io.gravitee.node.api.license.License;
+import io.gravitee.node.api.license.LicenseManager;
 import io.gravitee.node.api.opentelemetry.InstrumenterTracerFactory;
 import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.node.api.opentelemetry.TracerFactory;
 import io.gravitee.node.plugin.cache.standalone.StandaloneCacheManager;
 import io.gravitee.node.plugin.cluster.standalone.StandaloneClusterManager;
+import io.gravitee.plugin.core.api.Plugin;
+import io.gravitee.plugin.core.api.PluginClassLoaderFactory;
+import io.gravitee.plugin.core.api.PluginRegistry;
 import io.gravitee.singularitee.adapter.ModelEngineFactory;
 import io.gravitee.singularitee.adapter.classifier.OnnxClassifierFactory;
 import io.gravitee.singularitee.adapter.embedding.LlamaCppEmbeddingFactory;
@@ -34,24 +39,31 @@ import io.gravitee.singularitee.adapter.reranker.LlamaCppRerankerFactory;
 import io.gravitee.singularitee.adapter.reranker.OnnxRerankerFactory;
 import io.gravitee.singularitee.adapter.textgen.LlamaCppEngineFactory;
 import io.gravitee.singularitee.adapter.textgen.VllmEngineFactory;
-import io.gravitee.singularitee.engine.StreamingConfig;
+import io.gravitee.singularitee.engine.api.StreamingConfig;
+import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
+import io.gravitee.singularitee.engine.api.pipeline.TodoSessionStore;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateRenderer;
+import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
+import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.engine.api.tools.ServerToolNames;
+import io.gravitee.singularitee.engine.api.tools.TodoTools;
+import io.gravitee.singularitee.engine.pipeline.ConversationStore;
+import io.gravitee.singularitee.engine.pipeline.PipelineExecutor;
+import io.gravitee.singularitee.engine.pipeline.executor.StepDispatcher;
+import io.gravitee.singularitee.engine.pipeline.executor.StepExecutorFactory;
+import io.gravitee.singularitee.engine.template.DelegatingChatTemplateRenderer;
+import io.gravitee.singularitee.engine.template.JinjaTemplateRenderer;
 import io.gravitee.singularitee.grpc.resolver.GgufModelResolver;
 import io.gravitee.singularitee.grpc.resolver.GlinerModelResolver;
 import io.gravitee.singularitee.grpc.resolver.HuggingFaceModelDownloader;
 import io.gravitee.singularitee.grpc.resolver.OnnxModelResolver;
 import io.gravitee.singularitee.grpc.resolver.VllmModelResolver;
+import io.gravitee.singularitee.http.translation.wire.HttpEventNames;
 import io.gravitee.singularitee.inference.math.api.GioMaths;
 import io.gravitee.singularitee.inference.math.vanilla.NativeMath;
-import io.gravitee.singularitee.metrics.InferenceMetrics;
-import io.gravitee.singularitee.pipeline.ConversationStore;
-import io.gravitee.singularitee.pipeline.PipelineExecutor;
-import io.gravitee.singularitee.pipeline.TodoSessionStore;
-import io.gravitee.singularitee.pipeline.executor.JinjaRenderer;
-import io.gravitee.singularitee.pipeline.executor.StepDispatcher;
-import io.gravitee.singularitee.pipeline.executor.StepExecutorFactory;
+import io.gravitee.singularitee.plugin.api.StepExecutorServices;
+import io.gravitee.singularitee.plugin.api.StepPlugins;
 import io.gravitee.singularitee.protocol.ModelType;
-import io.gravitee.singularitee.registry.ModelRegistry;
-import io.gravitee.singularitee.registry.PipelineRegistry;
 import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.service.GraviteePipelineServiceImpl;
@@ -62,14 +74,18 @@ import io.gravitee.singularitee.standalone.vertx.HttpApiServerComponent;
 import io.gravitee.singularitee.standalone.vertx.WorkspaceLoaderComponent;
 import io.vertx.rxjava3.core.Vertx;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 
 /**
  * Main Spring configuration for Singularitee: registries, model resolvers, engine factories,
@@ -503,8 +519,8 @@ public class SingulariteeConfiguration {
 
   /** Shared Jinja template renderer for prompts and step templates. */
   @Bean
-  public JinjaRenderer jinjaRenderer() {
-    return new JinjaRenderer();
+  public TemplateRenderer templateRenderer() {
+    return new JinjaTemplateRenderer();
   }
 
   /** Creates the per-type step executors; remote sub-pipeline callbacks are wired at workspace load. */
@@ -513,22 +529,87 @@ public class SingulariteeConfiguration {
     ModelRegistry modelRegistry,
     PipelineRegistry pipelineRegistry,
     GraviteeModelServiceImpl modelService,
-    JinjaRenderer jinjaRenderer,
-    io.gravitee.singularitee.pipeline.TodoSessionStore todoSessionStore
+    TemplateRenderer templateRenderer,
+    io.gravitee.singularitee.engine.api.pipeline.TodoSessionStore todoSessionStore
   ) {
     return new StepExecutorFactory(
       modelRegistry,
       pipelineRegistry,
       modelService,
-      jinjaRenderer,
+      templateRenderer,
       null,
       todoSessionStore
     );
   }
 
-  /** Dispatches a step to its executor by step type. */
+  /**
+   * Assembles the step plugins the node's {@code PluginRegistry} discovered (gravitee
+   * plugins of type {@code step} and {@code step-decorator} under {@code plugins.path}):
+   * loads each plugin class through the registry's parent-first class loader, applies the
+   * platform license to the manifest {@code feature} and the {@code step.<id>.enabled}
+   * toggle, registers the licensed executors and decorators on the factory, and remembers
+   * the unlicensed step types so a workspace declaring them fails at load with the feature
+   * named. The registry, class loader factory and license manager are node beans, already
+   * bootstrapped in the boot context.
+   */
   @Bean
-  public StepDispatcher stepDispatcher(StepExecutorFactory stepExecutorFactory) {
+  public StepPlugins stepPlugins(
+    PluginRegistry pluginRegistry,
+    PluginClassLoaderFactory<Plugin> pluginClassLoaderFactory,
+    LicenseManager licenseManager,
+    Environment environment,
+    StepExecutorFactory stepExecutorFactory,
+    ModelRegistry modelRegistry,
+    PipelineRegistry pipelineRegistry,
+    TodoSessionStore todoSessionStore,
+    CacheManager cacheManager
+  ) {
+    var services = new StepExecutorServices(
+      stepExecutorFactory.executionContext(),
+      stepExecutorFactory.templateRenderer(),
+      new DelegatingChatTemplateRenderer(stepExecutorFactory.templateRenderer()),
+      modelRegistry,
+      pipelineRegistry,
+      todoSessionStore,
+      cacheManager,
+      stepExecutorFactory.subPipelineCallbacks()
+    );
+    var plugins = new ArrayList<Plugin>(pluginRegistry.plugins(StepPlugins.STEP_TYPE));
+    plugins.addAll(pluginRegistry.plugins(StepPlugins.DECORATOR_TYPE));
+    License license = licenseManager.getPlatformLicense();
+    LOGGER.info(
+      "Platform license: tier={}, features={}; {} step plugin(s) discovered",
+      license.getTier(),
+      license.getFeatures(),
+      plugins.size()
+    );
+    var assembled = StepPlugins.assemble(
+      plugins,
+      pluginClassLoaderFactory,
+      SingulariteeConfiguration.class.getClassLoader(),
+      license::isFeatureEnabled,
+      plugin ->
+        environment.getProperty(
+          plugin.type() + "." + plugin.id() + ".enabled",
+          Boolean.class,
+          true
+        ),
+      services
+    );
+    stepExecutorFactory.addExecutors(assembled.executors());
+    stepExecutorFactory.addDecorators(assembled.decorators());
+    pipelineRegistry.setStepAvailability(type ->
+      Optional.ofNullable(assembled.unlicensed().get(type))
+    );
+    return assembled;
+  }
+
+  /** Dispatches a step to its executor by step type, once every plugin is registered. */
+  @Bean
+  public StepDispatcher stepDispatcher(
+    StepExecutorFactory stepExecutorFactory,
+    StepPlugins stepPlugins
+  ) {
     return stepExecutorFactory.createDispatcher();
   }
 
@@ -554,7 +635,8 @@ public class SingulariteeConfiguration {
     Tracer singulariteeTracer,
     InferenceMetrics inferenceMetrics,
     TodoSessionStore todoSessionStore,
-    ConversationStore conversationStore
+    ConversationStore conversationStore,
+    ServerToolNames serverToolNames
   ) {
     return new PipelineExecutor(
       pipelineRegistry,
@@ -562,7 +644,8 @@ public class SingulariteeConfiguration {
       singulariteeTracer,
       inferenceMetrics,
       todoSessionStore,
-      conversationStore
+      conversationStore,
+      serverToolNames
     );
   }
 
@@ -600,7 +683,8 @@ public class SingulariteeConfiguration {
     StepExecutorFactory stepExecutorFactory,
     PipelineExecutor pipelineExecutor,
     PipelineRegistry pipelineRegistry,
-    io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState
+    io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState,
+    StepPlugins stepPlugins
   ) {
     return new WorkspaceLoaderComponent(
       configuration,
@@ -608,14 +692,59 @@ public class SingulariteeConfiguration {
       stepExecutorFactory,
       pipelineExecutor,
       pipelineRegistry,
-      readinessState
+      readinessState,
+      stepPlugins
     );
   }
+
+  /**
+   * The deployment's server-tool display names ({@code ai.tools.set-todos.name}, {@code
+   * ai.tools.complete-todo.name}, {@code ai.tools.ask-user.name}), carried on every
+   * pipeline context by the executor. Renaming is presentation only; proto enums, finish
+   * reasons and stored state never change with it.
+   */
+  @Bean
+  public ServerToolNames serverToolNames(Environment environment) {
+    var overrides = new HashMap<String, String>();
+    putToolName(environment, "ai.tools.set-todos.name", TodoTools.SET_TODOS, overrides);
+    putToolName(environment, "ai.tools.complete-todo.name", TodoTools.COMPLETE_TODO, overrides);
+    putToolName(environment, "ai.tools.ask-user.name", TodoTools.ASK_USER, overrides);
+    var names = ServerToolNames.of(overrides);
+    if (!overrides.isEmpty()) {
+      LOGGER.info("Server tool display names: {}", names.displayByCanonical());
+    }
+    return names;
+  }
+
+  /**
+   * Applies the Responses-API progress event type string ({@code
+   * http.events.progress-type}) at boot, before the HTTP server starts.
+   */
+  @Bean
+  public PresentationNames presentationNames(Environment environment) {
+    HttpEventNames.configureProgressType(environment.getProperty("http.events.progress-type"));
+    return new PresentationNames(HttpEventNames.progressType());
+  }
+
+  private static void putToolName(
+    Environment environment,
+    String key,
+    String canonical,
+    Map<String, String> overrides
+  ) {
+    String value = environment.getProperty(key);
+    if (value != null && !value.isBlank()) {
+      overrides.put(canonical, value);
+    }
+  }
+
+  /** The applied HTTP presentation renames, exposed as a bean for logging and tests. */
+  public record PresentationNames(String progressType) {}
 
   /** The gRPC API server; see {@link GrpcServerComponent}. */
   @Bean
   public GrpcServerComponent grpcServerComponent(
-    org.springframework.core.env.Environment environment,
+    Environment environment,
     Vertx vertx,
     io.gravitee.node.vertx.server.VertxServerFactory serverFactory,
     GraviteeModelServiceImpl modelService,
@@ -641,7 +770,7 @@ public class SingulariteeConfiguration {
   /** The opt-in OpenAI-compatible HTTP API server; see {@link HttpApiServerComponent}. */
   @Bean
   public HttpApiServerComponent httpApiServerComponent(
-    org.springframework.core.env.Environment environment,
+    Environment environment,
     Vertx vertx,
     io.gravitee.node.vertx.server.VertxServerFactory serverFactory,
     GraviteeInferenceServiceImpl inferenceService,

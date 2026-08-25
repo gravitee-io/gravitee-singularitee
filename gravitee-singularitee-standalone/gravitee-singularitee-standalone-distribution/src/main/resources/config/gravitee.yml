@@ -92,6 +92,8 @@ http:
   idleTimeout: 0
   tcpKeepAlive: true
   expose-pipelines: true             # list pipelines on /v1/models and accept pipeline ids
+#  events:
+#    progress-type: gravitee.progress # type string of Responses-API progress events
 #  secured: true                     # TLS; same ssl/haproxy structure as the grpc block above
 #  ssl:
 #    keystore:
@@ -103,6 +105,22 @@ http:
 #    type: bearer                     # Only "bearer" is supported
 #    tokens:                          # accepted API keys (Authorization: Bearer <token>)
 #      - sk-local-changeme
+
+# --- Plugins and license ---
+# Every pipeline step is a gravitee plugin (a zip carrying plugin.properties with
+# type=step) discovered from plugins.path by the node's plugin registry and loaded
+# through a parent-first class loader: engine APIs, models and native libraries always
+# resolve from the main class loader. The twelve core steps ship in this directory; a
+# missing core step fails startup. A plugin can be switched off with
+# step.<id>.enabled: false. A step that declares a license feature additionally needs that feature enabled.
+#plugins:
+#  path: ${gravitee.home}/plugins
+#  workDir: ${gravitee.home}/.plugins-work   # where plugin zips are extracted
+# Platform license file. Absent = OSS license: every core step registers.
+# A workspace declaring a step whose license feature is not enabled fails to load,
+# with the feature named.
+#license:
+#  key: ${gravitee.home}/license/license.key
 
 # --- AI Workspace ---
 ai:
@@ -152,6 +170,17 @@ ai:
   #  tensor-parallel-size: 1
   #  pipeline-parallel-size: 1
   #  distributed-executor-backend: mp   # mp | ray
+
+  # Presentation names of the server-owned tools. The model and the wire see
+  # these names; internal identity, stored state and the proto contract never
+  # change with them. Names must be distinct.
+  #tools:
+  #  set-todos:
+  #    name: set_todos
+  #  complete-todo:
+  #    name: complete_todo
+  #  ask-user:
+  #    name: ask_user
 
   # Stored conversations for the OpenAI Responses continuation model
   # (previous_response_id / store). ttl is the idle timeout in seconds; 0 disables.

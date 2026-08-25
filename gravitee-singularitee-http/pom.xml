@@ -40,7 +40,7 @@
 
         <!-- Engine interfaces, registries, records (TextGenEngine, ModelRegistry, ClassifyResponse, ...) -->
         <dependency>
-            <groupId>io.gravitee.singularitee</groupId>
+            <groupId>io.gravitee.singularitee.engine</groupId>
             <artifactId>gravitee-singularitee-engine</artifactId>
         </dependency>
 

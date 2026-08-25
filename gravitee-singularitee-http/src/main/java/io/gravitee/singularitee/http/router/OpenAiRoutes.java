@@ -15,6 +15,8 @@
  */
 package io.gravitee.singularitee.http.router;
 
+import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
+import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.http.handler.ChatCompletionsHandler;
 import io.gravitee.singularitee.http.handler.ClassifyHandler;
 import io.gravitee.singularitee.http.handler.CompletionsHandler;
@@ -24,8 +26,6 @@ import io.gravitee.singularitee.http.handler.RerankHandler;
 import io.gravitee.singularitee.http.handler.ResponsesHandler;
 import io.gravitee.singularitee.http.handler.SimilarityHandler;
 import io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver;
-import io.gravitee.singularitee.registry.ModelRegistry;
-import io.gravitee.singularitee.registry.PipelineRegistry;
 import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.service.GraviteePipelineServiceImpl;

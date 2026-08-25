@@ -22,7 +22,7 @@ The stream is `CREATED`, then `OUTPUT_TEXT_DELTA` events, then `COMPLETED` (usag
 - `TextGenRequest`: `prompt` or `messages`, sampling fields, `stop`, `reasoningTags` / `toolCallTags`, `templateContext`, `lora`.
 - `InferStepExecutor` (engine): renders the step prompt with Jinja, streams through `TokenCaptureStream`, writes `{step_id}.output`, appends the assistant turn, accumulates usage.
 - `Jinja4jChatTemplateRenderer`: renders messages through the model's own chat template; `JinjaRenderer`: renders step-level templates against the pipeline context.
-- Protos: `InferRequest`, `InferPipelineRequest`, `InferResponse`, `SamplingParams`, `TagConfig`, `InferStepConfig` (`inference.proto`, `pipeline.proto`).
+- Protos: `InferRequest`, `InferPipelineRequest`, `InferResponse`, `SamplingParams`, `TagConfig` (`inference.proto`). The step's own config is `InferStepConfig`, a record in the infer plugin.
 
 ## Usage
 

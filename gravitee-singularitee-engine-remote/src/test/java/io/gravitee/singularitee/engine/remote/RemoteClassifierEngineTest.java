@@ -22,8 +22,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.gravitee.singularitee.client.SingulariteeClient;
-import io.gravitee.singularitee.engine.ClassifierEngine;
-import io.gravitee.singularitee.engine.ClassifyRequest;
+import io.gravitee.singularitee.engine.api.ClassifierEngine;
+import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.protocol.ClassifyLabel;
 import io.reactivex.rxjava3.core.Single;
 import java.util.List;

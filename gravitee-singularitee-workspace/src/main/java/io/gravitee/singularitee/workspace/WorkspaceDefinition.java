@@ -15,12 +15,11 @@
  */
 package io.gravitee.singularitee.workspace;
 
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Map;
 
@@ -29,7 +28,7 @@ import java.util.Map;
  *
  * <p>These records are the YAML schema: each {@code @JsonProperty} name is a key a workspace
  * may write. {@link YamlWorkspaceLoader} turns the tree into {@link ModelLoadRequest}s and
- * proto pipelines; defaults noted here are what that mapping applies when a key is absent.
+ * the pipeline model; defaults noted here are what that mapping applies when a key is absent.
  * Unknown keys are ignored at every level.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -46,7 +45,6 @@ public record WorkspaceDefinition(
    * <p>Every section is optional. Sections pulled in through {@code includes:} are appended
    * to the ones declared inline; {@code tags:} comes from the root file only.
    */
-  @JsonIgnoreProperties(ignoreUnknown = true)
   public record WorkspaceRoot(
     /** {@code name}: label used in logs. Falls back to the first included model file's name. */
     @JsonProperty("name") String name,
@@ -56,7 +54,7 @@ public record WorkspaceDefinition(
     @JsonProperty("models") List<ModelDefinition> models,
     /** {@code pipelines}: pipelines to publish, in declaration order. */
     @JsonProperty("pipelines") List<PipelineDefinition> pipelines,
-    /** {@code templates}: named Jinja2 templates steps reference by id. */
+    /** {@code templates}: named Jinja templates steps reference by id. */
     @JsonProperty("templates") List<TemplateDefinition> templates,
     /**
      * {@code tags}: named, reusable reasoning/tool tag sets. A step references one by writing
@@ -64,7 +62,13 @@ public record WorkspaceDefinition(
      */
     @JsonProperty("tags") List<TagsDef> tags,
     /** {@code includes}: fragment files merged into this workspace. */
-    @JsonProperty("includes") IncludesDef includes
+    @JsonProperty("includes") IncludesDef includes,
+    /**
+     * Any top-level section this module does not model itself: a list of {@code {id, ...}}
+     * entries reaches a step's codec untyped through {@code StepCodecContext.section(name)}.
+     * A step plugin owns the schema of its own workspace section.
+     */
+    @JsonAnySetter Map<String, Object> extras
   ) {}
 
   /**
@@ -169,7 +173,7 @@ public record WorkspaceDefinition(
   // ── Template ──────────────────────────────────────────────────────────────
 
   /**
-   * A named, reusable Jinja2 template declared under {@code templates:}.
+   * A named, reusable Jinja template declared under {@code templates:}.
    *
    * <p>Steps reference it through {@code prompt.template_id:} or {@code chat_template:}. The
    * loader resolves the reference at load time, so the engine always receives the
@@ -182,10 +186,10 @@ public record WorkspaceDefinition(
   public record TemplateDefinition(
     /** {@code id}: name steps reference. Entries without an id are skipped. */
     @JsonProperty("id") String id,
-    /** {@code content}: inline Jinja2 source. */
+    /** {@code content}: inline Jinja source. */
     @JsonProperty("content") String content,
     /**
-     * {@code file}: path to a Jinja2 file, resolved against the workspace directory first and
+     * {@code file}: path to a Jinja file, resolved against the workspace directory first and
      * the configured templates directory second. Mutually exclusive with {@code content}.
      */
     @JsonProperty("file") String file
@@ -646,152 +650,29 @@ public record WorkspaceDefinition(
   /**
    * One node of a pipeline DAG.
    *
-   * <p>{@code type} selects which {@link StepConfig} subtype {@code config} parses as.
+   * <p>{@code type} selects the codec that parses {@code config}.
    */
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record StepDefinition(
     /**
-     * {@code id}: step id, also the Jinja2 identifier under which its output is exposed
+     * {@code id}: step id, also the Jinja identifier under which its output is exposed
      * ({@code {{ my_step.output }}}); must match {@code [A-Za-z_][A-Za-z0-9_]*}.
      */
     @JsonProperty("id") String id,
-    /** {@code type}: one of the {@link StepTypeKey} names ({@code infer}, {@code classify}, ...). Required. */
+    /** {@code type}: the step type string a plugin provides ({@code infer}, {@code classify}, ...). Required. */
     @JsonProperty("type") String type,
     /** {@code role}: {@code output} (default), {@code thinking} or {@code internal}; only meaningful on {@code infer}. */
     @JsonProperty("role") String role,
     /** {@code next_step}: id of the step that follows on the plain edge; for {@code loop}, the exit step. */
     @JsonProperty("next_step") String nextStep,
-    /** {@code config}: the type-specific block. */
-    @JsonTypeInfo(
-      use = JsonTypeInfo.Id.NAME,
-      include = JsonTypeInfo.As.EXTERNAL_PROPERTY,
-      property = "type"
-    ) @JsonSubTypes(
-      {
-        @JsonSubTypes.Type(value = InferConfig.class, name = "infer"),
-        @JsonSubTypes.Type(value = ClassifyConfig.class, name = "classify"),
-        @JsonSubTypes.Type(value = EmbedConfig.class, name = "embed"),
-        @JsonSubTypes.Type(value = RouteConfig.class, name = "route"),
-        @JsonSubTypes.Type(value = GuardConfig.class, name = "guard"),
-        @JsonSubTypes.Type(value = LlmGuardConfig.class, name = "llm_guard"),
-        @JsonSubTypes.Type(value = BreakConfig.class, name = "break"),
-        @JsonSubTypes.Type(value = LoopConfig.class, name = "loop"),
-        @JsonSubTypes.Type(value = SubPipelineConfig.class, name = "sub_pipeline"),
-        @JsonSubTypes.Type(value = RegexGuardConfig.class, name = "regex_guard"),
-        @JsonSubTypes.Type(value = ToolSelectConfig.class, name = "tool_select"),
-        @JsonSubTypes.Type(value = TodoConfig.class, name = "todo"),
-      }
-    ) @JsonProperty("config") StepConfig config
-  ) {}
-
-  // ── Step config sealed hierarchy ──────────────────────────────────────────
-
-  /** Marker for the per-type {@code config:} blocks; one implementation per step type. */
-  public sealed interface StepConfig
-    permits
-      InferConfig,
-      ClassifyConfig,
-      EmbedConfig,
-      RouteConfig,
-      GuardConfig,
-      LlmGuardConfig,
-      BreakConfig,
-      LoopConfig,
-      SubPipelineConfig,
-      RegexGuardConfig,
-      ToolSelectConfig,
-      TodoConfig {}
-
-  // ── Infer ─────────────────────────────────────────────────────────────────
-
-  /** {@code config:} of an {@code infer} step: text generation against a published model. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record InferConfig(
-    /** {@code model_id}: id of the text-generation model to call. */
-    @JsonProperty("model_id") String modelId,
-    /** {@code output_field}: context key the generated text is written to. Default {@code <step_id>.output}. */
-    @JsonProperty("output_field") String outputField,
-    /** {@code prompt}: structured messages or a raw template. Unset = the caller's messages pass through. */
-    @JsonProperty("prompt") PromptDef prompt,
-    /** {@code sampling}: step-level sampling parameters; a request override still wins. */
-    @JsonProperty("sampling") SamplingDef sampling,
-    /** {@code tags}: reasoning/tool channel markers, inline or the id of a workspace {@code tags:} entry. */
-    @JsonProperty("tags") TagsDef tags,
-    /** {@code context}: extra typed variables exposed to the Jinja2 templates. */
-    @JsonProperty("context") java.util.Map<String, Object> context,
-    /** {@code inject_tools}: forward the caller's tools to this step. Unset = {@code true}. */
-    @JsonProperty("inject_tools") Boolean injectTools,
-    /** {@code server_tools}: inject the server-owned todo tools. Unset = {@code true}; {@code false} for prose-only steps. */
-    @JsonProperty("server_tools") Boolean serverTools,
-    /** {@code strip_thinking}: drop tokens between the reasoning tags from the stream and the context. Unset = {@code false}. */
-    @JsonProperty("strip_thinking") Boolean stripThinking,
     /**
-     * {@code stream_thinking}: forward THINKING deltas to the client even on {@code role:
-     * internal}; content and tool deltas stay suppressed. Unset = {@code false}.
+     * {@code config}: the type-specific block, kept raw. The step type's codec (owned by the
+     * plugin providing the type) parses and validates it at load.
      */
-    @JsonProperty("stream_thinking") Boolean streamThinking,
-    /** {@code system}: default system prompt, prepended only when the request carries none. */
-    @JsonProperty("system") String system,
-    /** {@code trim_history}: drop older turns so the prompt fits the model window. Unset = {@code true}. */
-    @JsonProperty("trim_history") Boolean trimHistory,
-    /**
-     * {@code tool_extraction_template}: built-in dialect name ({@code chatml-json},
-     * {@code xml-function}, {@code gemma-call}, {@code glm-name-json}, {@code harmony}) or
-     * inline Jinja source extracting tool calls from the tool span. Unset = the built-ins are
-     * tried in order.
-     */
-    @JsonProperty("tool_extraction_template") String toolExtractionTemplate,
-    /**
-     * {@code chat_template}: per-step chat-template override, either a workspace
-     * {@code templates:} id or inline Jinja source. Unset = the model's own template.
-     */
-    @JsonProperty("chat_template") String chatTemplate
-  ) implements StepConfig {}
-
-  /** One entry of {@code prompt.messages} or a loop's {@code loopback_message}. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record MessageEntry(
-    /** {@code role}: {@code system}, {@code user} or {@code assistant}. Default {@code user}. */
-    @JsonProperty("role") String role,
-    /** {@code content}: Jinja2 template rendered against the pipeline context. */
-    @JsonProperty("content") String content
+    @JsonProperty("config") java.util.Map<String, Object> config
   ) {}
 
-  /**
-   * The {@code prompt:} block of {@code infer} and {@code llm_guard} steps.
-   *
-   * <p>{@code template}, {@code template_file} and {@code template_id} are mutually exclusive
-   * and produce a raw prompt that bypasses the model's chat template; when none is set,
-   * {@code messages} are rendered through the chat template instead.
-   */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record PromptDef(
-    /** {@code messages}: structured prompt; each content is a Jinja2 template. */
-    @JsonProperty("messages") List<MessageEntry> messages,
-    /** {@code template}: inline raw Jinja2 prompt. */
-    @JsonProperty("template") String template,
-    /** {@code template_file}: file whose content is the raw prompt, resolved under the templates directory. */
-    @JsonProperty("template_file") String templateFile,
-    /** {@code template_id}: id of a workspace {@code templates:} entry used as the raw prompt. */
-    @JsonProperty("template_id") String templateId
-  ) {}
-
-  /** The {@code sampling:} block. Zero leaves the engine default in place. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record SamplingDef(
-    /** {@code max_tokens}: completion budget. */
-    @JsonProperty("max_tokens") int maxTokens,
-    /** {@code temperature}: sampling temperature; sent when positive. */
-    @JsonProperty("temperature") float temperature,
-    /** {@code top_p}: nucleus sampling threshold; sent when positive. */
-    @JsonProperty("top_p") float topP,
-    /** {@code presence_penalty}: presence penalty; sent when non-zero. */
-    @JsonProperty("presence_penalty") float presencePenalty,
-    /** {@code frequency_penalty}: frequency penalty; sent when non-zero. */
-    @JsonProperty("frequency_penalty") float frequencyPenalty,
-    /** {@code stop}: stop strings that end generation. */
-    @JsonProperty("stop") List<String> stop
-  ) {}
+  // ── Tags ──────────────────────────────────────────────────────────────────
 
   /**
    * A reasoning/tool tag set: the {@code tags:} block of an infer step or an entry of the
@@ -844,260 +725,4 @@ public record WorkspaceDefinition(
       );
     }
   }
-
-  // ── Classify ──────────────────────────────────────────────────────────────
-
-  /** {@code config:} of a {@code classify} step. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record ClassifyConfig(
-    /** {@code model_id}: id of the classifier model. */
-    @JsonProperty("model_id") String modelId,
-    /** {@code input_field}: context key to classify. Unset = the prompt. */
-    @JsonProperty("input_field") String inputField,
-    /** {@code output_field}: context key receiving the top label; the score lands in {@code <output_field>.score}. */
-    @JsonProperty("output_field") String outputField,
-    /** {@code threshold}: minimum score for downstream conditions; sent when positive. */
-    @JsonProperty("threshold") float threshold
-  ) implements StepConfig {}
-
-  // ── Todo ──────────────────────────────────────────────────────────────────
-
-  /** {@code config:} of a {@code todo} step: executes the plan tool calls of the preceding infer step. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record TodoConfig(
-    /** {@code handled_step}: step to branch to after consuming a todo call (usually the infer step). Unset = {@code next_step}. */
-    @JsonProperty("handled_step") String handledStep
-  ) implements StepConfig {}
-
-  // ── Tool select ───────────────────────────────────────────────────────────
-
-  /** {@code config:} of a {@code tool_select} step: zero-shot shortlisting of the caller's tools. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record ToolSelectConfig(
-    /** {@code model_id}: id of a GLiNER zero-shot classifier. */
-    @JsonProperty("model_id") String modelId,
-    /** {@code input_field}: context key to classify. Unset = the last user message. */
-    @JsonProperty("input_field") String inputField,
-    /** {@code batch_size}: tools per classify call. Zero = engine default (4). */
-    @JsonProperty("batch_size") int batchSize,
-    /** {@code threshold}: minimum score to select a tool. Zero = engine default (0.3). */
-    @JsonProperty("threshold") float threshold,
-    /** {@code label_template}: Jinja2 template condensing a tool into a label; receives {@code tool}. */
-    @JsonProperty("label_template") String labelTemplate,
-    /** {@code always_include}: tool names added to any non-empty shortlist. */
-    @JsonProperty("always_include") List<String> alwaysInclude,
-    /** {@code trim_descriptions}: inject condensed descriptions for selected tools. Unset = {@code false}. */
-    @JsonProperty("trim_descriptions") Boolean trimDescriptions,
-    /** {@code description_template}: Jinja2 template producing the trimmed description; receives {@code tool}. */
-    @JsonProperty("description_template") String descriptionTemplate
-  ) implements StepConfig {}
-
-  // ── Embed ─────────────────────────────────────────────────────────────────
-
-  /** {@code config:} of an {@code embed} step. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record EmbedConfig(
-    /** {@code model_id}: id of the embedding model. */
-    @JsonProperty("model_id") String modelId,
-    /** {@code input_field}: context key to embed. Unset = the prompt. */
-    @JsonProperty("input_field") String inputField,
-    /** {@code output_field}: context key receiving the vector as a JSON array string. */
-    @JsonProperty("output_field") String outputField
-  ) implements StepConfig {}
-
-  // ── Route ─────────────────────────────────────────────────────────────────
-
-  /** {@code config:} of a {@code route} step: dispatches to a step chosen by a model. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record RouteConfig(
-    /** {@code model_id}: classifier, embedder or LLM the strategy runs on. */
-    @JsonProperty("model_id") String modelId,
-    /** {@code strategy}: {@code classifier} (default), {@code embedding_knn} or {@code llm_structured}. */
-    @JsonProperty("strategy") String strategy,
-    /** {@code input_field}: context key to route on. Unset = the prompt. */
-    @JsonProperty("input_field") String inputField,
-    /** {@code default_step}: step taken when no rule matches. */
-    @JsonProperty("default_step") String defaultStep,
-    /** {@code rules}: label-to-step mapping. */
-    @JsonProperty("rules") List<RouteRuleDef> rules
-  ) implements StepConfig {}
-
-  /** One {@code rules} entry of a route step. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record RouteRuleDef(
-    /** {@code label}: label the model output is matched against. */
-    @JsonProperty("label") String label,
-    /** {@code sentences}: reference sentences for {@code embedding_knn}. Unset = the label text itself. */
-    @JsonProperty("sentences") List<String> sentences,
-    /** {@code next_step}: step taken when this rule wins. */
-    @JsonProperty("next_step") String nextStep
-  ) {}
-
-  // ── Guard ─────────────────────────────────────────────────────────────────
-
-  /** {@code config:} of a {@code guard} step: classifier-backed input check. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record GuardConfig(
-    /** {@code model_id}: id of the classifier model. */
-    @JsonProperty("model_id") String modelId,
-    /** {@code input_field}: context key to check. Unset = the prompt. */
-    @JsonProperty("input_field") String inputField,
-    /** {@code output_field}: context key receiving the (possibly redacted) text. Default {@code <step_id>.output}. */
-    @JsonProperty("output_field") String outputField,
-    /** {@code action}: {@code reject} (default), {@code warn} or {@code redact}. */
-    @JsonProperty("action") String action,
-    /** {@code trigger}: single trigger condition; ignored when {@code triggers} is non-empty. */
-    @JsonProperty("trigger") TriggerDef trigger,
-    /** {@code triggers}: conditions of which any one fires the guard. */
-    @JsonProperty("triggers") List<TriggerDef> triggers,
-    /** {@code message}: text returned to the caller on reject; supports Jinja2 expressions. */
-    @JsonProperty("message") String message,
-    /** {@code redact_with_entity_type}: replace spans with {@code [ENTITY_TYPE]} instead of {@code [REDACTED]}. Default {@code false}. */
-    @JsonProperty("redact_with_entity_type") boolean redactWithEntityType
-  ) implements StepConfig {}
-
-  /** One trigger condition of a guard step. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record TriggerDef(
-    /** {@code label}: classifier label to match. */
-    @JsonProperty("label") String label,
-    /** {@code score}: minimum score to fire; zero = any score. */
-    @JsonProperty("score") float score
-  ) {}
-
-  // ── Regex Guard ───────────────────────────────────────────────────────────
-
-  /** One {@code patterns} entry of a regex guard. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record RegexEntityConfig(
-    /** {@code name}: free-form label exposed on match and used as the redaction token. */
-    @JsonProperty("name") String name,
-    /** {@code pattern}: Java regular expression. */
-    @JsonProperty("pattern") String pattern
-  ) {}
-
-  /** {@code config:} of a {@code regex_guard} step: model-free pattern guard with optional redaction. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record RegexGuardConfig(
-    /** {@code input_field}: context key to scan. Unset = the prompt. */
-    @JsonProperty("input_field") String inputField,
-    /**
-     * {@code patterns}: named patterns. Names are free-form (the executor generates group
-     * names internally). {@code reject}/{@code warn} fire on any match; {@code redact}
-     * replaces every matched span.
-     */
-    @JsonProperty("patterns") List<RegexEntityConfig> patterns,
-    /** {@code redact_with_entity_type}: replace spans with {@code [NAME]} instead of {@code [REDACTED]}. Default {@code false}. */
-    @JsonProperty("redact_with_entity_type") boolean redactWithEntityType,
-    /** {@code action}: {@code reject} (default), {@code warn} or {@code redact}. */
-    @JsonProperty("action") String action,
-    /** {@code output_field}: context key receiving the (possibly redacted) text. Default {@code <step_id>.output}. */
-    @JsonProperty("output_field") String outputField,
-    /** {@code message}: text returned to the caller on reject; supports Jinja2 expressions. */
-    @JsonProperty("message") String message
-  ) implements StepConfig {}
-
-  // ── LLM Guard ────────────────────────────────────────────────────────────
-
-  /** {@code config:} of an {@code llm_guard} step: LLM-as-judge safety check. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record LlmGuardConfig(
-    /** {@code model_id}: id of the judge text-generation model. */
-    @JsonProperty("model_id") String modelId,
-    /** {@code input_field}: accepted for symmetry; the judge reads its input through {@code prompt}. */
-    @JsonProperty("input_field") String inputField,
-    /** {@code action}: {@code reject} (default) or {@code warn}; {@code redact} falls back to warn. */
-    @JsonProperty("action") String action,
-    /** {@code safe_token}: first token expected when content is safe, compared case-insensitively. Default {@code safe}. */
-    @JsonProperty("safe_token") String safeToken,
-    /** {@code prompt}: judge prompt as messages or a raw template. */
-    @JsonProperty("prompt") PromptDef prompt,
-    /** {@code sampling}: sampling override for the judge call. */
-    @JsonProperty("sampling") SamplingDef sampling,
-    /** {@code message}: text returned to the caller on reject; supports Jinja2 expressions. */
-    @JsonProperty("message") String message,
-    /** {@code context}: extra typed variables exposed to the judge templates (for example a category list). */
-    @JsonProperty("context") Map<String, Object> context
-  ) implements StepConfig {}
-
-  // ── Break ─────────────────────────────────────────────────────────────────
-
-  /** {@code config:} of a {@code break} step: halts the pipeline when a condition holds. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record BreakConfig(
-    /** {@code output_field}: context key whose value becomes the final response on break. */
-    @JsonProperty("output_field") String outputField,
-    /** {@code condition}: the halt condition. */
-    @JsonProperty("condition") ConditionDef condition
-  ) implements StepConfig {}
-
-  // ── Loop ──────────────────────────────────────────────────────────────────
-
-  /**
-   * {@code config:} of a {@code loop} step: bounded back-edge. While the condition is not met
-   * execution jumps to {@code loopback_step}; once met (or the budget is spent) it continues
-   * to the step's {@code next_step}.
-   */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record LoopConfig(
-    /** {@code loopback_step}: step to jump back to while the condition is not met. */
-    @JsonProperty("loopback_step") String loopbackStep,
-    /** {@code max_iterations}: hard ceiling on iterations; must be positive. */
-    @JsonProperty("max_iterations") int maxIterations,
-    /** {@code fallback_step}: step taken when the ceiling is reached. Unset = {@code next_step}. */
-    @JsonProperty("fallback_step") String fallbackStep,
-    /** {@code condition}: the exit condition. */
-    @JsonProperty("condition") ConditionDef condition,
-    /** {@code loopback_message}: message appended to the conversation on every loop-back; role defaults to {@code user}. */
-    @JsonProperty("loopback_message") MessageEntry loopbackMessage,
-    /** {@code retry_sampling_params}: sampling override applied to infer steps on the retry edge only. */
-    @JsonProperty("retry_sampling_params") SamplingDef retrySamplingParams
-  ) implements StepConfig {}
-
-  // ── Shared condition (break + loop) ───────────────────────────────────────
-
-  /** The {@code condition:} block shared by break and loop steps. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record ConditionDef(
-    /**
-     * {@code type}: {@code equals}, {@code contains}, {@code label_equals}, {@code score_above},
-     * {@code score_below}, {@code not_empty} or {@code empty}.
-     */
-    @JsonProperty("type") String type,
-    /** {@code input_field}: context key evaluated. */
-    @JsonProperty("input_field") String inputField,
-    /** {@code match_value}: reference value for the string and label conditions. */
-    @JsonProperty("match_value") Object rawMatchValue,
-    /** {@code threshold}: reference value for the score conditions. */
-    @JsonProperty("threshold") float threshold
-  ) {
-    /**
-     * Returns {@code match_value} as a string. YAML 1.1 parses bare YES/NO/TRUE/FALSE as
-     * booleans; this accessor maps them back to {@code "YES"} / {@code "NO"}.
-     */
-    public String matchValue() {
-      if (rawMatchValue == null) return null;
-      if (rawMatchValue instanceof Boolean b) return b ? "YES" : "NO";
-      return rawMatchValue.toString();
-    }
-  }
-
-  // ── Sub-pipeline ──────────────────────────────────────────────────────────
-
-  /** {@code config:} of a {@code sub_pipeline} step: delegates to another published pipeline. */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record SubPipelineConfig(
-    /** {@code pipeline_id}: id of the pipeline to invoke. */
-    @JsonProperty("pipeline_id") String pipelineId,
-    /** {@code input_field}: context key passed as the sub-pipeline's prompt. Unset = the prompt. */
-    @JsonProperty("input_field") String inputField,
-    /** {@code output_field}: context key receiving the sub-pipeline's final output. */
-    @JsonProperty("output_field") String outputField,
-    /** {@code server}: id of the {@code remote:} endpoint to run it on. Unset = local. */
-    @JsonProperty("server") String server,
-    /** {@code system_prompt}: system message prepended for the sub-pipeline, replacing any existing one. */
-    @JsonProperty("system_prompt") String systemPrompt,
-    /** {@code forward_messages}: send the full chat transcript instead of the flat prompt. Default {@code false}. */
-    @JsonProperty("forward_messages") boolean forwardMessages
-  ) implements StepConfig {}
 }

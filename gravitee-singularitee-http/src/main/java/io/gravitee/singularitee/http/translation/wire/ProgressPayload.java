@@ -15,6 +15,7 @@
  */
 package io.gravitee.singularitee.http.translation.wire;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.gravitee.singularitee.protocol.ResponseProgress;
 import java.util.List;
@@ -33,18 +34,20 @@ public record ProgressPayload(
   List<ProgressTodo> todos,
   int completed,
   int total,
-  String text
+  String text,
+  @JsonInclude(JsonInclude.Include.NON_NULL) ElicitationPayload elicitation
 ) {
   /** Builds the payload from the wire {@link ResponseProgress}, rendering the plan text. */
   public ProgressPayload(long sequenceNumber, ResponseProgress progress) {
     this(
-      "gravitee.progress",
+      HttpEventNames.progressType(),
       sequenceNumber,
       progress.getStepId(),
       progress.getTodosList().stream().map(ProgressTodo::new).toList(),
       progress.getCompleted(),
       progress.getTotal(),
-      progressText(progress)
+      progressText(progress),
+      progress.hasElicitation() ? new ElicitationPayload(progress.getElicitation()) : null
     );
   }
 

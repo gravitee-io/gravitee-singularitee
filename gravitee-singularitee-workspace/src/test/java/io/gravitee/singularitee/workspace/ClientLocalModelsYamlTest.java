@@ -17,6 +17,7 @@ package io.gravitee.singularitee.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.gravitee.singularitee.plugin.test.TestStepPlugins;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,7 +56,7 @@ class ClientLocalModelsYamlTest {
       """;
     Files.writeString(workspace, yaml);
 
-    var result = YamlWorkspaceLoader.load(workspace);
+    var result = YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs());
 
     // No remote or local-gpu models were declared
     assertThat(result.models()).isEmpty();

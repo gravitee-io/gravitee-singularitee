@@ -18,7 +18,9 @@ package io.gravitee.singularitee.http.translation;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.gravitee.singularitee.engine.tools.ToolCallExtractor;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateRenderer;
+import io.gravitee.singularitee.engine.api.tools.ToolCallExtractor;
+import io.gravitee.singularitee.engine.template.JinjaTemplateRenderer;
 import io.gravitee.singularitee.http.json.Utils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,6 +37,9 @@ import org.slf4j.LoggerFactory;
 public final class ToolCallResolver {
 
   private static final Logger log = LoggerFactory.getLogger(ToolCallResolver.class);
+
+  /** Shared template renderer for the built-in tool-extraction dialects; stateless and cached. */
+  private static final TemplateRenderer RENDERER = new JinjaTemplateRenderer();
 
   private static final ThreadLocal<ObjectMapper> OBJECT_MAPPER = Utils.OBJECT_MAPPER;
 
@@ -177,7 +182,12 @@ public final class ToolCallResolver {
     if (content == null || content.isBlank()) {
       return List.of();
     }
-    var extracted = ToolCallExtractor.extract(content, toolsData(toolParameterSchemas), null);
+    var extracted = ToolCallExtractor.extract(
+      content,
+      toolsData(toolParameterSchemas),
+      null,
+      RENDERER
+    );
     List<ParsedToolCall> result = new ArrayList<>(extracted.size());
     for (var call : extracted) {
       result.add(

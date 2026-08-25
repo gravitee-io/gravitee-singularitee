@@ -17,8 +17,8 @@ package io.gravitee.singularitee.adapter.gliner;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.gravitee.singularitee.engine.ClassifyResponse;
-import io.gravitee.singularitee.engine.ClassifyResult;
+import io.gravitee.singularitee.engine.api.ClassifyResponse;
+import io.gravitee.singularitee.engine.api.ClassifyResult;
 import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

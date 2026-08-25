@@ -15,9 +15,9 @@
  */
 package io.gravitee.singularitee.adapter.textgen;
 
-import io.gravitee.singularitee.engine.ModelEngineType;
-import io.gravitee.singularitee.engine.TextGenEngine;
-import io.gravitee.singularitee.engine.TextGenRequest;
+import io.gravitee.singularitee.engine.api.ModelEngineType;
+import io.gravitee.singularitee.engine.api.TextGenEngine;
+import io.gravitee.singularitee.engine.api.TextGenRequest;
 import io.gravitee.singularitee.inference.vllm.BatchEngine;
 import io.gravitee.singularitee.inference.vllm.EngineAdapter;
 import io.gravitee.singularitee.inference.vllm.VllmConfig;

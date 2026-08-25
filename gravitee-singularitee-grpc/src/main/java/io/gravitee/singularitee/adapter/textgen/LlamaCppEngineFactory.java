@@ -21,7 +21,7 @@ import io.gravitee.llama.cpp.GgmlType;
 import io.gravitee.llama.cpp.PoolingType;
 import io.gravitee.llama.cpp.SpeculativeConfig;
 import io.gravitee.singularitee.adapter.ModelEngineFactory;
-import io.gravitee.singularitee.engine.ModelEngine;
+import io.gravitee.singularitee.engine.api.ModelEngine;
 import io.gravitee.singularitee.inference.api.memory.MemoryCheckPolicy;
 import io.gravitee.singularitee.inference.llama.cpp.ModelConfig;
 import io.gravitee.singularitee.workspace.MemoryCheckPolicyType;

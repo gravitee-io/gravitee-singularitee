@@ -17,10 +17,10 @@ package io.gravitee.singularitee.adapter.textgen;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.gravitee.singularitee.engine.ChatRole;
-import io.gravitee.singularitee.engine.ChatTurn;
-import io.gravitee.singularitee.engine.MediaAttachment;
-import io.gravitee.singularitee.engine.MediaAttachmentType;
+import io.gravitee.singularitee.engine.api.ChatRole;
+import io.gravitee.singularitee.engine.api.ChatTurn;
+import io.gravitee.singularitee.engine.api.MediaAttachment;
+import io.gravitee.singularitee.engine.api.MediaAttachmentType;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

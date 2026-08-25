@@ -41,6 +41,8 @@
 
         <!-- Gravitee ecosystem -->
         <gravitee-bom.version>9.0.2</gravitee-bom.version>
+        <!-- The plugin framework version gravitee-node 9.2.0 pins; step plugins are gravitee plugins. -->
+        <gravitee-plugin.version>4.2.1</gravitee-plugin.version>
         <gravitee-node.version>9.2.0</gravitee-node.version>
 
         <!-- Vert.x / gRPC (Vert.x version aligned with gravitee-bom 9.0.0-alpha.2) -->
@@ -96,8 +98,12 @@
     <modules>
         <module>gravitee-singularitee-inference</module>
         <module>gravitee-singularitee-protocol</module>
+        <module>gravitee-singularitee-engine-api</module>
         <module>gravitee-singularitee-engine</module>
         <module>gravitee-singularitee-workspace</module>
+        <module>gravitee-singularitee-plugin-api</module>
+        <module>gravitee-singularitee-plugins</module>
+        <module>gravitee-singularitee-plugin-test</module>
         <module>gravitee-singularitee-client</module>
         <module>gravitee-singularitee-engine-remote</module>
         <module>gravitee-singularitee-grpc</module>
@@ -163,6 +169,16 @@
             </dependency>
             <dependency>
                 <groupId>io.gravitee.node</groupId>
+                <artifactId>gravitee-node-license</artifactId>
+                <version>${gravitee-node.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.plugin</groupId>
+                <artifactId>gravitee-plugin-core</artifactId>
+                <version>${gravitee-plugin.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.node</groupId>
                 <artifactId>gravitee-node-vertx</artifactId>
                 <version>${gravitee-node.version}</version>
             </dependency>
@@ -194,13 +210,88 @@
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.gravitee.singularitee</groupId>
+                <groupId>io.gravitee.singularitee.engine.api</groupId>
+                <artifactId>gravitee-singularitee-engine-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee.engine</groupId>
                 <artifactId>gravitee-singularitee-engine</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.gravitee.singularitee</groupId>
                 <artifactId>gravitee-singularitee-workspace</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-test</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-break</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-embed</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-classify</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-regex-guard</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-guard</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-llm-guard</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-tool-select</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-route</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-loop</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-sub-pipeline</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-todo</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.gravitee.singularitee</groupId>
+                <artifactId>gravitee-singularitee-plugin-infer</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

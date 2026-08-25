@@ -16,15 +16,15 @@
 package io.gravitee.singularitee.http.resolve;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.gravitee.singularitee.engine.Modalities;
-import io.gravitee.singularitee.engine.TextGenEngine;
+import io.gravitee.singularitee.engine.api.Modalities;
+import io.gravitee.singularitee.engine.api.TextGenEngine;
+import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
+import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.http.translation.EndpointType;
 import io.gravitee.singularitee.http.translation.InferRequestBuilder;
 import io.gravitee.singularitee.http.translation.PipelineRequestBuilder;
 import io.gravitee.singularitee.protocol.InferPipelineRequest;
 import io.gravitee.singularitee.protocol.InferRequest;
-import io.gravitee.singularitee.registry.ModelRegistry;
-import io.gravitee.singularitee.registry.PipelineRegistry;
 import java.util.Optional;
 
 /**
@@ -68,10 +68,8 @@ public final class ModelOrPipelineResolver {
       String id = rawModel.substring(PIPELINE_PREFIX.length());
       return pipelineRegistry
         .get(id)
-        .filter(p -> !p.pipeline().getHidden())
-        .map(p ->
-          pipelineResolution(id, payload, type, hasTools, p.pipeline().getInputModalitiesList())
-        );
+        .filter(p -> !p.pipeline().hidden())
+        .map(p -> pipelineResolution(id, payload, type, hasTools, p.pipeline().inputModalities()));
     }
 
     var model = modelRegistry.get(rawModel).filter(ModelRegistry.ModelEntry::visible).orElse(null);
@@ -90,9 +88,9 @@ public final class ModelOrPipelineResolver {
 
     return pipelineRegistry
       .get(rawModel)
-      .filter(p -> !p.pipeline().getHidden())
+      .filter(p -> !p.pipeline().hidden())
       .map(p ->
-        pipelineResolution(rawModel, payload, type, hasTools, p.pipeline().getInputModalitiesList())
+        pipelineResolution(rawModel, payload, type, hasTools, p.pipeline().inputModalities())
       );
   }
 

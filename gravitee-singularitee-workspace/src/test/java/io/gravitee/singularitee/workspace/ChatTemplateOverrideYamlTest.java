@@ -18,7 +18,8 @@ package io.gravitee.singularitee.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.gravitee.singularitee.protocol.InferStepConfig;
+import io.gravitee.singularitee.plugin.infer.InferStepConfig;
+import io.gravitee.singularitee.plugin.test.TestStepPlugins;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,11 +38,11 @@ class ChatTemplateOverrideYamlTest {
     "{% for message in messages %}<|{{ message.role }}|>{{ message.content }}{% endfor %}";
 
   private static InferStepConfig loadInferStep(Path workspace) throws IOException {
-    var result = YamlWorkspaceLoader.load(workspace);
+    var result = YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs());
     assertThat(result.pipelines()).hasSize(1);
     var pipeline = result.pipelines().get(0);
-    assertThat(pipeline.getStepsList()).hasSize(1);
-    return pipeline.getSteps(0).getInferConfig();
+    assertThat(pipeline.steps()).hasSize(1);
+    return (InferStepConfig) pipeline.steps().get(0).config();
   }
 
   @Test
@@ -70,7 +71,7 @@ class ChatTemplateOverrideYamlTest {
     var cfg = loadInferStep(workspace);
 
     assertThat(cfg.hasChatTemplate()).isTrue();
-    assertThat(cfg.getChatTemplate()).isEqualTo(TEMPLATE);
+    assertThat(cfg.chatTemplate()).isEqualTo(TEMPLATE);
   }
 
   @Test
@@ -101,7 +102,7 @@ class ChatTemplateOverrideYamlTest {
     var cfg = loadInferStep(workspace);
 
     assertThat(cfg.hasChatTemplate()).isTrue();
-    assertThat(cfg.getChatTemplate()).isEqualTo(TEMPLATE);
+    assertThat(cfg.chatTemplate()).isEqualTo(TEMPLATE);
   }
 
   @Test
@@ -127,7 +128,7 @@ class ChatTemplateOverrideYamlTest {
     var cfg = loadInferStep(workspace);
 
     assertThat(cfg.hasChatTemplate()).isTrue();
-    assertThat(cfg.getChatTemplate()).isEqualTo(TEMPLATE);
+    assertThat(cfg.chatTemplate()).isEqualTo(TEMPLATE);
   }
 
   @Test
@@ -182,7 +183,7 @@ class ChatTemplateOverrideYamlTest {
       """
     );
 
-    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace))
+    assertThatThrownBy(() -> YamlWorkspaceLoader.load(workspace, null, TestStepPlugins.codecs()))
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessageContaining("resolves outside");
   }
@@ -217,6 +218,6 @@ class ChatTemplateOverrideYamlTest {
     var cfg = loadInferStep(workspace);
 
     assertThat(cfg.hasChatTemplate()).isTrue();
-    assertThat(cfg.getChatTemplate()).isEqualTo(TEMPLATE);
+    assertThat(cfg.chatTemplate()).isEqualTo(TEMPLATE);
   }
 }

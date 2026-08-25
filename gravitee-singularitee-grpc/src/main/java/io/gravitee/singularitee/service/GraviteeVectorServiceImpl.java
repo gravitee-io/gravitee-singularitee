@@ -16,11 +16,11 @@
 package io.gravitee.singularitee.service;
 
 import io.gravitee.node.api.opentelemetry.Tracer;
-import io.gravitee.singularitee.engine.EmbeddingEngine;
-import io.gravitee.singularitee.engine.RerankerEngine;
-import io.gravitee.singularitee.metrics.InferenceMetrics;
+import io.gravitee.singularitee.engine.api.EmbeddingEngine;
+import io.gravitee.singularitee.engine.api.RerankerEngine;
+import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
+import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.protocol.*;
-import io.gravitee.singularitee.registry.ModelRegistry;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -80,7 +80,7 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
 
       Promise<EmbedResponse> promise = Promise.promise();
       embeddingEngine
-        .rxEmbed(new io.gravitee.singularitee.engine.EmbedRequest(request.getText()))
+        .rxEmbed(new io.gravitee.singularitee.engine.api.EmbedRequest(request.getText()))
         .map(engineResp -> {
           var vecBuilder = FloatVector.newBuilder();
           for (float v : engineResp.embedding()) {
@@ -289,7 +289,7 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
       Promise<TextRerankResponse> promise = Promise.promise();
       reranker
         .rxRerank(
-          new io.gravitee.singularitee.engine.RerankRequest(
+          new io.gravitee.singularitee.engine.api.RerankRequest(
             request.getQuery(),
             request.getDocumentsList(),
             request.getTopK()

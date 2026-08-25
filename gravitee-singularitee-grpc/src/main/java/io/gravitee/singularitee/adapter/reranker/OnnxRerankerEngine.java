@@ -15,7 +15,7 @@
  */
 package io.gravitee.singularitee.adapter.reranker;
 
-import io.gravitee.singularitee.engine.RerankerEngine;
+import io.gravitee.singularitee.engine.api.RerankerEngine;
 import io.gravitee.singularitee.inference.onnx.bert.reranker.OnnxBertRerankerModel;
 import io.vertx.rxjava3.core.Vertx;
 
