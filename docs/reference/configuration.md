@@ -134,6 +134,9 @@ The workspace decides which endpoints are reached over TLS (`ssl: true` on the e
 | `ai.huggingface.download.chunkSize` | `10485760` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_CHUNKSIZE` | Bytes per HTTP Range request in the parallel download path. |
 | `ai.huggingface.download.parallelism` | `8` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_PARALLELISM` | Concurrent Range requests per file. Peak buffered memory is `parallelism x chunkSize`. |
 | `ai.huggingface.download.chunkedThreshold` | `2 x chunkSize` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_CHUNKEDTHRESHOLD` | Files at least this large use the parallel path; smaller files stream over one connection. |
+| `ai.huggingface.download.connectTimeout` | `15000` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_CONNECTTIMEOUT` | Milliseconds to wait establishing a connection to the hub or its CDN before the attempt is retried. |
+| `ai.huggingface.download.idleTimeout` | `300` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_IDLETIMEOUT` | Download time check, in seconds: a transfer that receives no data for this long is aborted and retried against a fresh URL. Raise it for very large weights on a slow link; lower it to fail fast. |
+| `ai.huggingface.download.progressInterval` | `5000` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_PROGRESSINTERVAL` | How often, in milliseconds, the per-file download progress bar (percentage and MiB) is logged. Raise it to quiet the log on long downloads; lower it for a snappier bar. |
 
 ### `ai.streaming.*`
 
