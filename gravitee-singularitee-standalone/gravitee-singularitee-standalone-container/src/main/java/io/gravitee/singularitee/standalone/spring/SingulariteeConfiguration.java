@@ -288,7 +288,29 @@ public class SingulariteeConfiguration {
       "ai.huggingface.download.chunkedThreshold",
       2 * chunkSize
     );
-    return new HuggingFaceModelDownloader.Options(chunkSize, parallelism, threshold);
+    int connectTimeoutMs = (int) getLongProperty(
+      configuration,
+      "ai.huggingface.download.connectTimeout",
+      defaults.connectTimeoutMs()
+    );
+    int idleTimeoutSeconds = (int) getLongProperty(
+      configuration,
+      "ai.huggingface.download.idleTimeout",
+      defaults.idleTimeoutSeconds()
+    );
+    long progressIntervalMs = getLongProperty(
+      configuration,
+      "ai.huggingface.download.progressInterval",
+      defaults.progressIntervalMs()
+    );
+    return new HuggingFaceModelDownloader.Options(
+      chunkSize,
+      parallelism,
+      threshold,
+      connectTimeoutMs,
+      idleTimeoutSeconds,
+      progressIntervalMs
+    );
   }
 
   private static long getLongProperty(Configuration configuration, String key, long defaultValue) {

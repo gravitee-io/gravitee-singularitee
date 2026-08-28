@@ -51,7 +51,7 @@ class HuggingFaceModelDownloaderChunkedTest {
   private static final String FILE = "model.bin";
   private static final int PAYLOAD_SIZE = 5 * 1024 * 1024;
   private static final HuggingFaceModelDownloader.Options OPTIONS =
-    new HuggingFaceModelDownloader.Options(1024 * 1024, 4, 2L * 1024 * 1024);
+    new HuggingFaceModelDownloader.Options(1024 * 1024, 4, 2L * 1024 * 1024, 5_000, 30, 1_000);
 
   /** One record per request the stub served. */
   private record Seen(String path, String range, String auth) {}

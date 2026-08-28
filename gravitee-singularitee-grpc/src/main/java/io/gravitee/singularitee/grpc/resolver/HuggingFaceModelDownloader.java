@@ -84,8 +84,9 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
   private static final Logger LOG = LoggerFactory.getLogger(HuggingFaceModelDownloader.class);
 
   private static final String HF_HOST = "huggingface.co";
-  private static final int CONNECT_TIMEOUT_MS = 15_000;
-  private static final int IDLE_TIMEOUT_S = 300;
+  private static final int DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
+  private static final int DEFAULT_IDLE_TIMEOUT_S = 300;
+  private static final long DEFAULT_PROGRESS_INTERVAL_MS = 5_000;
   private static final int MAX_REDIRECTS = 5;
   private static final int MAX_CHUNK_RETRIES = 5;
   private static final int MAX_FILE_RETRIES = 2;
@@ -101,8 +102,27 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
    * <p>Peak buffered memory is {@code parallelism × chunkSizeBytes} (80 MiB with the
    * defaults). Files smaller than {@code chunkedThresholdBytes} use the single-stream
    * path.
+   *
+   * <p>{@code connectTimeoutMs} bounds establishing a connection; {@code idleTimeoutSeconds}
+   * is the download time check: a transfer that receives no data for that long is aborted,
+   * so a stalled connection is retried (re-resolving a fresh CDN URL) instead of hanging a
+   * boot forever. Raise it for very large weights on a slow link; lower it to fail fast.
+   *
+   * @param chunkSizeBytes        bytes per parallel Range request
+   * @param parallelism           concurrent Range requests per file
+   * @param chunkedThresholdBytes files at or above this use the chunked path
+   * @param connectTimeoutMs      connection-establishment timeout, milliseconds
+   * @param idleTimeoutSeconds    abort a transfer idle (no bytes) for this long, seconds
+   * @param progressIntervalMs    how often the per-file progress bar is logged, milliseconds
    */
-  public record Options(long chunkSizeBytes, int parallelism, long chunkedThresholdBytes) {
+  public record Options(
+    long chunkSizeBytes,
+    int parallelism,
+    long chunkedThresholdBytes,
+    int connectTimeoutMs,
+    int idleTimeoutSeconds,
+    long progressIntervalMs
+  ) {
     private static final long DEFAULT_CHUNK_SIZE = 10L * 1024 * 1024;
 
     public Options {
@@ -111,11 +131,30 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
       if (chunkedThresholdBytes <= 0) {
         throw new IllegalArgumentException("chunkedThresholdBytes must be > 0");
       }
+      if (connectTimeoutMs <= 0) {
+        throw new IllegalArgumentException("connectTimeoutMs must be > 0");
+      }
+      if (idleTimeoutSeconds <= 0) {
+        throw new IllegalArgumentException("idleTimeoutSeconds must be > 0");
+      }
+      if (progressIntervalMs <= 0) {
+        throw new IllegalArgumentException("progressIntervalMs must be > 0");
+      }
     }
 
-    /** 10 MiB chunks, 8 in parallel, chunked transfer from 20 MiB upwards. */
+    /**
+     * 10 MiB chunks, 8 in parallel, chunked transfer from 20 MiB upwards, a 15 s connect
+     * timeout, a 300 s idle (stall) timeout and a progress bar logged every 5 seconds.
+     */
     public static Options defaults() {
-      return new Options(DEFAULT_CHUNK_SIZE, 8, 2 * DEFAULT_CHUNK_SIZE);
+      return new Options(
+        DEFAULT_CHUNK_SIZE,
+        8,
+        2 * DEFAULT_CHUNK_SIZE,
+        DEFAULT_CONNECT_TIMEOUT_MS,
+        DEFAULT_IDLE_TIMEOUT_S,
+        DEFAULT_PROGRESS_INTERVAL_MS
+      );
     }
   }
 
@@ -181,9 +220,9 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
     this.hubHost = hubHost;
     this.hubPort = hubPort;
     this.ssl = ssl;
-    this.client = createClient(vertx, hubHost, hubPort, ssl);
-    this.absClient = createAbsClient(vertx, options.parallelism());
-    this.probeClient = createProbeClient(vertx);
+    this.client = createClient(vertx, hubHost, hubPort, ssl, options);
+    this.absClient = createAbsClient(vertx, options);
+    this.probeClient = createProbeClient(vertx, options);
     this.hfToken = (hfToken != null && !hfToken.isBlank()) ? hfToken : null;
   }
 
@@ -835,15 +874,15 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
   }
 
   /**
-   * Logs a per-file download progress bar once a second via a Vert.x periodic timer. The
-   * supplier is the on-disk size for stream downloads and a byte counter for chunked ones
-   * (chunked files are preallocated, so their on-disk size is meaningless). Falls back to a
-   * plain byte counter when the total is unknown.
+   * Logs a per-file download progress bar every {@code options.progressIntervalMs()} via a
+   * Vert.x periodic timer. The supplier is the on-disk size for stream downloads and a byte
+   * counter for chunked ones (chunked files are preallocated, so their on-disk size is
+   * meaningless). Falls back to a plain byte counter when the total is unknown.
    *
    * @return the periodic timer id (cancel it when the download settles)
    */
   private long startProgress(String label, LongSupplier downloaded, long total) {
-    return vertx.setPeriodic(1_000, id -> {
+    return vertx.setPeriodic(options.progressIntervalMs(), id -> {
       long size = downloaded.getAsLong();
       if (total > 0) {
         int pct = (int) Math.min(100, (size * 100) / total);
@@ -883,27 +922,33 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
     return request;
   }
 
-  private static WebClient createClient(Vertx vertx, String host, int port, boolean ssl) {
+  private static WebClient createClient(
+    Vertx vertx,
+    String host,
+    int port,
+    boolean ssl,
+    Options opts
+  ) {
     var options = new WebClientOptions()
       .setName("gio-singularitee-hf-downloader")
       .setDefaultHost(host)
       .setDefaultPort(port)
       .setSsl(ssl)
-      .setConnectTimeout(CONNECT_TIMEOUT_MS)
-      .setIdleTimeout(IDLE_TIMEOUT_S)
+      .setConnectTimeout(opts.connectTimeoutMs())
+      .setIdleTimeout(opts.idleTimeoutSeconds())
       .setIdleTimeoutUnit(TimeUnit.SECONDS);
 
     return WebClient.create(vertx, options);
   }
 
   /** Client for absolute (post-redirect, possibly CDN) URLs, pooled for chunk parallelism. */
-  private static WebClient createAbsClient(Vertx vertx, int parallelism) {
+  private static WebClient createAbsClient(Vertx vertx, Options opts) {
     var options = new WebClientOptions()
       .setName("gio-singularitee-hf-chunks")
-      .setConnectTimeout(CONNECT_TIMEOUT_MS)
-      .setIdleTimeout(IDLE_TIMEOUT_S)
+      .setConnectTimeout(opts.connectTimeoutMs())
+      .setIdleTimeout(opts.idleTimeoutSeconds())
       .setIdleTimeoutUnit(TimeUnit.SECONDS);
-    var poolOptions = new PoolOptions().setHttp1MaxSize(Math.max(parallelism, 5));
+    var poolOptions = new PoolOptions().setHttp1MaxSize(Math.max(opts.parallelism(), 5));
 
     return WebClient.create(vertx, options, poolOptions);
   }
@@ -912,10 +957,10 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
    * Raw client for Range probes: no body aggregation, so a probe can read the status line
    * and headers and abort the connection before any body transfers.
    */
-  private static HttpClient createProbeClient(Vertx vertx) {
+  private static HttpClient createProbeClient(Vertx vertx, Options opts) {
     var options = new HttpClientOptions()
-      .setConnectTimeout(CONNECT_TIMEOUT_MS)
-      .setIdleTimeout(IDLE_TIMEOUT_S)
+      .setConnectTimeout(opts.connectTimeoutMs())
+      .setIdleTimeout(opts.idleTimeoutSeconds())
       .setIdleTimeoutUnit(TimeUnit.SECONDS);
     return vertx.createHttpClient(options);
   }
