@@ -1,3 +1,11 @@
+# [1.3.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.2.1...1.3.0) (2026-08-31)
+
+
+### Features
+
+* bring gravitee-node-plugins to DAG step execution ([8211cce](https://github.com/gravitee-io/gravitee-singularitee/commit/8211cce4d860d5008286193feaebde927b9bffe7))
+* configurable HuggingFace download timeouts and progress interval ([c57b90e](https://github.com/gravitee-io/gravitee-singularitee/commit/c57b90ed5579ee5e5469750b0cd1b8c902aa56b6))
+
 ## [1.2.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.2.0...1.2.1) (2026-08-25)
 
 
