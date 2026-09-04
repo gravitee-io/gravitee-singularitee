@@ -18,6 +18,7 @@ package io.gravitee.singularitee.service;
 import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.singularitee.engine.api.*;
 import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TokenStreamWriter;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.pipeline.PipelineExecutor;
@@ -264,8 +265,11 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
   public Future<io.gravitee.singularitee.protocol.ClassifyResponse> classify(
     io.gravitee.singularitee.protocol.ClassifyRequest request
   ) {
-    return instrumentation.traceUnary("ai.classify", "classify", request.getModelId(), () ->
-      classifyInternal(request)
+    return instrumentation.traceUnary(
+      SpanNames.key("classify"),
+      "classify",
+      request.getModelId(),
+      () -> classifyInternal(request)
     );
   }
 
@@ -339,8 +343,11 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
   public Future<io.gravitee.singularitee.protocol.ClassifyBatchResponse> classifyBatch(
     io.gravitee.singularitee.protocol.ClassifyBatchRequest request
   ) {
-    return instrumentation.traceUnary("ai.classify.batch", "classify", request.getModelId(), () ->
-      classifyBatchInternal(request)
+    return instrumentation.traceUnary(
+      SpanNames.key("classify.batch"),
+      "classify",
+      request.getModelId(),
+      () -> classifyBatchInternal(request)
     );
   }
 

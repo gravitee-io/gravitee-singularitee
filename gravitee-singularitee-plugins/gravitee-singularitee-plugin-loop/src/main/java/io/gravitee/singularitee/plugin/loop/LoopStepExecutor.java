@@ -19,6 +19,7 @@ import io.gravitee.singularitee.engine.api.ChatRole;
 import io.gravitee.singularitee.engine.api.ChatTurn;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
 import io.gravitee.singularitee.engine.api.pipeline.evaluator.BreakStepEvaluator;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutor;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateContextHelper;
@@ -66,6 +67,9 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
     var condition = cfg.condition();
     String inputField = condition != null ? condition.inputField() : "";
     boolean shouldExit = condition != null && BreakStepEvaluator.evaluate(condition, pctx);
+    // Span introspection: the loop's condition, its verdict, the iteration budget and the branch.
+    String condKind = condition != null ? String.valueOf(condition.kind()) : "";
+    int priorIterations = parseIterations(pctx.get(stepId + ".iterations"));
     // The field value can be a whole generation (a verify verdict, a step
     // output); logging it verbatim floods the line. The verdict is what
     // matters; the raw value stays available at DEBUG.
@@ -90,6 +94,16 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
         stepId,
         cfg.nextStepId()
       );
+      emitLoop(
+        ctx,
+        condKind,
+        inputField,
+        true,
+        priorIterations,
+        cfg.maxIterations(),
+        "exit",
+        cfg.nextStepId()
+      );
       return Maybe.just(cfg.nextStepId());
     }
 
@@ -109,7 +123,18 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
       );
       pctx.setRetrySamplingParams(null);
       String fallback = cfg.fallbackStepId();
-      return Maybe.just((fallback != null && !fallback.isBlank()) ? fallback : cfg.nextStepId());
+      String fallbackNext = (fallback != null && !fallback.isBlank()) ? fallback : cfg.nextStepId();
+      emitLoop(
+        ctx,
+        condKind,
+        inputField,
+        false,
+        currentIteration,
+        maxIterations,
+        "fallback",
+        fallbackNext
+      );
+      return Maybe.just(fallbackNext);
     }
 
     // We're looping back: inject the configured feedback message (if any)
@@ -135,7 +160,48 @@ public final class LoopStepExecutor implements StepExecutor<LoopStepConfig> {
       maxIterations,
       cfg.targetStepId()
     );
+    emitLoop(
+      ctx,
+      condKind,
+      inputField,
+      false,
+      currentIteration,
+      maxIterations,
+      "loopback",
+      cfg.targetStepId()
+    );
     return Maybe.just(cfg.targetStepId());
+  }
+
+  private static int parseIterations(String v) {
+    if (v == null || v.isBlank()) return 0;
+    try {
+      return Integer.parseInt(v.trim());
+    } catch (NumberFormatException e) {
+      return 0;
+    }
+  }
+
+  /** Records the loop's condition, verdict, iteration budget and chosen branch on the step span. */
+  private static void emitLoop(
+    StepContext ctx,
+    String condKind,
+    String inputField,
+    boolean conditionMet,
+    int iteration,
+    int maxIterations,
+    String decision,
+    String nextStep
+  ) {
+    ctx
+      .stepScribe()
+      .set(SpanNames.key("loop.condition"), condKind)
+      .set(SpanNames.key("loop.input_field"), inputField)
+      .set(SpanNames.key("loop.condition_met"), conditionMet)
+      .set(SpanNames.key("loop.iteration"), iteration)
+      .set(SpanNames.key("loop.max_iterations"), maxIterations)
+      .set(SpanNames.key("loop.decision"), decision)
+      .set(SpanNames.key("loop.next_step"), nextStep == null ? "" : nextStep);
   }
 
   /**

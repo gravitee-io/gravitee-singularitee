@@ -29,6 +29,7 @@ import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.ClassifyResponse;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanScribe;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContext;
 import io.gravitee.singularitee.engine.template.JinjaTemplateRenderer;
@@ -158,6 +159,7 @@ class ToolSelectStepExecutorTest {
   private static StepContext stepContext(PipelineContext pctx) {
     var ctx = mock(StepContext.class);
     when(ctx.pipelineContext()).thenReturn(pctx);
+    when(ctx.stepScribe()).thenReturn(SpanScribe.NOOP);
     when(ctx.rxNextStep(anyString())).thenReturn(Maybe.just("next"));
     return ctx;
   }

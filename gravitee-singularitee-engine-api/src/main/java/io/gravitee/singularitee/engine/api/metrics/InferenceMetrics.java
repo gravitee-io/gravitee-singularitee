@@ -52,13 +52,26 @@ public final class InferenceMetrics {
   /** Client disconnected mid-stream; generation was cancelled server-side. */
   public static final String STATUS_CANCELLED = "cancelled";
 
+  /** Meter-name prefix used when none is configured. */
+  public static final String DEFAULT_PREFIX = "ai";
+
   private final MeterRegistry registry;
+  private final String prefix;
 
   /**
    * @param registry the live meter registry, or {@code null} to disable recording
    */
   public InferenceMetrics(MeterRegistry registry) {
+    this(registry, DEFAULT_PREFIX);
+  }
+
+  /**
+   * @param registry   the live meter registry, or {@code null} to disable recording
+   * @param namePrefix the meter-name prefix (blank restores {@link #DEFAULT_PREFIX})
+   */
+  public InferenceMetrics(MeterRegistry registry, String namePrefix) {
     this.registry = registry;
+    this.prefix = (namePrefix == null || namePrefix.isBlank()) ? DEFAULT_PREFIX : namePrefix.trim();
   }
 
   /** @return {@code true} when a registry is bound and meters are recorded */
@@ -69,7 +82,7 @@ public final class InferenceMetrics {
   /** Counts a top-level RPC request and its outcome: {@code ai_<op>_requests_total{model,status}}. */
   public void recordRequest(String op, String model, String status) {
     if (registry == null) return;
-    Counter.builder("ai." + op + ".requests")
+    Counter.builder(prefix + "." + op + ".requests")
       .description("Number of " + op + " requests")
       .tag("model", safe(model))
       .tag("status", safe(status))
@@ -80,7 +93,7 @@ public final class InferenceMetrics {
   /** Records end-to-end RPC latency: {@code ai_<op>_latency_seconds{model}}. */
   public void recordLatency(String op, String model, long durationNanos) {
     if (registry == null) return;
-    Timer.builder("ai." + op + ".latency")
+    Timer.builder(prefix + "." + op + ".latency")
       .description("End-to-end " + op + " latency")
       .tag("model", safe(model))
       .register(registry)
@@ -94,7 +107,7 @@ public final class InferenceMetrics {
    */
   public void recordPipelineRequest(String pipeline, String status) {
     if (registry == null) return;
-    Counter.builder("ai.pipeline.requests")
+    Counter.builder(prefix + ".pipeline.requests")
       .description("Number of pipeline inference requests")
       .tag("pipeline", safe(pipeline))
       .tag("status", safe(status))
@@ -105,7 +118,7 @@ public final class InferenceMetrics {
   /** Records end-to-end pipeline latency: {@code ai_pipeline_latency_seconds{pipeline}}. */
   public void recordPipelineLatency(String pipeline, long durationNanos) {
     if (registry == null) return;
-    Timer.builder("ai.pipeline.latency")
+    Timer.builder(prefix + ".pipeline.latency")
       .description("End-to-end pipeline inference latency")
       .tag("pipeline", safe(pipeline))
       .register(registry)
@@ -115,7 +128,7 @@ public final class InferenceMetrics {
   /** Records a single model-engine call duration: {@code ai_model_call_seconds{model,op}}. */
   public void recordModelCall(String op, String model, long durationNanos) {
     if (registry == null) return;
-    Timer.builder("ai.model.call")
+    Timer.builder(prefix + ".model.call")
       .description("Model engine call duration")
       .tag("model", safe(model))
       .tag("op", safe(op))
@@ -134,7 +147,7 @@ public final class InferenceMetrics {
 
   private void incrementTokens(String model, String kind, int count) {
     if (count <= 0) return;
-    Counter.builder("ai.tokens")
+    Counter.builder(prefix + ".tokens")
       .description("Tokens processed by the inference engines")
       .baseUnit("tokens")
       .tag("model", safe(model))
@@ -150,7 +163,7 @@ public final class InferenceMetrics {
    */
   public void recordFinishReason(String model, String reason) {
     if (registry == null) return;
-    Counter.builder("ai.finish.reasons")
+    Counter.builder(prefix + ".finish.reasons")
       .description("Infer completions by finish reason")
       .tag("model", safe(model))
       .tag("reason", safe(reason))
@@ -167,7 +180,7 @@ public final class InferenceMetrics {
    */
   public void recordFailureSignal(String source, String kind, String signal) {
     if (registry == null) return;
-    Counter.builder("ai.failure.signals")
+    Counter.builder(prefix + ".failure.signals")
       .description("Detected model failure signals")
       .tag("source", safe(source))
       .tag("kind", safe(kind))

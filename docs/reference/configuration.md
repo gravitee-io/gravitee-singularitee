@@ -208,7 +208,8 @@ A model's own `vllm:` value wins; these apply when the workspace leaves the fiel
 | Key | Default | Env var | Purpose |
 | --- | --- | --- | --- |
 | `services.metrics.enabled` | `true` | `GRAVITEE_SERVICES_METRICS_ENABLED` | Bind a Micrometer registry. |
-| `services.metrics.prometheus.enabled` | `true` | `GRAVITEE_SERVICES_METRICS_PROMETHEUS_ENABLED` | Expose it in Prometheus format on the management port. Both flags must be on for the `ai_*` meters. |
+| `services.metrics.prometheus.enabled` | `true` | `GRAVITEE_SERVICES_METRICS_PROMETHEUS_ENABLED` | Expose it in Prometheus format on the management port. Both flags must be on for the `<name-prefix>_*` meters. |
+| `services.metrics.name-prefix` | `ai` | `GRAVITEE_SERVICES_METRICS_NAMEPREFIX` | Prefix for the inference meter names (`<prefix>.tokens`, `<prefix>.pipeline.requests`, ...); Prometheus renders it as `<prefix>_*`. The OpenTelemetry span prefix is separate (`services.opentelemetry.name-prefix`). |
 | `services.monitoring.gpu.enabled` | `true` | `GRAVITEE_SERVICES_MONITORING_GPU_ENABLED` | Poll `nvidia-smi` and publish `gpu_*` gauges. No-op without the NVIDIA driver. |
 | `services.monitoring.gpu.delay` | `5000` | `GRAVITEE_SERVICES_MONITORING_GPU_DELAY` | Poll interval. |
 | `services.monitoring.gpu.unit` | `MILLISECONDS` | `GRAVITEE_SERVICES_MONITORING_GPU_UNIT` | Unit of `delay`. |
@@ -217,8 +218,10 @@ A model's own `vllm:` value wins; these apply when the workspace leaves the fiel
 
 | Key | Default | Env var | Purpose |
 | --- | --- | --- | --- |
-| `services.opentelemetry.enabled` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_ENABLED` | Emit a `SERVER` span per RPC with nested `ai.*` spans. |
-| `services.opentelemetry.verbose` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_VERBOSE` | Add request and response attributes to spans. |
+| `services.opentelemetry.enabled` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_ENABLED` | Emit a `SERVER` span per RPC with nested `<name-prefix>.*` spans. |
+| `services.opentelemetry.verbose` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_VERBOSE` | Add content-heavy attributes to spans (input/output values, message text, embedded text). Off keeps spans free of prompt/response content. |
+| `services.opentelemetry.openinference` | `true` | `GRAVITEE_SERVICES_OPENTELEMETRY_OPENINFERENCE` | Also emit OpenInference semantic attributes (`openinference.span.kind`, `session.id`, `llm.*`, `embedding.*`), so OpenInference-aware tools render the traces natively. These keys are fixed and never carry the name-prefix. |
+| `services.opentelemetry.name-prefix` | `singularitee` | `GRAVITEE_SERVICES_OPENTELEMETRY_NAMEPREFIX` | Prefix for the span names and the engine's own span attributes (`<prefix>.pipeline`, `<prefix>.step`, `<prefix>.session`, ...). Does not apply to OpenInference keys; Micrometer metric names are unaffected. |
 | `services.opentelemetry.exporter.endpoint` | `http://localhost:4317` | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_ENDPOINT` | OTLP collector. |
 | `services.opentelemetry.exporter.protocol` | `grpc` | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_PROTOCOL` | `grpc` (4317) or `http/protobuf` (4318). |
 | `services.opentelemetry.exporter.compression` | unset | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_COMPRESSION` | e.g. `gzip`. |

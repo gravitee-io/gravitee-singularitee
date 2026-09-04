@@ -22,6 +22,7 @@ import static org.mockito.Mockito.when;
 import io.gravitee.singularitee.engine.api.ChatRole;
 import io.gravitee.singularitee.engine.api.ChatTurn;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanScribe;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.ConditionKind;
 import io.gravitee.singularitee.engine.api.pipeline.model.MessageTemplate;
@@ -58,6 +59,7 @@ class LoopStepExecutorTest {
   private static StepContext stepContext(PipelineContext pctx) {
     var ctx = mock(StepContext.class);
     when(ctx.pipelineContext()).thenReturn(pctx);
+    when(ctx.stepScribe()).thenReturn(SpanScribe.NOOP);
     return ctx;
   }
 

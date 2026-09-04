@@ -21,6 +21,8 @@ import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.ModelBoundStepExecutor;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanScribe;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateRenderer;
@@ -99,6 +101,8 @@ public final class ToolSelectStepExecutor
     StepContext ctx
   ) {
     PipelineContext pctx = ctx.pipelineContext();
+    // Capture the step-span scribe now (valid before the async classify; see InferStepExecutor).
+    final SpanScribe stepScribe = ctx.stepScribe();
     List<ToolDefinition> tools = pctx.tools();
     if (tools == null || tools.isEmpty()) {
       LOGGER.debug("ToolSelectStep '{}': no tools on the request, nothing to select", stepId);
@@ -136,6 +140,11 @@ public final class ToolSelectStepExecutor
 
         List<String> selected = List.copyOf(shortlist);
         pctx.setSelectedTools(selected);
+        // Span introspection: which tools survived the shortlist, out of how many.
+        stepScribe
+          .set(SpanNames.key("tool_select.selected_count"), selected.size())
+          .set(SpanNames.key("tool_select.total"), tools.size())
+          .set(SpanNames.key("tool_select.selected"), String.join(",", selected));
         if (cfg.trimDescriptions()) {
           pctx.setCondensedToolDescriptions(condenseSelectedDescriptions(cfg, tools, selected));
         }

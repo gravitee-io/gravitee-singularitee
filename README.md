@@ -163,6 +163,12 @@ Ready-made workspaces live in [`examples/`](./examples/README.md): one folder pe
 
 Host one model (or one engine) per Singularitee process and compose them over gRPC with remote workspaces. Each engine loads its own native libraries, so co-locating engines or several large models in one JVM invites library conflicts and GPU-memory contention. See [Deployment](./docs/operations/deployment/README.md) and [Remote and multi-server](./docs/guides/remote-and-multi-server/README.md).
 
+## Traces
+
+Turn on OpenTelemetry (`services.opentelemetry.enabled`) and every request exports a span tree over OTLP: a pipeline `CHAIN` nesting each step, `LLM` steps carrying the model, token counts, sampling parameters and time-to-first-token, and guard/gate steps a `GUARDRAIL` span. Point it at Jaeger (`GRAVITEE_SERVICES_OPENTELEMETRY_ENABLED=true`, UI on `:16686`) to see the full tree and every attribute.
+
+When a generation captured log-probabilities, its `infer` step also carries a family of free **confidence signals** on the span (and in the pipeline context as `<step>.*`): the mean `perplexity`, the top-1 vs top-2 token `min_margin`, per-token entropy, robust peaks and more. They fall out of the one generation the model already ran, so they cost no extra inference, and a downstream step can calibrate the one it wants against resolved outcomes. Which summary tracks correctness, if any, depends on the model and the task, so measure before trusting one. See [Observability](./docs/operations/observability/README.md) and [Context fields](./docs/reference/context-fields.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). In short: issues go to [gravitee-io/issues](https://github.com/gravitee-io/issues/issues); branch from `main` as `issue/<id>-<name>`; use [Conventional Commits](https://conventionalcommits.org/); run `mvn clean install` before opening a PR. The build enforces formatting and license headers; `mvn prettier:write license:format` fixes both.

@@ -22,6 +22,7 @@ import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
 import io.gravitee.singularitee.engine.api.pipeline.model.MessageTemplate;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
+import io.gravitee.singularitee.engine.api.pipeline.model.TagSet;
 import io.gravitee.singularitee.protocol.SamplingParams;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -35,7 +36,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Parses the {@code config:} block of an {@code llm_guard} step. The prompt's
  * {@code template_id}, {@code template_file} and {@code template} are mutually exclusive
- * and produce a raw prompt; otherwise {@code messages} go through the chat template.
+ * and produce a raw prompt; otherwise {@code messages} go through the chat template. The
+ * {@code tags} block is the same as on {@code infer}, inline or a workspace reference.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -54,7 +56,8 @@ public final class LlmGuardStepCodec implements StepConfigCodec<LlmGuardStepConf
     @JsonProperty("prompt") PromptYaml prompt,
     @JsonProperty("sampling") SamplingYaml sampling,
     @JsonProperty("message") String message,
-    @JsonProperty("context") Map<String, Object> context
+    @JsonProperty("context") Map<String, Object> context,
+    @JsonProperty("tags") TagSet tags
   ) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -112,6 +115,8 @@ public final class LlmGuardStepCodec implements StepConfigCodec<LlmGuardStepConf
       }
     }
 
+    var tags = TagSet.resolve(stepId, d.tags(), ctx);
+
     return new LlmGuardStepConfig(
       d.modelId(),
       GuardAction.parse(d.action()),
@@ -120,7 +125,9 @@ public final class LlmGuardStepCodec implements StepConfigCodec<LlmGuardStepConf
       messages,
       toSamplingParams(d.sampling()),
       d.message() != null && !d.message().isBlank() ? d.message() : "",
-      d.context()
+      d.context(),
+      tags != null ? tags.reasoningTags() : null,
+      tags != null ? tags.toolCallTags() : null
     );
   }
 

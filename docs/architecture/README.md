@@ -159,7 +159,7 @@ Conventions and endpoint details: [HTTP API](../api/http/README.md); schemas: [o
 
 Opt-in through `services.metrics` and `services.opentelemetry`.
 
-- Tracing: a SERVER span per gRPC call (continuing an inbound W3C `traceparent`) with nested `ai.pipeline`, `ai.step` and `ai.model.<op>` spans; direct RPCs get `ai.infer`, `ai.classify`, `ai.embed`. Client-side execution is not traced.
+- Tracing: a SERVER span per gRPC call (continuing an inbound W3C `traceparent`) with nested `singularitee.pipeline`, `singularitee.step` and `singularitee.model.<op>` spans; direct RPCs get `singularitee.infer`, `singularitee.classify`, `singularitee.embed`. Client-side execution is not traced.
 - Metrics (Micrometer, Prometheus at `/_node/metrics/prometheus`): `ai_infer_requests_total`, `ai_infer_latency_seconds`, `ai_pipeline_requests_total`, `ai_pipeline_latency_seconds`, `ai_classify_requests_total`, `ai_embed_requests_total`, `ai_model_call_seconds{model,op}`, `ai_tokens_total{model,kind}`.
 
 Details: [Observability](../operations/observability/README.md).

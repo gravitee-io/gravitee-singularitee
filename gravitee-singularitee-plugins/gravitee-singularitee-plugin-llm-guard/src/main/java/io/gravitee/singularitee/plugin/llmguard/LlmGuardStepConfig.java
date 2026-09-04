@@ -19,6 +19,7 @@ import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
 import io.gravitee.singularitee.engine.api.pipeline.model.MessageTemplate;
 import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
 import io.gravitee.singularitee.protocol.SamplingParams;
+import io.gravitee.singularitee.protocol.TagConfig;
 import java.util.List;
 import java.util.Map;
 
@@ -34,6 +35,9 @@ import java.util.Map;
  * @param samplingParams sampling override for the judge call
  * @param message        Jinja reject message; blank = none
  * @param context        extra template variables exposed to the judge templates
+ * @param reasoningTags  the judge model's reasoning markers, so the engine strips its
+ *                       thinking before the verdict is read; {@code null} = the default tags
+ * @param toolCallTags   the judge model's tool-call markers; {@code null} = none
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -46,7 +50,9 @@ public record LlmGuardStepConfig(
   List<MessageTemplate> messages,
   SamplingParams samplingParams,
   String message,
-  Map<String, Object> context
+  Map<String, Object> context,
+  TagConfig reasoningTags,
+  TagConfig toolCallTags
 ) implements ModelBoundConfig {
   public LlmGuardStepConfig {
     modelId = modelId == null ? "" : modelId;

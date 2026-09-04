@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.plugin.api;
 
 import io.gravitee.node.api.cache.CacheManager;
+import io.gravitee.node.api.configuration.Configuration;
 import io.gravitee.singularitee.engine.api.pipeline.TodoSessionStore;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.SubPipelineCallbacks;
@@ -48,5 +49,6 @@ public record StepExecutorServices(
   PipelineRegistry pipelineRegistry,
   TodoSessionStore todoSessionStore,
   CacheManager cacheManager,
-  SubPipelineCallbacks subPipelineCallbacks
+  SubPipelineCallbacks subPipelineCallbacks,
+  Configuration configuration
 ) {}

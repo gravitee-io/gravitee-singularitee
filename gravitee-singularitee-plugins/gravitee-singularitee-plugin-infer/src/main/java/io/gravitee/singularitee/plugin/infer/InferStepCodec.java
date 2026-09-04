@@ -15,23 +15,20 @@
  */
 package io.gravitee.singularitee.plugin.infer;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gravitee.singularitee.engine.api.pipeline.model.MessageTemplate;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
+import io.gravitee.singularitee.engine.api.pipeline.model.TagSet;
 import io.gravitee.singularitee.protocol.SamplingParams;
-import io.gravitee.singularitee.protocol.TagConfig;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,9 +45,6 @@ public final class InferStepCodec implements StepConfigCodec<InferStepConfig> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(InferStepCodec.class);
   private static final ObjectMapper MAPPER = new ObjectMapper();
-
-  /** The workspace section named tag sets live in. */
-  static final String TAGS_SECTION = "tags";
 
   @Override
   public InferStepConfig parse(String stepId, Map<String, Object> raw, StepCodecContext ctx) {
@@ -81,12 +75,10 @@ public final class InferStepCodec implements StepConfigCodec<InferStepConfig> {
     }
 
     // A bare string tags value references the workspace's named tags: entries.
-    var tags = resolveTags(stepId, d.tags(), ctx);
+    var tags = TagSet.resolve(stepId, d.tags(), ctx);
     if (tags != null) {
-      b.reasoningTags(
-        toTagConfig(tags.reasoningOpen(), tags.reasoningClose(), tags.reasoningRepeatable())
-      );
-      b.toolCallTags(toTagConfig(tags.toolOpen(), tags.toolClose(), null));
+      b.reasoningTags(tags.reasoningTags());
+      b.toolCallTags(tags.toolCallTags());
     }
 
     if (d.context() != null && !d.context().isEmpty()) {
@@ -191,69 +183,8 @@ public final class InferStepCodec implements StepConfigCodec<InferStepConfig> {
   }
 
   // -----------------------------------------------------------------------
-  // Tags and sampling
+  // Sampling
   // -----------------------------------------------------------------------
-
-  /** Resolves a reference-only tag set (bare string in YAML) against the workspace section. */
-  private static TagsYaml resolveTags(String stepId, TagsYaml tags, StepCodecContext ctx) {
-    if (tags == null || !tags.isReference()) {
-      return tags;
-    }
-    Map<String, Object> named = ctx.section(TAGS_SECTION).get(tags.id());
-    if (named == null) {
-      throw new IllegalArgumentException(
-        "Step '" +
-          stepId +
-          "': unknown tags id '" +
-          tags.id() +
-          "': declare it under workspace tags:"
-      );
-    }
-    try {
-      return MAPPER.convertValue(named, TagsYaml.class);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(
-        "Step '" + stepId + "': invalid tags entry '" + tags.id() + "': " + e.getMessage(),
-        e
-      );
-    }
-  }
-
-  /**
-   * Maps marker lists to a wire {@link TagConfig}: the first open marker is the primary
-   * tag and the rest ride along as alternatives. {@code null} when no open marker is set.
-   */
-  private static TagConfig toTagConfig(
-    List<String> opens,
-    List<String> closes,
-    Boolean repeatable
-  ) {
-    var openList = nonBlank(opens);
-    if (openList.isEmpty()) {
-      return null;
-    }
-    var closeList = nonBlank(closes);
-    var tag = TagConfig.newBuilder()
-      .setOpenTag(openList.getFirst())
-      .setCloseTag(closeList.isEmpty() ? "" : closeList.getFirst());
-    openList.stream().skip(1).forEach(tag::addOpenTagAlternatives);
-    closeList.stream().skip(1).forEach(tag::addCloseTagAlternatives);
-    // Left unset when the workspace is silent, so the engine's own rule applies.
-    if (repeatable != null) {
-      tag.setRepeatable(repeatable);
-    }
-    return tag.build();
-  }
-
-  private static List<String> nonBlank(List<String> values) {
-    return values == null
-      ? List.of()
-      : values
-        .stream()
-        .filter(Objects::nonNull)
-        .filter(v -> !v.isBlank())
-        .toList();
-  }
 
   /** Stop strings are carried separately on the config. */
   private static SamplingParams toSamplingParams(SamplingYaml sampling) {
@@ -279,7 +210,7 @@ public final class InferStepCodec implements StepConfigCodec<InferStepConfig> {
     @JsonProperty("output_field") String outputField,
     @JsonProperty("prompt") PromptYaml prompt,
     @JsonProperty("sampling") SamplingYaml sampling,
-    @JsonProperty("tags") TagsYaml tags,
+    @JsonProperty("tags") TagSet tags,
     @JsonProperty("context") Map<String, Object> context,
     @JsonProperty("inject_tools") Boolean injectTools,
     @JsonProperty("server_tools") Boolean serverTools,
@@ -317,42 +248,4 @@ public final class InferStepCodec implements StepConfigCodec<InferStepConfig> {
     @JsonProperty("frequency_penalty") float frequencyPenalty,
     @JsonProperty("stop") List<String> stop
   ) {}
-
-  /**
-   * A reasoning/tool tag set, inline or a workspace {@code tags:} entry. Each marker key
-   * accepts a single string or a list; a bare string as the whole value is a reference.
-   */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  private record TagsYaml(
-    @JsonProperty("id") String id,
-    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
-    @JsonProperty("reasoning_open")
-    List<String> reasoningOpen,
-    @JsonProperty("reasoning_repeatable") Boolean reasoningRepeatable,
-    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
-    @JsonProperty("reasoning_close")
-    List<String> reasoningClose,
-    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
-    @JsonProperty("tool_open")
-    List<String> toolOpen,
-    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
-    @JsonProperty("tool_close")
-    List<String> toolClose
-  ) {
-    @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
-    static TagsYaml ref(String id) {
-      return new TagsYaml(id, null, null, null, null, null);
-    }
-
-    boolean isReference() {
-      return (
-        id != null &&
-        reasoningOpen == null &&
-        reasoningClose == null &&
-        toolOpen == null &&
-        toolClose == null &&
-        reasoningRepeatable == null
-      );
-    }
-  }
 }

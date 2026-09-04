@@ -24,6 +24,7 @@ import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,65 @@ class LlmGuardStepCodecTest {
 
   private static StepCodecContext ctx(Map<String, String> templates, Path base) {
     return new StepCodecContext(templates, base, Map.of(), null);
+  }
+
+  private static Map<String, Object> harmonyTags() {
+    var tags = new LinkedHashMap<String, Object>();
+    tags.put("reasoning_open", List.of("<|channel|>analysis<|message|>", "<think>"));
+    tags.put("reasoning_close", "<|channel|>final<|message|>");
+    tags.put("reasoning_repeatable", true);
+    tags.put("tool_open", "<|channel|>commentary to=functions.");
+    tags.put("tool_close", "<|call|>");
+    return tags;
+  }
+
+  private static Map<String, Object> judge(Object tags) {
+    var raw = new LinkedHashMap<String, Object>();
+    raw.put("model_id", "judge");
+    raw.put("prompt", Map.of("messages", List.of(Map.of("content", "{{ prompt }}"))));
+    raw.put("tags", tags);
+    return raw;
+  }
+
+  @Test
+  void parsesInlineTagsLikeInfer() {
+    var cfg = codec.parse("g", judge(harmonyTags()), ctx(Map.of(), null));
+
+    assertThat(cfg.reasoningTags().getOpenTag()).isEqualTo("<|channel|>analysis<|message|>");
+    assertThat(cfg.reasoningTags().getOpenTagAlternativesList()).containsExactly("<think>");
+    assertThat(cfg.reasoningTags().getCloseTag()).isEqualTo("<|channel|>final<|message|>");
+    assertThat(cfg.reasoningTags().getRepeatable()).isTrue();
+    assertThat(cfg.toolCallTags().getOpenTag()).isEqualTo("<|channel|>commentary to=functions.");
+    assertThat(cfg.toolCallTags().getCloseTag()).isEqualTo("<|call|>");
+  }
+
+  @Test
+  void resolvesTagsReferenceFromWorkspaceSection() {
+    var ctx = new StepCodecContext(
+      Map.of(),
+      null,
+      Map.of("tags", Map.of("harmony", harmonyTags())),
+      null
+    );
+    var cfg = codec.parse("g", judge("harmony"), ctx);
+
+    assertThat(cfg.reasoningTags().getOpenTag()).isEqualTo("<|channel|>analysis<|message|>");
+    assertThat(cfg.toolCallTags().getCloseTag()).isEqualTo("<|call|>");
+  }
+
+  @Test
+  void unknownTagsReferenceFailsTheLoad() {
+    assertThatThrownBy(() -> codec.parse("g", judge("nope"), ctx(Map.of(), null)))
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("unknown tags id 'nope'");
+  }
+
+  @Test
+  void noTagsLeavesTheDefaults() {
+    var cfg = codec.parse("g", judge(null), ctx(Map.of(), null));
+
+    assertThat(cfg.reasoningTags()).isNull();
+    assertThat(cfg.toolCallTags()).isNull();
   }
 
   @Test

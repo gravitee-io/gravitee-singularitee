@@ -18,6 +18,8 @@ package io.gravitee.singularitee.plugin.classify;
 import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.pipeline.executor.ModelBoundStepExecutor;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanScribe;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContext;
 import io.reactivex.rxjava3.core.Maybe;
@@ -59,9 +61,15 @@ public final class ClassifyStepExecutor
     String text = resolveInputText(stepId, cfg.inputField(), ctx);
     if (text == null) return ctx.rxNextStep(stepId);
 
+    // Capture the step-span scribe now (valid before the async classify; see InferStepExecutor).
+    final SpanScribe stepScribe = ctx.stepScribe();
     return engine
       .rxClassify(new ClassifyRequest(text))
       .flatMapMaybe(result -> {
+        // Span introspection: the winning label and its score.
+        stepScribe
+          .set(SpanNames.key("classify.label"), result.topLabel())
+          .set(SpanNames.key("classify.score"), (double) result.topScore());
         String outputField = resolveOutputField(cfg.outputField(), stepId, ".label");
         ctx.pipelineContext().set(outputField, result.topLabel());
         ctx.pipelineContext().set(outputField + ".score", String.valueOf(result.topScore()));

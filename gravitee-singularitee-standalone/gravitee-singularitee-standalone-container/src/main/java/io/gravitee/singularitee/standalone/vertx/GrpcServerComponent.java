@@ -24,6 +24,7 @@ import io.gravitee.node.vertx.server.VertxServerFactory;
 import io.gravitee.node.vertx.server.VertxServerOptions;
 import io.gravitee.node.vertx.server.http.VertxHttpServer;
 import io.gravitee.node.vertx.server.http.VertxHttpServerOptions;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.service.GraviteePipelineServiceImpl;
@@ -330,6 +331,11 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
 
       final Span span = tracer.startRootSpanFrom(ctx, new ObservableHttpServerRequest(request));
       span.withAttribute("rpc.system", "grpc").withAttribute("rpc.method", request.path());
+      // OpenInference: the transport root is the agent turn, so trace tools render it as an AGENT
+      // and use it as the trace's kind. (input/output content lives on the nested CHAIN span.)
+      if (TracingOptions.openInference()) {
+        span.withAttribute("openinference.span.kind", "AGENT");
+      }
 
       // Close the span exactly once, on the first terminal event of the stream.
       final AtomicBoolean ended = new AtomicBoolean();
@@ -337,6 +343,7 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
         .response()
         .endHandler(v -> {
           if (ended.compareAndSet(false, true)) {
+            span.withAttribute("http.response.status_code", request.response().getStatusCode());
             tracer.end(ctx, span);
           }
         });

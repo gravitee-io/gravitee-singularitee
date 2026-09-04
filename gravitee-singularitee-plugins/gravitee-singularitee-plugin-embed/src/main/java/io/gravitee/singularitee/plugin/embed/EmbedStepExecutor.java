@@ -18,8 +18,10 @@ package io.gravitee.singularitee.plugin.embed;
 import io.gravitee.singularitee.engine.api.EmbedRequest;
 import io.gravitee.singularitee.engine.api.EmbeddingEngine;
 import io.gravitee.singularitee.engine.api.pipeline.executor.ModelBoundStepExecutor;
+import io.gravitee.singularitee.engine.api.pipeline.executor.OpenInference;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContext;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.reactivex.rxjava3.core.Maybe;
 import java.util.Arrays;
 import org.slf4j.Logger;
@@ -59,6 +61,15 @@ public final class EmbedStepExecutor
   ) {
     String text = resolveInputText(stepId, cfg.inputField(), ctx);
     if (text == null) return ctx.rxNextStep(stepId);
+
+    // OpenInference: the step span is already EMBEDDING; add the model and (behind verbose) the
+    // embedded text so trace tools render it fully.
+    if (TracingOptions.openInference()) {
+      ctx.stepScribe().set(OpenInference.EMBEDDING_MODEL_NAME, cfg.modelId());
+      if (TracingOptions.verbose()) {
+        ctx.stepScribe().set(OpenInference.EMBEDDING_TEXT, text);
+      }
+    }
 
     return engine
       .rxEmbed(new EmbedRequest(text))

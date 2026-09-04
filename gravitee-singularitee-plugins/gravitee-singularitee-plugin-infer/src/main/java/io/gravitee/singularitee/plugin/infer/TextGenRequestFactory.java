@@ -18,6 +18,7 @@ package io.gravitee.singularitee.plugin.infer;
 import io.gravitee.singularitee.engine.api.ChatTurn;
 import io.gravitee.singularitee.engine.api.TextGenRequest;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
+import io.gravitee.singularitee.engine.api.pipeline.model.TagSet;
 import io.gravitee.singularitee.inference.api.textgen.TagConfig;
 import io.gravitee.singularitee.protocol.SamplingParams;
 import java.util.LinkedHashMap;
@@ -99,8 +100,8 @@ final class TextGenRequestFactory {
       pick(retryOverrides != null ? retryOverrides.getSeed() : 0, stepSp.getSeed())
     );
 
-    TagConfig reasoningTags = cfg.reasoningTags() != null ? toTagConfig(cfg.reasoningTags()) : null;
-    TagConfig toolTags = cfg.toolCallTags() != null ? toTagConfig(cfg.toolCallTags()) : null;
+    TagConfig reasoningTags = TagSet.toEngine(cfg.reasoningTags());
+    TagConfig toolTags = TagSet.toEngine(cfg.toolCallTags());
 
     return new TextGenRequest(
       renderedPrompt,
@@ -123,32 +124,17 @@ final class TextGenRequestFactory {
       // prompt); harmless otherwise. Request-level reasoning_effort overrides
       // the step-config value, mirroring the Jinja context build.
       buildTemplateContext(cfg, reasoningEffort),
-      cacheKey
+      cacheKey,
+      // Request the top-3 token log-probabilities per position (computed during sampling anyway) so
+      // the capture stream can derive confidence signals: the chosen-token perplexity, plus
+      // distributional summaries that need the alternatives (top1-vs-top2 margin, per-token entropy).
+      // Depth 3 keeps the payload modest while enabling the margin/entropy features.
+      3
     );
   }
 
   private static SamplingParams stepSamplingParams(InferStepConfig cfg) {
     return cfg.effectiveSamplingParams();
-  }
-
-  /**
-   * Maps a proto tag pair to the engine's {@link TagConfig}, carrying every
-   * field the proto defines, the open/close alternatives and the repeatable
-   * flag included. A blank open tag means the pair is unset: returns
-   * {@code null}. (The proto message shares the {@code TagConfig} name with
-   * the engine type, hence the qualified parameter.)
-   */
-  private static TagConfig toTagConfig(io.gravitee.singularitee.protocol.TagConfig t) {
-    if (t.getOpenTag().isBlank()) {
-      return null;
-    }
-    return new TagConfig(
-      t.getOpenTag(),
-      t.getCloseTag(),
-      t.getOpenTagAlternativesList(),
-      t.getCloseTagAlternativesList(),
-      t.hasRepeatable() ? t.getRepeatable() : null
-    );
   }
 
   private static Map<String, Object> buildTemplateContext(

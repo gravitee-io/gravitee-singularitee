@@ -88,6 +88,9 @@ public final class PipelineContext {
   /** Written by a guard step when its action is {@code WARN} or {@code REDACT}. */
   public static final String KEY_GUARD_TRIGGERED = "__guard_triggered";
 
+  /** The step id that produced the current extracted tool calls, for per-step template access. */
+  public static final String KEY_TOOL_CALL_STEP = "__tool_call_step";
+
   /**
    * Written by a tool-select step: the shortlist of tool names the downstream
    * infer step should inject. Stored in the string field map as a comma-joined

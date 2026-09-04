@@ -91,8 +91,47 @@ public final class TemplateContextHelper {
         .map(t -> t.getName())
         .toList()
     );
+    // The tool calls the model just proposed (name + arguments + the tool's declared
+    // description), so a monitor or guard template can screen the pending action itself,
+    // cleanly, instead of the model's free-form output.
+    var toolDescriptions = pctx
+      .tools()
+      .stream()
+      .collect(
+        java.util.stream.Collectors.toMap(
+          t -> t.getName(),
+          t -> t.getDescription() == null ? "" : t.getDescription(),
+          (a, b) -> a
+        )
+      );
+    ctx.put(
+      "tool_calls",
+      pctx
+        .extractedToolCalls()
+        .stream()
+        .map(tc -> {
+          java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+          m.put("name", tc.getName());
+          m.put("arguments", tc.getArgumentsJson());
+          m.put("description", toolDescriptions.getOrDefault(tc.getName(), ""));
+          return m;
+        })
+        .toList()
+    );
 
     buildStepOutputContext(pctx, ctx);
+
+    // Mirror the structured proposed tool calls onto the step that produced them, so a template
+    // can address a specific step's proposal, e.g. {{ agent.tool_calls }}, not only the global
+    // {{ tool_calls }}. Must run after buildStepOutputContext, which created the step's map.
+    String toolCallStep = pctx.get(PipelineContext.KEY_TOOL_CALL_STEP);
+    if (
+      toolCallStep != null && !toolCallStep.isBlank() && ctx.get(toolCallStep) instanceof Map<?, ?>
+    ) {
+      @SuppressWarnings("unchecked")
+      Map<String, Object> stepMap = (Map<String, Object>) ctx.get(toolCallStep);
+      stepMap.put("tool_calls", ctx.get("tool_calls"));
+    }
 
     // The engine-managed todo plan, so prompts can render the current state:
     // {% for t in todos %}[{{ t.status }}] {{ t.title }}{% endfor %}

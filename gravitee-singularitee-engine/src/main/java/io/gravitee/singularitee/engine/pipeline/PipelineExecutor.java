@@ -26,8 +26,11 @@ import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
 import io.gravitee.singularitee.engine.api.pipeline.TodoSessionStore;
 import io.gravitee.singularitee.engine.api.pipeline.TodoStatus;
+import io.gravitee.singularitee.engine.api.pipeline.executor.OpenInference;
 import io.gravitee.singularitee.engine.api.pipeline.executor.PipelineExecutorCallback;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepTypes;
@@ -246,7 +249,7 @@ public class PipelineExecutor implements PipelineExecutorCallback {
       }
     }
 
-    // Open the ai.pipeline span (child of the gRPC server span on the caller context).
+    // Open the singularitee.pipeline span (child of the gRPC server span on the caller context).
     // Step/model spans nest under it via explicit parenting. No-op when tracing is off.
     final Span pipelineSpan = startPipelineSpan(callerContext, pipeline);
     var stepCtx = new StepContext(
@@ -259,6 +262,48 @@ public class PipelineExecutor implements PipelineExecutorCallback {
       pipelineSpan,
       new AtomicReference<>()
     );
+
+    // Neutral per-turn facts on the pipeline span: a stable-enough turn identity (the
+    // response id), how many assistant turns precede this one, the continuation pointer,
+    // and the human turn as an event. No-op when tracing is off. Domain-specific fields
+    // (decisions, verdicts) are added by the steps themselves through the same scribe.
+    long turnIndex = context.messages() == null
+      ? 0
+      : context
+        .messages()
+        .stream()
+        .filter(t -> t.role() == ChatRole.ASSISTANT)
+        .count();
+    // A conversation's turns share the client cache-affinity key (prompt_cache_key / user, or a
+    // previous_response_id-driven key); trace tools group by this session id. A one-shot request with
+    // no cache key falls back to its own request id.
+    String sessionId = sessionId(context.cacheKey(), request.getRequestId());
+    stepCtx
+      .turnScribe()
+      .set(SpanNames.key("session"), sessionId)
+      .set(SpanNames.key("turn.index"), turnIndex)
+      .set(
+        SpanNames.key("previous_response_id"),
+        request.getPreviousResponseId().isEmpty() ? null : request.getPreviousResponseId()
+      )
+      .event(
+        SpanNames.key("turn"),
+        Map.of("role", "human", "content", spanPreview(lastUserContent(context)))
+      );
+
+    // OpenInference: the pipeline is a CHAIN; session id lets trace tools group a conversation.
+    // The user input is content, so it rides behind the verbose flag.
+    if (TracingOptions.openInference()) {
+      var oi = stepCtx
+        .turnScribe()
+        .set(OpenInference.SPAN_KIND, OpenInference.KIND_CHAIN)
+        .set(OpenInference.SESSION_ID, sessionId);
+      if (TracingOptions.verbose()) {
+        oi
+          .set(OpenInference.INPUT_VALUE, lastUserContent(context))
+          .set(OpenInference.INPUT_MIME, OpenInference.MIME_TEXT);
+      }
+    }
 
     // Emit CREATED event at the start of the pipeline.
     var created = InferResponse.newBuilder()
@@ -277,6 +322,18 @@ public class PipelineExecutor implements PipelineExecutorCallback {
       .andThen(
         Completable.defer(() -> {
           if (context.isHalted()) {
+            FinishReason haltReason = context.haltReason() != null
+              ? context.haltReason()
+              : FinishReason.FINISH_REASON_STOP;
+            stepCtx.turnScribe().set(SpanNames.key("finish_reason"), haltReason.name());
+            if (TracingOptions.openInference()) {
+              stepCtx.turnScribe().set(OpenInference.METADATA, oiMeta(haltReason, turnIndex));
+              if (TracingOptions.verbose()) {
+                // OpenInference output.value on the CHAIN span (literal key: the runtime engine-api
+                // may be older than this build). Fills the trace-level output for gated turns.
+                stepCtx.turnScribe().set("output.value", finalOutput(context));
+              }
+            }
             if (
               metrics != null && context.haltReason() == FinishReason.FINISH_REASON_GUARD_BLOCKED
             ) {
@@ -287,6 +344,13 @@ public class PipelineExecutor implements PipelineExecutorCallback {
           FinishReason reason = context.lastEngineFinishReason() != null
             ? context.lastEngineFinishReason()
             : FinishReason.FINISH_REASON_STOP;
+          stepCtx.turnScribe().set(SpanNames.key("finish_reason"), reason.name());
+          if (TracingOptions.openInference()) {
+            stepCtx.turnScribe().set(OpenInference.METADATA, oiMeta(reason, turnIndex));
+            if (TracingOptions.verbose()) {
+              stepCtx.turnScribe().set("output.value", finalOutput(context));
+            }
+          }
           return Completable.fromAction(() -> endWith(context, response, reason));
         })
       )
@@ -296,6 +360,63 @@ public class PipelineExecutor implements PipelineExecutorCallback {
         persistConversation(request, context);
         endPipelineSpan(callerContext, pipelineSpan, error[0]);
       });
+  }
+
+  /** The content of the last USER turn, or empty when there is none. */
+  /**
+   * The session id for a turn's spans: the client cache-affinity key when supplied, so every turn of
+   * one conversation shares a session, else the per-turn request id.
+   */
+  static String sessionId(String cacheKey, String requestId) {
+    return cacheKey != null && !cacheKey.isBlank() ? cacheKey : requestId;
+  }
+
+  private static String lastUserContent(PipelineContext context) {
+    var messages = context.messages();
+    if (messages == null) return "";
+    for (int i = messages.size() - 1; i >= 0; i--) {
+      var turn = messages.get(i);
+      if (turn.role() == ChatRole.USER) {
+        return turn.content() == null ? "" : turn.content();
+      }
+    }
+    return "";
+  }
+
+  /**
+   * The turn's final visible output for the pipeline (CHAIN) span's {@code output.value}: the halt
+   * message when a step halted the turn (an elicitation or a refusal), otherwise the
+   * last assistant turn (the reply step's answer or a voiced question).
+   */
+  private static String finalOutput(PipelineContext context) {
+    String halt = context.haltMessage();
+    if (halt != null && !halt.isBlank()) {
+      return halt;
+    }
+    var messages = context.messages();
+    if (messages != null) {
+      for (int i = messages.size() - 1; i >= 0; i--) {
+        var turn = messages.get(i);
+        if (
+          turn.role() == ChatRole.ASSISTANT && turn.content() != null && !turn.content().isBlank()
+        ) {
+          return turn.content();
+        }
+      }
+    }
+    return "";
+  }
+
+  /** A minimal OpenInference `metadata` JSON for the turn. */
+  private static String oiMeta(FinishReason reason, long turnIndex) {
+    return "{\"finish_reason\":\"" + reason.name() + "\",\"turn_index\":" + turnIndex + "}";
+  }
+
+  /** A short, one-line, span-safe preview of possibly large or sensitive text (never null). */
+  private static String spanPreview(String text) {
+    if (text == null || text.isEmpty()) return "";
+    String oneLine = text.strip().replace('\n', ' ');
+    return oneLine.length() <= 200 ? oneLine : oneLine.substring(0, 200) + "…";
   }
 
   /**
@@ -417,13 +538,13 @@ public class PipelineExecutor implements PipelineExecutorCallback {
     }
   }
 
-  /** Opens the {@code ai.pipeline} span on the caller context, or returns {@code null}. */
+  /** Opens the {@code singularitee.pipeline} span on the caller context, or returns {@code null}. */
   private Span startPipelineSpan(Context callerContext, PipelineModel pipeline) {
     if (tracer == null || callerContext == null) {
       return null;
     }
     InternalRequest request = InternalRequest.builder()
-      .name("ai.pipeline")
+      .name(SpanNames.key("pipeline"))
       .attributes(Map.of("pipeline.id", pipeline.id()))
       .spanKind(SpanKind.INTERNAL)
       .build();
