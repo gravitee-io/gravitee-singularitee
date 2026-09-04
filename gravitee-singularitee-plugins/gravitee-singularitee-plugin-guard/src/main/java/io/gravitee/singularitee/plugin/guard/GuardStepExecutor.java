@@ -24,6 +24,8 @@ import io.gravitee.singularitee.engine.api.ClassifyResult;
 import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.ModelBoundStepExecutor;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanScribe;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateContextHelper;
@@ -77,6 +79,10 @@ public final class GuardStepExecutor
   ) {
     String text = resolveInputText(stepId, cfg.inputField(), ctx);
     if (text == null) return ctx.rxNextStep(stepId);
+
+    // Capture the step-span scribe now: the verdict is written after the async classify, on a
+    // context where ctx.stepScribe() no longer resolves to this step's span (see InferStepExecutor).
+    final SpanScribe stepScribe = ctx.stepScribe();
 
     return engine
       .rxClassify(new ClassifyRequest(text))
@@ -133,6 +139,10 @@ public final class GuardStepExecutor
             String outputField = resolveOutputField(cfg.outputField(), stepId, ".redacted");
             ctx.pipelineContext().set(outputField, text);
           }
+          // Span introspection: the guard's decision when nothing matched.
+          stepScribe
+            .set(SpanNames.key("monitor.verdict"), "safe")
+            .set(SpanNames.key("guard.matched"), 0);
           return ctx.rxNextStep(stepId);
         }
 
@@ -153,7 +163,8 @@ public final class GuardStepExecutor
           hasTokenEntities,
           minThreshold,
           matchedTriggers,
-          ctx
+          ctx,
+          stepScribe
         );
         return ctx.rxNextStep(stepId);
       });
@@ -208,9 +219,11 @@ public final class GuardStepExecutor
     boolean hasTokenEntities,
     float threshold,
     List<MatchedTrigger> matchedTriggers,
-    StepContext ctx
+    StepContext ctx,
+    SpanScribe stepScribe
   ) {
     var pctx = ctx.pipelineContext();
+    stepScribe.set(SpanNames.key("guard.matched"), matchedTriggers.size());
     publishTriggerVariables(stepId, matchedTriggers, pctx);
 
     switch (action) {
@@ -218,9 +231,15 @@ public final class GuardStepExecutor
         if (!cfg.message().isBlank()) {
           pctx.setHaltMessage(resolveGuardMessage(cfg.message(), pctx));
         }
+        stepScribe
+          .set(SpanNames.key("monitor.verdict"), "reject")
+          .set(SpanNames.key("monitor.triggered_step"), stepId);
         pctx.signalHalt(cfg.inputField(), FinishReason.FINISH_REASON_GUARD_BLOCKED);
       }
       case WARN -> {
+        stepScribe
+          .set(SpanNames.key("monitor.verdict"), "warn")
+          .set(SpanNames.key("monitor.triggered_step"), stepId);
         pctx.set(PipelineContext.KEY_GUARD_TRIGGERED, stepId);
         LOGGER.warn(
           "GuardStep '{}': warning, matched triggers: [{}]",

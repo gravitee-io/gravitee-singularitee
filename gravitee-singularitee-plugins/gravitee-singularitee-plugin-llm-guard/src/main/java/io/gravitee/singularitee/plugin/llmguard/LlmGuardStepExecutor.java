@@ -21,6 +21,8 @@ import io.gravitee.singularitee.engine.api.TextGenEngine;
 import io.gravitee.singularitee.engine.api.TextGenRequest;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.ModelBoundStepExecutor;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanScribe;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateContextHelper;
@@ -28,6 +30,7 @@ import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateRenderer;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TokenCaptureStream;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TokenStreamWriter;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
+import io.gravitee.singularitee.engine.api.pipeline.model.TagSet;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry.ModelEntry;
 import io.gravitee.singularitee.protocol.FinishReason;
 import io.gravitee.singularitee.protocol.SamplingParams;
@@ -38,6 +41,7 @@ import io.reactivex.rxjava3.disposables.Disposable;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,6 +59,9 @@ public final class LlmGuardStepExecutor
   extends ModelBoundStepExecutor<LlmGuardStepConfig, TextGenEngine> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LlmGuardStepExecutor.class);
+
+  /** Recorded when the judge produced no answer text, so an absent decision never reads as one. */
+  static final String NO_VERDICT = "no_verdict";
 
   private static final String DEFAULT_SAFE_TOKEN = "safe";
   private static final int DEFAULT_MAX_TOKENS = 64;
@@ -84,6 +91,9 @@ public final class LlmGuardStepExecutor
     StepContext ctx
   ) {
     var pctx = ctx.pipelineContext();
+    // Capture the step-span scribe now: the verdict is written after the judge model streams, on a
+    // context where ctx.stepScribe() no longer resolves to this step's span (see InferStepExecutor).
+    final SpanScribe stepScribe = ctx.stepScribe();
 
     // Build Jinja4j context for expression resolution
     Map<String, Object> jinjaCtx = buildGuardJinjaContext(pctx, cfg);
@@ -100,6 +110,16 @@ public final class LlmGuardStepExecutor
         .stream()
         .map(md -> new ChatTurn(toChatRole(md.role()), resolveJinja(md.content(), jinjaCtx)))
         .toList();
+      if (LOGGER.isTraceEnabled()) {
+        for (ChatTurn m : messages) {
+          LOGGER.trace(
+            "LlmGuardStep '{}': rendered message [{}]:\n{}",
+            stepId,
+            m.role(),
+            m.content()
+          );
+        }
+      }
     } else {
       LOGGER.warn("LlmGuardStep '{}': no messages or raw_template configured, skipping", stepId);
       return ctx.rxNextStep(stepId);
@@ -122,20 +142,19 @@ public final class LlmGuardStepExecutor
       .orElse(0);
 
     var accumulator = new StringBuilder();
+    var capture = new AtomicReference<TokenCaptureStream>();
 
     return Completable.create(emitter -> {
-      // Never stream guard verdicts to the client.
-      // Always strip thinking so that reasoning tokens emitted by the guard
-      // model never contaminate verdict_full or the isSafe check.
+      // Never stream guard verdicts to the client, and always strip thinking: the judge's
+      // reasoning, whether tagged in the text or classified by the engine from the step's
+      // tags, never reaches verdict_full or the safe-token check.
       var captureStream = new TokenCaptureStream(
         accumulator,
         emitter,
         ctx.response(),
-        TokenCaptureStream.CaptureConfig.capturing(
-          StepRole.STEP_ROLE_INTERNAL,
-          TokenCaptureStream.ThinkingMode.STRIP
-        )
+        captureConfig(cfg)
       );
+      capture.set(captureStream);
       // Stream the guard model's tokens into the (non-forwarding) capture stream via the
       // engine's per-sequence reactive surface, consistent with InferStepExecutor.
       var handle = TokenStreamWriter.subscribe(
@@ -170,7 +189,21 @@ public final class LlmGuardStepExecutor
     }).andThen(
       Maybe.defer(() -> {
         String verdict = accumulator.toString().strip();
-        LOGGER.debug("LlmGuardStep '{}': raw output:\n{}", stepId, verdict);
+        LOGGER.debug("LlmGuardStep '{}': stripped output:\n{}", stepId, verdict);
+        // No answer text at all: the judge never reached a decision, typically because
+        // max_tokens ran out while it was still reasoning. Recorded explicitly and treated as
+        // not safe: a guard that cannot answer must not read as approval.
+        if (verdict.isBlank()) {
+          var stream = capture.get();
+          boolean stuckReasoning = stream != null && stream.thinkingUnclosed();
+          LOGGER.warn(
+            "LlmGuardStep '{}': the judge produced no answer{}; recording '{}'",
+            stepId,
+            stuckReasoning ? " (still reasoning when it stopped, raise sampling.max_tokens)" : "",
+            NO_VERDICT
+          );
+          verdict = NO_VERDICT;
+        }
 
         String safeToken = cfg.safeToken().isBlank() ? DEFAULT_SAFE_TOKEN : cfg.safeToken();
         boolean isSafe = verdict
@@ -199,6 +232,8 @@ public final class LlmGuardStepExecutor
           safeToken
         );
 
+        // Neutral monitor verdict on the span: safe, or the triggering action. No-op when
+        // tracing is off.
         if (!isSafe) {
           LOGGER.info(
             "LlmGuardStep '{}': triggered (verdict='{}', action={})",
@@ -206,7 +241,15 @@ public final class LlmGuardStepExecutor
             verdict,
             cfg.action()
           );
+          stepScribe
+            .set(
+              SpanNames.key("monitor.verdict"),
+              cfg.action() == GuardAction.REJECT ? "reject" : "warn"
+            )
+            .set(SpanNames.key("monitor.triggered_step"), stepId);
           applyAction(cfg.action(), stepId, cfg, verdict, pctx, buildGuardJinjaContext(pctx, cfg));
+        } else {
+          stepScribe.set(SpanNames.key("monitor.verdict"), "safe");
         }
 
         return ctx.rxNextStep(stepId);
@@ -251,6 +294,28 @@ public final class LlmGuardStepExecutor
   // Helpers
   // -----------------------------------------------------------------------
 
+  /**
+   * Non-forwarding capture in STRIP mode, keyed on the step's reasoning tags so the tag machine
+   * recognises the judge model's own dialect; the engine classifies what it can on its side.
+   */
+  private static TokenCaptureStream.CaptureConfig captureConfig(LlmGuardStepConfig cfg) {
+    String open = null;
+    String close = null;
+    if (cfg.reasoningTags() != null) {
+      if (!cfg.reasoningTags().getOpenTag().isBlank()) open = cfg.reasoningTags().getOpenTag();
+      if (!cfg.reasoningTags().getCloseTag().isBlank()) close = cfg.reasoningTags().getCloseTag();
+    }
+    return new TokenCaptureStream.CaptureConfig(
+      false,
+      false,
+      StepRole.STEP_ROLE_INTERNAL,
+      TokenCaptureStream.ThinkingMode.STRIP,
+      open,
+      close,
+      null
+    );
+  }
+
   private static ChatRole toChatRole(String role) {
     if (role == null) return ChatRole.USER;
     return switch (role.toLowerCase(Locale.ROOT)) {
@@ -281,10 +346,15 @@ public final class LlmGuardStepExecutor
       null, // frequencyPenalty
       null, // stop
       null, // seed
-      null, // reasoningTags
-      null, // toolCallTags
+      TagSet.toEngine(cfg.reasoningTags()),
+      TagSet.toEngine(cfg.toolCallTags()),
       null, // loraName
-      null // loraPath
+      null, // loraPath
+      // The step's context also reaches the engine's own chat-template rendering, so a judge on a
+      // reasoning model honours reasoning_effort / enable_thinking. Without it the judge runs at
+      // the model's default effort, and a verdict budget sized for "low" is overrun.
+      cfg.context().isEmpty() ? null : cfg.context(),
+      null // cacheKey
     );
   }
 

@@ -24,6 +24,7 @@ import io.gravitee.node.vertx.server.VertxServerFactory;
 import io.gravitee.node.vertx.server.VertxServerOptions;
 import io.gravitee.node.vertx.server.http.VertxHttpServer;
 import io.gravitee.node.vertx.server.http.VertxHttpServerOptions;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.http.auth.BearerTokenAuthHandler;
@@ -310,12 +311,18 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
 
       final Span span = tracer.startRootSpanFrom(ctx, new ObservableHttpServerRequest(request));
       span.withAttribute("rpc.system", "http").withAttribute("http.route", request.path());
+      // OpenInference: the transport root is the agent turn, so trace tools render it as an AGENT
+      // and use it as the trace's kind. (input/output content lives on the nested CHAIN span.)
+      if (TracingOptions.openInference()) {
+        span.withAttribute("openinference.span.kind", "AGENT");
+      }
 
       final AtomicBoolean ended = new AtomicBoolean();
       request
         .response()
         .endHandler(v -> {
           if (ended.compareAndSet(false, true)) {
+            span.withAttribute("http.response.status_code", request.response().getStatusCode());
             tracer.end(ctx, span);
           }
         });

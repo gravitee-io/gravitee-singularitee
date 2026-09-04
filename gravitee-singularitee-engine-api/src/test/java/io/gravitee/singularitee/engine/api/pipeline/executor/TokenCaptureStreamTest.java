@@ -16,7 +16,21 @@
 package io.gravitee.singularitee.engine.api.pipeline.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.AnswerMeanLogprob;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.AnswerPerplexity;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.LowMarginFraction;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.MaxEntropy;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.MaxTokenPerplexity;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.MeanEntropy;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.MeanLogprob;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.MeanPerplexity;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.MinMargin;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.PerplexityQuantile;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.TailPerplexity;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.UncertainTokenFraction;
 import io.gravitee.singularitee.protocol.*;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.CompletableEmitter;
@@ -29,6 +43,57 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 class TokenCaptureStreamTest {
+
+  // ── Confidence-signal shims: the stream's job is to classify tokens; these compute the features
+  //    over the sample it produced, so these tests double as an integration check of both. The
+  //    feature arithmetic itself is unit-tested in ConfidenceSignalsTest.
+  private static double perplexity(TokenConfidence c) {
+    return new MeanPerplexity().compute(c);
+  }
+
+  private static double meanLogprob(TokenConfidence c) {
+    return new MeanLogprob().compute(c);
+  }
+
+  private static double maxTokenPerplexity(TokenConfidence c) {
+    return new MaxTokenPerplexity().compute(c);
+  }
+
+  private static double uncertainTokenFraction(TokenConfidence c) {
+    return new UncertainTokenFraction().compute(c);
+  }
+
+  private static double answerPerplexity(TokenConfidence c) {
+    return new AnswerPerplexity().compute(c);
+  }
+
+  private static double answerMeanLogprob(TokenConfidence c) {
+    return new AnswerMeanLogprob().compute(c);
+  }
+
+  private static double minMargin(TokenConfidence c) {
+    return new MinMargin().compute(c);
+  }
+
+  private static double lowMarginFraction(TokenConfidence c) {
+    return new LowMarginFraction().compute(c);
+  }
+
+  private static double meanEntropy(TokenConfidence c) {
+    return new MeanEntropy().compute(c);
+  }
+
+  private static double maxEntropy(TokenConfidence c) {
+    return new MaxEntropy().compute(c);
+  }
+
+  private static double tailPerplexity(TokenConfidence c) {
+    return new TailPerplexity().compute(c);
+  }
+
+  private static double quantile(TokenConfidence c, double q) {
+    return new PerplexityQuantile("q", q).compute(c);
+  }
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -231,6 +296,34 @@ class TokenCaptureStreamTest {
   }
 
   @Test
+  void route_mode_retains_the_reasoning_content_for_tracing() {
+    var accumulator = new StringBuilder();
+    var downstream = new CapturingDownstream();
+    var stream = new TokenCaptureStream[1];
+    Completable.create(emitter -> {
+      stream[0] = new TokenCaptureStream(
+        accumulator,
+        emitter,
+        downstream,
+        new TokenCaptureStream.CaptureConfig(
+          false,
+          true,
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.ROUTE,
+          "<think>",
+          "</think>",
+          null
+        )
+      );
+    }).subscribe();
+
+    stream[0].write(deltaEvent("<think>pondering</think>"));
+    stream[0].write(deltaEvent("the answer"));
+
+    assertThat(stream[0].capturedThinking()).isEqualTo("pondering");
+  }
+
+  @Test
   void internal_step_without_stream_thinking_forwards_nothing() {
     var accumulator = new StringBuilder();
     var downstream = new CapturingDownstream();
@@ -324,6 +417,242 @@ class TokenCaptureStreamTest {
       .setEventType(ResponseEventType.RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA)
       .setResponseOutputTextDelta(ResponseOutputTextDelta.newBuilder().setDelta(text).build())
       .build();
+  }
+
+  private static InferResponse deltaWithLogprob(String text, double logprob) {
+    return InferResponse.newBuilder()
+      .setEventType(ResponseEventType.RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA)
+      .setResponseOutputTextDelta(
+        ResponseOutputTextDelta.newBuilder()
+          .setDelta(text)
+          .addLogprobs(
+            PositionLogprobs.newBuilder()
+              .setChosen(TokenLogprob.newBuilder().setLogprob((float) logprob).build())
+              .build()
+          )
+          .build()
+      )
+      .build();
+  }
+
+  // A delta whose position carries top-k alternatives (descending), chosen = the first one.
+  private static InferResponse deltaWithTop(String text, double... topLogprobs) {
+    var pos = PositionLogprobs.newBuilder().setChosen(
+      TokenLogprob.newBuilder().setLogprob((float) topLogprobs[0]).build()
+    );
+    for (double lp : topLogprobs) {
+      pos.addTop(TokenLogprob.newBuilder().setLogprob((float) lp).build());
+    }
+    return InferResponse.newBuilder()
+      .setEventType(ResponseEventType.RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA)
+      .setResponseOutputTextDelta(
+        ResponseOutputTextDelta.newBuilder().setDelta(text).addLogprobs(pos).build()
+      )
+      .build();
+  }
+
+  @Test
+  void topk_features_margin_and_entropy() {
+    var accumulator = new StringBuilder();
+    var downstream = new CapturingDownstream();
+    var stream = new TokenCaptureStream[1];
+    var completable = Completable.create(emitter ->
+      stream[0] = new TokenCaptureStream(
+        accumulator,
+        emitter,
+        downstream,
+        TokenCaptureStream.CaptureConfig.forwarding(
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.NONE,
+          "<think>",
+          "</think>"
+        )
+      )
+    );
+    completable.subscribe(() -> {}, Throwable::printStackTrace);
+
+    // token 1: decisive (top1 -0.1 well above top2 -3.0) -> wide margin, low entropy
+    stream[0].write(deltaWithTop("a", -0.1, -3.0, -4.0));
+    // token 2: contested (top1 -0.7 barely above top2 -0.8) -> tiny margin, high entropy
+    stream[0].end(deltaWithTop("b", -0.7, -0.8, -3.0));
+
+    // minMargin is the smaller of {2.9, 0.1} = 0.1 (the contested token)
+    assertThat(minMargin(stream[0].confidence())).isEqualTo(0.1, within(1e-5));
+    // one of the two tokens is below the 0.5-nat low-margin threshold
+    assertThat(lowMarginFraction(stream[0].confidence())).isEqualTo(0.5, within(1e-9));
+    // the contested token has higher entropy than the decisive one, so max > mean > 0
+    assertThat(maxEntropy(stream[0].confidence())).isGreaterThan(
+      meanEntropy(stream[0].confidence())
+    );
+    assertThat(meanEntropy(stream[0].confidence())).isGreaterThan(0.0);
+  }
+
+  @Test
+  void topk_features_zero_without_alternatives() {
+    var accumulator = new StringBuilder();
+    var downstream = new CapturingDownstream();
+    var stream = new TokenCaptureStream[1];
+    var completable = Completable.create(emitter ->
+      stream[0] = new TokenCaptureStream(
+        accumulator,
+        emitter,
+        downstream,
+        TokenCaptureStream.CaptureConfig.forwarding(
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.NONE,
+          "<think>",
+          "</think>"
+        )
+      )
+    );
+    completable.subscribe(() -> {}, Throwable::printStackTrace);
+    // chosen-only deltas (depth 1): margin/entropy stay at their zero defaults
+    stream[0].write(deltaWithLogprob("a", -0.1));
+    stream[0].end(deltaWithLogprob("b", -0.2));
+    assertThat(minMargin(stream[0].confidence())).isEqualTo(0.0);
+    assertThat(lowMarginFraction(stream[0].confidence())).isEqualTo(0.0);
+    assertThat(meanEntropy(stream[0].confidence())).isEqualTo(0.0);
+    // chosen-token distributional features still work
+    assertThat(quantile(stream[0].confidence(), 0.95)).isGreaterThan(0.0);
+    assertThat(tailPerplexity(stream[0].confidence())).isGreaterThan(0.0);
+  }
+
+  @Test
+  void perplexity_from_chosen_logprobs() {
+    var accumulator = new StringBuilder();
+    var downstream = new CapturingDownstream();
+    var stream = new TokenCaptureStream[1];
+    var completable = Completable.create(emitter ->
+      stream[0] = new TokenCaptureStream(
+        accumulator,
+        emitter,
+        downstream,
+        TokenCaptureStream.CaptureConfig.forwarding(
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.NONE,
+          "<think>",
+          "</think>"
+        )
+      )
+    );
+    completable.subscribe(() -> {}, Throwable::printStackTrace);
+
+    stream[0].write(deltaWithLogprob("Can", -0.1));
+    stream[0].write(deltaWithLogprob("berra", -0.3));
+    stream[0].end(deltaWithLogprob(".", -0.2));
+
+    assertThat(stream[0].confidence().size()).isEqualTo(3);
+    assertThat(meanLogprob(stream[0].confidence())).isEqualTo(-0.2, within(1e-6));
+    assertThat(perplexity(stream[0].confidence())).isEqualTo(Math.exp(0.2), within(1e-6));
+  }
+
+  @Test
+  void distributional_features_capture_the_peak_the_mean_hides() {
+    // A generation that is fluent everywhere except one very uncertain token: the mean stays low
+    // (looks confident) but the peak (max token perplexity) and the uncertain-token fraction expose
+    // the hesitation. This is the signal the mean averages away in a long reasoning trace.
+    var accumulator = new StringBuilder();
+    var downstream = new CapturingDownstream();
+    var stream = new TokenCaptureStream[1];
+    var completable = Completable.create(emitter ->
+      stream[0] = new TokenCaptureStream(
+        accumulator,
+        emitter,
+        downstream,
+        TokenCaptureStream.CaptureConfig.forwarding(
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.NONE,
+          "<think>",
+          "</think>"
+        )
+      )
+    );
+    completable.subscribe(() -> {}, Throwable::printStackTrace);
+
+    // A long fluent trace (like a reasoning block) with one very uncertain token in the middle.
+    for (int i = 0; i < 19; i++) {
+      stream[0].write(deltaWithLogprob("x", -0.05));
+    }
+    stream[0].write(deltaWithLogprob("?", -3.0)); // the one uncertain token
+    stream[0].end(deltaWithLogprob("x", -0.05));
+
+    // Mean stays low (looks confident); the peak and the uncertain fraction expose the hesitation.
+    assertThat(perplexity(stream[0].confidence())).isLessThan(1.5);
+    assertThat(maxTokenPerplexity(stream[0].confidence())).isEqualTo(Math.exp(3.0), within(1e-6));
+    assertThat(uncertainTokenFraction(stream[0].confidence())).isEqualTo(1.0 / 21.0, within(1e-9));
+  }
+
+  @Test
+  void answer_perplexity_excludes_the_reasoning_block() {
+    // A reasoning model's fluent chain of thought (low, uniform perplexity) must not drown out the
+    // answer's own confidence. The full-generation perplexity counts every token; the answer-only
+    // perplexity counts the tokens after </think>. Here reasoning is confident (-0.05) and the
+    // answer is not (-1.2): the two scopes must diverge.
+    var accumulator = new StringBuilder();
+    var downstream = new CapturingDownstream();
+    var stream = new TokenCaptureStream[1];
+    var completable = Completable.create(emitter ->
+      stream[0] = new TokenCaptureStream(
+        accumulator,
+        emitter,
+        downstream,
+        TokenCaptureStream.CaptureConfig.forwarding(
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.ROUTE,
+          "<think>",
+          "</think>"
+        )
+      )
+    );
+    completable.subscribe(() -> {}, Throwable::printStackTrace);
+
+    stream[0].write(deltaWithLogprob("<think>", -0.05));
+    stream[0].write(deltaWithLogprob("long reasoning", -0.05));
+    stream[0].write(deltaWithLogprob("</think>", -0.05));
+    stream[0].write(deltaWithLogprob("42", -1.2));
+    stream[0].end(deltaWithLogprob("!", -1.2));
+
+    // Total spans every token; answer-only spans just the two post-close tokens.
+    assertThat(stream[0].confidence().size()).isEqualTo(5);
+    assertThat(stream[0].confidence().answer().size()).isEqualTo(2);
+    assertThat(answerMeanLogprob(stream[0].confidence())).isEqualTo(-1.2, within(1e-6));
+    assertThat(answerPerplexity(stream[0].confidence())).isEqualTo(Math.exp(1.2), within(1e-6));
+    // The reasoning tokens pulled the full-generation perplexity well below the answer's.
+    assertThat(perplexity(stream[0].confidence())).isLessThan(
+      answerPerplexity(stream[0].confidence())
+    );
+  }
+
+  @Test
+  void answer_perplexity_falls_back_to_full_when_no_answer_tokens() {
+    // Reasoning ran to the token cap without ever emitting an answer: answer-only has no tokens, so
+    // the signal falls back to the full-generation perplexity rather than a silent zero.
+    var accumulator = new StringBuilder();
+    var downstream = new CapturingDownstream();
+    var stream = new TokenCaptureStream[1];
+    var completable = Completable.create(emitter ->
+      stream[0] = new TokenCaptureStream(
+        accumulator,
+        emitter,
+        downstream,
+        TokenCaptureStream.CaptureConfig.forwarding(
+          StepRole.STEP_ROLE_OUTPUT,
+          TokenCaptureStream.ThinkingMode.ROUTE,
+          "<think>",
+          "</think>"
+        )
+      )
+    );
+    completable.subscribe(() -> {}, Throwable::printStackTrace);
+
+    stream[0].write(deltaWithLogprob("<think>", -0.3));
+    stream[0].end(deltaWithLogprob("unclosed reasoning", -0.3));
+
+    assertThat(stream[0].confidence().answer().size()).isEqualTo(0);
+    assertThat(answerPerplexity(stream[0].confidence())).isEqualTo(
+      perplexity(stream[0].confidence()),
+      within(1e-9)
+    );
   }
 
   // ── Tests ───────────────────────────────────────────────────────────────

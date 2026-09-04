@@ -42,7 +42,9 @@ import io.gravitee.singularitee.adapter.textgen.VllmEngineFactory;
 import io.gravitee.singularitee.engine.api.StreamingConfig;
 import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
 import io.gravitee.singularitee.engine.api.pipeline.TodoSessionStore;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateRenderer;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.engine.api.tools.ServerToolNames;
@@ -148,8 +150,19 @@ public class SingulariteeConfiguration {
   public Tracer singulariteeTracer(
     TracerFactory tracerFactory,
     List<InstrumenterTracerFactory> instrumenterTracerFactories,
-    Node node
+    Node node,
+    Configuration configuration
   ) {
+    // The span/attribute name prefix is a deployment-wide constant; set it once here, before any
+    // request builds a span. Blank restores the default ("singularitee"). Metrics are unaffected.
+    SpanNames.configure(configuration.getProperty("services.opentelemetry.name-prefix", ""));
+    // OpenInference semantic attributes (on by default for tool interop) and content verbosity.
+    TracingOptions.configure(
+      Boolean.parseBoolean(
+        configuration.getProperty("services.opentelemetry.openinference", "true")
+      ),
+      Boolean.parseBoolean(configuration.getProperty("services.opentelemetry.verbose", "false"))
+    );
     String instanceId = node.id() != null ? node.id() : SingulariteeNode.APPLICATION_NAME;
     return tracerFactory.createTracer(
       instanceId,
@@ -167,8 +180,11 @@ public class SingulariteeConfiguration {
    * registry is bound. Records to a no-op registry when {@code services.metrics} is disabled.
    */
   @Bean
-  public InferenceMetrics inferenceMetrics(Vertx vertx) {
-    return new InferenceMetrics(io.gravitee.node.monitoring.metrics.Metrics.getDefaultRegistry());
+  public InferenceMetrics inferenceMetrics(Vertx vertx, Configuration configuration) {
+    return new InferenceMetrics(
+      io.gravitee.node.monitoring.metrics.Metrics.getDefaultRegistry(),
+      configuration.getProperty("services.metrics.name-prefix", "")
+    );
   }
 
   // --- Core registries ---
@@ -584,7 +600,8 @@ public class SingulariteeConfiguration {
     ModelRegistry modelRegistry,
     PipelineRegistry pipelineRegistry,
     TodoSessionStore todoSessionStore,
-    CacheManager cacheManager
+    CacheManager cacheManager,
+    Configuration configuration
   ) {
     var services = new StepExecutorServices(
       stepExecutorFactory.executionContext(),
@@ -594,7 +611,8 @@ public class SingulariteeConfiguration {
       pipelineRegistry,
       todoSessionStore,
       cacheManager,
-      stepExecutorFactory.subPipelineCallbacks()
+      stepExecutorFactory.subPipelineCallbacks(),
+      configuration
     );
     var plugins = new ArrayList<Plugin>(pluginRegistry.plugins(StepPlugins.STEP_TYPE));
     plugins.addAll(pluginRegistry.plugins(StepPlugins.DECORATOR_TYPE));

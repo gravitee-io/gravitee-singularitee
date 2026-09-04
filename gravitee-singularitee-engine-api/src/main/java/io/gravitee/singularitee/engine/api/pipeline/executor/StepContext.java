@@ -45,8 +45,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * @param callerContext   the Vert.x context of the caller (may be unused)
  * @param tracer          the OpenTelemetry tracer, or {@code null} to disable tracing
  * @param metrics         the inference metrics recorder, or {@code null} to disable metrics
- * @param pipelineSpan    the parent {@code ai.pipeline} span for per-step spans, or {@code null}
- * @param activeStepSpan  holder for the in-flight {@code ai.step} span (parent of model-call spans);
+ * @param pipelineSpan    the parent {@code singularitee.pipeline} span for per-step spans, or {@code null}
+ * @param activeStepSpan  holder for the in-flight {@code singularitee.step} span (parent of model-call spans);
  *                        set by {@link StepDispatcher}, read by {@link ModelBoundStepExecutor}
  * @param currentStep     the step being dispatched, set per step by {@link StepDispatcher} via
  *                        {@link #withStep(StepModel)}; {@code null} outside a dispatch
@@ -124,6 +124,22 @@ public record StepContext(
       activeStepSpan,
       step
     );
+  }
+
+  /**
+   * A {@link SpanScribe} writing to the pipeline (turn) span, or a no-op when tracing is off.
+   * Use it for facts that describe the whole turn.
+   */
+  public SpanScribe turnScribe() {
+    return SpanScribe.of(pipelineSpan);
+  }
+
+  /**
+   * A {@link SpanScribe} writing to the in-flight step span, or a no-op when tracing is off.
+   * Use it for facts scoped to the step that is running.
+   */
+  public SpanScribe stepScribe() {
+    return SpanScribe.of(activeStepSpan == null ? null : activeStepSpan.get());
   }
 
   /**

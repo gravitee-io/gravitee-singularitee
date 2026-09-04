@@ -27,6 +27,7 @@ import io.gravitee.singularitee.engine.api.ModelEngineToken;
 import io.gravitee.singularitee.engine.api.TextGenEngine;
 import io.gravitee.singularitee.engine.api.TextGenRequest;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanScribe;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StreamRegistry;
@@ -132,6 +133,8 @@ class InferStepExecutorTest {
     var ctx = mock(StepContext.class);
     when(ctx.pipelineContext()).thenReturn(pctx);
     when(ctx.rxNextStep(anyString())).thenReturn(Maybe.just("next"));
+    when(ctx.stepScribe()).thenReturn(SpanScribe.NOOP);
+    when(ctx.turnScribe()).thenReturn(SpanScribe.NOOP);
     return ctx;
   }
 

@@ -62,7 +62,8 @@ config:
 | `sampling.max_tokens` | int | `64` | Completion cap. |
 | `sampling.temperature`, `sampling.top_p` | float | engine default | Only these two sampling values are forwarded; penalties and `stop` are ignored by this step. |
 | `message` | string | unset | Jinja template rendered on `reject` and returned as the failure message. |
-| `context` | map | unset | Typed Jinja variables merged into the rendering context for the prompt and the message. |
+| `context` | map | unset | Typed Jinja variables merged into the rendering context for the prompt and the message, and forwarded to the engine's chat template (`reasoning_effort`, `enable_thinking`). |
+| `tags` | object or string | unset | The judge model's reasoning and tool-call markers, same shape as [`infer`'s `tags`](./infer.md#tags). A bare string references a workspace `tags:` entry by id. Set it when the judge is a channel dialect such as Harmony, so the engine strips its analysis and only the answer reaches the verdict. |
 | `input_field` | string | ignored | Present in the YAML record but not mapped (the proto field is retired); the prompt decides what is screened. |
 
 ## Context fields
@@ -73,7 +74,7 @@ Writes:
 
 | Field | Value |
 | --- | --- |
-| `<id>.verdict` | First line of the stripped output. |
+| `<id>.verdict` | First line of the stripped output, or `no_verdict` when the judge produced no answer text. |
 | `<id>.verdict_full` | The whole stripped output. |
 | `verdicts` (Jinja list) | Entry `{verdict, details, step}` with the full output as `details`. |
 | `__guard_triggered` | `<id>` on `warn` (and on the `redact` fallback). |
@@ -83,7 +84,8 @@ The step neither streams tokens nor appends to `messages` or `generated_messages
 ## Notes
 
 - A step with neither `messages` nor a template is skipped with a warning.
-- Reasoning tags are always stripped (`<think>...</think>`), so a thinking model cannot contaminate the verdict; the comparison still runs on whatever text remains.
+- Reasoning is always stripped, so a thinking model cannot contaminate the verdict: `<think>...</think>` by default, the step's `tags` when set, plus whatever the engine classifies as reasoning on its own. The comparison runs on the text that remains.
+- A judge that produces no answer text (typically a reasoning model that ran out of `max_tokens` while still thinking) has no decision to read. The step records `no_verdict`, treats it as not safe and logs a warning; raise `sampling.max_tokens` or lower the reasoning effort.
 - `sampling.max_tokens: 1` with a one-word `safe_token` is the cheapest configuration; keep the judge model's `n_ctx` small and `n_seq_max` above one so several guards run concurrently.
 - On `reject` the halt reports `<id>` as its output field and the rendered `message` as the failure text.
 

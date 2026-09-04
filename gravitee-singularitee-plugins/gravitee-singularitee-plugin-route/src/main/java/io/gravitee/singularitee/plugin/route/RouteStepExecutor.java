@@ -23,6 +23,8 @@ import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.EmbedRequest;
 import io.gravitee.singularitee.engine.api.EmbeddingEngine;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanScribe;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutor;
@@ -196,14 +198,20 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
       .pipelineContext()
       .get(cfg.inputField().isBlank() ? PipelineContext.KEY_PROMPT : cfg.inputField());
 
+    // Capture the step-span scribe now (valid before the async resolve; see InferStepExecutor).
+    final SpanScribe stepScribe = ctx.stepScribe();
     return rxResolveRouteLabel(cfg, text, stepId, ctx).flatMapMaybe(resolvedLabel -> {
       var pctx = ctx.pipelineContext();
       // Expose the routing outcome so conditions can tell "matched a rule" apart from
       // "judge output was unusable and we fell through to the default".
       pctx.set(stepId + ".label", resolvedLabel);
+      stepScribe.set(SpanNames.key("route.label"), resolvedLabel);
       for (RouteRule rule : cfg.rules()) {
         if (rule.label().equals(resolvedLabel)) {
           pctx.set(stepId + ".matched", "true");
+          stepScribe
+            .set(SpanNames.key("route.matched"), true)
+            .set(SpanNames.key("route.next_step"), rule.nextStepId());
           LOGGER.debug(
             "RouteStep '{}': label='{}' -> step '{}'",
             stepId,
@@ -215,6 +223,12 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
       }
       pctx.set(stepId + ".matched", "false");
       String defaultStep = cfg.defaultStepId();
+      stepScribe
+        .set(SpanNames.key("route.matched"), false)
+        .set(
+          SpanNames.key("route.next_step"),
+          (defaultStep == null || defaultStep.isBlank()) ? "(halt)" : defaultStep
+        );
       LOGGER.debug(
         "RouteStep '{}': no rule matched label='{}' -> default step '{}'",
         stepId,

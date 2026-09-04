@@ -52,6 +52,7 @@ class StepPluginsTest {
     null,
     null,
     null,
+    null,
     null
   );
 

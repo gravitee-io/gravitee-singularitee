@@ -255,7 +255,8 @@ public final class ClientPipelineExecutor {
       pipelineRegistry,
       null,
       null,
-      factory.subPipelineCallbacks()
+      factory.subPipelineCallbacks(),
+      null
     );
     var assembled = StepPlugins.assemble(
       plugins.stepPlugins(),

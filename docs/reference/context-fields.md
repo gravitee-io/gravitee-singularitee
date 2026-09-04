@@ -84,6 +84,13 @@ Hidden from Jinja: `prompt` is exposed but excluded from the step-map split; `to
 | `infer` | `<id>.tool_call_count` | Number of extracted calls. |
 | `infer` | `<id>.parse_error` | Extraction template or JSON error. |
 | `infer` | `<id>.attempted_tool` | Leading identifier of a failed call span. |
+| `infer` | `<id>.perplexity`, `<id>.mean_logprob` | Mean chosen-token confidence over the whole generation (perplexity = exp(-mean logprob), 1.0 = confident). Present only when logprobs were captured. |
+| `infer` | `<id>.answer_perplexity`, `<id>.answer_mean_logprob` | The same, over the answer tokens alone (reasoning excluded). |
+| `infer` | `<id>.max_token_perplexity`, `<id>.answer_max_token_perplexity` | Perplexity of the single least-confident token (whole generation / answer only): the peak the mean hides in a long reasoning trace. |
+| `infer` | `<id>.p95_perplexity`, `<id>.p90_perplexity`, `<id>.uncertain_token_fraction`, `<id>.logprob_stdev` | Robust peaks (95th/90th-percentile token), the share of tokens below an uncertain threshold, and the spread of confidence. |
+| `infer` | `<id>.tail_perplexity`, `<id>.logprob_slope` | Confidence over the last few tokens (the conclusion) and its slope across positions. |
+| `infer` | `<id>.min_margin`, `<id>.low_margin_fraction` | Smallest and share of small top-1 vs top-2 token margins: how contested the model's most-contested pick was. Present only when the top-k depth is at least 2. |
+| `infer` | `<id>.mean_entropy`, `<id>.max_entropy` | Mean and max per-token entropy over the top-k candidates. Present only when the top-k depth is at least 2. |
 | `classify` | `<out>` (`<id>.label`) | Top label. |
 | `classify` | `<out>.score` | Top score. |
 | `embed` | `<out>` (`<id>.embedding`) | `[f0, f1, ...]`. |
@@ -93,7 +100,7 @@ Hidden from Jinja: `prompt` is exposed but excluded from the step-map split; `to
 | `guard` | `<id>.labels`, `<id>.scores`, `<id>.details` | All matched triggers, highest first. |
 | `guard` | `<out>` (`<id>.redacted`) | `redact` only: the redacted (or untouched) text. |
 | `guard`, `llm_guard`, `regex_guard` | `__guard_triggered` | Step id, on `warn`. |
-| `llm_guard` | `<id>.verdict` | First line of the verdict. |
+| `llm_guard` | `<id>.verdict` | First line of the verdict, or `no_verdict` when the judge produced no answer text. |
 | `llm_guard` | `<id>.verdict_full` | Whole verdict. |
 | `loop` | `<id>.iterations` | Retries taken. |
 | `loop` | `<id>.max_iterations_reached` | `true` once exhausted. |
@@ -131,6 +138,7 @@ Hidden from Jinja: `prompt` is exposed but excluded from the step-map split; `to
 - `ScoreResolver` for `score_above` / `score_below`: `<input_field>.score`, then `<input_field minus last segment>.score`, then the field value itself parsed as a float, else `0`.
 - A `sub_pipeline` forwards the whole flat map as the child request's `context`; nothing but `<out>` comes back.
 - `--debug` (TRACE logging) prints the full context before and after every step (`PipelineContext.debugSnapshot`) and the rendering context of each template.
+- The `<id>` confidence signals are free byproducts of the one generation (the sampler already produces the log-probabilities), computed by the `ConfidenceSignal` set in `engine-api` and emitted only when the request asked for logprobs. They are raw signals, not correctness measures: a downstream step calibrates the one it wants against resolved outcomes. Which summary predicts correctness, if any, depends on the model and the task, so measure before trusting one. The same values appear on the step span as `singularitee.infer.*` (see [Observability](../../operations/observability/README.md)).
 
 ## See also
 

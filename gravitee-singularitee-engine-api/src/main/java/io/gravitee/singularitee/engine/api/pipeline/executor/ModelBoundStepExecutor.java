@@ -19,6 +19,7 @@ import io.gravitee.node.api.opentelemetry.Span;
 import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.node.api.opentelemetry.internal.InternalRequest;
 import io.gravitee.singularitee.engine.api.ModelEngine;
+import io.gravitee.singularitee.engine.api.ModelEngineType;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
 import io.opentelemetry.api.trace.SpanKind;
 import io.reactivex.rxjava3.core.Maybe;
@@ -93,7 +94,7 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
     final String modelId = getModelId(config);
     final String op = modelOp();
 
-    // Open an ai.model.<op> span (child of the active step span) and time the engine
+    // Open an singularitee.model.<op> span (child of the active step span) and time the engine
     // call (ai_model_call_seconds). Deferred so it opens at subscribe time and, for
     // streaming infer, stays open until the token stream completes (rxExecuteWithEngine
     // only terminates once the capture stream ends). No-op when tracing/metrics are off.
@@ -105,6 +106,14 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
         stepSpan.withAttribute("model.id", modelId);
       }
       final Span span = startModelSpan(tracer, vctx, stepSpan, modelId, op);
+      // Model-call span facts: the OpenInference kind from the engine type (a text-gen backend
+      // such as llama.cpp or vLLM tags LLM), and the engine type + concrete backend class.
+      if (TracingOptions.openInference()) {
+        span.withAttribute(OpenInference.SPAN_KIND, engineKind(engine.type()));
+      }
+      span
+        .withAttribute(SpanNames.key("model.engine_type"), engine.type().name())
+        .withAttribute(SpanNames.key("model.engine"), engine.getClass().getSimpleName());
       final Throwable[] error = { null };
       final long startNanos = System.nanoTime();
       return rxExecuteWithEngine(stepId, config, typed, ctx)
@@ -118,8 +127,18 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
     });
   }
 
+  /** The OpenInference span kind for an engine type; a text-gen backend (llama.cpp, vLLM) is LLM. */
+  private static String engineKind(ModelEngineType type) {
+    return switch (type) {
+      case TEXT_GEN -> OpenInference.KIND_LLM;
+      case EMBEDDING -> OpenInference.KIND_EMBEDDING;
+      case RERANKER -> OpenInference.KIND_RERANKER;
+      default -> OpenInference.KIND_CHAIN;
+    };
+  }
+
   /**
-   * The {@code op} tag/suffix for {@code ai.model.*} spans and metrics, derived from the
+   * The {@code op} tag/suffix for {@code singularitee.model.*} spans (and {@code ai.model.*} metrics), derived from the
    * executor class name (e.g. {@code InferStepExecutor} gives {@code infer},
    * {@code ClassifyStepExecutor} gives {@code classify}). Override for a custom value.
    */
@@ -141,7 +160,7 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
       return null;
     }
     InternalRequest request = InternalRequest.builder()
-      .name("ai.model." + op)
+      .name(SpanNames.key("model.") + op)
       .attributes(Map.of("model.id", modelId == null ? "" : modelId, "op", op))
       .spanKind(SpanKind.CLIENT)
       .build();

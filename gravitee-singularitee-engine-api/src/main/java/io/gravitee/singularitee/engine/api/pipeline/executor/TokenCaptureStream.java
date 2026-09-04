@@ -15,6 +15,7 @@
  */
 package io.gravitee.singularitee.engine.api.pipeline.executor;
 
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
 import io.gravitee.singularitee.protocol.*;
 import io.reactivex.rxjava3.core.CompletableEmitter;
 import io.vertx.core.Future;
@@ -196,6 +197,9 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
 
   private final int thinkingCutMaxLen;
   private final StringBuilder thinkingHold = new StringBuilder();
+
+  /** Reasoning content routed to the thinking flux, kept for OpenInference reasoning content. */
+  private final StringBuilder capturedThinking = new StringBuilder();
   private boolean thinkingCut = false;
   /**
    * Whether THINKING-role deltas may reach the downstream even when
@@ -265,6 +269,15 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
 
   /** The last response received; carries usage and performance on the completed event. */
   private volatile InferResponse lastResponse;
+
+  // System.nanoTime at the first content token, 0 until then: the time-to-first-token mark.
+  private volatile long firstTokenNanos = 0L;
+
+  // The accumulated per-token confidence sample (chosen logprobs, answer subset, top-k margins and
+  // entropies). This stream owns only the reasoning-vs-answer classification of each token; the
+  // feature arithmetic lives in the ConfidenceSignals over this sample. Exposed via confidence();
+  // populated only when top_logprobs was requested.
+  private final TokenConfidence confidence = new TokenConfidence();
 
   /**
    * Set at end-of-stream when the tag machine was still inside a thinking block: the model
@@ -361,9 +374,18 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
       return Future.succeededFuture();
     }
 
+    accumulateLogprobs(data);
+
     String token = data.getResponseOutputTextDelta().getDelta();
     if (token.isEmpty()) {
       return Future.succeededFuture();
+    }
+
+    // First non-empty content token, on any channel: the time-to-first-token mark. Stamped here,
+    // at the stream's single delta funnel, so it is the token as the client saw it (queue wait
+    // included) rather than an engine-internal measure.
+    if (firstTokenNanos == 0L) {
+      firstTokenNanos = System.nanoTime();
     }
 
     // Deltas the engine pre-classified as TOOL carry the bare tool-call payload
@@ -653,6 +675,9 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
    */
   private void forwardThinking(String text) {
     if (text.isEmpty() || thinkingCut) return;
+    // Retain the reasoning content (ROUTE only; STRIP never reaches here) so a tracing span can
+    // carry it as OpenInference reasoning content. Stops at a tool-cut, like the wire flux.
+    capturedThinking.append(text);
     if (thinkingCutMarkers.isEmpty()) {
       forwardSyntheticDeltaToDownstream(text, StepRole.STEP_ROLE_THINKING);
       return;
@@ -779,6 +804,7 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
 
       // A final message that also carries a last delta is processed like write().
       if (data.getEventType() == ResponseEventType.RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA) {
+        accumulateLogprobs(data);
         String token = data.getResponseOutputTextDelta().getDelta();
         if (!token.isEmpty() && data.getStepRole() == StepRole.STEP_ROLE_TOOL) {
           // Same TOOL bypass as write().
@@ -933,9 +959,66 @@ public final class TokenCaptureStream implements WriteStream<InferResponse> {
     return lastResponse;
   }
 
+  /** System.nanoTime at the first content token, or 0 if no token was ever emitted. */
+  public long firstTokenNanos() {
+    return firstTokenNanos;
+  }
+
+  // Accumulate a delta's logprobs only when it is ANSWER content, so the perplexity confidence
+  // signal reflects the answer's confidence, not the hidden reasoning's. A reasoning model
+  // (harmony, <think> blocks) emits hundreds to thousands of fluent chain-of-thought tokens per
+  // answer; those tokens are equally confident whether the final answer is right or wrong, so
+  // averaging them in swamps the few answer tokens and flattens the signal. A delta is reasoning
+  // when the engine pre-stamped it THINKING, or when the tag machine is still inside a reasoning
+  // Accumulate the chosen-token log-probabilities carried on a delta (empty unless top_logprobs
+  // was requested), for the perplexity confidence signal. Every token feeds the full-generation
+  // sum; answer tokens additionally feed the answer-only sum. A delta is reasoning when the engine
+  // pre-stamped it THINKING or when the tag machine is still inside a reasoning block (SUPPRESSING);
+  // everything else (PASSTHROUGH answer, TOOL, and NONE mode, which never suppresses) is answer
+  // content. thinkState here is the pre-delta state, read before the state machine advances it.
+  // Called from both write() and end().
+  private void accumulateLogprobs(InferResponse data) {
+    // A delta is reasoning when the engine pre-stamped it THINKING, or when the tag machine has not
+    // yet resolved a start-anchored reasoning block: SUPPRESSING (inside the block) and AT_START
+    // (still scanning the leading tokens, e.g. the open marker itself, before the state advances).
+    // TOOL payloads are answer regardless. This runs before the state machine advances, so the open
+    // marker sits in AT_START here, not PASSTHROUGH: excluding AT_START keeps it out of the answer
+    // scope rather than leaking one reasoning token in. NONE mode never enters AT_START, so a plain
+    // no-reasoning generation counts every token toward both scopes. The arithmetic lives in
+    // ConfidenceSignals; this method owns only the reasoning-vs-answer classification.
+    boolean reasoning =
+      data.getStepRole() == StepRole.STEP_ROLE_THINKING ||
+      thinkState == ThinkState.SUPPRESSING ||
+      thinkState == ThinkState.AT_START;
+    boolean answer = data.getStepRole() == StepRole.STEP_ROLE_TOOL || !reasoning;
+    for (var pos : data.getResponseOutputTextDelta().getLogprobsList()) {
+      if (pos.hasChosen()) {
+        // top is descending and always includes the chosen token; ConfidenceSignals reads top[0]/[1]
+        // for the margin/entropy features and ignores an array shorter than 2.
+        var top = pos.getTopList();
+        double[] topLogprobs = new double[top.size()];
+        for (int i = 0; i < top.size(); i++) topLogprobs[i] = top.get(i).getLogprob();
+        confidence.record(pos.getChosen().getLogprob(), answer, topLogprobs);
+      }
+    }
+  }
+
+  /** The confidence signals (perplexity and its distributional cousins) derived from this generation. */
+  public TokenConfidence confidence() {
+    return confidence;
+  }
+
   /** The answer-channel text alone: reasoning, tool spans and markers excluded. */
   public String answerOutput() {
     return answerBuffer.toString();
+  }
+
+  /**
+   * The routed reasoning content, tag markers excluded (empty under STRIP/NONE or when the
+   * model emitted no reasoning). For tracing/observability, not the data plane.
+   */
+  public String capturedThinking() {
+    return capturedThinking.toString();
   }
 
   /**

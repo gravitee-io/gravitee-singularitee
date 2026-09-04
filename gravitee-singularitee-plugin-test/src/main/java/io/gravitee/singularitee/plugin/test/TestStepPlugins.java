@@ -50,7 +50,7 @@ public final class TestStepPlugins {
         if (local == null) {
           local = assemble(
             DEFAULT_PLUGINS_DIR,
-            new StepExecutorServices(null, null, null, null, null, null, null, null)
+            new StepExecutorServices(null, null, null, null, null, null, null, null, null)
           );
           cached = local;
         }

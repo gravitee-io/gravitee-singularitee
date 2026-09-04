@@ -16,8 +16,10 @@
 package io.gravitee.singularitee.plugin.breakstep;
 
 import io.gravitee.singularitee.engine.api.pipeline.evaluator.BreakStepEvaluator;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutor;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.protocol.FinishReason;
 import io.reactivex.rxjava3.core.Maybe;
 import org.slf4j.Logger;
@@ -36,8 +38,23 @@ public final class BreakStepExecutor implements StepExecutor<BreakStepConfig> {
   @Override
   public Maybe<String> execute(String stepId, BreakStepConfig cfg, StepContext ctx) {
     var pctx = ctx.pipelineContext();
-    boolean shouldBreak =
-      cfg.condition() != null && BreakStepEvaluator.evaluate(cfg.condition(), pctx);
+    var cond = cfg.condition();
+    boolean shouldBreak = cond != null && BreakStepEvaluator.evaluate(cond, pctx);
+
+    // Span introspection: the condition, the field it read, the verdict, and the resulting branch.
+    String inputField = cond != null ? cond.inputField() : "";
+    String nextStep = shouldBreak ? "(halt)" : ctx.nextStep(stepId);
+    var scribe = ctx
+      .stepScribe()
+      .set(SpanNames.key("break.condition"), cond != null ? String.valueOf(cond.kind()) : "")
+      .set(SpanNames.key("break.input_field"), inputField)
+      .set(SpanNames.key("break.condition_met"), shouldBreak)
+      .set(SpanNames.key("break.decision"), shouldBreak ? "halt" : "continue")
+      .set(SpanNames.key("break.next_step"), nextStep == null ? "" : nextStep);
+    if (TracingOptions.verbose()) {
+      String value = pctx.get(inputField);
+      scribe.set(SpanNames.key("break.input_value"), value == null ? "" : value);
+    }
 
     if (shouldBreak) {
       pctx.signalHalt(cfg.outputField(), FinishReason.FINISH_REASON_BREAK_CONDITION);

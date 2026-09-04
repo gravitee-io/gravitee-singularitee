@@ -220,6 +220,7 @@ services:
     enabled: true
     prometheus:
       enabled: true
+    # name-prefix: ai               # prefix for inference meter names; Prometheus renders it <prefix>_*
 
   # --- Node monitoring (CPU/JVM + GPU) ---
   # GPU monitoring shells out to `nvidia-smi` on a fixed delay and publishes a
@@ -242,7 +243,9 @@ services:
   # Keys under services.tracing.otel.* are accepted as aliases.
   opentelemetry:
     enabled: false
-    verbose: false # add request/response attributes to spans
+    verbose: false # add content-heavy attributes (input/output/message text) to spans
+    # openinference: true           # also emit OpenInference attributes (for OpenInference-aware tools)
+    # name-prefix: singularitee     # prefix for emitted span names and attributes; metrics unaffected
     exporter:
       endpoint: http://localhost:4317 # OTLP collector endpoint
       protocol: grpc # grpc (4317) | http/protobuf (4318)

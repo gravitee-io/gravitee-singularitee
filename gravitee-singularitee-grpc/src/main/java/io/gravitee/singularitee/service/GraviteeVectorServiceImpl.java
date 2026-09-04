@@ -19,6 +19,7 @@ import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.singularitee.engine.api.EmbeddingEngine;
 import io.gravitee.singularitee.engine.api.RerankerEngine;
 import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
+import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.protocol.*;
 import io.vertx.core.Future;
@@ -66,7 +67,7 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
   /** {@code Embed}: one text to one vector. Fails when the model is unknown or not an embedder. */
   @Override
   public Future<EmbedResponse> embed(EmbedRequest request) {
-    return instrumentation.traceUnary("ai.embed", "embed", request.getModelId(), () -> {
+    return instrumentation.traceUnary(SpanNames.key("embed"), "embed", request.getModelId(), () -> {
       var entryOpt = registry.get(request.getModelId());
       if (entryOpt.isEmpty()) {
         return Future.failedFuture("Model not found: " + request.getModelId());
@@ -103,40 +104,45 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
   /** {@code EmbedBatch}: several texts to vectors. Same failure contract as {@link #embed}. */
   @Override
   public Future<EmbedBatchResponse> embedBatch(EmbedBatchRequest request) {
-    return instrumentation.traceUnary("ai.embed.batch", "embed", request.getModelId(), () -> {
-      var entryOpt = registry.get(request.getModelId());
-      if (entryOpt.isEmpty()) {
-        return Future.failedFuture("Model not found: " + request.getModelId());
-      }
-      var engine = entryOpt.get().engine();
-      if (!(engine instanceof EmbeddingEngine embeddingEngine)) {
-        return Future.failedFuture(
-          "Model '" + request.getModelId() + "' is not an embedding model"
-        );
-      }
+    return instrumentation.traceUnary(
+      SpanNames.key("embed.batch"),
+      "embed",
+      request.getModelId(),
+      () -> {
+        var entryOpt = registry.get(request.getModelId());
+        if (entryOpt.isEmpty()) {
+          return Future.failedFuture("Model not found: " + request.getModelId());
+        }
+        var engine = entryOpt.get().engine();
+        if (!(engine instanceof EmbeddingEngine embeddingEngine)) {
+          return Future.failedFuture(
+            "Model '" + request.getModelId() + "' is not an embedding model"
+          );
+        }
 
-      Promise<EmbedBatchResponse> promise = Promise.promise();
-      embeddingEngine
-        .rxEmbedBatch(request.getTextsList())
-        .map(responses -> {
-          var builder = EmbedBatchResponse.newBuilder();
-          for (var engineResp : responses) {
-            var vecBuilder = FloatVector.newBuilder();
-            for (float v : engineResp.embedding()) {
-              vecBuilder.addValues(v);
+        Promise<EmbedBatchResponse> promise = Promise.promise();
+        embeddingEngine
+          .rxEmbedBatch(request.getTextsList())
+          .map(responses -> {
+            var builder = EmbedBatchResponse.newBuilder();
+            for (var engineResp : responses) {
+              var vecBuilder = FloatVector.newBuilder();
+              for (float v : engineResp.embedding()) {
+                vecBuilder.addValues(v);
+              }
+              builder.addItems(
+                EmbedBatchItem.newBuilder()
+                  .setEmbedding(vecBuilder.build())
+                  .setTokenCount(engineResp.tokenCount())
+                  .build()
+              );
             }
-            builder.addItems(
-              EmbedBatchItem.newBuilder()
-                .setEmbedding(vecBuilder.build())
-                .setTokenCount(engineResp.tokenCount())
-                .build()
-            );
-          }
-          return builder.build();
-        })
-        .subscribe(promise::complete, promise::fail);
-      return promise.future();
-    });
+            return builder.build();
+          })
+          .subscribe(promise::complete, promise::fail);
+        return promise.future();
+      }
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -200,8 +206,11 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
    */
   @Override
   public Future<TextSimilarityResponse> textSimilarity(TextSimilarityRequest request) {
-    return instrumentation.traceUnary("ai.text_similarity", "embed", request.getModelId(), () ->
-      textSimilarityInternal(request)
+    return instrumentation.traceUnary(
+      SpanNames.key("text_similarity"),
+      "embed",
+      request.getModelId(),
+      () -> textSimilarityInternal(request)
     );
   }
 
@@ -272,8 +281,11 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
    */
   @Override
   public Future<TextRerankResponse> textRerank(TextRerankRequest request) {
-    return instrumentation.traceUnary("ai.text_rerank", "rerank", request.getModelId(), () ->
-      textRerankInternal(request)
+    return instrumentation.traceUnary(
+      SpanNames.key("text_rerank"),
+      "rerank",
+      request.getModelId(),
+      () -> textRerankInternal(request)
     );
   }
 
