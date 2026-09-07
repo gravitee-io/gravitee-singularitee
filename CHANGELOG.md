@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.3.0...1.4.0) (2026-09-07)
+
+
+### Features
+
+* OpenInference tracing over OTel and generation confidence signals ([7dd5d4e](https://github.com/gravitee-io/gravitee-singularitee/commit/7dd5d4eb4eb4bc55e166689f17df481d75b07c7b))
+
 # [1.3.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.2.1...1.3.0) (2026-08-31)
 
 
