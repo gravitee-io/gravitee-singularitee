@@ -27,9 +27,6 @@ prod/
 .claude
 **/__pycache__/**
 
-# k6 generated artifacts (corpora + run reports)
-k6/data/
-k6/reports/
 
 # Dev certificates from scripts/gen-dev-certs.sh: never commit key material
 certs/
