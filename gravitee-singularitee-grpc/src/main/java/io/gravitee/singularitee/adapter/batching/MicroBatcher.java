@@ -69,16 +69,7 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
   private final Lane longLane;
   private volatile boolean running = true;
 
-  /**
-   * Creates the two lanes and starts their daemon workers.
-   *
-   * @param name           thread-name prefix for the lane workers
-   * @param maxBatchSize   max items per batch (floored at 1)
-   * @param maxBatchWeight max summed weight per batch (floored at 1)
-   * @param bucketWeight   short/long lane boundary (floored at 1)
-   * @param lingerMillis   how long a lane waits for a batch to fill (floored at 0)
-   * @param batchFn        thread-safe batch function returning one output per input, in order
-   */
+  /** Inline batches on the lane thread (parallelism 1). */
   public MicroBatcher(
     String name,
     int maxBatchSize,
@@ -87,12 +78,36 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
     long lingerMillis,
     Function<List<I>, List<O>> batchFn
   ) {
+    this(name, maxBatchSize, maxBatchWeight, bucketWeight, lingerMillis, 1, batchFn);
+  }
+
+  /**
+   * Creates the two lanes and starts their daemon workers.
+   *
+   * @param name           thread-name prefix for the lane workers
+   * @param maxBatchSize   max items per batch (floored at 1)
+   * @param maxBatchWeight max summed weight per batch (floored at 1)
+   * @param bucketWeight   short/long lane boundary (floored at 1)
+   * @param lingerMillis   how long a lane waits for a batch to fill (floored at 0)
+   * @param parallelism    batches a lane runs concurrently (floored at 1)
+   * @param batchFn        thread-safe batch function returning one output per input, in order
+   */
+  public MicroBatcher(
+    String name,
+    int maxBatchSize,
+    long maxBatchWeight,
+    long bucketWeight,
+    long lingerMillis,
+    int parallelism,
+    Function<List<I>, List<O>> batchFn
+  ) {
     this.bucketWeight = Math.max(1, bucketWeight);
     int size = Math.max(1, maxBatchSize);
     long weight = Math.max(1, maxBatchWeight);
     long lingerNanos = TimeUnit.MILLISECONDS.toNanos(Math.max(0, lingerMillis));
-    this.shortLane = new Lane(name + "-short", size, weight, lingerNanos, batchFn);
-    this.longLane = new Lane(name + "-long", size, weight, lingerNanos, batchFn);
+    int par = Math.max(1, parallelism);
+    this.shortLane = new Lane(name + "-short", size, weight, lingerNanos, par, batchFn);
+    this.longLane = new Lane(name + "-long", size, weight, lingerNanos, par, batchFn);
   }
 
   /**
@@ -128,6 +143,14 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
     private final long lingerNanos;
     private final Function<List<I>, List<O>> batchFn;
     private final Thread worker;
+    /**
+     * {@code parallelism > 1}: batches run on this pool, at most {@code permits} at a time, and the
+     * lane thread goes straight back to composing the next one. That is what lets a backend with
+     * several replicas (gliner4j {@code -Dgliner4j.ggml.replicas=N}) keep N rows in flight; with
+     * one replica the extra batches just queue at the model. Null = run inline (default).
+     */
+    private final java.util.concurrent.ExecutorService pool;
+    private final java.util.concurrent.Semaphore permits;
 
     /** Job pulled during linger that would overflow the token cap; leads the next batch. */
     private Job<I, O> carry;
@@ -137,6 +160,7 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
       int maxBatchSize,
       long maxBatchWeight,
       long lingerNanos,
+      int parallelism,
       Function<List<I>, List<O>> batchFn
     ) {
       this.name = name;
@@ -144,6 +168,18 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
       this.maxBatchWeight = maxBatchWeight;
       this.lingerNanos = lingerNanos;
       this.batchFn = batchFn;
+      if (parallelism > 1) {
+        var counter = new java.util.concurrent.atomic.AtomicInteger();
+        this.pool = java.util.concurrent.Executors.newFixedThreadPool(parallelism, r -> {
+          var t = new Thread(r, "microbatch-" + name + "-" + counter.incrementAndGet());
+          t.setDaemon(true);
+          return t;
+        });
+        this.permits = new java.util.concurrent.Semaphore(parallelism);
+      } else {
+        this.pool = null;
+        this.permits = null;
+      }
       this.worker = new Thread(this::runLoop, "microbatch-" + name);
       this.worker.setDaemon(true);
       this.worker.start();
@@ -162,7 +198,7 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
               continue;
             }
           }
-          runBatch(fillBatch(head));
+          dispatch(fillBatch(head));
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
           break;
@@ -198,6 +234,27 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
         weight += next.weight;
       }
       return batch;
+    }
+
+    /** Runs the batch inline, or on the pool when the lane is parallel (bounded by the permits). */
+    private void dispatch(List<Job<I, O>> batch) throws InterruptedException {
+      if (pool == null) {
+        runBatch(batch);
+        return;
+      }
+      permits.acquire();
+      try {
+        pool.execute(() -> {
+          try {
+            runBatch(batch);
+          } finally {
+            permits.release();
+          }
+        });
+      } catch (RuntimeException e) {
+        permits.release();
+        throw e;
+      }
     }
 
     private void runBatch(List<Job<I, O>> batch) {
@@ -260,6 +317,7 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
 
     private void close() {
       worker.interrupt();
+      if (pool != null) pool.shutdown();
     }
   }
 

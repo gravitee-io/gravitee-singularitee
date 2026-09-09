@@ -71,7 +71,7 @@ public final class GlinerNerEngine
     List<String> configEntityNames,
     Vertx vertx
   ) {
-    super(delegate, vertx);
+    super(delegate, vertx, false); // concurrent callers: the micro-batcher serialises model access
     this.effectiveThreshold = threshold > 0 ? threshold : 0f;
     this.tokenCap = tokenCap;
     this.configEntityNames = configEntityNames == null ? List.of() : configEntityNames;

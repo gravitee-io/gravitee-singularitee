@@ -51,22 +51,27 @@ public final class BatchingConfig {
   public static final long DEFAULT_MAX_BATCH_TOKENS = 2048;
   public static final long DEFAULT_BUCKET_TOKENS = 128;
   public static final long DEFAULT_LINGER_MS = 5;
+  /** Batches a lane runs concurrently; 1 = the lane thread runs them inline. */
+  public static final int DEFAULT_PARALLELISM = 1;
 
   private final int maxBatchSize;
   private final long maxBatchTokens;
   private final long bucketTokens;
   private final long lingerMillis;
+  private final int parallelism;
 
   private BatchingConfig(
     int maxBatchSize,
     long maxBatchTokens,
     long bucketTokens,
-    long lingerMillis
+    long lingerMillis,
+    int parallelism
   ) {
     this.maxBatchSize = maxBatchSize;
     this.maxBatchTokens = maxBatchTokens;
     this.bucketTokens = bucketTokens;
     this.lingerMillis = lingerMillis;
+    this.parallelism = parallelism;
   }
 
   /**
@@ -79,7 +84,8 @@ public final class BatchingConfig {
       (int) readLong(prefix + "_MAX", DEFAULT_MAX_BATCH, 1),
       readLong(prefix + "_MAX_TOKENS", DEFAULT_MAX_BATCH_TOKENS, 1),
       readLong(prefix + "_BUCKET_TOKENS", DEFAULT_BUCKET_TOKENS, 1),
-      readLong(prefix + "_LINGER_MS", DEFAULT_LINGER_MS, 0)
+      readLong(prefix + "_LINGER_MS", DEFAULT_LINGER_MS, 0),
+      (int) readLong(prefix + "_PARALLELISM", DEFAULT_PARALLELISM, 1)
     );
   }
 
@@ -95,6 +101,7 @@ public final class BatchingConfig {
       maxBatchTokens,
       bucketTokens,
       lingerMillis,
+      parallelism,
       batchFn
     );
   }

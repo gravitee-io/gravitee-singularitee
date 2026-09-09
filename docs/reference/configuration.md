@@ -267,6 +267,7 @@ These are read straight from the process environment by the engine adapters.
 | `GRAVITEE_ONNX_BATCH_BUCKET_TOKENS` | `128` | Short/long bucket boundary; items at or below it never share a batch with longer ones. |
 | `GRAVITEE_ONNX_BATCH_LINGER_MS` | `5` | How long a partial batch waits for more items. |
 | `GRAVITEE_GLINER_BATCH_MAX`, `_MAX_TOKENS`, `_BUCKET_TOKENS`, `_LINGER_MS` | same as ONNX | The same micro-batcher knobs for the GLiNER runtimes. |
+| `GRAVITEE_GLINER_BATCH_PARALLELISM` | `1` | Batches each lane runs concurrently. Above 1 only pays with a backend that can serve several calls at once — the ggml engine with `JAVA_OPTS=-Dgliner4j.ggml.replicas=N` (N model copies, one row in flight each); set both to the same N. |
 | `GRAVITEE_GLINER_ENCODER_INTRA_OP_THREADS` | all cores | Intra-op threads for the GLiNER encoder and span sessions. |
 | `GRAVITEE_GLINER_ENCODER_INTER_OP_THREADS` | cores/2, min 2 | Inter-op threads for the same sessions. |
 | `GRAVITEE_GLINER_SCORING_INTRA_OP_THREADS` | cores/4, min 2 | Intra-op threads for the scoring heads. |
