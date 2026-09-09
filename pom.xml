@@ -375,6 +375,13 @@
                 <artifactId>gliner4j-core</artifactId>
                 <version>${gliner4j.version}</version>
             </dependency>
+            <dependency>
+                <!-- GLiNER on llama.cpp/ggml: registers the "llamacpp" engine of every GLiNER family with
+                     gliner4j-core through ServiceLoader; bundles declare their engine in gliner4j_config.json -->
+                <groupId>io.gravitee.ai.gliner4j</groupId>
+                <artifactId>gliner4j-llamacpp</artifactId>
+                <version>${gliner4j.version}</version>
+            </dependency>
 
             <!-- jinja4j -->
             <dependency>

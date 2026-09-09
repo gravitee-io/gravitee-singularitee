@@ -21,7 +21,8 @@ process and GPU, composed over gRPC by a workspace that declares `remote:` endpo
 | `Dockerfile.onnx-cpu` | ONNX Runtime, GLiNER | `graviteeio/java:25-debian` | `-Pdist-onnx` | `onnx_classifier`, `onnx_embedding`, `onnx_reranker`, `gliner_classifier`, `gliner_ner` |
 | `Dockerfile.onnx-cuda` | ONNX Runtime, GLiNER | `nvidia/cuda:<v>-cudnn-runtime-ubuntu<v>` | `-Pcuda,dist-onnx` | same as above, CUDA execution provider |
 | `Dockerfile.llamacpp-cuda` | llama.cpp | `nvidia/cuda:<v>-cudnn-runtime-ubuntu<v>` plus the libs from `LLAMA_LIBS_IMAGE` | `-Pcuda,dist-llama` | `llama_cpp`, `llama_cpp_embedding`, `llama_cpp_reranker` |
-| `Dockerfile.llama-cuda` | builder only | `nvidia/cuda:<v>-devel-ubuntu<v>` | none | compiles llama.cpp with `GGML_CUDA` into `/llama-libs`; consumed by the line above |
+| `Dockerfile.llamacpp-cuda` with `-Pcuda,dist-llama-onnx` | llama.cpp + ONNX Runtime, GLiNER | same image | `-Pcuda,dist-llama-onnx` | llama.cpp types plus `onnx_*`, `gliner_classifier`, `gliner_ner` on the CUDA execution provider (one image for an LLM + guardrails) |
+| `Dockerfile.llama-cuda` | builder only | `nvidia/cuda:<v>-devel-ubuntu<v>` | none | compiles llama.cpp with `GGML_CUDA` into `/llama-libs` and gliner4j's `libggml-deberta` plugin into `/llama-libs/plugins` (`GLINER4J_REF`); consumed by the line above |
 | `Dockerfile.vllm-cuda` | vLLM | `vllm/vllm-openai:v0.26.0-cu129` | `-Pdist-vllm` | `vllm` |
 
 ## Key types
@@ -52,6 +53,11 @@ llama.cpp (compile the libraries once, then build the runtime image against them
 ```bash
 mvn clean install -DskipTests -Pcuda,dist-llama
 docker build -f Dockerfile.llama-cuda -t llama-cpp-cuda:local .
+# GLiNER's DEBERTA plugin comes from GLINER4J_REF on GitHub; a local GLiNER4j checkout can stand in:
+#   --build-context gliner4j=/path/to/GLiNER4j/gliner4j-llamacpp/native
+# Always assemble the distribution with the WHOLE reactor under -Pcuda: a partial `-pl` rebuild
+# resolves the other modules from ~/.m2, where the profile does not apply, and the CPU
+# onnxruntime jar lands next to onnxruntime_gpu (the CPU one wins on the classpath).
 docker build -f Dockerfile.llamacpp-cuda --build-arg LLAMA_LIBS_IMAGE=llama-cpp-cuda:local \
   -t singularitee:llamacpp-cuda .
 docker run --rm --gpus all -p 9090:9090 \

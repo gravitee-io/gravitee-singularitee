@@ -247,6 +247,8 @@ A model's own `vllm:` value wins; these apply when the workspace leaves the fiel
 | --- | --- | --- |
 | `vllm4j.venv` | unset | Python virtualenv the vLLM engine loads CPython from. The only way vLLM4j finds it; `run-server.sh` and `docker/cuda/cuda-env.sh` set it. |
 | `vllm4j.attentionBackend` | auto | vLLM attention backend. On pre-Ampere GPUs the server pins `TRITON_ATTN` unless this or `VLLM4J_ATTENTION_BACKEND` is set. |
+| `gliner4j.ggml.rawQkv` | `false` | Skips the f32→f16 cast before the `libggml-deberta` attention op and feeds q/k/v straight from the projection GEMMs, trading the cast launches for extra f32 traffic through the kernel's key-tile re-reads. Effect is architecture-dependent; leave at the default unless you have measured a net win on your hardware. |
+| `gliner4j.ggml.eventOrdering` | `true` | Cross-backend stream synchronization for the `libggml-deberta` plugin's `ggml_backend_sched` splits (see the `0001-ggml-sched-cross-backend-events.patch` in GLiNER4j). Setting it to `false` falls back to host-side syncs between splits; leave at the default. |
 
 ### Engine environment variables (not `gravitee.yml` keys)
 
@@ -255,7 +257,8 @@ These are read straight from the process environment by the engine adapters.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `HF_TOKEN` | unset | Fallback for `ai.huggingface.token`. |
-| `LLAMA_CPP_LIB_PATH` | unset | Directory llamaj.cpp loads the llama.cpp natives from before falling back to `~/.llama.cpp`. The CUDA image sets it. |
+| `LLAMA_CPP_LIB_PATH` | unset | Directory llamaj.cpp loads the llama.cpp natives from before falling back to `~/.llama.cpp`; GLiNER ggml bundles use the same natives and look for the `libggml-deberta` plugin in its `plugins/` sub-directory. The CUDA image sets it. |
+| `GLINER4J_DEBERTA_KERNEL` | `auto` | Attention kernel of the `libggml-deberta` plugin: `auto` times every variant the GPU holds at first use (logged as `DEBERTA plugin: autotune …`) and keeps the fastest correct one; `turing`, `ampere` (shared-memory kernels) or `reg64x32`, `reg64x64`, `reg128x32`, `reg128x64` (register-resident) force one. `GLINER4J_DEBERTA_AUTOTUNE=0` keeps the static rule instead. |
 | `VLLM4J_ATTENTION_BACKEND` | unset | Same as `-Dvllm4j.attentionBackend`. |
 | `GRAVITEE_ONNX_INTRA_OPS_NUM_THREADS` | CPU count | Intra-op threads for ONNX classifier, embedding and reranker sessions. |
 | `GRAVITEE_ONNX_RERANK_MAX_BATCH_TOKENS` | `32768` | Padded-token budget per ONNX reranker batch (rows are capped at 256 regardless). |
@@ -268,7 +271,7 @@ These are read straight from the process environment by the engine adapters.
 | `GRAVITEE_GLINER_ENCODER_INTER_OP_THREADS` | cores/2, min 2 | Inter-op threads for the same sessions. |
 | `GRAVITEE_GLINER_SCORING_INTRA_OP_THREADS` | cores/4, min 2 | Intra-op threads for the scoring heads. |
 | `GRAVITEE_GLINER_SCORING_INTER_OP_THREADS` | `1` | Inter-op threads for the scoring heads. |
-| `GRAVITEE_GLINER_EXECUTION_PROVIDER` | auto | Force `cuda` or `cpu`. |
+| `GRAVITEE_GLINER_EXECUTION_PROVIDER` | auto | Force `cuda` or `cpu` (ONNX execution provider, or GPU offload vs CPU for llama.cpp/ggml GLiNER bundles). |
 | `GRAVITEE_GLINER_ALLOW_SPINNING` | ORT default | `0` or `false` stops the ORT thread pools busy-waiting; useful when compute is GPU-bound. |
 | `GRAVITEE_GLINER_ORT_PROFILING_DIR` | unset | Write per-node ONNX profiling traces here on session close. Diagnostic only. |
 | `GRAVITEE_GLINER_ORT_PROFILING_SECONDS` | unset | Flush the traces this many seconds after load instead of at close. |

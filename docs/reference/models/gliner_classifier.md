@@ -45,11 +45,24 @@ workspace:
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `model_dir` | string | resolved from `name` | Root directory holding `gliner_config.json`, the tokenizer files and the `onnx*/` variant folders. Set only for a local directory. |
+| `model_dir` | string | resolved from `name` | Root directory holding `gliner4j_config.json`, the tokenizer files and the `onnx*/` variant folders (or `gguf/` for a llama.cpp bundle). Set only for a local directory. |
 | `labels` | list of `{name, description}` | unset | The zero-shot schema. `description` is optional and recommended. |
 | `threshold` | float | `0` (no filtering) | Minimum score for a label to be reported. |
-| `variant` | string | `onnx` | Variant sub-folder: `onnx`, `onnx_fp16`, `onnx_quantized`. |
+| `variant` | string | `onnx` | ONNX bundles: the variant sub-folder, `onnx`, `onnx_fp16`, `onnx_quantized`. llama.cpp/ggml bundles (`"engine": "llamacpp"` in `gliner4j_config.json`, weights under `gguf/`): the GGUF quantisation, `q8_0` or `q4_0`; anything else selects the f16 `model.gguf`. |
 | `token_cap` | int | `512` | Encoder window including the label prompt; longer inputs are chunked to fit. |
+
+## Engines
+
+The bundle decides the engine: gliner4j-core reads `"engine"` from `gliner4j_config.json` and
+dispatches to ONNX Runtime (default) or, when `gliner4j-llamacpp` is on the classpath, to the
+llama.cpp/ggml implementation of the same family. The GLiNER4j ggml bundles are separate
+HuggingFace repositories (`<org>/gliner4j-<model>-llamacpp`); point `name` at one and the resolver
+downloads its `gguf/` weights (only the requested quantisation) instead of an `onnx*/` folder.
+On CUDA the ggml engine offloads to the GPU by default (`GRAVITEE_GLINER_EXECUTION_PROVIDER=cpu`
+keeps it on the CPU) and uses the llama.cpp natives from `LLAMA_CPP_LIB_PATH`; the CUDA image
+also carries gliner4j's `libggml-deberta` plugin under `<natives>/plugins/`, the fused DeBERTa
+kernels used there.
+Thread and batching knobs are the `GRAVITEE_GLINER_*` variables in both cases.
 
 ## Notes
 

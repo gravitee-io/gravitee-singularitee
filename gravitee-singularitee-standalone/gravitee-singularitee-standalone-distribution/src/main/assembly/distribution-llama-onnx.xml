@@ -17,10 +17,10 @@
 
 -->
 <!--
-    llama.cpp flavour: GGUF text generation, embeddings and reranking.
-
-    Drops ONNX Runtime, GLiNER and vLLM. ONNX Runtime is the notable saving:
-    gliner4j declares it provided, so both go together.
+    llama.cpp + ONNX Runtime flavour: GGUF text generation, embeddings and reranking,
+    plus the ONNX classifiers / embeddings / rerankers and GLiNER on both engines
+    (ONNX Runtime and, for "engine": "llamacpp" bundles, gliner4j-llamacpp over the
+    same llama.cpp natives). Drops vLLM only. One image for an LLM and its guardrails.
 -->
 <assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -88,8 +88,6 @@
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-sub-pipeline:*</exclude>
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-todo:*</exclude>
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-infer:*</exclude>
-                <exclude>io.gravitee.ai.gliner4j:*</exclude>
-                <exclude>io.gravitee.singularitee.inference:gravitee-singularitee-inference-onnx</exclude>
                 <exclude>io.gravitee.vllm:vLLM4j</exclude>
                 <exclude>io.gravitee.singularitee.inference:gravitee-singularitee-inference-vllm</exclude>
             </excludes>
@@ -99,7 +97,6 @@
             <outputDirectory>lib/ext</outputDirectory>
             <excludes>
                 <exclude>io.gravitee.*:*:jar</exclude>
-                <exclude>com.microsoft.onnxruntime:*</exclude>
             </excludes>
         </dependencySet>
     </dependencySets>
