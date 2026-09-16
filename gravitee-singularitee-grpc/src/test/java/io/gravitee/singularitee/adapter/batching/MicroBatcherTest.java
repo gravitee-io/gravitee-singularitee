@@ -172,6 +172,81 @@ class MicroBatcherTest {
   }
 
   @Test
+  void close_fails_a_batch_waiting_for_a_saturated_pool() throws Exception {
+    // One item per batch, two runners: "a" and "b" fill the pool, "c" leaves the queue and waits
+    // for a runner. Closing must fail "c" instead of leaving its future pending forever.
+    var running = new CountDownLatch(2);
+    var release = new CountDownLatch(1);
+    Function<List<String>, List<String>> fn = inputs -> {
+      running.countDown();
+      try {
+        release.await(5, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+      return inputs
+        .stream()
+        .map(s -> "out:" + s)
+        .toList();
+    };
+    var batcher = new MicroBatcher<String, String>("saturated", 1, TOKEN_CAP, BUCKET, 0, 2, fn);
+    try {
+      var a = batcher.submit("a", 1);
+      var b = batcher.submit("b", 1);
+      assertThat(running.await(2, TimeUnit.SECONDS)).isTrue();
+
+      var c = batcher.submit("c", 1);
+      awaitLaneIn("microbatch-saturated-short", "dispatch");
+      batcher.close();
+
+      assertThatThrownBy(() -> c.get(2, TimeUnit.SECONDS))
+        .isInstanceOf(ExecutionException.class)
+        .hasCauseInstanceOf(IllegalStateException.class);
+      release.countDown();
+      assertThat(a.get(2, TimeUnit.SECONDS)).isEqualTo("out:a");
+      assertThat(b.get(2, TimeUnit.SECONDS)).isEqualTo("out:b");
+    } finally {
+      release.countDown();
+      batcher.close();
+    }
+  }
+
+  @Test
+  void close_fails_a_batch_still_lingering() throws Exception {
+    var fn = new RecordingBatchFn(null);
+    var batcher = new MicroBatcher<String, String>("lingering", 16, TOKEN_CAP, BUCKET, 10_000, fn);
+    var f = batcher.submit("a", 1);
+    awaitLaneIn("microbatch-lingering-short", "fillBatch");
+    batcher.close();
+
+    assertThatThrownBy(() -> f.get(2, TimeUnit.SECONDS))
+      .isInstanceOf(ExecutionException.class)
+      .hasCauseInstanceOf(IllegalStateException.class);
+    assertThat(fn.batches).isEmpty();
+  }
+
+  /** Waits until the lane thread {@code threadName} is blocked inside {@code method}. */
+  private static void awaitLaneIn(String threadName, String method) throws InterruptedException {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+    while (System.nanoTime() < deadline) {
+      for (var entry : Thread.getAllStackTraces().entrySet()) {
+        if (!entry.getKey().getName().equals(threadName)) {
+          continue;
+        }
+        Thread.State state = entry.getKey().getState();
+        boolean blocked = state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING;
+        for (StackTraceElement frame : entry.getValue()) {
+          if (blocked && frame.getMethodName().equals(method)) {
+            return;
+          }
+        }
+      }
+      Thread.sleep(10);
+    }
+    throw new AssertionError(threadName + " never blocked in " + method);
+  }
+
+  @Test
   void close_fails_pending_submissions() {
     var fn = new RecordingBatchFn(null);
     var batcher = new MicroBatcher<String, String>("t", 16, TOKEN_CAP, BUCKET, 5, fn);

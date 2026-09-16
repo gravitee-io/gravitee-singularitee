@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.slf4j.Logger;
@@ -155,6 +156,9 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
     /** Job pulled during linger that would overflow the token cap; leads the next batch. */
     private Job<I, O> carry;
 
+    /** Batch removed from the queue but not yet handed to a runner; failed if the lane stops first. */
+    private List<Job<I, O>> taken;
+
     private Lane(
       String name,
       int maxBatchSize,
@@ -186,8 +190,8 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
     }
 
     private void runLoop() {
-      while (running) {
-        try {
+      try {
+        while (running) {
           // Head of the next batch: the carry-over from the previous linger, or block (with a
           // periodic wake so shutdown is observed) until a job arrives.
           Job<I, O> head = carry;
@@ -198,24 +202,28 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
               continue;
             }
           }
-          dispatch(fillBatch(head));
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          break;
+          taken = new ArrayList<>(maxBatchSize);
+          taken.add(head);
+          fillBatch(taken);
+          dispatch(taken);
+          taken = null;
         }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      } catch (RejectedExecutionException e) {
+        // the pool was shut down by close() while this batch waited for it
+      } finally {
+        failRemaining();
       }
-      failRemaining();
     }
 
     /**
-     * Builds a batch led by {@code head} (always included, even if it alone exceeds the token
-     * cap), lingering up to the window for more jobs until the count or token cap is reached. A
-     * polled job that would overflow the cap is kept as {@link #carry} to lead the next batch.
+     * Grows {@code batch}, already led by its head (always included, even if it alone exceeds the
+     * token cap), lingering up to the window for more jobs until the count or token cap is reached.
+     * A polled job that would overflow the cap is kept as {@link #carry} to lead the next batch.
      */
-    private List<Job<I, O>> fillBatch(Job<I, O> head) throws InterruptedException {
-      List<Job<I, O>> batch = new ArrayList<>(maxBatchSize);
-      batch.add(head);
-      long weight = head.weight;
+    private void fillBatch(List<Job<I, O>> batch) throws InterruptedException {
+      long weight = batch.getFirst().weight;
       long deadline = System.nanoTime() + lingerNanos;
       while (batch.size() < maxBatchSize && weight < maxBatchWeight) {
         long remaining = deadline - System.nanoTime();
@@ -233,7 +241,6 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
         batch.add(next);
         weight += next.weight;
       }
-      return batch;
     }
 
     /** Runs the batch inline, or on the pool when the lane is parallel (bounded by the permits). */
@@ -305,6 +312,12 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
 
     private void failRemaining() {
       IllegalStateException closed = new IllegalStateException("micro-batcher is closed");
+      if (taken != null) {
+        for (Job<I, O> job : taken) {
+          job.future.completeExceptionally(closed);
+        }
+        taken = null;
+      }
       if (carry != null) {
         carry.future.completeExceptionally(closed);
         carry = null;
