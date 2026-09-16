@@ -119,8 +119,9 @@ non-positive properties count as unset.
   (`.json`, `.txt`, `.model`, `.jinja`) plus one weight format, safetensors preferred,
   `.bin` only when the repository has no safetensors. GGUF, ONNX and other runtimes' copies
   are never fetched. `download.exclude` narrows this further and is applied before the weight
-  format is chosen. A cache directory counts as complete only with `config.json` and at least
-  one weight file, so an interrupted download resumes instead of failing at load.
+  format is chosen. A `.complete` marker is written once every selected file is on disk, and
+  only that marker makes the next start skip the download: an interrupted download (a missing
+  shard, say) is finished instead of failing at load.
 - **Pre-Ampere GPUs are adapted.** On compute capability below 8.0 `dtype: auto` resolves to
   `float16` and the attention backend is pinned to `TRITON_ATTN`; an explicit `dtype:` or
   `VLLM4J_ATTENTION_BACKEND` wins.

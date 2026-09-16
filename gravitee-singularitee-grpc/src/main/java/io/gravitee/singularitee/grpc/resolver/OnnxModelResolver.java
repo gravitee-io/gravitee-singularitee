@@ -70,6 +70,9 @@ public final class OnnxModelResolver {
     "models"
   );
 
+  /** Marker key for the tokenizer files, which may share a directory with the model files. */
+  private static final String TOKENIZER_MARKER = "tokenizer";
+
   private final HuggingFaceModelDownloader downloader;
   private final Path cacheDir;
 
@@ -416,11 +419,16 @@ public final class OnnxModelResolver {
       return Single.just(local.getParent().toAbsolutePath());
     }
 
-    // 3. Check if already cached
+    // 3. Check if a previous run downloaded every tokenizer file, into the sub-directory named by
+    // tokenizer_path or, for well-known tokenizer files, into the model directory itself
     Path cachedDir = modelCacheDir.resolve(tokenizerPath);
-    if (Files.isDirectory(cachedDir)) {
+    if (CacheMarker.isComplete(cachedDir, TOKENIZER_MARKER)) {
       LOGGER.info("Tokenizer already cached: {}", cachedDir.toAbsolutePath());
       return Single.just(cachedDir.toAbsolutePath());
+    }
+    if (CacheMarker.isComplete(modelCacheDir, TOKENIZER_MARKER)) {
+      LOGGER.info("Tokenizer already cached: {}", modelCacheDir.toAbsolutePath());
+      return Single.just(modelCacheDir.toAbsolutePath());
     }
 
     // 4. Download from HuggingFace: list the repo and grab all tokenizer files
@@ -473,7 +481,8 @@ public final class OnnxModelResolver {
 
         return downloader
           .download(modelName, flatNames.isEmpty() ? tokenizerFiles : flatNames, tokenizerTargetDir)
-          .map(_ -> {
+          .map(downloaded -> {
+            CacheMarker.mark(tokenizerTargetDir, TOKENIZER_MARKER, downloaded);
             LOGGER.info("Tokenizer resolved to: {}", tokenizerTargetDir.toAbsolutePath());
             return tokenizerTargetDir.toAbsolutePath();
           });

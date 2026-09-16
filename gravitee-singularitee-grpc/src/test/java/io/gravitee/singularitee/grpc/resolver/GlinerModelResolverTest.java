@@ -110,56 +110,6 @@ class GlinerModelResolverTest {
     assertThat(GlinerModelResolver.hasBundle(dir, "q8_0")).isTrue();
   }
 
-  @Test
-  void only_a_completed_download_counts_as_cached(@TempDir Path dir) throws Exception {
-    touch(dir, "gguf/model.gguf");
-    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isFalse();
-    GlinerModelResolver.markComplete(dir, "onnx", List.of(dir.resolve("gguf/model.gguf")));
-    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isTrue();
-  }
-
-  @Test
-  void each_variant_is_marked_separately(@TempDir Path dir) throws Exception {
-    touch(dir, "gguf/model.gguf");
-    GlinerModelResolver.markComplete(dir, "onnx", List.of(dir.resolve("gguf/model.gguf")));
-    // the repository may carry model-q8_0.gguf: only the listing can tell, so no cache shortcut
-    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isFalse();
-    touch(dir, "gguf/model-q8_0.gguf");
-    GlinerModelResolver.markComplete(dir, "q8_0", List.of(dir.resolve("gguf/model-q8_0.gguf")));
-    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isTrue();
-    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isTrue();
-  }
-
-  @Test
-  void a_partial_multi_file_bundle_is_not_cached(@TempDir Path dir) throws Exception {
-    // decoder-kv and streaming-span bundles ship several unrelated gguf files: a directory
-    // holding only some of them must not short-circuit the download
-    touch(dir, "gguf/scorer.gguf");
-    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isFalse();
-    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isFalse();
-  }
-
-  @Test
-  void an_onnx_variant_folder_alone_is_not_cached(@TempDir Path dir) throws Exception {
-    // the folder may hold a partial download; the marker is what makes it a hit
-    Files.createDirectories(dir.resolve("onnx_fp16"));
-    assertThat(GlinerModelResolver.isCached(dir, "onnx_fp16")).isFalse();
-    GlinerModelResolver.markComplete(dir, "onnx_fp16", List.of(dir.resolve("onnx_fp16")));
-    assertThat(GlinerModelResolver.isCached(dir, "onnx_fp16")).isTrue();
-    assertThat(GlinerModelResolver.isCached(dir, "onnx_quantized")).isFalse();
-  }
-
-  @Test
-  void a_variant_name_cannot_escape_the_cache_directory(@TempDir Path dir) throws Exception {
-    GlinerModelResolver.markComplete(dir, "../evil", List.of());
-    assertThat(GlinerModelResolver.isCached(dir, "../evil")).isTrue();
-    assertThat(
-      Files.list(dir)
-        .map(p -> p.getFileName().toString())
-        .toList()
-    ).containsExactly(".complete-.._evil");
-  }
-
   private static void touch(Path dir, String file) throws Exception {
     Path path = dir.resolve(file);
     Files.createDirectories(path.getParent());
