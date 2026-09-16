@@ -98,10 +98,66 @@ class GlinerModelResolverTest {
   }
 
   @Test
-  void a_gguf_folder_counts_as_a_bundle_whatever_the_variant(@TempDir Path dir) throws Exception {
-    assertThat(GlinerModelResolver.hasBundle(dir, "onnx_fp16")).isFalse();
+  void an_empty_gguf_folder_is_neither_a_bundle_nor_a_cache_hit(@TempDir Path dir)
+    throws Exception {
     Files.createDirectories(dir.resolve("gguf"));
-    assertThat(GlinerModelResolver.hasBundle(dir, "onnx_fp16")).isTrue();
+    assertThat(GlinerModelResolver.hasBundle(dir, "onnx")).isFalse();
+    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isFalse();
+    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isFalse();
+  }
+
+  @Test
+  void a_local_gguf_bundle_is_accepted_whatever_the_variant(@TempDir Path dir) throws Exception {
+    touch(dir, "gguf/model.gguf");
+    assertThat(GlinerModelResolver.hasBundle(dir, "onnx")).isTrue();
     assertThat(GlinerModelResolver.hasBundle(dir, "q8_0")).isTrue();
+  }
+
+  @Test
+  void cached_f16_serves_the_default_variant_only(@TempDir Path dir) throws Exception {
+    touch(dir, "gguf/model.gguf");
+    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isTrue();
+    // the repository may carry model-q8_0.gguf: the download path must list it
+    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isFalse();
+  }
+
+  @Test
+  void cached_quantisation_serves_that_variant_only(@TempDir Path dir) throws Exception {
+    touch(dir, "gguf/model-q8_0.gguf");
+    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isTrue();
+    assertThat(GlinerModelResolver.isCached(dir, "q4_0")).isFalse();
+    // gliner4j would look for model.gguf, which is not there
+    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isFalse();
+  }
+
+  @Test
+  void switching_variants_on_an_existing_cache(@TempDir Path dir) throws Exception {
+    touch(dir, "gguf/model.gguf");
+    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isFalse();
+    touch(dir, "gguf/model-q8_0.gguf");
+    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isTrue();
+    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isTrue();
+  }
+
+  @Test
+  void a_gguf_folder_without_per_quantisation_weights_is_complete(@TempDir Path dir)
+    throws Exception {
+    touch(dir, "gguf/backbone-q8_0.gguf");
+    touch(dir, "gguf/scorer.gguf");
+    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isTrue();
+    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isTrue();
+  }
+
+  @Test
+  void an_onnx_variant_folder_is_a_cache_hit_for_that_variant(@TempDir Path dir) throws Exception {
+    Files.createDirectories(dir.resolve("onnx_fp16"));
+    assertThat(GlinerModelResolver.isCached(dir, "onnx_fp16")).isTrue();
+    assertThat(GlinerModelResolver.isCached(dir, "onnx_quantized")).isFalse();
+  }
+
+  private static void touch(Path dir, String file) throws Exception {
+    Path path = dir.resolve(file);
+    Files.createDirectories(path.getParent());
+    Files.writeString(path, "");
   }
 }

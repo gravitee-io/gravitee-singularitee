@@ -187,8 +187,8 @@ public final class GlinerModelResolver {
       }
     }
 
-    // 2. Already cached
-    if (hasBundle(modelCacheDir, variant)) {
+    // 2. Already cached with the weights this variant loads
+    if (isCached(modelCacheDir, variant)) {
       LOGGER.info("GLiNER model already cached: {}", modelCacheDir.toAbsolutePath());
       return Single.just(modelCacheDir.toAbsolutePath());
     }
@@ -236,12 +236,64 @@ public final class GlinerModelResolver {
   /** llama.cpp/ggml bundles keep every weight under {@code gguf/} whatever the variant. */
   private static final String GGUF_DIR = "gguf";
 
-  /** Whether {@code dir} holds a usable bundle: the ONNX variant folder, or a ggml {@code gguf/} folder. */
+  /**
+   * Whether a user-supplied {@code dir} holds a bundle: the ONNX variant folder, or a {@code gguf/}
+   * folder with at least one {@code .gguf} file. Which weights a local bundle carries is the
+   * user's choice, so the variant is not checked against them.
+   */
   static boolean hasBundle(Path dir, String variant) {
     return (
       Files.isDirectory(dir) &&
-      (Files.isDirectory(dir.resolve(variant)) || Files.isDirectory(dir.resolve(GGUF_DIR)))
+      (Files.isDirectory(dir.resolve(variant)) || !ggufFiles(dir.resolve(GGUF_DIR)).isEmpty())
     );
+  }
+
+  /**
+   * Whether the cache already holds what {@code variant} loads, following gliner4j's selection:
+   * {@code gguf/model-<variant>.gguf} when present, otherwise the f16 {@code gguf/model.gguf}.
+   * Only the default variant ({@code onnx*}, which names no quantisation) is served by
+   * {@code model.gguf} alone; for any other variant the repository may carry
+   * {@code model-<variant>.gguf}, so the download path lists it and fetches only what is missing.
+   * A {@code gguf/} folder without per-quantisation model weights is complete for every variant.
+   */
+  static boolean isCached(Path dir, String variant) {
+    if (!Files.isDirectory(dir)) {
+      return false;
+    }
+    if (Files.isDirectory(dir.resolve(variant))) {
+      return true;
+    }
+    List<String> files = ggufFiles(dir.resolve(GGUF_DIR));
+    if (files.isEmpty()) {
+      return false;
+    }
+    if (files.contains("model-" + variant + ".gguf")) {
+      return true;
+    }
+    boolean perQuantisation = files
+      .stream()
+      .anyMatch(name -> name.equals("model.gguf") || name.startsWith("model-"));
+    if (!perQuantisation) {
+      return true;
+    }
+    return variant.startsWith("onnx") && files.contains("model.gguf");
+  }
+
+  /** The {@code .gguf} file names directly under {@code ggufDir}; empty when it is absent or unreadable. */
+  private static List<String> ggufFiles(Path ggufDir) {
+    if (!Files.isDirectory(ggufDir)) {
+      return List.of();
+    }
+    try (var entries = Files.list(ggufDir)) {
+      return entries
+        .filter(Files::isRegularFile)
+        .map(p -> p.getFileName().toString())
+        .filter(name -> name.endsWith(".gguf"))
+        .toList();
+    } catch (IOException e) {
+      LOGGER.warn("Cannot list GLiNER gguf directory {}", ggufDir, e);
+      return List.of();
+    }
   }
 
   /**
