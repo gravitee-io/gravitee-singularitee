@@ -70,7 +70,8 @@ Thread and batching knobs are the `GRAVITEE_GLINER_*` variables in both cases.
 - **Combine with regex.** A `composite_classifier` over a `regex` model and a `gliner_ner`
   model gives one guard both deterministic patterns and learned entities.
 - **What gets downloaded.** Root files plus the `variant` sub-folder only; `download.exclude`
-  narrows it further.
+  narrows it further. A `.complete-<variant>` marker is written once every selected file is on
+  disk, and only that marker makes the next start skip the download.
 - **Runtime knobs** are the `GRAVITEE_GLINER_*` environment variables listed on
   [gliner_classifier](./gliner_classifier.md).
 

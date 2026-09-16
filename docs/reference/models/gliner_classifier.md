@@ -75,7 +75,9 @@ Thread and batching knobs are the `GRAVITEE_GLINER_*` variables in both cases.
 - **What gets downloaded.** `GlinerModelResolver` fetches the repository's root files
   (tokenizer, `gliner_config.json`, ...) and only the `variant` sub-folder; other variants
   are skipped. `download.exclude` narrows that further. The directory lands in
-  `<cache>/<org>/<model>/`.
+  `<cache>/<org>/<model>/`. A `.complete-<variant>` marker is written once every selected file is
+  on disk, and only that marker makes the next start skip the download: a directory left behind by
+  an interrupted download is completed rather than loaded half-empty.
 - **Runtime knobs are environment variables**, not YAML: `GRAVITEE_GLINER_ENCODER_INTRA_OP_THREADS`,
   `GRAVITEE_GLINER_ENCODER_INTER_OP_THREADS`, `GRAVITEE_GLINER_SCORING_INTRA_OP_THREADS`,
   `GRAVITEE_GLINER_SCORING_INTER_OP_THREADS` (thread pools, gliner4j defaults sized for CPU),

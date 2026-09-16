@@ -15,6 +15,8 @@
  */
 package io.gravitee.singularitee.grpc.resolver;
 
+import static java.util.stream.Collectors.joining;
+
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
 import io.gravitee.singularitee.workspace.config.GlinerClassifierConfig;
 import io.gravitee.singularitee.workspace.config.GlinerNerConfig;
@@ -228,6 +230,7 @@ public final class GlinerModelResolver {
         return downloader.download(modelName, filesToDownload, modelCacheDir, repoFileSizes);
       })
       .map(paths -> {
+        markComplete(modelCacheDir, variant, paths);
         LOGGER.info("GLiNER model resolved to: {}", modelCacheDir.toAbsolutePath());
         return modelCacheDir.toAbsolutePath();
       });
@@ -248,35 +251,39 @@ public final class GlinerModelResolver {
     );
   }
 
+  /** Written into the cache directory once every file selected for a variant has been downloaded. */
+  private static final String COMPLETION_MARKER_PREFIX = ".complete-";
+
   /**
-   * Whether the cache already holds what {@code variant} loads, following gliner4j's selection:
-   * {@code gguf/model-<variant>.gguf} when present, otherwise the f16 {@code gguf/model.gguf}.
-   * Only the default variant ({@code onnx*}, which names no quantisation) is served by
-   * {@code model.gguf} alone; for any other variant the repository may carry
-   * {@code model-<variant>.gguf}, so the download path lists it and fetches only what is missing.
-   * A {@code gguf/} folder without per-quantisation model weights is complete for every variant.
+   * Whether the cache holds a complete download for {@code variant}. Which files a bundle needs
+   * cannot be told from the directory alone: a ggml bundle may carry per-quantisation weights
+   * ({@code model.gguf}, {@code model-<variant>.gguf}) or several unrelated files (backbone,
+   * scorer, heads), so a half-downloaded directory looks exactly like a complete one. Only the
+   * marker {@link #markComplete} writes after a successful download counts; anything else sends the
+   * resolver back to the repository listing, which re-fetches just the files that are missing or
+   * the wrong size.
    */
   static boolean isCached(Path dir, String variant) {
-    if (!Files.isDirectory(dir)) {
-      return false;
+    return Files.isRegularFile(completionMarker(dir, variant));
+  }
+
+  /** Records that every file selected for {@code variant} is on disk, listing them for diagnostics. */
+  static void markComplete(Path dir, String variant, List<Path> files) {
+    Path marker = completionMarker(dir, variant);
+    try {
+      Files.writeString(marker, files.stream().map(Path::toString).sorted().collect(joining("\n")));
+    } catch (IOException | RuntimeException e) {
+      LOGGER.warn(
+        "Cannot write the GLiNER cache marker {}: the next start lists the repository again",
+        marker,
+        e
+      );
     }
-    if (Files.isDirectory(dir.resolve(variant))) {
-      return true;
-    }
-    List<String> files = ggufFiles(dir.resolve(GGUF_DIR));
-    if (files.isEmpty()) {
-      return false;
-    }
-    if (files.contains("model-" + variant + ".gguf")) {
-      return true;
-    }
-    boolean perQuantisation = files
-      .stream()
-      .anyMatch(name -> name.equals("model.gguf") || name.startsWith("model-"));
-    if (!perQuantisation) {
-      return true;
-    }
-    return variant.startsWith("onnx") && files.contains("model.gguf");
+  }
+
+  /** The marker path for {@code variant}, whose name is sanitised since it comes from the workspace. */
+  private static Path completionMarker(Path dir, String variant) {
+    return dir.resolve(COMPLETION_MARKER_PREFIX + variant.replaceAll("[^A-Za-z0-9_.-]", "_"));
   }
 
   /** The {@code .gguf} file names directly under {@code ggufDir}; empty when it is absent or unreadable. */

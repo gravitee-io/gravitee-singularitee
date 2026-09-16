@@ -98,12 +98,9 @@ class GlinerModelResolverTest {
   }
 
   @Test
-  void an_empty_gguf_folder_is_neither_a_bundle_nor_a_cache_hit(@TempDir Path dir)
-    throws Exception {
+  void an_empty_gguf_folder_is_not_a_local_bundle(@TempDir Path dir) throws Exception {
     Files.createDirectories(dir.resolve("gguf"));
     assertThat(GlinerModelResolver.hasBundle(dir, "onnx")).isFalse();
-    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isFalse();
-    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isFalse();
   }
 
   @Test
@@ -114,45 +111,53 @@ class GlinerModelResolverTest {
   }
 
   @Test
-  void cached_f16_serves_the_default_variant_only(@TempDir Path dir) throws Exception {
+  void only_a_completed_download_counts_as_cached(@TempDir Path dir) throws Exception {
     touch(dir, "gguf/model.gguf");
-    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isTrue();
-    // the repository may carry model-q8_0.gguf: the download path must list it
-    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isFalse();
-  }
-
-  @Test
-  void cached_quantisation_serves_that_variant_only(@TempDir Path dir) throws Exception {
-    touch(dir, "gguf/model-q8_0.gguf");
-    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isTrue();
-    assertThat(GlinerModelResolver.isCached(dir, "q4_0")).isFalse();
-    // gliner4j would look for model.gguf, which is not there
     assertThat(GlinerModelResolver.isCached(dir, "onnx")).isFalse();
+    GlinerModelResolver.markComplete(dir, "onnx", List.of(dir.resolve("gguf/model.gguf")));
+    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isTrue();
   }
 
   @Test
-  void switching_variants_on_an_existing_cache(@TempDir Path dir) throws Exception {
+  void each_variant_is_marked_separately(@TempDir Path dir) throws Exception {
     touch(dir, "gguf/model.gguf");
+    GlinerModelResolver.markComplete(dir, "onnx", List.of(dir.resolve("gguf/model.gguf")));
+    // the repository may carry model-q8_0.gguf: only the listing can tell, so no cache shortcut
     assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isFalse();
     touch(dir, "gguf/model-q8_0.gguf");
+    GlinerModelResolver.markComplete(dir, "q8_0", List.of(dir.resolve("gguf/model-q8_0.gguf")));
     assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isTrue();
     assertThat(GlinerModelResolver.isCached(dir, "onnx")).isTrue();
   }
 
   @Test
-  void a_gguf_folder_without_per_quantisation_weights_is_complete(@TempDir Path dir)
-    throws Exception {
-    touch(dir, "gguf/backbone-q8_0.gguf");
+  void a_partial_multi_file_bundle_is_not_cached(@TempDir Path dir) throws Exception {
+    // decoder-kv and streaming-span bundles ship several unrelated gguf files: a directory
+    // holding only some of them must not short-circuit the download
     touch(dir, "gguf/scorer.gguf");
-    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isTrue();
-    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isTrue();
+    assertThat(GlinerModelResolver.isCached(dir, "onnx")).isFalse();
+    assertThat(GlinerModelResolver.isCached(dir, "q8_0")).isFalse();
   }
 
   @Test
-  void an_onnx_variant_folder_is_a_cache_hit_for_that_variant(@TempDir Path dir) throws Exception {
+  void an_onnx_variant_folder_alone_is_not_cached(@TempDir Path dir) throws Exception {
+    // the folder may hold a partial download; the marker is what makes it a hit
     Files.createDirectories(dir.resolve("onnx_fp16"));
+    assertThat(GlinerModelResolver.isCached(dir, "onnx_fp16")).isFalse();
+    GlinerModelResolver.markComplete(dir, "onnx_fp16", List.of(dir.resolve("onnx_fp16")));
     assertThat(GlinerModelResolver.isCached(dir, "onnx_fp16")).isTrue();
     assertThat(GlinerModelResolver.isCached(dir, "onnx_quantized")).isFalse();
+  }
+
+  @Test
+  void a_variant_name_cannot_escape_the_cache_directory(@TempDir Path dir) throws Exception {
+    GlinerModelResolver.markComplete(dir, "../evil", List.of());
+    assertThat(GlinerModelResolver.isCached(dir, "../evil")).isTrue();
+    assertThat(
+      Files.list(dir)
+        .map(p -> p.getFileName().toString())
+        .toList()
+    ).containsExactly(".complete-.._evil");
   }
 
   private static void touch(Path dir, String file) throws Exception {
