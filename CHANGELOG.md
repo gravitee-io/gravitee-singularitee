@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.4.0...1.5.0) (2026-09-17)
+
+
+### Features
+
+* GliNER4j and llamaj.cpp bump ([#7](https://github.com/gravitee-io/gravitee-singularitee/issues/7)) ([89139bf](https://github.com/gravitee-io/gravitee-singularitee/commit/89139bf6ecfd4009d9f6009452cf99371a7085ba))
+
 # [1.4.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.3.0...1.4.0) (2026-09-07)
 
 
