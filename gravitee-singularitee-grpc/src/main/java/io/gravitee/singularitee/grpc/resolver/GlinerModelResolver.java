@@ -33,9 +33,12 @@ import org.slf4j.LoggerFactory;
  *
  * <p>GLiNER4j expects a single root directory containing:
  * <ul>
- *   <li>ONNX variant sub-directories ({@code onnx/}, {@code onnx_fp16/}, {@code onnx_quantized/})</li>
+ *   <li>ONNX variant sub-directories ({@code onnx/}, {@code onnx_fp16/}, {@code onnx_quantized/}) — or,
+ *       for a llama.cpp/ggml bundle ({@code "engine": "llamacpp"}), one {@code gguf/} directory whose
+ *       {@code model.gguf} is the f16 default and {@code model-<variant>.gguf} a quantisation
+ *       ({@code q8_0}, {@code q4_0}); the {@code variant} option then names the quantisation</li>
  *   <li>Tokenizer files ({@code tokenizer.json}, etc.) at the root</li>
- *   <li>{@code gliner_config.json} at the root</li>
+ *   <li>{@code gliner4j_config.json} at the root (declares the family and the engine)</li>
  * </ul>
  *
  * <p>Resolution strategy for the {@code model_dir} field:
@@ -175,17 +178,17 @@ public final class GlinerModelResolver {
     Path modelCacheDir,
     List<String> exclude
   ) {
-    // 1. Already a local directory with the variant sub-folder
+    // 1. Already a local directory with the variant sub-folder (or a gguf/ bundle)
     if (modelDir != null && !modelDir.isBlank() && !modelDir.equals(".")) {
       Path local = Path.of(modelDir);
-      if (Files.isDirectory(local) && Files.isDirectory(local.resolve(variant))) {
+      if (hasBundle(local, variant)) {
         LOGGER.info("GLiNER model is local: {}", local.toAbsolutePath());
         return Single.just(local.toAbsolutePath());
       }
     }
 
-    // 2. Already cached
-    if (Files.isDirectory(modelCacheDir) && Files.isDirectory(modelCacheDir.resolve(variant))) {
+    // 2. A previous run downloaded every file this variant needs
+    if (CacheMarker.isComplete(modelCacheDir, variant)) {
       LOGGER.info("GLiNER model already cached: {}", modelCacheDir.toAbsolutePath());
       return Single.just(modelCacheDir.toAbsolutePath());
     }
@@ -197,17 +200,15 @@ public final class GlinerModelResolver {
     return downloader
       .listRepoFileSizes(modelName)
       .flatMap(repoFileSizes -> {
-        // Only the root files (tokenizer, gliner_config.json, ...) and the requested
-        // ONNX variant sub-directory are needed; skip the other variants. The
-        // workspace's download.exclude: globs narrow that further.
-        String variantPrefix = variant + "/";
-        Predicate<String> excluded = ExcludePatterns.excluder(exclude);
-        List<String> filesToDownload = repoFileSizes
-          .keySet()
-          .stream()
-          .filter(file -> !file.contains("/") || file.startsWith(variantPrefix))
-          .filter(file -> !excluded.test(file))
-          .toList();
+        // Only the root files (tokenizer, gliner4j_config.json, ...) and the requested
+        // ONNX variant sub-directory — or, for a ggml bundle, gguf/ minus the other
+        // quantisations — are needed. The workspace's download.exclude: globs narrow
+        // that further.
+        List<String> filesToDownload = selectFiles(
+          repoFileSizes.keySet(),
+          variant,
+          ExcludePatterns.excluder(exclude)
+        );
         if (filesToDownload.isEmpty()) {
           return Single.<List<Path>>error(
             new IllegalStateException(
@@ -227,9 +228,77 @@ public final class GlinerModelResolver {
         return downloader.download(modelName, filesToDownload, modelCacheDir, repoFileSizes);
       })
       .map(paths -> {
+        CacheMarker.mark(modelCacheDir, variant, paths);
         LOGGER.info("GLiNER model resolved to: {}", modelCacheDir.toAbsolutePath());
         return modelCacheDir.toAbsolutePath();
       });
+  }
+
+  /** llama.cpp/ggml bundles keep every weight under {@code gguf/} whatever the variant. */
+  private static final String GGUF_DIR = "gguf";
+
+  /**
+   * Whether a user-supplied {@code dir} holds a bundle: the ONNX variant folder, or a {@code gguf/}
+   * folder with at least one {@code .gguf} file. Which weights a local bundle carries is the
+   * user's choice, so the variant is not checked against them.
+   */
+  static boolean hasBundle(Path dir, String variant) {
+    return (
+      Files.isDirectory(dir) &&
+      (Files.isDirectory(dir.resolve(variant)) || !ggufFiles(dir.resolve(GGUF_DIR)).isEmpty())
+    );
+  }
+
+  /** The {@code .gguf} file names directly under {@code ggufDir}; empty when it is absent or unreadable. */
+  private static List<String> ggufFiles(Path ggufDir) {
+    if (!Files.isDirectory(ggufDir)) {
+      return List.of();
+    }
+    try (var entries = Files.list(ggufDir)) {
+      return entries
+        .filter(Files::isRegularFile)
+        .map(p -> p.getFileName().toString())
+        .filter(name -> name.endsWith(".gguf"))
+        .toList();
+    } catch (IOException e) {
+      LOGGER.warn("Cannot list GLiNER gguf directory {}", ggufDir, e);
+      return List.of();
+    }
+  }
+
+  /**
+   * The repository files to fetch for {@code variant}: every root file, plus the ONNX
+   * {@code <variant>/} folder — or, when the repository is a ggml bundle ({@code gguf/} present and
+   * no such ONNX folder), the {@code gguf/} folder minus the quantisations that were not asked for:
+   * {@code model-<q>.gguf} only when {@code q} equals the variant, and the f16 {@code model.gguf}
+   * only when no {@code model-<variant>.gguf} exists (gliner4j falls back to it). Other files
+   * under {@code gguf/} (heads, backbones, references) always come along.
+   */
+  static List<String> selectFiles(
+    java.util.Collection<String> repoFiles,
+    String variant,
+    Predicate<String> excluded
+  ) {
+    String variantPrefix = variant + "/";
+    String ggufPrefix = GGUF_DIR + "/";
+    boolean onnx = repoFiles.stream().anyMatch(f -> f.startsWith(variantPrefix));
+    boolean ggml = !onnx && repoFiles.stream().anyMatch(f -> f.startsWith(ggufPrefix));
+    String wanted = ggufPrefix + "model-" + variant + ".gguf";
+    boolean hasWanted = repoFiles.contains(wanted);
+    Predicate<String> keep = file -> {
+      if (!file.contains("/")) return true;
+      if (!ggml) return file.startsWith(variantPrefix);
+      if (!file.startsWith(ggufPrefix)) return false;
+      String name = file.substring(ggufPrefix.length());
+      if (name.equals("model.gguf")) return !hasWanted;
+      if (name.startsWith("model-") && name.endsWith(".gguf")) return file.equals(wanted);
+      return true;
+    };
+    return repoFiles
+      .stream()
+      .filter(keep)
+      .filter(f -> !excluded.test(f))
+      .toList();
   }
 
   private void ensureCacheDir(Path dir) {

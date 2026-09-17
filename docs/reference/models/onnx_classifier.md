@@ -72,6 +72,8 @@ Sequence-level with an explicit label list (`examples/classifier/toxicity-bert.y
   prefix, or the well-known tokenizer files at the repository root (`tokenizer.json`,
   `tokenizer_config.json`, `special_tokens_map.json`, `vocab.txt`). `download.exclude`
   narrows the sibling and tokenizer listings; the named files themselves are always fetched.
+  A `.complete-tokenizer` marker is written once the tokenizer files are all on disk, and only
+  that marker makes the next start reuse the cached tokenizer directory.
 - **Split, not truncated.** Sequence classifiers classify each chunk and keep the maximum
   score per label; token classifiers use a sliding window and shift spans back to the
   original text.

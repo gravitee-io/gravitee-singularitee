@@ -74,7 +74,7 @@ public final class GlinerClassifierEngine
     List<String> configLabelNames,
     Vertx vertx
   ) {
-    super(delegate, vertx);
+    super(delegate, vertx, false); // concurrent callers: the micro-batcher serialises model access
     this.effectiveThreshold = threshold > 0 ? threshold : 0f;
     this.tokenCap = tokenCap;
     this.configLabelNames = configLabelNames == null ? List.of() : configLabelNames;

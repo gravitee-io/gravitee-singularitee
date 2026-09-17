@@ -131,7 +131,7 @@ public final class VllmModelResolver {
 
     // Mirror the HF handle on disk: <cacheRoot>/<org>/<model>
     Path modelCacheDir = cacheDir.resolve(modelName);
-    if (isComplete(modelCacheDir)) {
+    if (CacheMarker.isComplete(modelCacheDir, null)) {
       LOGGER.info("vLLM model already cached: {}", modelCacheDir.toAbsolutePath());
       return Single.just(modelCacheDir.toAbsolutePath());
     }
@@ -169,6 +169,7 @@ public final class VllmModelResolver {
         return downloader.download(modelName, files, modelCacheDir, repoFileSizes);
       })
       .map(paths -> {
+        CacheMarker.mark(modelCacheDir, null, paths);
         LOGGER.info("vLLM model resolved to: {}", modelCacheDir.toAbsolutePath());
         return modelCacheDir.toAbsolutePath();
       });
@@ -210,28 +211,6 @@ public final class VllmModelResolver {
       .filter(file -> hasAnySuffix(file, METADATA_SUFFIXES) || hasSuffix(file, weightSuffix))
       .sorted()
       .toList();
-  }
-
-  /**
-   * A cache entry counts as complete only when {@code config.json} and at least
-   * one weight file are present.
-   *
-   * <p>An interrupted download leaves a partial directory behind; treating that
-   * as a hit would surface much later as an opaque vLLM load error instead of
-   * simply fetching the rest.
-   */
-  private static boolean isComplete(Path dir) {
-    if (!Files.isDirectory(dir) || !Files.isRegularFile(dir.resolve("config.json"))) {
-      return false;
-    }
-    try (var entries = Files.list(dir)) {
-      return entries.anyMatch(p -> {
-        String name = p.getFileName().toString();
-        return hasSuffix(name, SAFETENSORS) || hasSuffix(name, PYTORCH_BIN);
-      });
-    } catch (IOException e) {
-      return false;
-    }
   }
 
   private static boolean hasSuffix(String file, String suffix) {

@@ -164,6 +164,7 @@
             can all copy target/distribution/ without knowing which flavour ran:
                 mvn package -Pdist-onnx     ONNX Runtime + GLiNER only
                 mvn package -Pdist-llama    llama.cpp only
+                mvn package -Pdist-llama-onnx  llama.cpp + ONNX Runtime / GLiNER (no vLLM)
                 mvn package -Pdist-vllm     vLLM only
         -->
         <profile>
@@ -176,6 +177,13 @@
             <id>dist-llama</id>
             <properties>
                 <distribution.descriptor>src/main/assembly/distribution-llama.xml</distribution.descriptor>
+            </properties>
+        </profile>
+        <profile>
+            <!-- llama.cpp + ONNX Runtime / GLiNER in one image (CUDA: llama.cpp natives + onnxruntime_gpu), no vLLM -->
+            <id>dist-llama-onnx</id>
+            <properties>
+                <distribution.descriptor>src/main/assembly/distribution-llama-onnx.xml</distribution.descriptor>
             </properties>
         </profile>
         <profile>

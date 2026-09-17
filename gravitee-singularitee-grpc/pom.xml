@@ -110,6 +110,13 @@
             <groupId>io.gravitee.ai.gliner4j</groupId>
             <artifactId>gliner4j-core</artifactId>
         </dependency>
+        <!-- GLiNER llama.cpp/ggml engine (GGUF bundles, "engine": "llamacpp"): needs the llama.cpp natives
+             llamaj.cpp loads (LLAMA_CPP_LIB_PATH) and, for the fused DeBERTa kernels on CUDA, the
+             libggml-deberta plugin under <natives>/plugins/ (built by Dockerfile.llama-cuda). -->
+        <dependency>
+            <groupId>io.gravitee.ai.gliner4j</groupId>
+            <artifactId>gliner4j-llamacpp</artifactId>
+        </dependency>
         <!-- Vector math API (GioMaths interface) + vanilla impl -->
         <dependency>
             <groupId>io.gravitee.singularitee.inference</groupId>

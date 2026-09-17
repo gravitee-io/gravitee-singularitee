@@ -21,6 +21,8 @@
     <logger name="io.gravitee.singularitee.service" level="INFO"/>
     <logger name="io.gravitee.singularitee.standalone" level="INFO"/>
     <logger name="io.gravitee.singularitee.workspace" level="INFO"/>
+    <!-- GLiNER4j: which engine / backend a bundle loaded on (ONNX provider, ggml device, DEBERTA plugin) -->
+    <logger name="io.gravitee.lab.gliner4j" level="INFO"/>
     <logger name="io.gravitee.singularitee.adapter" level="WARN"/>
     <logger name="io.gravitee.singularitee.engine.api.registry" level="INFO"/>
     <logger name="io.gravitee.singularitee.plugin" level="INFO"/>

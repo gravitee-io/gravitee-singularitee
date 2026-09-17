@@ -44,11 +44,25 @@ public abstract class BlockingEngineAdapter<D> {
   private final Scheduler eventLoopScheduler;
 
   /**
-   * Binds the blocking delegate and derives the worker and event-loop schedulers from {@code vertx}.
+   * Binds the blocking delegate with an <em>ordered</em> worker scheduler: every blocking call of
+   * this engine runs one after another on one context, which is what a delegate that is not
+   * thread-safe (a llama.cpp context) needs.
    */
   protected BlockingEngineAdapter(D delegate, Vertx vertx) {
+    this(delegate, vertx, true);
+  }
+
+  /**
+   * Binds the blocking delegate and derives the worker and event-loop schedulers from
+   * {@code vertx}. {@code ordered = false} lets the calls run concurrently on the worker pool:
+   * the one-argument {@code RxHelper.blockingScheduler(vertx)} is ordered, which caps an engine
+   * at one request in flight and starves a micro-batcher behind it (it only ever sees a batch of
+   * one). Only engines whose delegate tolerates concurrent calls (or serialises them itself, like
+   * the GLiNER micro-batcher) pass {@code false}.
+   */
+  protected BlockingEngineAdapter(D delegate, Vertx vertx, boolean ordered) {
     this.delegate = delegate;
-    this.workerScheduler = RxHelper.blockingScheduler(vertx);
+    this.workerScheduler = RxHelper.blockingScheduler(vertx, ordered);
     this.eventLoopScheduler = RxHelper.scheduler(vertx);
   }
 

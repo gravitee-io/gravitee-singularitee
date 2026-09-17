@@ -30,12 +30,29 @@
 ARG CUDA_VERSION=12.9.2
 ARG UBUNTU_VERSION=24.04
 
+# gliner4j's DEBERTA ggml plugin sources (fused disentangled attention + biLSTM ops for GLiNER on
+# llama.cpp, CUDA). By default cloned from GitHub at GLINER4J_REF; a local checkout can stand in
+# through a named build context, which overrides this stage:
+#   docker build --build-context gliner4j=/path/to/GLiNER4j/gliner4j-llamacpp/native ...
+# Refs without the sources yield an empty directory and the plugin is skipped (GLiNER then keeps
+# ggml's composed graph).
+ARG GLINER4J_REPO=https://github.com/gravitee-io/GLiNER4j.git
+ARG GLINER4J_REF=main
+FROM alpine/git:2.47.2 AS gliner4j
+ARG GLINER4J_REPO
+ARG GLINER4J_REF
+RUN set -eux; \
+    git clone --depth 1 --branch "${GLINER4J_REF}" "${GLINER4J_REPO}" /src; \
+    mkdir -p /ggml-deberta; \
+    if [ -d /src/gliner4j-llamacpp/native/ggml-deberta ]; then cp -r /src/gliner4j-llamacpp/native/ggml-deberta/. /ggml-deberta/; \
+    else echo "no DEBERTA plugin sources at ${GLINER4J_REF}"; fi
+
 FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS llama-build
 LABEL maintainer="contact@graviteesource.com"
 LABEL org.opencontainers.image.source="https://github.com/gravitee-io/gravitee-singularitee"
 LABEL org.opencontainers.image.description="Prebuilt llama.cpp CUDA shared libraries for Singularitee CUDA image"
 
-ARG LLAMACPP_VERSION=b10276
+ARG LLAMACPP_VERSION=v0.4.0
 # Volta to Blackwell + a PTX fallback (90-virtual) for forward JIT. CUDA 12.9 nvcc targets the
 # full sm_70…sm_121 range. nvcc does one pass per arch, so for faster builds you can trim this
 # to just the GPU(s) you deploy (e.g. "89-real;90-virtual" for Ada / RTX 4000 Ada).
@@ -51,6 +68,13 @@ ENV CC=gcc-14 CXX=g++-14 CUDAHOSTCXX=g++-14
 WORKDIR /llama
 RUN git clone --depth 1 --branch "${LLAMACPP_VERSION}" https://github.com/ggml-org/llama.cpp .
 
+# The plugin's scheduler patch goes into the llama.cpp checkout before the build: stream-side
+# ordering between the plugin and the CUDA backend.
+COPY --from=gliner4j ggml-deberta /gliner4j/ggml-deberta
+RUN set -eux; \
+    patch=/gliner4j/ggml-deberta/patches/0001-ggml-sched-cross-backend-events.patch; \
+    if [ -f "$patch" ]; then git apply "$patch"; else echo "DEBERTA plugin sources absent, no scheduler patch"; fi
+
 RUN cmake -B build \
       -DGGML_NATIVE=OFF \
       -DGGML_CUDA=ON \
@@ -59,7 +83,7 @@ RUN cmake -B build \
       -DBUILD_SHARED_LIBS=ON \
       -DLLAMA_BUILD_TESTS=OFF \
       -DLLAMA_BUILD_EXAMPLES=OFF \
-      -DLLAMA_BUILD_TOOLS=OFF \
+      -DLLAMA_BUILD_TOOLS=ON \
       -DLLAMA_BUILD_APP=OFF \
       -DLLAMA_BUILD_SERVER=OFF \
       -DLLAMA_CURL=OFF \
@@ -71,3 +95,18 @@ RUN cmake -B build \
 RUN mkdir -p /llama-libs \
     && find build -name '*.so*' -exec cp -P {} /llama-libs/ \; \
     && ls -la /llama-libs/
+
+# The plugin lands in plugins/ under the natives directory, where gliner4j-llamacpp looks for it
+# (ggml never auto-loads it and llamaj.cpp's loader ignores the sub-directory).
+RUN set -eux; \
+    src=/gliner4j/ggml-deberta; \
+    if [ -f "$src/CMakeLists.txt" ]; then \
+      cmake -S "$src" -B /gliner4j/plugin-build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DLLAMA_CPP_DIR=/llama \
+        -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}"; \
+      cmake --build /gliner4j/plugin-build -j"$(nproc)"; \
+      mkdir -p /llama-libs/plugins; \
+      cp /gliner4j/plugin-build/libggml-deberta.so /llama-libs/plugins/; \
+      ls -la /llama-libs/plugins/; \
+    fi
