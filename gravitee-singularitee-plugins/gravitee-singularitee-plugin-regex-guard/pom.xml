@@ -23,7 +23,7 @@
     <parent>
         <groupId>io.gravitee.singularitee</groupId>
         <artifactId>gravitee-singularitee-plugins</artifactId>
-        <version>1.5.0</version>
+        <version>1.5.1</version>
     </parent>
 
     <artifactId>gravitee-singularitee-plugin-regex-guard</artifactId>

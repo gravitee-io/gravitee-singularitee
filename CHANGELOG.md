@@ -1,3 +1,10 @@
+## [1.5.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.5.0...1.5.1) (2026-09-18)
+
+
+### Bug Fixes
+
+* attach llama.cpp LoRA adapters to the context so lora_path ([#8](https://github.com/gravitee-io/gravitee-singularitee/issues/8)) ([2a8bf96](https://github.com/gravitee-io/gravitee-singularitee/commit/2a8bf963602d86edb5fac8b83866bb298415ae7d))
+
 # [1.5.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.4.0...1.5.0) (2026-09-17)
 
 
