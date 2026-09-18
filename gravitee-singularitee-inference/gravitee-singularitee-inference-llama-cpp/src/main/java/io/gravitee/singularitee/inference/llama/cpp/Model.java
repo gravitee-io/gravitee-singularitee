@@ -219,6 +219,11 @@ public final class Model implements AutoCloseable {
     }
 
     this.context = new LlamaContext(arena, model, contextParams);
+    // Loading an adapter does not apply it; only an attached adapter changes the decode.
+    if (model.loraAdapter() != null) {
+      context.setLoraAdapter(model.loraAdapter(), 1.0f);
+      LOGGER.info("LoRA adapter attached: {}", config.loraPath().getFileName());
+    }
 
     LOGGER.info(
       "Context: n_ctx_per_seq={} x n_seq_max={} = n_ctx={} (total KV budget)",
@@ -260,6 +265,10 @@ public final class Model implements AutoCloseable {
         .ctxTypeMtp()
         .noPerf(true);
       this.mtpContext = new LlamaContext(arena, model, mtpParams);
+      // The MTP head drafts from the same weights: without the adapter its drafts diverge.
+      if (model.loraAdapter() != null) {
+        mtpContext.setLoraAdapter(model.loraAdapter(), 1.0f);
+      }
       this.speculativeConfig = config.speculative();
       LOGGER.info(
         "MTP self-speculative decoding enabled: n_draft={}, draft_min={}, p_min={}",
