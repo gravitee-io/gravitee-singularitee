@@ -18,6 +18,7 @@ package io.gravitee.singularitee.inference.llama.cpp;
 import io.gravitee.singularitee.inference.api.Constants;
 import io.gravitee.singularitee.inference.api.textgen.GenerationRequest;
 import io.gravitee.singularitee.inference.api.textgen.PayloadParser;
+import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.inference.api.textgen.TagConfig;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +29,8 @@ import java.util.Map;
  * <p>Either {@code prompt} (already rendered) or {@code messages} (rendered with the model's
  * native chat template) drives generation; a non-blank prompt wins. Every sampling field is
  * nullable and falls back to the engine default. {@code reasoningTags} and {@code toolTags}
- * classify generated tokens into channels.
+ * classify generated tokens into channels. {@code structuredOutput} constrains decoding with a
+ * grammar; {@code null} leaves the text free.
  */
 public record Request(
   String prompt,
@@ -42,7 +44,8 @@ public record Request(
   Integer seed,
   TagConfig reasoningTags,
   TagConfig toolTags,
-  Integer topLogprobs
+  Integer topLogprobs,
+  StructuredOutput structuredOutput
 ) implements GenerationRequest {
   /** Compatibility constructor for callers with no logprobs collection. */
   public Request(
@@ -70,6 +73,7 @@ public record Request(
       seed,
       reasoningTags,
       toolTags,
+      null,
       null
     );
   }
@@ -88,7 +92,8 @@ public record Request(
       PayloadParser.intValue(payload.get(Constants.SEED)),
       null, // reasoningTags
       null, // toolTags
-      PayloadParser.intValue(payload.get(Constants.TOP_LOGPROBS))
+      PayloadParser.intValue(payload.get(Constants.TOP_LOGPROBS)),
+      null // structuredOutput
     );
   }
 

@@ -33,10 +33,10 @@ set -euo pipefail
 VENV_PARENT="${HOME}/.venv-gravitee-ai"
 PYTHON_VERSION="3.12"
 BACKEND=""
-VLLM_VERSION="0.26.0"  # minimum version floor; CUDA/CPU pull latest nightly >= this
+VLLM_VERSION="0.28.0"  # minimum version floor; CUDA/CPU pull latest nightly >= this
 # See install_common(): newer xgrammar segfaults on import.
 XGRAMMAR_VERSION="0.2.2"
-TVM_FFI_VERSION="0.1.12"
+TVM_FFI_VERSION="0.1.11"
 
 print_usage() {
   echo "Usage: $0 [-d <venv_dir>] [-v <python_version>] -b <backend>"
@@ -329,7 +329,7 @@ case "$BACKEND" in
     # declaring it fine.
     CURRENT_CUDA_MAJOR="$("$VENV_PYTHON" -c \
       'import torch; print((torch.version.cuda or "").split(".")[0])' 2>/dev/null || true)"
-    # split('+') drops the local build tag: the cu129 wheel reports "0.26.0+cu129".
+    # split('+') drops the local build tag: the cu129 wheel reports "0.28.0+cu129".
     CURRENT_VLLM_VERSION="$("$VENV_PYTHON" -c \
       "import importlib.metadata as m; print(m.version('vllm').split('+')[0])" 2>/dev/null || true)"
 

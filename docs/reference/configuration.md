@@ -316,7 +316,7 @@ The script exports `GRAVITEE_HTTP_ENABLED=true`, `GRAVITEE_HTTP_PORT`, `GRAVITEE
 | `-d DIR` | `~/.venv-gravitee-ai` | Parent directory; the venv is created at `DIR/.venv`. |
 | `-v VERSION` | `3.12` | Python version, always a uv-managed standalone build. |
 
-The script pins vLLM `0.26.0`, `xgrammar 0.2.2` and `apache-tvm-ffi 0.1.12`. The Maven profiles `-Pvllm-integration,metal|cuda|cpu` invoke it during `initialize`; `-Dvllm.venv.path=` points the build at an existing venv and `vllm.setupVenv.skip=true` (the default) skips it.
+The script pins vLLM `0.28.0`, `xgrammar 0.2.2` and `apache-tvm-ffi 0.1.11`. The Maven profiles `-Pvllm-integration,metal|cuda|cpu` invoke it during `initialize`; `-Dvllm.venv.path=` points the build at an existing venv and `vllm.setupVenv.skip=true` (the default) skips it.
 
 ### Taskfile variables
 

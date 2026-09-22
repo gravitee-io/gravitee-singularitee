@@ -19,8 +19,10 @@ import io.gravitee.singularitee.engine.api.ChatTurn;
 import io.gravitee.singularitee.engine.api.TextGenRequest;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.TagSet;
+import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.inference.api.textgen.TagConfig;
 import io.gravitee.singularitee.protocol.SamplingParams;
+import io.gravitee.singularitee.protocol.StepRole;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,7 +68,8 @@ final class TextGenRequestFactory {
     SamplingParams retryOverrides,
     int maxTokens,
     String cacheKey,
-    String reasoningEffort
+    String reasoningEffort,
+    StructuredOutput structuredOutput
   ) {
     var stepSp = stepSamplingParams(cfg);
 
@@ -129,8 +132,17 @@ final class TextGenRequestFactory {
       // the capture stream can derive confidence signals: the chosen-token perplexity, plus
       // distributional summaries that need the alternatives (top1-vs-top2 margin, per-token entropy).
       // Depth 3 keeps the payload modest while enabling the margin/entropy features.
-      3
+      3,
+      structuredOutput
     );
+  }
+
+  /**
+   * The caller's decoding constraint applies to the {@code role: output} step only, so a guard
+   * or router never inherits it.
+   */
+  static StructuredOutput resolveStructuredOutput(StepRole role, StructuredOutput requested) {
+    return role == StepRole.STEP_ROLE_OUTPUT ? requested : null;
   }
 
   private static SamplingParams stepSamplingParams(InferStepConfig cfg) {

@@ -65,6 +65,9 @@ paths:
         - Media the target cannot read is refused with `code: unsupported_modality`.
         - A guard block ends the response with `finish_reason: "content_filter"`.
         - Remote `http(s)://` media URLs are rejected; send a `data:` URL or base64.
+        - `response_format` constrains decoding so the content always matches the format.
+          It cannot be combined with `tools`, and a format the target cannot enforce is a
+          `400` with `param: response_format`.
       requestBody:
         required: true
         content:
@@ -197,7 +200,9 @@ components:
         `model` (`param: model`), unresolved or hidden model (`code: model_not_found`),
         wrong model task (`code: unsupported_model`), media the target cannot read
         (`code: unsupported_modality`, `param: messages` or `input`), or a remote
-        media URL (`code: invalid_request_error`).
+        media URL (`code: invalid_request_error`), or a structured output format that is
+        malformed or cannot be enforced (`code: invalid_request_error`, `param:
+        response_format`, `response_format.json_schema` or `text.format`).
       content:
         application/json:
           schema:
@@ -358,6 +363,7 @@ components:
         prompt_cache_key:
           type: string
           description: Cache-affinity key; falls back to `user` when absent.
+        response_format: { $ref: "#/components/schemas/ResponseFormat" }
         user: { type: string }
 
     ChatMessage:
@@ -586,7 +592,81 @@ components:
           properties:
             effort: { $ref: "#/components/schemas/ReasoningEffort" }
         prompt_cache_key: { type: string }
+        text:
+          type: object
+          properties:
+            format: { $ref: "#/components/schemas/ResponsesTextFormat" }
         user: { type: string }
+
+    ResponseFormatText:
+      type: object
+      required: [type]
+      description: No constraint; the default.
+      properties:
+        type: { type: string, enum: [text] }
+
+    ResponseFormatJsonObject:
+      type: object
+      required: [type]
+      description: |
+        Any syntactically valid JSON object. Only the syntax is guaranteed: the prompt
+        must still ask for JSON and name the fields.
+      properties:
+        type: { type: string, enum: [json_object] }
+
+    JsonSchemaDocument:
+      type: object
+      additionalProperties: true
+      description: |
+        A JSON Schema. On llama.cpp models the enforced subset is `type`, `properties`,
+        `required`, `items`, `minItems`, `maxItems`, `minLength`, `maxLength`, `enum`,
+        `const`, `anyOf`, `oneOf`, single-entry `allOf` and local `$ref`. Annotation
+        keywords are ignored; any other keyword that restricts values is refused with a
+        `400` rather than ignored.
+
+    ResponseFormat:
+      description: |
+        Structured output for Chat Completions: decoding is constrained so the content
+        always matches the format. Cannot be combined with `tools`.
+      oneOf:
+        - $ref: "#/components/schemas/ResponseFormatText"
+        - $ref: "#/components/schemas/ResponseFormatJsonObject"
+        - $ref: "#/components/schemas/ResponseFormatJsonSchema"
+
+    ResponseFormatJsonSchema:
+      type: object
+      required: [type, json_schema]
+      properties:
+        type: { type: string, enum: [json_schema] }
+        json_schema:
+          type: object
+          required: [name, schema]
+          properties:
+            name: { type: string, description: Schema name. Required, informational. }
+            strict:
+              type: boolean
+              description: Accepted; decoding enforces the schema either way.
+            schema: { $ref: "#/components/schemas/JsonSchemaDocument" }
+
+    ResponsesTextFormat:
+      description: |
+        Structured output for the Responses API: the same three types as `ResponseFormat`,
+        with `name`, `schema` and `strict` flattened on the format object.
+      oneOf:
+        - $ref: "#/components/schemas/ResponseFormatText"
+        - $ref: "#/components/schemas/ResponseFormatJsonObject"
+        - $ref: "#/components/schemas/ResponsesTextFormatJsonSchema"
+
+    ResponsesTextFormatJsonSchema:
+      type: object
+      required: [type, name, schema]
+      properties:
+        type: { type: string, enum: [json_schema] }
+        name: { type: string, description: Schema name. Required, informational. }
+        strict:
+          type: boolean
+          description: Accepted; decoding enforces the schema either way.
+        schema: { $ref: "#/components/schemas/JsonSchemaDocument" }
 
     ResponsesInputItem:
       oneOf:

@@ -17,6 +17,9 @@ package io.gravitee.singularitee.inference.llama.cpp;
 
 import io.gravitee.llama.cpp.*;
 import io.gravitee.llama.cpp.nativelib.LlamaLibLoader;
+import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
+import io.gravitee.singularitee.inference.llama.cpp.grammar.Gbnf;
+import io.gravitee.singularitee.inference.llama.cpp.grammar.GbnfCompiler;
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.util.ArrayList;
@@ -582,8 +585,11 @@ public final class Model implements AutoCloseable {
   }
 
   /**
-   * Builds the native sampler chain for a request (greedy when temperature is 0). The caller
-   * owns the returned sampler and must free it.
+   * Builds the native sampler chain for a request (greedy when temperature is 0). A structured
+   * output grammar goes first, so truncation samplers only ever see grammar-legal candidates.
+   * The caller owns the returned sampler and must free it.
+   *
+   * @throws UnsupportedStructuredOutputException when the constraint cannot be enforced
    */
   public LlamaSampler samplerFor(Request request) {
     float temperature = request.temperature() != null ? request.temperature() : 0.7f;
@@ -592,7 +598,11 @@ public final class Model implements AutoCloseable {
     float frequencyPenalty = request.frequencyPenalty() != null ? request.frequencyPenalty() : 0.0f;
     int seed = request.seed() != null ? request.seed() : 42;
 
+    Gbnf gbnf = grammarFor(request);
     var sampler = new LlamaSampler(arena);
+    if (gbnf != null) {
+      sampler.grammar(vocab, gbnf.text(), gbnf.root());
+    }
     if (temperature <= 0f) {
       return sampler.greedy().seed(seed);
     }
@@ -601,6 +611,19 @@ public final class Model implements AutoCloseable {
       .topP(topP, 64)
       .penalties(vocab, context.nCtx(), 1.0f, frequencyPenalty, presencePenalty)
       .seed(seed);
+  }
+
+  private Gbnf grammarFor(Request request) {
+    if (request.structuredOutput() == null) {
+      return null;
+    }
+    if (speculativeConfig != null) {
+      // Speculative decoding bypasses the per-request sampler, so nothing would enforce it.
+      throw new UnsupportedStructuredOutputException(
+        "structured output is not supported on a model loaded with speculative decoding"
+      );
+    }
+    return GbnfCompiler.compile(request.structuredOutput());
   }
 
   /** The prompt text to decode: the pre-rendered prompt, else the native chat template output. */

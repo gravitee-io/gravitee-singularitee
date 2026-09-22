@@ -54,6 +54,7 @@ files.
 | File | Model | Notes |
 | --- | --- | --- |
 | `qwen3-0.6b.yaml` | Qwen/Qwen3-0.6B-GGUF | The reference model. Every pipeline example uses it: seconds to download, runs on a laptop CPU. |
+| `qwen3-0.6b-structured.yaml` | Qwen/Qwen3-0.6B-GGUF | Structured output (constrained decoding): the answer matches the caller's `response_format`. |
 | `qwen2.5-0.5b.yaml` | Qwen2.5-0.5B-Instruct | Background tasks (titles, summaries). Cannot emit reasoning by construction. Not for tool loops. |
 | `mistral-7b.yaml` | Mistral-7B-Instruct-v0.3 | No reasoning channel; answers directly. |
 | `glm-4-9b.yaml` | GLM-4-9B | Markerless tool dialect (`glm-name-json`). |

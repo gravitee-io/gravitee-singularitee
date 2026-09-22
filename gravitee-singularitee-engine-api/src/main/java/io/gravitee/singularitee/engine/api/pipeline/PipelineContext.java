@@ -17,7 +17,9 @@ package io.gravitee.singularitee.engine.api.pipeline;
 
 import io.gravitee.singularitee.engine.api.ChatRole;
 import io.gravitee.singularitee.engine.api.ChatTurn;
+import io.gravitee.singularitee.engine.api.StructuredOutputs;
 import io.gravitee.singularitee.engine.api.tools.ServerToolNames;
+import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.protocol.ChatMessage;
 import io.gravitee.singularitee.protocol.ChatMessageList;
 import io.gravitee.singularitee.protocol.FinishReason;
@@ -195,6 +197,7 @@ public final class PipelineContext {
    * slot. {@code null} = no affinity.
    */
   private volatile String cacheKey;
+  private volatile StructuredOutput requestStructuredOutput;
 
   /** Non-null when the pipeline should halt and return the named field. */
   private volatile String breakOutputField = null;
@@ -291,7 +294,23 @@ public final class PipelineContext {
     if (!request.getCacheKey().isEmpty()) {
       ctx.setCacheKey(request.getCacheKey());
     }
+    if (request.hasStructuredOutput()) {
+      ctx.setRequestStructuredOutput(StructuredOutputs.fromProto(request.getStructuredOutput()));
+    }
     return ctx;
+  }
+
+  /** Sets the caller's decoding constraint (see {@link #requestStructuredOutput()}). */
+  public void setRequestStructuredOutput(StructuredOutput requestStructuredOutput) {
+    this.requestStructuredOutput = requestStructuredOutput;
+  }
+
+  /**
+   * The decoding constraint the caller asked for, or {@code null}. It targets the pipeline's
+   * {@code role: output} step only.
+   */
+  public StructuredOutput requestStructuredOutput() {
+    return requestStructuredOutput;
   }
 
   /** Sets the client cache-affinity key (see {@link #cacheKey()}). */

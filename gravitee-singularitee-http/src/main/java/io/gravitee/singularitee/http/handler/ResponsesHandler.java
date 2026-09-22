@@ -22,6 +22,7 @@ import io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver.Resolution;
 import io.gravitee.singularitee.http.sse.VertxSseWriter;
 import io.gravitee.singularitee.http.translation.EndpointType;
 import io.gravitee.singularitee.http.translation.InferenceResponseFormatter;
+import io.gravitee.singularitee.http.translation.ResponseFormatParser.InvalidResponseFormatException;
 import io.gravitee.singularitee.http.translation.SequenceAccumulator;
 import io.gravitee.singularitee.http.validation.SchemaName;
 import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
@@ -70,6 +71,9 @@ public final class ResponsesHandler implements Handler<RoutingContext> {
     java.util.Optional<Resolution> resolution;
     try {
       resolution = resolver.resolve(model, payload, EndpointType.RESPONSES);
+    } catch (InvalidResponseFormatException e) {
+      HandlerSupport.badRequest(rc, e.getMessage(), e.param());
+      return;
     } catch (IllegalArgumentException e) {
       HandlerSupport.badRequest(rc, e.getMessage(), "input");
       return;

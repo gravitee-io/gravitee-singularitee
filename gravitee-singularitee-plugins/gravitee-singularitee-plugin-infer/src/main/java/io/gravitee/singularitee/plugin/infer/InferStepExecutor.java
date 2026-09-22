@@ -33,6 +33,7 @@ import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignals;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry.ModelEntry;
 import io.gravitee.singularitee.inference.api.template.ChatTemplateRenderer;
+import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
 import io.gravitee.singularitee.protocol.FinishReason;
 import io.gravitee.singularitee.protocol.ResponseEventType;
 import io.gravitee.singularitee.protocol.StepRole;
@@ -130,6 +131,22 @@ public final class InferStepExecutor
       stepScribe.set(OpenInference.INPUT_VALUE, prompt.renderedPrompt());
     }
 
+    StepRole role = ctx.currentStep() != null
+      ? ctx.currentStep().role()
+      : StepRole.STEP_ROLE_UNSPECIFIED;
+    var structuredOutput = TextGenRequestFactory.resolveStructuredOutput(
+      role,
+      pctx.requestStructuredOutput()
+    );
+    if (structuredOutput != null && cfg.shouldInjectTools() && !pctx.tools().isEmpty()) {
+      // A grammar from the first token would make every tool call impossible.
+      return Maybe.error(
+        new UnsupportedStructuredOutputException(
+          "structured output cannot be combined with tools on step '" + stepId + "'"
+        )
+      );
+    }
+
     var textGenReq = TextGenRequestFactory.create(
       cfg,
       prompt.renderedPrompt(),
@@ -138,7 +155,8 @@ public final class InferStepExecutor
       retryOverrides,
       maxTokens,
       pctx.cacheKey(),
-      pctx.get(PipelineContext.KEY_REASONING_EFFORT)
+      pctx.get(PipelineContext.KEY_REASONING_EFFORT),
+      structuredOutput
     );
 
     // The engine sequence this generation will run on, resolved once (nextSequenceId advances a
@@ -161,9 +179,6 @@ public final class InferStepExecutor
         .set("singularitee.infer.sequence_id", stepSeqId);
     }
 
-    StepRole role = ctx.currentStep() != null
-      ? ctx.currentStep().role()
-      : StepRole.STEP_ROLE_UNSPECIFIED;
     var captureConfig = captureConfig(cfg, role);
 
     var accumulator = new StringBuilder();

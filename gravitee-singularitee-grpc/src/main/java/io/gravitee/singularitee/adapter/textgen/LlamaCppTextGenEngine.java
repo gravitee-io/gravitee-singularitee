@@ -20,9 +20,11 @@ import io.gravitee.singularitee.engine.api.Modalities;
 import io.gravitee.singularitee.engine.api.ModelEngineType;
 import io.gravitee.singularitee.engine.api.TextGenEngine;
 import io.gravitee.singularitee.engine.api.TextGenRequest;
+import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.inference.llama.cpp.BatchEngine;
 import io.gravitee.singularitee.inference.llama.cpp.ModelConfig;
 import io.gravitee.singularitee.inference.llama.cpp.Request;
+import io.gravitee.singularitee.inference.llama.cpp.grammar.GbnfCompiler;
 import java.util.List;
 
 /**
@@ -118,7 +120,13 @@ public final class LlamaCppTextGenEngine
       request.seed(),
       toLibraryTagConfig(request.reasoningTags()),
       toLibraryTagConfig(request.toolCallTags()),
-      request.topLogprobs()
+      request.topLogprobs(),
+      request.structuredOutput()
     );
+  }
+
+  @Override
+  public void checkStructuredOutput(StructuredOutput format) {
+    GbnfCompiler.compile(format);
   }
 }

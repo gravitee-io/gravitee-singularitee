@@ -302,6 +302,10 @@ public final class RemoteTextGenEngine implements TextGenEngine {
       inferReqBuilder.addAllStop(request.stop());
     }
 
+    if (request.structuredOutput() != null) {
+      inferReqBuilder.setStructuredOutput(StructuredOutputs.toProto(request.structuredOutput()));
+    }
+
     if (request.loraName() != null || request.loraPath() != null) {
       var lora = LoraConfig.newBuilder();
       if (request.loraName() != null) lora.setLoraName(request.loraName());

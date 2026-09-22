@@ -85,6 +85,8 @@ A pipeline is an `entry` step plus a list of `steps`. Linear steps follow their 
 | `tool_select` | Shortlist the caller's tools with a zero-shot classifier | [tool_select](../reference/steps/tool_select.md) |
 | `todo` | Execute server-owned plan tools and stream progress | [todo](../reference/steps/todo.md) |
 
+A caller can constrain decoding per request with `structured_output` (JSON Schema, JSON object, choice, regex, grammar); on a pipeline the format applies to the `role: output` step only. See [Structured output](../guides/structured-output/README.md).
+
 Semantics of guards, routing, loops and sub-pipelines are in the [guides](../README.md#guides).
 
 ## Plugins

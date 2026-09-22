@@ -106,7 +106,7 @@ non-positive properties count as unset.
 - **Opt-in.** The build skips the venv (`vllm.setupVenv.skip=true`). Create it with
   `./scripts/setup-venv.sh -b cuda` (or `metal`, `cpu`) and run any `examples/vllm/*.yaml`;
   `--venv` or `$VLLM_VENV` point elsewhere. vLLM4j is compiled against one vLLM Python API:
-  keep the venv's vLLM at the pinned version (`0.26.0`, matching `Dockerfile.vllm-cuda`).
+  keep the venv's vLLM at the pinned version (`0.28.0`, matching `Dockerfile.vllm-cuda`).
 - **`gpu_memory_utilization` is a fraction of total memory.** On Apple Silicon it applies to
   total unified memory, so use the `*-mac.yaml` examples there; the other files are sized
   for datacenter cards (40 to 80 GB). When the budget cannot hold the weights the load is refused up front with

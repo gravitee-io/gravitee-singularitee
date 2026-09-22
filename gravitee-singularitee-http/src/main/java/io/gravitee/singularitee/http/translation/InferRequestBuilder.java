@@ -93,6 +93,7 @@ public final class InferRequestBuilder {
     if (sp != null) {
       builder.setSamplingParams(sp);
     }
+    ResponseFormatParser.parse(payload, endpointType).ifPresent(builder::setStructuredOutput);
 
     String cacheKey = PipelineRequestBuilder.extractCacheKey(payload);
     if (cacheKey != null) {

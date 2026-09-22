@@ -23,7 +23,7 @@ process and GPU, composed over gRPC by a workspace that declares `remote:` endpo
 | `Dockerfile.llamacpp-cuda` | llama.cpp | `nvidia/cuda:<v>-cudnn-runtime-ubuntu<v>` plus the libs from `LLAMA_LIBS_IMAGE` | `-Pcuda,dist-llama` | `llama_cpp`, `llama_cpp_embedding`, `llama_cpp_reranker` |
 | `Dockerfile.llamacpp-cuda` with `-Pcuda,dist-llama-onnx` | llama.cpp + ONNX Runtime, GLiNER | same image | `-Pcuda,dist-llama-onnx` | llama.cpp types plus `onnx_*`, `gliner_classifier`, `gliner_ner` on the CUDA execution provider (one image for an LLM + guardrails) |
 | `Dockerfile.llama-cuda` | builder only | `nvidia/cuda:<v>-devel-ubuntu<v>` | none | compiles llama.cpp with `GGML_CUDA` into `/llama-libs` and gliner4j's `libggml-deberta` plugin into `/llama-libs/plugins` (`GLINER4J_REF`); consumed by the line above |
-| `Dockerfile.vllm-cuda` | vLLM | `vllm/vllm-openai:v0.26.0-cu129` | `-Pdist-vllm` | `vllm` |
+| `Dockerfile.vllm-cuda` | vLLM | `vllm/vllm-openai:v0.28.0-cu129` | `-Pdist-vllm` | `vllm` |
 
 ## Key types
 
@@ -123,7 +123,7 @@ workspace:
 | `LLAMA_LIBS_IMAGE` | `llama-cpp-cuda:local` | `llamacpp-cuda` | Image holding the prebuilt llama.cpp CUDA libraries. |
 | `LLAMACPP_VERSION` | `b10276` | `llama-cuda` | llama.cpp tag to compile. Must match the llamaj.cpp binding (`2.7.0`). |
 | `CUDA_ARCHITECTURES` | `70-real;...;121-real;90-virtual` | `llama-cuda` | Target GPU architectures. Trim to the cards you deploy for a faster build. |
-| `VLLM_IMAGE` | `vllm/vllm-openai:v0.26.0-cu129` | `vllm-cuda` | Base image. Keep its vLLM version equal to `scripts/setup-venv.sh`'s `VLLM_VERSION`. The `cu129` tag runs on driver r525+; the default CUDA 13 tags need r580+. |
+| `VLLM_IMAGE` | `vllm/vllm-openai:v0.28.0-cu129` | `vllm-cuda` | Base image. Keep its vLLM version equal to `scripts/setup-venv.sh`'s `VLLM_VERSION`. The `cu129` tag runs on driver r525+; the default CUDA 13 tags need r580+. |
 | `BAKE_MODEL` | unset | `vllm-cuda` | HuggingFace repo to download into the image. |
 | `BAKE_WORKSPACE` | unset | `vllm-cuda` | Path under `examples/` copied to `${GRAVITEEIO_HOME}/workspace.yaml` and used when `GRAVITEE_AI_WORKSPACE_PATH` is unset. |
 
@@ -167,7 +167,7 @@ llama.cpp twin is several times faster on the same machine.
 - Weights are not in the images (unless `BAKE_MODEL` is set). They download on first boot into `GRAVITEE_AI_MODELS_PATH`; persist that directory.
 - Each image serves only its own engine. A workspace naming another engine's type fails at load with "no factory for type".
 - Keep `LLAMACPP_VERSION` and the llamaj.cpp dependency in lockstep (`b10276` with `2.7.0`). The FFM bindings are ABI-specific; a mismatch is a runtime `NoSuchMethodError`. `docker/cuda/README.md` shows how to read the pinned build out of the llamaj.cpp jar.
-- Keep `VLLM_IMAGE` and `scripts/setup-venv.sh`'s `VLLM_VERSION` equal (`0.26.0`). vLLM4j is compiled against one vLLM Python API and fails at model load, not at build, when they drift.
+- Keep `VLLM_IMAGE` and `scripts/setup-venv.sh`'s `VLLM_VERSION` equal (`0.28.0`). vLLM4j is compiled against one vLLM Python API and fails at model load, not at build, when they drift.
 - Ports bind before models load. `/health` answers `200` while calls return `UNAVAILABLE` or `503`; make the readiness probe poll `/v1/models` or `ListModels` and size its timeout for a first download.
 - The gRPC and HTTP ports bind `0.0.0.0` with auth off. Set `grpc.auth` or `http.auth` (and TLS) before exposing them beyond the pod network; the server logs a warning otherwise.
 - Build truststores with `keytool -importcert`; Java reads zero entries from an openssl cert-only PKCS12 bundle.

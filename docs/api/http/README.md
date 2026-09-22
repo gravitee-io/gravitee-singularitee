@@ -76,6 +76,7 @@ message. Invalid JSON is a `400` as well.
 | HTTP | `type` | `code` | When |
 | --- | --- | --- | --- |
 | 400 | `invalid_request_error` | `invalid_request_error` | Invalid JSON, schema violation, missing `model` / `input` / `query` / `documents` / `candidates`, `zipped` length mismatch, remote media URL. |
+| 400 | `invalid_request_error` | `invalid_request_error` | Structured output that is malformed or cannot be enforced (`param` is `response_format`, `response_format.json_schema` or `text.format`), see [Chat Completions](#post-v1chatcompletions). |
 | 400 | `invalid_request_error` | `model_not_found` | `model` does not resolve or is hidden. |
 | 400 | `invalid_request_error` | `unsupported_model` | The model exists but serves another task. |
 | 400 | `invalid_request_error` | `unsupported_modality` | Image or audio attached to a target that reads text only (`param` is `messages` or `input`). |
@@ -124,6 +125,17 @@ tags), `logprobs` / `top_logprobs`, `reasoning_effort`, `prompt_cache_key` (fall
 `user`). `n` is ignored. With `tools`, the stream is held until tool-call markup is parsed and
 tool calls arrive as whole `delta.tool_calls` chunks.
 
+`response_format` constrains decoding so the content always matches the format:
+`{"type":"text"}` (no constraint), `{"type":"json_object"}`, or
+`{"type":"json_schema","json_schema":{"name","strict","schema"}}`. `name` is required; `strict`
+is accepted and changes nothing, decoding enforces the schema either way. On a pipeline the
+format applies to the `role: output` step only. The request is refused with `400` `invalid_request_error` before anything
+is queued, with `param` `response_format` (or `response_format.json_schema` for a missing `name`
+or `schema`), when the field is malformed, the `type` is unknown, a schema keyword cannot be
+enforced, the target engine cannot enforce the format, the pipeline has no text-generation
+output step, or `tools` is also present. See
+[Structured output](../../guides/structured-output/README.md).
+
 ```bash
 curl -N localhost:8080/v1/chat/completions \
   -H 'Authorization: Bearer sk-local-changeme' -H 'content-type: application/json' \
@@ -147,6 +159,10 @@ Typed `response.*` SSE events, `instructions`, `input` as a string or item list 
 `function_call` / `function_call_output` replay items), stored conversations on pipeline targets
 (`previous_response_id`, `store`), and `gravitee.progress` events from pipelines with a `todo`
 step (see [Engine-managed to-dos](../../guides/todos/README.md)).
+
+`text.format` is the structured output field: the same three types as `response_format`, with
+`name`, `schema` and `strict` flattened on the format object (no nested `json_schema`). The same
+cases are refused, with `param` `text.format`.
 
 ```bash
 curl -N localhost:8080/v1/responses \
@@ -245,6 +261,9 @@ BASE_URL=http://localhost:8080/v1 API_KEY=sk-local-changeme uv run --with reques
 - `gravitee.progress` is a vendor extension on the Responses stream and is never an output item,
   so it cannot be replayed back as history. Chat Completions drops progress events.
 - The Responses API keeps reasoning streaming live even when `tools` hold the content back.
+- Structured output over HTTP is `text`, `json_object` and `json_schema` only; `choice`, `regex`
+  and `grammar` are gRPC and workspace YAML only. A constrained generation cut by `max_tokens`
+  returns truncated text with `finish_reason: "length"`.
 - `max_completion_tokens` is accepted by validation but `max_tokens` (or `max_output_tokens` on
   Responses) is the value applied.
 
@@ -253,5 +272,6 @@ BASE_URL=http://localhost:8080/v1 API_KEY=sk-local-changeme uv run --with reques
 - [OpenAPI specifications](../../../openapi/README.md)
 - [gRPC API](../grpc/README.md)
 - [Multimodal](../../guides/multimodal/README.md)
+- [Structured output](../../guides/structured-output/README.md)
 - [Engine-managed to-dos](../../guides/todos/README.md)
 - [Observability](../../operations/observability/README.md)

@@ -18,6 +18,7 @@ package io.gravitee.singularitee.inference.vllm;
 import io.gravitee.singularitee.inference.api.Constants;
 import io.gravitee.singularitee.inference.api.textgen.GenerationRequest;
 import io.gravitee.singularitee.inference.api.textgen.PayloadParser;
+import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.inference.api.textgen.TagConfig;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +48,8 @@ public record VllmRequest(
   TagConfig toolTags,
   List<Map<String, Object>> tools,
   String loraName,
-  String loraPath
+  String loraPath,
+  StructuredOutput structuredOutput
 ) implements GenerationRequest {
   /**
    * Builds a request from a raw payload map; tag configs are left {@code null}
@@ -69,7 +71,8 @@ public record VllmRequest(
       null,
       PayloadParser.parseTools(payload.get("tools")),
       PayloadParser.stringValue(payload.get("loraName")),
-      PayloadParser.stringValue(payload.get("loraPath"))
+      PayloadParser.stringValue(payload.get("loraPath")),
+      null // structuredOutput
     );
   }
 
