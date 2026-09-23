@@ -36,6 +36,7 @@ BACKEND=""
 VLLM_VERSION="0.28.0"  # minimum version floor; CUDA/CPU pull latest nightly >= this
 # See install_common(): newer xgrammar segfaults on import.
 XGRAMMAR_VERSION="0.2.2"
+# The version vLLM 0.28.0 requires.
 TVM_FFI_VERSION="0.1.11"
 
 print_usage() {

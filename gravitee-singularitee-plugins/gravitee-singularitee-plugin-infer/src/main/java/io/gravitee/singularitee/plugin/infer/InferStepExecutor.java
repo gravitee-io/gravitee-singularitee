@@ -138,13 +138,14 @@ public final class InferStepExecutor
       role,
       pctx.requestStructuredOutput()
     );
-    if (structuredOutput != null && cfg.shouldInjectTools() && !pctx.tools().isEmpty()) {
-      // A grammar from the first token would make every tool call impossible.
-      return Maybe.error(
-        new UnsupportedStructuredOutputException(
-          "structured output cannot be combined with tools on step '" + stepId + "'"
-        )
-      );
+    var toolsConflict = TextGenRequestFactory.toolsConflict(
+      structuredOutput,
+      cfg.shouldInjectTools(),
+      pctx.tools(),
+      stepId
+    );
+    if (toolsConflict != null) {
+      return Maybe.error(toolsConflict);
     }
 
     var textGenReq = TextGenRequestFactory.create(

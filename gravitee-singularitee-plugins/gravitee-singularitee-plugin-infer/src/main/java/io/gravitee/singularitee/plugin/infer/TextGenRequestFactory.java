@@ -21,6 +21,7 @@ import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.TagSet;
 import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.inference.api.textgen.TagConfig;
+import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
 import io.gravitee.singularitee.protocol.SamplingParams;
 import io.gravitee.singularitee.protocol.StepRole;
 import java.util.LinkedHashMap;
@@ -143,6 +144,27 @@ final class TextGenRequestFactory {
    */
   static StructuredOutput resolveStructuredOutput(StepRole role, StructuredOutput requested) {
     return role == StepRole.STEP_ROLE_OUTPUT ? requested : null;
+  }
+
+  /**
+   * The reason a constrained step cannot also offer tools: a grammar from the first token makes
+   * every tool call unreachable, so the request is refused rather than answered with one of the two
+   * silently dropped.
+   *
+   * @return the error to fail the step with, or {@code null} when the combination is legal
+   */
+  static UnsupportedStructuredOutputException toolsConflict(
+    StructuredOutput structuredOutput,
+    boolean injectsTools,
+    List<?> tools,
+    String stepId
+  ) {
+    if (structuredOutput == null || !injectsTools || tools == null || tools.isEmpty()) {
+      return null;
+    }
+    return new UnsupportedStructuredOutputException(
+      "structured output cannot be combined with tools on step '" + stepId + "'"
+    );
   }
 
   private static SamplingParams stepSamplingParams(InferStepConfig cfg) {

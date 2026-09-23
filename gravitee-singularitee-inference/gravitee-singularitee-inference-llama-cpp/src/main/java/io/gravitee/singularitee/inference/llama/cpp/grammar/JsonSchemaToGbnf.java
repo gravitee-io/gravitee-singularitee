@@ -65,8 +65,7 @@ final class JsonSchemaToGbnf {
     "deprecated",
     "readOnly",
     "writeOnly",
-    "format",
-    "additionalProperties"
+    "format"
   );
 
   private static final Set<String> SUPPORTED = Set.of(
@@ -83,7 +82,8 @@ final class JsonSchemaToGbnf {
     "anyOf",
     "oneOf",
     "allOf",
-    "$ref"
+    "$ref",
+    "additionalProperties"
   );
 
   private final JsonNode document;
@@ -202,9 +202,20 @@ final class JsonSchemaToGbnf {
 
   private String object(JsonNode schema, String hint) {
     JsonNode properties = schema.get("properties");
+    // Objects are emitted closed, so `additionalProperties` is only an annotation when it is a
+    // boolean alongside declared properties. A schema value constrains the extra members a closed
+    // object never emits, and `false` without properties means the empty object: both would be
+    // answered by the generic "any object" rule below, which accepts documents they reject.
+    JsonNode additional = schema.get("additionalProperties");
+    if (additional != null && !additional.isBoolean()) {
+      throw unsupported("`additionalProperties` with a schema value cannot be enforced");
+    }
     if (properties == null || properties.isEmpty()) {
       if (schema.has("required") && !schema.get("required").isEmpty()) {
         throw unsupported("`required` names properties that `properties` does not declare");
+      }
+      if (additional != null && !additional.booleanValue()) {
+        throw unsupported("`additionalProperties: false` without `properties` cannot be enforced");
       }
       return primitive(JsonGbnfRules.OBJECT);
     }

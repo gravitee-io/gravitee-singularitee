@@ -370,6 +370,14 @@ public final class Model implements AutoCloseable {
   }
 
   /**
+   * Whether the model decodes speculatively (MTP head, draft model or EAGLE3 head). Speculative
+   * decoding bypasses the per-request sampler, so no grammar could be enforced.
+   */
+  public boolean isSpeculative() {
+    return speculativeConfig != null;
+  }
+
+  /**
    * Returns true if this model has a multimodal projection loaded,
    * meaning it can process image and/or audio inputs.
    */
@@ -618,7 +626,8 @@ public final class Model implements AutoCloseable {
       return null;
     }
     if (speculativeConfig != null) {
-      // Speculative decoding bypasses the per-request sampler, so nothing would enforce it.
+      // Speculative decoding bypasses the per-request sampler, so nothing would enforce it. The
+      // engine refuses this before admitting the sequence; this guard covers a direct caller.
       throw new UnsupportedStructuredOutputException(
         "structured output is not supported on a model loaded with speculative decoding"
       );

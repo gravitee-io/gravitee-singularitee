@@ -138,12 +138,19 @@ against it.
 | | Keywords |
 | --- | --- |
 | Enforced | `type` (single or list), `properties` / `required`, `items` with `minItems` / `maxItems`, `minLength` / `maxLength`, `enum`, `const`, `anyOf`, `oneOf`, single-entry `allOf`, local `$ref` (`#/$defs/...`, `#/definitions/...`), recursion included. |
-| Ignored (annotations) | `title`, `description`, `default`, `examples`, `format`, `$schema`, `$id`, `$defs`, `definitions`, `deprecated`, `readOnly`, `writeOnly`, `$comment`, `additionalProperties`. |
+| Ignored (annotations) | `title`, `description`, `default`, `examples`, `format`, `$schema`, `$id`, `$defs`, `definitions`, `deprecated`, `readOnly`, `writeOnly`, `$comment`. |
 | Refused | Any other keyword that restricts values: `pattern`, `minimum`, `maximum`, `multipleOf`, `patternProperties`, tuple `items`, multi-entry `allOf`, remote `$ref`, and so on. The request fails rather than the keyword being silently ignored. |
 
 Objects are emitted closed: declared properties only, in declared order, required ones first
-then optional ones. This also satisfies schemas that allow extra properties. Whitespace between
+then optional ones. This also satisfies schemas that allow extra properties, so a boolean
+`additionalProperties` next to declared `properties` changes nothing. The two cases a closed
+object cannot express are refused rather than widened: `additionalProperties` carrying a schema,
+and `additionalProperties: false` with no `properties` (the empty object). Whitespace between
 JSON tokens is bounded, and nothing can follow the finished value except end of text.
+
+A model loaded with speculative decoding (MTP head, draft model or EAGLE3) cannot enforce any
+format: drafted tokens bypass the per-request sampler. Such a request is refused when it is
+resolved, like any other unenforceable format.
 
 ### Errors
 

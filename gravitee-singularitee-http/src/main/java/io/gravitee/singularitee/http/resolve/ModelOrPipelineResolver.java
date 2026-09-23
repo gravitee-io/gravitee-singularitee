@@ -29,6 +29,7 @@ import io.gravitee.singularitee.http.translation.InferRequestBuilder;
 import io.gravitee.singularitee.http.translation.PipelineRequestBuilder;
 import io.gravitee.singularitee.http.translation.ResponseFormatParser;
 import io.gravitee.singularitee.http.translation.ResponseFormatParser.InvalidResponseFormatException;
+import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
 import io.gravitee.singularitee.protocol.InferPipelineRequest;
 import io.gravitee.singularitee.protocol.InferRequest;
@@ -86,7 +87,7 @@ public final class ModelOrPipelineResolver {
     if (model != null && model.engine() instanceof TextGenEngine engine) {
       InferRequest request = InferRequestBuilder.build(rawModel, payload, type);
       if (request.hasStructuredOutput()) {
-        requireEnforceable(request.getStructuredOutput(), engine, hasTools, type);
+        requireEnforceable(request.getStructuredOutput(), List.of(engine), hasTools, type);
       }
       return Optional.of(
         new Resolution(false, request, null, rawModel, hasTools, model.inputModalities())
@@ -108,8 +109,9 @@ public final class ModelOrPipelineResolver {
   ) {
     InferPipelineRequest request = PipelineRequestBuilder.build(id, payload, type);
     if (request.hasStructuredOutput()) {
-      // The constraint lands on the output step, so its model is the one that must enforce it.
-      TextGenEngine engine = pipeline
+      // The constraint lands on every output step, so each of their models must enforce it: a
+      // pipeline can end on two engines with different capabilities.
+      List<TextGenEngine> engines = pipeline
         .steps()
         .stream()
         .filter(step -> step.role() == StepRole.STEP_ROLE_OUTPUT)
@@ -120,9 +122,8 @@ public final class ModelOrPipelineResolver {
         .map(ModelRegistry.ModelEntry::engine)
         .filter(TextGenEngine.class::isInstance)
         .map(TextGenEngine.class::cast)
-        .findFirst()
-        .orElse(null);
-      requireEnforceable(request.getStructuredOutput(), engine, hasTools, type);
+        .toList();
+      requireEnforceable(request.getStructuredOutput(), engines, hasTools, type);
     }
     List<String> acceptedModalities = pipeline.inputModalities();
     return new Resolution(
@@ -137,11 +138,11 @@ public final class ModelOrPipelineResolver {
 
   /**
    * Refuses a structured-output request the target cannot honour, before anything is queued.
-   * {@code engine} is null when the pipeline has no text-generation output step to constrain.
+   * {@code engines} is empty when the pipeline has no text-generation output step to constrain.
    */
   private static void requireEnforceable(
     StructuredOutputFormat format,
-    TextGenEngine engine,
+    List<TextGenEngine> engines,
     boolean hasTools,
     EndpointType type
   ) {
@@ -154,16 +155,19 @@ public final class ModelOrPipelineResolver {
         "`" + param + "` cannot be combined with `tools`"
       );
     }
-    if (engine == null) {
+    if (engines.isEmpty()) {
       throw new InvalidResponseFormatException(
         param,
         "`" + param + "` is not supported by this pipeline: it has no text-generation output step"
       );
     }
-    try {
-      engine.checkStructuredOutput(StructuredOutputs.fromProto(format));
-    } catch (UnsupportedStructuredOutputException e) {
-      throw new InvalidResponseFormatException(param, e.getMessage());
+    StructuredOutput format0 = StructuredOutputs.fromProto(format);
+    for (TextGenEngine engine : engines) {
+      try {
+        engine.checkStructuredOutput(format0);
+      } catch (UnsupportedStructuredOutputException e) {
+        throw new InvalidResponseFormatException(param, e.getMessage());
+      }
     }
   }
 

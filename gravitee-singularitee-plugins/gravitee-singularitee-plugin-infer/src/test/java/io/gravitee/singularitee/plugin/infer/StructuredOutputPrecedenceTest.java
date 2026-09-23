@@ -18,8 +18,10 @@ package io.gravitee.singularitee.plugin.infer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
+import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
 import io.gravitee.singularitee.protocol.StepRole;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** Which step a caller's decoding constraint reaches. */
@@ -46,5 +48,26 @@ class StructuredOutputPrecedenceTest {
     )) {
       assertThat(TextGenRequestFactory.resolveStructuredOutput(role, REQUEST)).isNull();
     }
+  }
+
+  @Test
+  void a_constrained_output_step_that_injects_tools_is_refused() {
+    assertThat(
+      TextGenRequestFactory.toolsConflict(REQUEST, true, List.of(Map.of("name", "f")), "generate")
+    )
+      .isInstanceOf(UnsupportedStructuredOutputException.class)
+      .extracting(Throwable::getMessage)
+      .isEqualTo("structured output cannot be combined with tools on step 'generate'");
+  }
+
+  @Test
+  void the_combination_is_legal_when_either_half_is_absent() {
+    List<Map<String, String>> tools = List.of(Map.of("name", "f"));
+
+    // No constraint, tools not injected, and no tools to inject: each on its own is fine.
+    assertThat(TextGenRequestFactory.toolsConflict(null, true, tools, "s")).isNull();
+    assertThat(TextGenRequestFactory.toolsConflict(REQUEST, false, tools, "s")).isNull();
+    assertThat(TextGenRequestFactory.toolsConflict(REQUEST, true, List.of(), "s")).isNull();
+    assertThat(TextGenRequestFactory.toolsConflict(REQUEST, true, null, "s")).isNull();
   }
 }

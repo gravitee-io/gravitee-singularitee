@@ -21,6 +21,7 @@ import io.gravitee.singularitee.engine.api.ModelEngineType;
 import io.gravitee.singularitee.engine.api.TextGenEngine;
 import io.gravitee.singularitee.engine.api.TextGenRequest;
 import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
+import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
 import io.gravitee.singularitee.inference.llama.cpp.BatchEngine;
 import io.gravitee.singularitee.inference.llama.cpp.ModelConfig;
 import io.gravitee.singularitee.inference.llama.cpp.Request;
@@ -125,8 +126,18 @@ public final class LlamaCppTextGenEngine
     );
   }
 
+  /**
+   * Refused here, before the sequence is admitted, so the caller gets a request error rather than a
+   * failed stream. {@link io.gravitee.singularitee.inference.llama.cpp.Model} guards the same case
+   * again when it builds the sampler, which the normal path never reaches.
+   */
   @Override
   public void checkStructuredOutput(StructuredOutput format) {
+    if (delegate.isSpeculative()) {
+      throw new UnsupportedStructuredOutputException(
+        "structured output is not supported on a model loaded with speculative decoding"
+      );
+    }
     GbnfCompiler.compile(format);
   }
 }

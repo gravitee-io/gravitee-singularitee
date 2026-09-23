@@ -178,6 +178,58 @@ class GbnfCompilerTest {
   }
 
   @Test
+  void booleanAdditionalPropertiesIsIgnoredNextToDeclaredProperties() {
+    // Closed objects satisfy `false` and are a legal subset of what `true` allows.
+    for (String additional : List.of("true", "false")) {
+      Gbnf gbnf = schema(
+        """
+        {"type":"object","properties":{"a":{"type":"string"}},"required":["a"],
+         "additionalProperties":%s}""".formatted(additional)
+      );
+
+      assertThat(rule(gbnf, "schema")).isEqualTo("\"{\" space schema-a-kv space \"}\"");
+    }
+  }
+
+  @Test
+  void additionalPropertiesCarryingASchemaIsRejected() {
+    assertThatThrownBy(() ->
+      GbnfCompiler.compile(
+        new StructuredOutput.JsonSchema(
+          """
+          {"type":"object","additionalProperties":{"type":"integer"}}"""
+        )
+      )
+    )
+      .isInstanceOf(UnsupportedStructuredOutputException.class)
+      .hasMessageContaining("`additionalProperties` with a schema value");
+  }
+
+  @Test
+  void closedObjectWithoutPropertiesIsRejectedRatherThanCompiledToAnyObject() {
+    assertThatThrownBy(() ->
+      GbnfCompiler.compile(
+        new StructuredOutput.JsonSchema(
+          """
+          {"type":"object","additionalProperties":false}"""
+        )
+      )
+    )
+      .isInstanceOf(UnsupportedStructuredOutputException.class)
+      .hasMessageContaining("`additionalProperties: false` without `properties`");
+  }
+
+  @Test
+  void openObjectWithoutPropertiesStillCompilesToAnyObject() {
+    Gbnf gbnf = schema(
+      """
+      {"type":"object","additionalProperties":true}"""
+    );
+
+    assertThat(rule(gbnf, "root")).isEqualTo("object");
+  }
+
+  @Test
   void choiceIsAnAlternationOfEscapedLiterals() {
     Gbnf gbnf = GbnfCompiler.compile(new StructuredOutput.Choice(List.of("yes", "say \"no\"")));
 
