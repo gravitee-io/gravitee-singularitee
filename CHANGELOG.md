@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.5.1...1.6.0) (2026-09-23)
+
+
+### Features
+
+* structured output via constrained decoding for response_format ([#9](https://github.com/gravitee-io/gravitee-singularitee/issues/9)) ([9dabae1](https://github.com/gravitee-io/gravitee-singularitee/commit/9dabae199b729021972cb959aaf11ce8897f71a5))
+
 ## [1.5.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.5.0...1.5.1) (2026-09-18)
 
 
