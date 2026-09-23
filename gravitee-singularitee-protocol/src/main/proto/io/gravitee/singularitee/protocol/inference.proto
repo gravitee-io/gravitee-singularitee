@@ -522,13 +522,15 @@ message SamplingParams {
 // ---------------------------------------------------------------------------
 
 // Constrains decoding so the generated text always matches a format. Unset =
-// free text. A format the target engine cannot enforce fails the request with
-// INVALID_ARGUMENT instead of being ignored.
+// free text. A format the target engine cannot enforce fails the request
+// instead of being ignored: both RPCs stream, so the stream ends with a
+// RESPONSE_EVENT_TYPE_FAILED event carrying error_code invalid_request_error.
 message StructuredOutputFormat {
   oneof kind {
     // A JSON Schema document, serialized as JSON.
     string     json_schema = 1;
-    // Any syntactically valid JSON object.
+    // Any syntactically valid JSON object. Setting the field is the constraint,
+    // whatever its value.
     bool       json_object = 2;
     // Exactly one of the listed strings.
     ChoiceList choice      = 3;

@@ -40,7 +40,9 @@ public final class StructuredOutputs {
     }
     return switch (wire.getKindCase()) {
       case JSON_SCHEMA -> new StructuredOutput.JsonSchema(wire.getJsonSchema());
-      case JSON_OBJECT -> wire.getJsonObject() ? new StructuredOutput.JsonObject() : null;
+      // Any set `json_object` is the constraint: the oneof already carries the intent, and a
+      // client that sent `false` meant to constrain, not to be silently unconstrained.
+      case JSON_OBJECT -> new StructuredOutput.JsonObject();
       case CHOICE -> new StructuredOutput.Choice(wire.getChoice().getValuesList());
       case REGEX -> new StructuredOutput.Regex(wire.getRegex());
       case GRAMMAR -> new StructuredOutput.Grammar(
