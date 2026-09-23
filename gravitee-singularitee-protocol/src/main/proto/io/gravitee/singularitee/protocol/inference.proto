@@ -139,6 +139,8 @@ message InferRequest {
   // Ignored when `prompt` is set, since a pre-rendered prompt is never
   // re-templated. The HTTP gateway maps OpenAI `reasoning_effort` here.
   google.protobuf.Struct template_context = 52;
+  // Constrains the generated text to a format. Unset = free text.
+  StructuredOutputFormat structured_output = 53;
 
   // Client-provided request ID, echoed in ResponseCreated so the gateway
   // can correlate the gRPC stream with the HTTP response it is building.
@@ -180,6 +182,10 @@ message InferPipelineRequest {
   // (using its custom template or a default JSON-schema rendering) and
   // the concatenated result is available as {{tools}} in prompt templates.
   repeated ToolDefinition tools  = 40;
+
+  // Constrains the text of the pipeline's `role: output` step to a format.
+  // Other steps are untouched.
+  StructuredOutputFormat structured_output = 41;
 
   // Client-provided request ID, echoed in ResponseCreated so the gateway
   // can correlate the gRPC stream with the HTTP response it is building.
@@ -509,6 +515,43 @@ message SamplingParams {
   // Number of top log-probabilities to collect per generated token.
   // 0 = disabled (the default; collection has a per-token cost).
   int32 top_logprobs      = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Structured output
+// ---------------------------------------------------------------------------
+
+// Constrains decoding so the generated text always matches a format. Unset =
+// free text. A format the target engine cannot enforce fails the request
+// instead of being ignored: both RPCs stream, so the stream ends with a
+// RESPONSE_EVENT_TYPE_FAILED event carrying error_code invalid_request_error.
+message StructuredOutputFormat {
+  oneof kind {
+    // A JSON Schema document, serialized as JSON.
+    string     json_schema = 1;
+    // Any syntactically valid JSON object. Setting the field is the constraint,
+    // whatever its value.
+    bool       json_object = 2;
+    // Exactly one of the listed strings.
+    ChoiceList choice      = 3;
+    // A regular expression the whole output must match (vLLM only).
+    string     regex       = 4;
+    // A GBNF grammar.
+    Grammar    grammar     = 5;
+  }
+  // Schema name (OpenAI `json_schema.name`). Informational.
+  string name = 10;
+
+  message ChoiceList {
+    repeated string values = 1;
+  }
+
+  message Grammar {
+    // GBNF grammar text.
+    string text = 1;
+    // Start rule. Empty = "root".
+    string root = 2;
+  }
 }
 
 // ---------------------------------------------------------------------------

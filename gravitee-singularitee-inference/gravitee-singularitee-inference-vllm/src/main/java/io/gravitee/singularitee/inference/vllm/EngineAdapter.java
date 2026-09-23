@@ -24,9 +24,12 @@ import io.gravitee.singularitee.inference.api.textgen.ImageContent;
 import io.gravitee.singularitee.inference.api.textgen.InferencePerformance;
 import io.gravitee.singularitee.inference.api.textgen.PromptStats;
 import io.gravitee.singularitee.inference.api.textgen.Role;
+import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.inference.api.textgen.TagConfig;
 import io.gravitee.singularitee.inference.api.textgen.TokenChannel;
+import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
 import io.gravitee.vllm.engine.CompletionOutput;
+import io.gravitee.vllm.engine.GuidedDecodingParams;
 import io.gravitee.vllm.engine.LoraRequest;
 import io.gravitee.vllm.engine.ModelIntrospection;
 import io.gravitee.vllm.engine.MultiModalData;
@@ -532,6 +535,26 @@ public class EngineAdapter
     return fallback;
   }
 
+  /** vLLM enforces every format natively; its GBNF-style grammar always starts at {@code root}. */
+  public static GuidedDecodingParams guidedDecoding(StructuredOutput format) {
+    return switch (format) {
+      case StructuredOutput.JsonSchema(String schema) -> GuidedDecodingParams.json(schema);
+      case StructuredOutput.JsonObject() -> GuidedDecodingParams.jsonObject();
+      case StructuredOutput.Choice(var values) -> GuidedDecodingParams.choice(values);
+      case StructuredOutput.Regex(String pattern) -> GuidedDecodingParams.regex(pattern);
+      case StructuredOutput.Grammar(String text, String root) -> {
+        if (!StructuredOutput.DEFAULT_ROOT.equals(root)) {
+          throw new UnsupportedStructuredOutputException(
+            "grammar: the vLLM engine requires the start rule to be named `root`, got `" +
+              root +
+              "`"
+          );
+        }
+        yield GuidedDecodingParams.grammar(text);
+      }
+    };
+  }
+
   @Override
   public VllmSequenceState createSequenceState(int internalId, VllmRequest request)
     throws Exception {
@@ -560,6 +583,9 @@ public class EngineAdapter
     if (request.frequencyPenalty() != null) sp.frequencyPenalty(request.frequencyPenalty());
     if (request.seed() != null) sp.seed(request.seed().longValue());
     if (request.stop() != null && !request.stop().isEmpty()) sp.stop(request.stop());
+    if (request.structuredOutput() != null) {
+      sp.guidedDecoding(guidedDecoding(request.structuredOutput()));
+    }
 
     // Keep the markers the tag FSM below is about to look for.
     //

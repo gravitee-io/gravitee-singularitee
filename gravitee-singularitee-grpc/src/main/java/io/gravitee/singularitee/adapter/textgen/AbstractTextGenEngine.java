@@ -247,6 +247,10 @@ abstract sealed class AbstractTextGenEngine<CFG, REQ extends GenerationRequest, 
     CompletableSubject subject = CompletableSubject.create();
     pendingSequences.put(seqId, subject);
     try {
+      if (request.structuredOutput() != null) {
+        // Refused here, before the sequence takes a slot, rather than from the decode loop.
+        checkStructuredOutput(request.structuredOutput());
+      }
       delegate.addSequence(seqId, toEngineRequest(maybePreRender(request)), request.cacheKey());
     } catch (Exception e) {
       pendingSequences.remove(seqId);
@@ -320,23 +324,7 @@ abstract sealed class AbstractTextGenEngine<CFG, REQ extends GenerationRequest, 
       trimmed.size(),
       ctx
     );
-    return new TextGenRequest(
-      request.prompt(),
-      trimmed,
-      request.maxTokens(),
-      request.temperature(),
-      request.topP(),
-      request.presencePenalty(),
-      request.frequencyPenalty(),
-      request.stop(),
-      request.seed(),
-      request.reasoningTags(),
-      request.toolCallTags(),
-      request.loraName(),
-      request.loraPath(),
-      request.templateContext(),
-      request.cacheKey()
-    );
+    return request.withInput(request.prompt(), trimmed);
   }
 
   /**
@@ -417,23 +405,8 @@ abstract sealed class AbstractTextGenEngine<CFG, REQ extends GenerationRequest, 
       );
     }
 
-    return new TextGenRequest(
-      rendered,
-      request.messages(), // retained for multimodal media extraction
-      request.maxTokens(),
-      request.temperature(),
-      request.topP(),
-      request.presencePenalty(),
-      request.frequencyPenalty(),
-      request.stop(),
-      request.seed(),
-      request.reasoningTags(),
-      request.toolCallTags(),
-      request.loraName(),
-      request.loraPath(),
-      request.templateContext(),
-      request.cacheKey()
-    );
+    // Messages are retained for multimodal media extraction.
+    return request.withInput(rendered, request.messages());
   }
 
   @Override

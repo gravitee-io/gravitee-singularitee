@@ -113,6 +113,7 @@ public final class PipelineRequestBuilder {
     if (sp != null) {
       builder.setSamplingParams(sp);
     }
+    ResponseFormatParser.parse(payload, endpointType).ifPresent(builder::setStructuredOutput);
 
     String cacheKey = extractCacheKey(payload);
     if (cacheKey != null) {

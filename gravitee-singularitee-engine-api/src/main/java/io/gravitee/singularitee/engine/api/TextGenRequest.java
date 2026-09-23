@@ -15,6 +15,7 @@
  */
 package io.gravitee.singularitee.engine.api;
 
+import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.inference.api.textgen.TagConfig;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,8 @@ import java.util.Map;
  *                          the same KV slot for prefix reuse; {@code null} = no affinity
  * @param topLogprobs       number of top log-probabilities to collect per generated token;
  *                          {@code null} or 0 = disabled (collection has a per-token cost)
+ * @param structuredOutput  decoding constraint the generated text must match; {@code null} =
+ *                          free text
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -72,8 +75,32 @@ public record TextGenRequest(
   String loraPath,
   Map<String, Object> templateContext,
   String cacheKey,
-  Integer topLogprobs
+  Integer topLogprobs,
+  StructuredOutput structuredOutput
 ) {
+  /** The same request with {@code prompt} and {@code messages} replaced. */
+  public TextGenRequest withInput(String prompt, List<ChatTurn> messages) {
+    return new TextGenRequest(
+      prompt,
+      messages,
+      maxTokens,
+      temperature,
+      topP,
+      presencePenalty,
+      frequencyPenalty,
+      stop,
+      seed,
+      reasoningTags,
+      toolCallTags,
+      loraName,
+      loraPath,
+      templateContext,
+      cacheKey,
+      topLogprobs,
+      structuredOutput
+    );
+  }
+
   /** Compatibility constructor for callers with no logprobs collection. */
   public TextGenRequest(
     String prompt,
@@ -108,6 +135,7 @@ public record TextGenRequest(
       loraPath,
       templateContext,
       cacheKey,
+      null,
       null
     );
   }

@@ -15,6 +15,8 @@
  */
 package io.gravitee.singularitee.engine.api;
 
+import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
+import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
 import java.util.List;
@@ -181,4 +183,13 @@ public non-sealed interface TextGenEngine extends ModelEngine {
   default String eosToken() {
     return "";
   }
+
+  /**
+   * Checks that this engine can enforce {@code format}, so a caller can refuse a request before
+   * queueing it. The default accepts everything; an engine that translates or restricts formats
+   * overrides it.
+   *
+   * @throws UnsupportedStructuredOutputException when the format cannot be enforced
+   */
+  default void checkStructuredOutput(StructuredOutput format) {}
 }

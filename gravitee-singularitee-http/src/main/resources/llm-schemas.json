@@ -29,6 +29,7 @@
         "stream_options": { "type": "object" },
         "logprobs": { "type": "boolean" },
         "top_logprobs": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "response_format": { "type": "object", "required": ["type"], "properties": { "type": { "enum": ["text", "json_object", "json_schema"] } } },
         "reasoning_effort": { "enum": ["minimal", "low", "medium", "high"] },
         "reasoning": {
           "type": "object",
@@ -58,6 +59,7 @@
         "stream": { "type": "boolean" },
         "instructions": { "type": "string" },
         "max_output_tokens": { "type": "integer" },
+        "text": { "type": "object", "properties": { "format": { "type": "object", "required": ["type"], "properties": { "type": { "enum": ["text", "json_object", "json_schema"] } } } } },
         "reasoning_effort": { "enum": ["minimal", "low", "medium", "high"] },
         "reasoning": {
           "type": "object",

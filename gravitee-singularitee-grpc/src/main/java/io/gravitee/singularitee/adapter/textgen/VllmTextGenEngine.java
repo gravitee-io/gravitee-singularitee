@@ -18,6 +18,7 @@ package io.gravitee.singularitee.adapter.textgen;
 import io.gravitee.singularitee.engine.api.ModelEngineType;
 import io.gravitee.singularitee.engine.api.TextGenEngine;
 import io.gravitee.singularitee.engine.api.TextGenRequest;
+import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.inference.vllm.BatchEngine;
 import io.gravitee.singularitee.inference.vllm.EngineAdapter;
 import io.gravitee.singularitee.inference.vllm.VllmConfig;
@@ -173,7 +174,13 @@ public final class VllmTextGenEngine
       toLibraryTagConfig(request.toolCallTags()),
       null, // tools: rendered by Jinja4j at the executor level
       request.loraName(),
-      request.loraPath()
+      request.loraPath(),
+      request.structuredOutput()
     );
+  }
+
+  @Override
+  public void checkStructuredOutput(StructuredOutput format) {
+    EngineAdapter.guidedDecoding(format);
   }
 }

@@ -80,6 +80,11 @@ public class BatchEngine
     return engineAdapter.model().specialTokenTexts();
   }
 
+  /** Whether the model decodes speculatively, which rules out grammar-constrained sampling. */
+  public boolean isSpeculative() {
+    return engineAdapter.model().isSpeculative();
+  }
+
   /** Returns true when a multimodal projection (mmproj) is loaded, i.e. the model is a VLM/ALM. */
   public boolean isMultimodal() {
     return engineAdapter.model().isMultimodal();

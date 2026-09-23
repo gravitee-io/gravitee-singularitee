@@ -373,7 +373,7 @@ GPU-only ONNX Runtime behind that fails on macOS. Rebuild before testing.
 the per-engine images; local development wants the default.
 
 **Keep the venv's vLLM version in step with the image.** `scripts/setup-venv.sh` pins vLLM
-`0.26.0`, matching `Dockerfile.vllm-cuda`'s `VLLM_IMAGE`; vLLM4j is compiled against a specific
+`0.28.0`, matching `Dockerfile.vllm-cuda`'s `VLLM_IMAGE`; vLLM4j is compiled against a specific
 vLLM Python API, so a drifting venv fails at model load rather than at build. See
 [Engines](#engines-llamacpp-is-the-default) for the setup itself.
 

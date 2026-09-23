@@ -48,6 +48,7 @@ One page per model type, one page per step type, one page for templates, one for
 | [Routing](./guides/routing/README.md) | Branch on a label, on embedding similarity, or on an LLM's structured answer. |
 | [Loops and chain-of-thought](./guides/loops-and-cot/README.md) | Bounded self-refinement with `loop` and `break`. |
 | [Tool calling](./guides/tool-calling/README.md) | Caller tools, shortlisting, extraction dialects, repair loops. |
+| [Structured output](./guides/structured-output/README.md) | Constrained decoding: JSON Schema, JSON object, choice, regex, grammar. |
 | [Todos](./guides/todos/README.md) | Server-executed plans with live progress events. |
 | [Sub-pipelines](./guides/sub-pipelines/README.md) | Nest pipelines, locally or on another server. |
 | [Multimodal](./guides/multimodal/README.md) | Image and audio content parts. |

@@ -48,4 +48,9 @@ public interface GenerationRequest {
 
   /** Sampling seed for reproducibility, or {@code null} for a random one. */
   Integer seed();
+
+  /** Decoding constraint, or {@code null} for free text. */
+  default StructuredOutput structuredOutput() {
+    return null;
+  }
 }

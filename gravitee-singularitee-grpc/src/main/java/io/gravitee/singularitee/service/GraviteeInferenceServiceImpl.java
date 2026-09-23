@@ -228,7 +228,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
             .setEventType(ResponseEventType.RESPONSE_EVENT_TYPE_FAILED)
             .setResponseFailed(
               ResponseFailed.newBuilder()
-                .setErrorCode("server_error")
+                .setErrorCode(TokenStreamWriter.errorCode(e))
                 .setErrorMessage(e.getMessage() != null ? e.getMessage() : "Pipeline failed")
                 .build()
             )
@@ -447,7 +447,8 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
         )
         : null,
       req.getCacheKey().isEmpty() ? null : req.getCacheKey(),
-      sp.getTopLogprobs() > 0 ? sp.getTopLogprobs() : null
+      sp.getTopLogprobs() > 0 ? sp.getTopLogprobs() : null,
+      req.hasStructuredOutput() ? StructuredOutputs.fromProto(req.getStructuredOutput()) : null
     );
   }
 

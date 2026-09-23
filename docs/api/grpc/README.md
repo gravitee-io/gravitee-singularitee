@@ -87,6 +87,7 @@ Slow consumers are cancelled after `ai.streaming.buffer-capacity` tokens of lag.
 | `lora` | `LoraConfig` | `lora_name`, `lora_path`. |
 | `tools_json` | repeated string | Tool definitions in function-calling JSON, injected through the chat template. |
 | `template_context` | `google.protobuf.Struct` | Extra chat-template variables (`enable_thinking`, `reasoning_effort`). Ignored with `prompt`. |
+| `structured_output` | `StructuredOutputFormat` | Tag 53. Constrains decoding to a format, see below. |
 | `request_id` | string | Echoed in `ResponseCreated.response_id`. |
 | `cache_key` | string | Cache-affinity key; requests sharing it reuse the same KV slot. |
 
@@ -103,6 +104,22 @@ Slow consumers are cancelled after `ai.streaming.buffer-capacity` tokens of lag.
 | `cache_key` | string | As above. |
 | `previous_response_id` | string | Continue a stored conversation; an unknown id fails the stream with `error_code: previous_response_not_found`. |
 | `store` | optional bool | Persist the transcript under `request_id` (default true when a `request_id` is present). |
+| `structured_output` | `StructuredOutputFormat` | Tag 41. Applies to the `role: output` step only; other steps are untouched. |
+
+`StructuredOutputFormat { oneof kind, string name = 10 }` constrains decoding so the text always
+matches the format; `name` is informational (the OpenAI `json_schema.name`).
+
+| `kind` | Type | The text is |
+| --- | --- | --- |
+| `json_schema = 1` | string | Valid against this JSON Schema, serialized as JSON. |
+| `json_object = 2` | bool | Any syntactically valid JSON object. |
+| `choice = 3` | `StructuredOutputFormat.ChoiceList { repeated string values }` | Exactly one of the listed strings. |
+| `regex = 4` | string | A full match of the expression. vLLM only; `llama_cpp` refuses it. |
+| `grammar = 5` | `StructuredOutputFormat.Grammar { string text, string root }` | A derivation of the GBNF grammar; empty `root` means `root`. |
+
+A format the target cannot enforce ends the stream with a `FAILED` event, `error_code:
+invalid_request_error`. Engine support and the JSON Schema subset are in
+[Structured output](../../guides/structured-output/README.md).
 
 `ChatMessage { Role role, string content, repeated MediaContent media, repeated ToolCall tool_calls, string tool_call_id, string name }`.
 `Role` is `ROLE_SYSTEM`, `ROLE_USER`, `ROLE_ASSISTANT`, `ROLE_TOOL`. `MediaContent { MediaType media_type, bytes data }`
@@ -116,7 +133,7 @@ carries base64 text as bytes; `MediaType` is `IMAGE_JPEG`, `IMAGE_PNG`, `IMAGE_G
 | `RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA` | `ResponseOutputTextDelta` | `delta`, `item_index`, `part_index`, `repeated PositionLogprobs logprobs` (only with `top_logprobs > 0`) |
 | `RESPONSE_EVENT_TYPE_PROGRESS` | `ResponseProgress` | `step_id`, `repeated TodoItem todos { id, title, status, proof }`, `completed`, `total` |
 | `RESPONSE_EVENT_TYPE_COMPLETED` | `ResponseCompleted` | `TokenUsage usage { prompt_tokens, completion_tokens, reasoning_tokens, tool_tokens }`, `InferencePerformance performance`, `FinishReason finish_reason`, `repeated ToolCall tool_calls { name, arguments_json, coercible_args, id }` |
-| `RESPONSE_EVENT_TYPE_FAILED` | `ResponseFailed` | `error_code` (`content_filter`, `previous_response_not_found`, `server_error`), `error_message` |
+| `RESPONSE_EVENT_TYPE_FAILED` | `ResponseFailed` | `error_code` (`content_filter`, `previous_response_not_found`, `invalid_request_error`, `server_error`), `error_message` |
 
 `FinishReason`:
 
@@ -205,6 +222,11 @@ grpcurl -plaintext -import-path $PROTO -proto io/gravitee/singularitee/protocol/
   -d '{"model_id":"llm","messages":{"messages":[{"role":"ROLE_USER","content":"Say hi"}]},"sampling_params":{"max_tokens":32}}' \
   localhost:9090 $PKG.GraviteeInferenceService/Infer
 
+# Pipeline with a structured output format
+grpcurl -plaintext -import-path $PROTO -proto io/gravitee/singularitee/protocol/inference.proto \
+  -d '{"pipeline_id":"agent","prompt":"Is water wet? Answer yes or no.","structured_output":{"choice":{"values":["yes","no"]}}}' \
+  localhost:9090 $PKG.GraviteeInferenceService/InferPipeline
+
 # Pipeline
 grpcurl -plaintext -import-path $PROTO -proto io/gravitee/singularitee/protocol/inference.proto \
   -d '{"pipeline_id":"agent","prompt":"Summarize Dune"}' \
@@ -270,5 +292,6 @@ grpcurl -cacert certs/ca.pem -import-path $PROTO -proto io/gravitee/singularitee
 - [Java client](../java-client/README.md)
 - [HTTP API](../http/README.md)
 - [Pipelines](../../concepts/pipelines/README.md)
+- [Structured output](../../guides/structured-output/README.md)
 - [Remote models and multi-server](../../guides/remote-and-multi-server/README.md)
 - [Observability](../../operations/observability/README.md)
