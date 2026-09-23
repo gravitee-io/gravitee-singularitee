@@ -16,8 +16,6 @@
 package io.gravitee.singularitee.engine.api;
 
 import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
-import io.gravitee.singularitee.protocol.ChoiceList;
-import io.gravitee.singularitee.protocol.Grammar;
 import io.gravitee.singularitee.protocol.StructuredOutputFormat;
 
 /**
@@ -63,11 +61,11 @@ public final class StructuredOutputs {
       case StructuredOutput.JsonSchema(String schema) -> wire.setJsonSchema(schema);
       case StructuredOutput.JsonObject() -> wire.setJsonObject(true);
       case StructuredOutput.Choice(var values) -> wire.setChoice(
-        ChoiceList.newBuilder().addAllValues(values)
+        StructuredOutputFormat.ChoiceList.newBuilder().addAllValues(values)
       );
       case StructuredOutput.Regex(String pattern) -> wire.setRegex(pattern);
       case StructuredOutput.Grammar(String text, String root) -> wire.setGrammar(
-        Grammar.newBuilder().setText(text).setRoot(root)
+        StructuredOutputFormat.Grammar.newBuilder().setText(text).setRoot(root)
       );
     }
     return wire.build();

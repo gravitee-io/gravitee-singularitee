@@ -113,9 +113,9 @@ matches the format; `name` is informational (the OpenAI `json_schema.name`).
 | --- | --- | --- |
 | `json_schema = 1` | string | Valid against this JSON Schema, serialized as JSON. |
 | `json_object = 2` | bool | Any syntactically valid JSON object. |
-| `choice = 3` | `ChoiceList { repeated string values }` | Exactly one of the listed strings. |
+| `choice = 3` | `StructuredOutputFormat.ChoiceList { repeated string values }` | Exactly one of the listed strings. |
 | `regex = 4` | string | A full match of the expression. vLLM only; `llama_cpp` refuses it. |
-| `grammar = 5` | `Grammar { string text, string root }` | A derivation of the GBNF grammar; empty `root` means `root`. |
+| `grammar = 5` | `StructuredOutputFormat.Grammar { string text, string root }` | A derivation of the GBNF grammar; empty `root` means `root`. |
 
 A format the target cannot enforce ends the stream with a `FAILED` event, `error_code:
 invalid_request_error`. Engine support and the JSON Schema subset are in

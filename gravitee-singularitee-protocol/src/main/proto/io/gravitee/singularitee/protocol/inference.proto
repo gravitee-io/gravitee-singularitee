@@ -541,17 +541,17 @@ message StructuredOutputFormat {
   }
   // Schema name (OpenAI `json_schema.name`). Informational.
   string name = 10;
-}
 
-message ChoiceList {
-  repeated string values = 1;
-}
+  message ChoiceList {
+    repeated string values = 1;
+  }
 
-message Grammar {
-  // GBNF grammar text.
-  string text = 1;
-  // Start rule. Empty = "root".
-  string root = 2;
+  message Grammar {
+    // GBNF grammar text.
+    string text = 1;
+    // Start rule. Empty = "root".
+    string root = 2;
+  }
 }
 
 // ---------------------------------------------------------------------------

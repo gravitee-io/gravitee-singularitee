@@ -148,6 +148,9 @@ object cannot express are refused rather than widened: `additionalProperties` ca
 and `additionalProperties: false` with no `properties` (the empty object). Whitespace between
 JSON tokens is bounded, and nothing can follow the finished value except end of text.
 
+A sub-pipeline never inherits the constraint: its own output is an intermediate value for the
+parent, so only the parent's `role: output` steps are constrained.
+
 A model loaded with speculative decoding (MTP head, draft model or EAGLE3) cannot enforce any
 format: drafted tokens bypass the per-request sampler. Such a request is refused when it is
 resolved, like any other unenforceable format.
