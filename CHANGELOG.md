@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.6.0...1.6.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* merge duplicate excludes so dist-onnx and dist-vllm assemble again ([#10](https://github.com/gravitee-io/gravitee-singularitee/issues/10)) ([9dfeb42](https://github.com/gravitee-io/gravitee-singularitee/commit/9dfeb4281244fc345f988aba660d1836be96d9e5))
+
 # [1.6.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.5.1...1.6.0) (2026-09-23)
 
 
