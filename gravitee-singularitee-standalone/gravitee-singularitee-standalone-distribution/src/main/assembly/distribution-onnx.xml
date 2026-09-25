@@ -90,8 +90,6 @@
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-sub-pipeline:*</exclude>
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-todo:*</exclude>
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-infer:*</exclude>
-            </excludes>
-            <excludes>
                 <exclude>io.gravitee.llama.cpp:llamaj.cpp</exclude>
                 <exclude>io.gravitee.singularitee.inference:gravitee-singularitee-inference-llama-cpp</exclude>
                 <exclude>io.gravitee.vllm:vLLM4j</exclude>
