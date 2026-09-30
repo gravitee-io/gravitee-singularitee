@@ -176,6 +176,71 @@ public final class VllmModelResolver {
   }
 
   /**
+   * Downloads only a LoRA adapter folder of {@code repo}: the files under {@code adapterPath/}, with the same
+   * metadata-plus-one-weight-format selection as a model. Nothing else in the repository is fetched, so an
+   * adapter published next to GGUFs or full weights costs its own few MB. Cached under the repository's
+   * directory with its own marker, so it is never mistaken for a complete copy of the repository.
+   *
+   * @return the repository's cache directory; the adapter sits at {@code adapterPath} inside it
+   */
+  public Single<Path> resolveAdapter(String repo, String adapterPath) {
+    if (repo == null || repo.isBlank() || adapterPath == null || adapterPath.isBlank()) {
+      return Single.error(
+        new IllegalArgumentException("LoRA repository and path must not be blank")
+      );
+    }
+    String prefix = stripSlashes(adapterPath) + "/";
+    String key = "lora:" + stripSlashes(adapterPath);
+    Path repoCacheDir = cacheDir.resolve(repo);
+    if (CacheMarker.isComplete(repoCacheDir, key)) {
+      LOGGER.info("LoRA adapter already cached: {}", repoCacheDir.resolve(prefix).toAbsolutePath());
+      return Single.just(repoCacheDir.toAbsolutePath());
+    }
+    ensureCacheDir(repoCacheDir);
+    return downloader
+      .listRepoFileSizes(repo)
+      .flatMap(repoFileSizes -> {
+        List<String> files = selectAdapterFiles(repoFileSizes.keySet(), prefix);
+        if (files.stream().noneMatch(f -> f.equals(prefix + "adapter_config.json"))) {
+          return Single.<List<Path>>error(
+            new IllegalStateException(
+              "LoRA adapter [" +
+                repo +
+                "/" +
+                prefix +
+                "]: no adapter_config.json under that path " +
+                "(found " +
+                files +
+                ")"
+            )
+          );
+        }
+        LOGGER.info("Downloading LoRA adapter [{}] from [{}]: {}", prefix, repo, files);
+        return downloader.download(repo, files, repoCacheDir, repoFileSizes);
+      })
+      .map(paths -> {
+        CacheMarker.mark(repoCacheDir, key, paths);
+        return repoCacheDir.toAbsolutePath();
+      });
+  }
+
+  /** The files of one adapter folder: only paths under {@code prefix}, then the usual selection. */
+  static List<String> selectAdapterFiles(Set<String> repoFiles, String prefix) {
+    Set<String> under = new java.util.TreeSet<>();
+    for (String file : repoFiles) {
+      if (file.startsWith(prefix)) under.add(file);
+    }
+    return selectFiles(under);
+  }
+
+  private static String stripSlashes(String path) {
+    String p = path.strip();
+    while (p.startsWith("/")) p = p.substring(1);
+    while (p.endsWith("/")) p = p.substring(0, p.length() - 1);
+    return p;
+  }
+
+  /**
    * Picks the files vLLM needs.
    *
    * <p>Repositories routinely ship the same weights several times over: a GGUF

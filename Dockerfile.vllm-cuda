@@ -90,6 +90,13 @@ RUN set -eux; \
 # cuda-env.sh turns this into -Dvllm4j.venv=... and preloads libpython.
 ENV VLLM4J_VENV=${GRAVITEEIO_HOME}/vllm-venv
 
+# CPython embedded in the JVM inherits the container's locale. Without a UTF-8 one its default text
+# encoding is ASCII and `import vllm` fails on a PyTorch source file holding UTF-8 ('ascii' codec can't
+# decode byte 0xe2); a retried import then dies with "duplicate template name".
+ENV PYTHONUTF8=1 \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
 # Optionally bake a model and a workspace into the image.
 #
 # Both default to empty, which leaves the image exactly as it was: generic, with

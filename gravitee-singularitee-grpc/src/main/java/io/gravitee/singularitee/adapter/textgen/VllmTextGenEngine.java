@@ -62,10 +62,20 @@ public final class VllmTextGenEngine
    */
   private final List<String> inputModalities;
 
-  VllmTextGenEngine(BatchEngine delegate, List<String> inputModalities) {
+  /**
+   * The model's default LoRA adapter ({@code vllm.lora_path}): applied to every request that names no
+   * adapter of its own. Null when the model has none.
+   */
+  private final DefaultLora defaultLora;
+
+  /** A resolved default adapter: its name inside vLLM and its local directory. */
+  record DefaultLora(String name, String path) {}
+
+  VllmTextGenEngine(BatchEngine delegate, List<String> inputModalities, DefaultLora defaultLora) {
     super(delegate);
     this.delegate = delegate;
     this.inputModalities = inputModalities;
+    this.defaultLora = defaultLora;
   }
 
   @Override
@@ -173,10 +183,28 @@ public final class VllmTextGenEngine
       toLibraryTagConfig(request.reasoningTags()),
       toLibraryTagConfig(request.toolCallTags()),
       null, // tools: rendered by Jinja4j at the executor level
-      request.loraName(),
-      request.loraPath(),
+      loraName(request, defaultLora),
+      loraPath(request, defaultLora),
       request.structuredOutput()
     );
+  }
+
+  /**
+   * The request's own adapter wins; otherwise the model's default, if any. An adapter is selected by its
+   * path: a request giving a name without a path names no adapter, so its name is ignored.
+   */
+  static String loraName(TextGenRequest request, DefaultLora defaultLora) {
+    if (hasOwnLora(request) || defaultLora == null) return request.loraName();
+    return defaultLora.name();
+  }
+
+  static String loraPath(TextGenRequest request, DefaultLora defaultLora) {
+    if (hasOwnLora(request) || defaultLora == null) return request.loraPath();
+    return defaultLora.path();
+  }
+
+  private static boolean hasOwnLora(TextGenRequest request) {
+    return request.loraPath() != null && !request.loraPath().isBlank();
   }
 
   @Override

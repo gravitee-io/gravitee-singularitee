@@ -99,8 +99,23 @@ public class EngineAdapter
   /** Tracks per-sequence state keyed by internal ID. */
   private final Map<Integer, VllmSequenceState> states = new ConcurrentHashMap<>();
 
+  /** One vLLM adapter id per LoRA path, shared by every sequence that uses it. */
+  private final LoraIds loraIds = new LoraIds();
+
   /** Buffer for the latest output from the iterator. */
   private final AtomicReference<VllmOutput> currentOutput = new AtomicReference<>();
+
+  /**
+   * The vLLM adapter selection of {@code request}, or null when it names no adapter. The id comes from
+   * {@code ids}, never from the sequence: sequences sharing an adapter must share its id.
+   */
+  static LoraRequest loraRequest(LoraIds ids, VllmRequest request) {
+    if (!request.hasLora()) {
+      return null;
+    }
+    var lora = ids.assign(request.loraName(), request.loraPath());
+    return new LoraRequest(lora.name(), lora.id(), request.loraPath());
+  }
 
   /**
    * Builds the vLLM engine from {@code config}.
@@ -625,15 +640,7 @@ public class EngineAdapter
 
     String requestId = "seq-" + internalId;
 
-    // Build optional LoRA request
-    LoraRequest loraReq = null;
-    if (request.hasLora()) {
-      loraReq = new LoraRequest(
-        request.loraName() != null ? request.loraName() : "lora-" + internalId,
-        internalId + 1, // loraIntId must be >= 1
-        request.loraPath()
-      );
-    }
+    LoraRequest loraReq = loraRequest(loraIds, request);
 
     // Build the vLLM4J request with full constructor (supports multimodal + LoRA)
     var vllmRequest = new io.gravitee.vllm.engine.VllmRequest(

@@ -160,6 +160,9 @@ public enum ModelType {
       b.setEnableLora(d.enableLora());
       if (d.maxLoras() > 0) b.setMaxLoras(d.maxLoras());
       if (d.maxLoraRank() > 0) b.setMaxLoraRank(d.maxLoraRank());
+      if (d.loraRepo() != null && !d.loraRepo().isBlank()) b.setLoraRepo(d.loraRepo());
+      if (d.loraPath() != null && !d.loraPath().isBlank()) b.setLoraPath(d.loraPath());
+      if (d.loraName() != null && !d.loraName().isBlank()) b.setLoraName(d.loraName());
       if (d.enableSleepMode() != null) b.setEnableSleepMode(d.enableSleepMode());
       if (d.tensorParallelSize() > 0) b.setTensorParallelSize(d.tensorParallelSize());
       if (d.pipelineParallelSize() > 0) b.setPipelineParallelSize(d.pipelineParallelSize());

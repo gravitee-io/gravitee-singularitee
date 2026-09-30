@@ -59,6 +59,27 @@ A quantised checkpoint (`examples/modular/models/vllm/llm-qwen3-awq.yaml`) adds 
         enforce_eager: true
 ```
 
+A base model with a default LoRA adapter from another repository. The resolver downloads the base as usual
+and, from `lora_repo`, only the files under `lora_path/` (a repository that also holds GGUFs or full weights
+costs just the adapter's few MB); vLLM applies the adapter to every request that does not name one of its own.
+
+```yaml
+    - id: sft16
+      name: Qwen/Qwen3-14B
+      type: vllm
+      vllm:
+        enable_lora: true
+        max_lora_rank: 16
+        lora_repo: gravitee-io/Qwen3-14B-HITLead-loRa
+        lora_path: adapter
+        lora_name: sft16
+```
+
+The adapter is checked before vLLM starts and the load is refused, rather than silently serving the base
+model, when `enable_lora` is off, the directory holds no PEFT `adapter_config.json` (a GGUF LoRA is
+llama.cpp's format, not vLLM's), the config declares no rank `r`, or the adapter's rank (`r`, or a higher
+`rank_pattern` entry) exceeds `max_lora_rank` (vLLM's default is 16).
+
 ## Options
 
 `vllm:` block (`WorkspaceDefinition.VllmDef`). Defaults are what `VllmEngineFactory` applies.
@@ -79,8 +100,11 @@ A quantised checkpoint (`examples/modular/models/vllm/llm-qwen3-awq.yaml`) adds 
 | `enable_chunked_prefill` | boolean | `false` | Split long prompts across scheduler steps. |
 | `kv_cache_dtype` | string | unset | KV cache dtype (`fp8`, ...). |
 | `enable_lora` | boolean | `false` | Enable LoRA adapters. |
-| `max_loras` | int | unset | Concurrent LoRA adapters, forwarded when `> 0`. |
-| `max_lora_rank` | int | unset | Maximum adapter rank, forwarded when `> 0`. |
+| `max_loras` | int | unset (vLLM's, 1) | Distinct LoRA adapters decoded in one batch, forwarded when `> 0`. Sequences sharing an adapter count once; a default adapter plus per-request ones wants `>= 2`. |
+| `max_lora_rank` | int | unset (vLLM's, 16) | Maximum adapter rank, forwarded when `> 0`. vLLM accepts `1`, `8`, `16`, `32`, `64`, `128`, `256`, `320` or `512`. |
+| `lora_repo` | string | the model's `name` | HuggingFace repository holding the default adapter. |
+| `lora_path` | string | unset | Default adapter directory (PEFT `adapter_config.json` + weights), relative to `lora_repo` (it may not climb out of it with `..`) or absolute. Applied to every request that names no adapter. Requires `enable_lora`. |
+| `lora_name` | string | `default` | The default adapter's name inside vLLM. |
 | `enable_sleep_mode` | boolean | unset | Nullable; forwarded only when present. |
 | `tensor_parallel_size` | int | server default, then vLLM's | GPUs each layer is sharded across. |
 | `pipeline_parallel_size` | int | server default, then vLLM's | Pipeline stages. |
@@ -103,6 +127,11 @@ non-positive properties count as unset.
 
 ## Notes
 
+- **An adapter is selected by its path.** A request overrides the default adapter by giving a LoRA path; a
+  LoRA name without a path selects nothing, so the request gets the default adapter and its name is ignored.
+- **Adapters are loaded once per path.** vLLM keeps an adapter loaded under the id of its path, so replacing
+  the files of an adapter on disk has no effect on a running server: restart it, or publish the new adapter
+  under another path.
 - **Opt-in.** The build skips the venv (`vllm.setupVenv.skip=true`). Create it with
   `./scripts/setup-venv.sh -b cuda` (or `metal`, `cpu`) and run any `examples/vllm/*.yaml`;
   `--venv` or `$VLLM_VENV` point elsewhere. vLLM4j is compiled against one vLLM Python API:
