@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.6.1...1.7.0) (2026-09-30)
+
+
+### Features
+
+* default vLLM LoRA adapter, batched across parallel sequences ([#11](https://github.com/gravitee-io/gravitee-singularitee/issues/11)) ([e7f7a35](https://github.com/gravitee-io/gravitee-singularitee/commit/e7f7a35e68b8e66c8e0caf9e38b57b38802b810f))
+
 ## [1.6.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.6.0...1.6.1) (2026-09-25)
 
 
