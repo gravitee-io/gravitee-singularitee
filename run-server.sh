@@ -156,9 +156,22 @@ if grep -qE '^[[:space:]]*type:[[:space:]]*vllm[[:space:]]*$' "$WORKSPACE" 2>/de
   JAVA_OPTS="$JAVA_OPTS -Dvllm4j.venv=$VLLM_VENV"
   echo ">> vLLM venv: $VLLM_VENV"
 
-  # The embedded CPython inherits this shell's locale; under a non UTF-8 one its
-  # default text encoding is ASCII and `import vllm` fails decoding PyTorch sources.
-  export PYTHONUTF8=1
+  # The embedded CPython takes its text encoding from the JVM's locale; under a
+  # non UTF-8 one it is ASCII and `import vllm` fails decoding PyTorch sources
+  # ('ascii' codec can't decode byte 0xe2, then "duplicate template name").
+  # PYTHONUTF8 cannot help: Py_InitializeEx ignores it. Switch to a UTF-8 locale.
+  if [[ "$(locale charmap 2>/dev/null || true)" != "UTF-8" ]]; then
+    for UTF8_LOCALE in C.UTF-8 C.utf8 en_US.UTF-8; do
+      if [[ "$(LC_ALL=$UTF8_LOCALE locale charmap 2>/dev/null || true)" == "UTF-8" ]]; then
+        export LC_ALL=$UTF8_LOCALE
+        echo ">> locale:    LC_ALL=$LC_ALL (the shell's is not UTF-8)"
+        break
+      fi
+    done
+    if [[ "${LC_ALL:-}" != "$UTF8_LOCALE" ]]; then
+      echo ">> WARNING: no UTF-8 locale found; the model load will fail importing vLLM." >&2
+    fi
+  fi
 
   # The JVM opens libpython through FFM with RTLD_LOCAL, which hides CPython's
   # symbols from every extension module dlopen'd afterwards. torch is the first

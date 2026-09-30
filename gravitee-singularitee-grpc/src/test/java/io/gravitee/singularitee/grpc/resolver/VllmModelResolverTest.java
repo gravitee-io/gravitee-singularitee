@@ -16,10 +16,20 @@
 package io.gravitee.singularitee.grpc.resolver;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import io.reactivex.rxjava3.core.Single;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * File selection for a vLLM model download.
@@ -310,5 +320,62 @@ class VllmModelResolverTest {
       "adapter/adapter_config.json",
       "adapter/adapter_model.safetensors"
     );
+  }
+
+  @Test
+  void an_adapter_folder_without_adapter_config_is_refused(@TempDir Path cache) {
+    var downloader = mock(HuggingFaceModelDownloader.class);
+    when(downloader.listRepoFileSizes("acme/loras")).thenReturn(
+      Single.just(Map.of("adapter/adapter_model.safetensors", 10L, "config.json", 1L))
+    );
+
+    new VllmModelResolver(downloader, cache)
+      .resolveAdapter("acme/loras", "adapter")
+      .test()
+      .assertError(
+        e -> e instanceof IllegalStateException && e.getMessage().contains("adapter_config.json")
+      );
+
+    verify(downloader, never()).download(any(), any(), any(), any());
+  }
+
+  @Test
+  void a_downloaded_adapter_is_served_from_the_cache_afterwards(@TempDir Path cache) {
+    var downloader = mock(HuggingFaceModelDownloader.class);
+    Map<String, Long> sizes = Map.of(
+      "adapter/adapter_config.json",
+      1L,
+      "adapter/adapter_model.safetensors",
+      10L,
+      "model.gguf",
+      100L
+    );
+    Path repoDir = cache.resolve("acme/loras");
+    List<String> adapterFiles = List.of(
+      "adapter/adapter_config.json",
+      "adapter/adapter_model.safetensors"
+    );
+    when(downloader.listRepoFileSizes("acme/loras")).thenReturn(Single.just(sizes));
+    when(downloader.download("acme/loras", adapterFiles, repoDir, sizes)).thenReturn(
+      Single.just(adapterFiles.stream().map(repoDir::resolve).toList())
+    );
+    var resolver = new VllmModelResolver(downloader, cache);
+
+    // Leading and trailing slashes name the same folder, and so the same cache entry.
+    Path first = resolver.resolveAdapter("acme/loras", "adapter").blockingGet();
+    Path second = resolver.resolveAdapter("acme/loras", "/adapter/").blockingGet();
+
+    assertThat(first).isEqualTo(repoDir.toAbsolutePath());
+    assertThat(second).isEqualTo(first);
+    verify(downloader, times(1)).listRepoFileSizes("acme/loras");
+    verify(downloader, times(1)).download("acme/loras", adapterFiles, repoDir, sizes);
+  }
+
+  @Test
+  void a_blank_adapter_repository_or_path_is_refused(@TempDir Path cache) {
+    var resolver = new VllmModelResolver(mock(HuggingFaceModelDownloader.class), cache);
+
+    resolver.resolveAdapter(" ", "adapter").test().assertError(IllegalArgumentException.class);
+    resolver.resolveAdapter("acme/loras", "").test().assertError(IllegalArgumentException.class);
   }
 }

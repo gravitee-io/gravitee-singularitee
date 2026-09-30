@@ -71,10 +71,6 @@ public final class VllmTextGenEngine
   /** A resolved default adapter: its name inside vLLM and its local directory. */
   record DefaultLora(String name, String path) {}
 
-  VllmTextGenEngine(BatchEngine delegate, List<String> inputModalities) {
-    this(delegate, inputModalities, null);
-  }
-
   VllmTextGenEngine(BatchEngine delegate, List<String> inputModalities, DefaultLora defaultLora) {
     super(delegate);
     this.delegate = delegate;
@@ -193,7 +189,10 @@ public final class VllmTextGenEngine
     );
   }
 
-  /** The request's own adapter wins; otherwise the model's default, if any. */
+  /**
+   * The request's own adapter wins; otherwise the model's default, if any. An adapter is selected by its
+   * path: a request giving a name without a path names no adapter, so its name is ignored.
+   */
   static String loraName(TextGenRequest request, DefaultLora defaultLora) {
     if (hasOwnLora(request) || defaultLora == null) return request.loraName();
     return defaultLora.name();

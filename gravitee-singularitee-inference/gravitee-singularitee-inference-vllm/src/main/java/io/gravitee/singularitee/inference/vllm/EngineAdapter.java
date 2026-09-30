@@ -106,6 +106,18 @@ public class EngineAdapter
   private final AtomicReference<VllmOutput> currentOutput = new AtomicReference<>();
 
   /**
+   * The vLLM adapter selection of {@code request}, or null when it names no adapter. The id comes from
+   * {@code ids}, never from the sequence: sequences sharing an adapter must share its id.
+   */
+  static LoraRequest loraRequest(LoraIds ids, VllmRequest request) {
+    if (!request.hasLora()) {
+      return null;
+    }
+    var lora = ids.assign(request.loraName(), request.loraPath());
+    return new LoraRequest(lora.name(), lora.id(), request.loraPath());
+  }
+
+  /**
    * Builds the vLLM engine from {@code config}.
    *
    * <p>Applies platform and GPU gating, initialises the CPython runtime, runs the
@@ -628,12 +640,7 @@ public class EngineAdapter
 
     String requestId = "seq-" + internalId;
 
-    // Build optional LoRA request
-    LoraRequest loraReq = null;
-    if (request.hasLora()) {
-      var lora = loraIds.assign(request.loraName(), request.loraPath());
-      loraReq = new LoraRequest(lora.name(), lora.id(), request.loraPath());
-    }
+    LoraRequest loraReq = loraRequest(loraIds, request);
 
     // Build the vLLM4J request with full constructor (supports multimodal + LoRA)
     var vllmRequest = new io.gravitee.vllm.engine.VllmRequest(

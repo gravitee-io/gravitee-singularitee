@@ -19,6 +19,7 @@ import io.gravitee.singularitee.adapter.ModelEngineFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerClassifierFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerNerFactory;
 import io.gravitee.singularitee.adapter.textgen.LlamaCppEngineFactory;
+import io.gravitee.singularitee.adapter.textgen.VllmEngineFactory;
 import io.gravitee.singularitee.engine.api.ModelEngine;
 import io.gravitee.singularitee.engine.api.ModelEngineToken;
 import io.gravitee.singularitee.engine.api.TextGenEngine;
@@ -35,6 +36,7 @@ import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -403,19 +405,16 @@ public class GraviteeModelServiceImpl
     // vLLM: download the model in Java first, then hand the engine a directory.
     // Same reason as every other backend: one cache, one download path, and a
     // load that needs no network once warm.
-    if (
-      factory instanceof io.gravitee.singularitee.adapter.textgen.VllmEngineFactory vllmFactory &&
-      vllmResolver != null
-    ) {
+    if (factory instanceof VllmEngineFactory vllmFactory && vllmResolver != null) {
       return vllmResolver
         .resolve(request.modelName(), request.downloadExclude())
         .flatMap(resolved ->
           vllmLoraDirectory(request, resolved).map(lora ->
-            new Path[] { resolved, lora.orElse(null) }
+            new VllmPaths(resolved, lora.orElse(null))
           )
         )
         .observeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
-        .map(paths -> vllmFactory.create(request, paths[0], paths[1]));
+        .map(paths -> vllmFactory.create(request, paths.model(), paths.lora()));
     }
 
     // ONNX: resolve / download model, tokenizer, and optional config (fully reactive)
@@ -502,28 +501,20 @@ public class GraviteeModelServiceImpl
    * ({@code vllm.lora_repo}) only that folder is downloaded, through the same cache as the weights. Empty when
    * the model has no default adapter.
    */
-  private io.reactivex.rxjava3.core.Single<java.util.Optional<Path>> vllmLoraDirectory(
-    ModelLoadRequest request,
-    Path modelDir
-  ) {
+  private Single<Optional<Path>> vllmLoraDirectory(ModelLoadRequest request, Path modelDir) {
     var cfg = request.vllmConfig();
     if (!cfg.hasDefaultLora()) {
-      return io.reactivex.rxjava3.core.Single.just(java.util.Optional.empty());
+      return Single.just(Optional.empty());
     }
     boolean ownRepo = cfg.loraRepo().isEmpty() || cfg.loraRepo().equals(request.modelName());
     if (Path.of(cfg.loraPath()).isAbsolute() || ownRepo) {
-      return io.reactivex.rxjava3.core.Single.just(
-        java.util.Optional.of(
-          io.gravitee.singularitee.adapter.textgen.VllmEngineFactory.loraDirectory(cfg, modelDir)
-        )
-      );
+      return Single.just(Optional.of(VllmEngineFactory.loraDirectory(cfg, modelDir)));
     }
     return vllmResolver
       .resolveAdapter(cfg.loraRepo(), cfg.loraPath())
-      .map(dir ->
-        java.util.Optional.of(
-          io.gravitee.singularitee.adapter.textgen.VllmEngineFactory.loraDirectory(cfg, dir)
-        )
-      );
+      .map(dir -> Optional.of(VllmEngineFactory.loraDirectory(cfg, dir)));
   }
+
+  /** A vLLM model on disk: its weights directory and its default LoRA adapter directory, null when none. */
+  private record VllmPaths(Path model, Path lora) {}
 }

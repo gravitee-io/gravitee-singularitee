@@ -28,6 +28,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * would serialize every sequence sharing an adapter, and an id reused for another adapter would be
  * served with the previous adapter's weights.
  *
+ * <p>Identities are never released: the maps grow with the distinct paths seen, which request-supplied
+ * paths can extend. And since an id is bound to a path, not to its content, adapter files replaced on
+ * disk are not reloaded while the engine runs.
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */

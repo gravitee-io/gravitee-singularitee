@@ -128,6 +128,50 @@ class VllmDefaultLoraTest {
   }
 
   @Test
+  void an_adapter_without_a_rank_is_refused(@TempDir Path tmp) throws IOException {
+    Path dir = Files.createDirectories(tmp.resolve("adapter"));
+    Files.writeString(dir.resolve("adapter_config.json"), "{\"lora_alpha\": 32}");
+
+    assertThatThrownBy(() -> VllmEngineFactory.defaultLora("m", lora("adapter").build(), dir))
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("no positive rank");
+  }
+
+  @Test
+  void a_rank_pattern_above_max_lora_rank_is_refused(@TempDir Path tmp) throws IOException {
+    Path dir = Files.createDirectories(tmp.resolve("adapter"));
+    Files.writeString(
+      dir.resolve("adapter_config.json"),
+      "{\"r\": 8, \"rank_pattern\": {\"q_proj\": 32}}"
+    );
+
+    assertThatThrownBy(() ->
+      VllmEngineFactory.defaultLora("m", lora("adapter").build(), dir)
+    ).hasMessageContaining("has rank 32");
+  }
+
+  @Test
+  void a_max_lora_rank_vllm_does_not_accept_is_refused(@TempDir Path tmp) throws IOException {
+    Path dir = adapter(tmp.resolve("adapter"), 16);
+
+    assertThatThrownBy(() ->
+      VllmEngineFactory.defaultLora("m", lora("adapter").setMaxLoraRank(24).build(), dir)
+    )
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("max_lora_rank 24");
+  }
+
+  @Test
+  void a_relative_lora_path_may_not_leave_its_repository(@TempDir Path tmp) {
+    assertThatThrownBy(() -> VllmEngineFactory.loraDirectory(lora("../other").build(), tmp))
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("leaves its repository");
+    assertThat(VllmEngineFactory.loraDirectory(lora("a/../adapter").build(), tmp)).isEqualTo(
+      tmp.resolve("adapter")
+    );
+  }
+
+  @Test
   void lora_path_resolves_inside_the_downloaded_repository_unless_absolute(@TempDir Path tmp) {
     assertThat(VllmEngineFactory.loraDirectory(lora("adapter").build(), tmp)).isEqualTo(
       tmp.resolve("adapter")
@@ -147,5 +191,15 @@ class VllmDefaultLoraTest {
     assertThat(VllmTextGenEngine.loraPath(request("other", "/other"), lora)).isEqualTo("/other");
     assertThat(VllmTextGenEngine.loraName(request("other", "/other"), lora)).isEqualTo("other");
     assertThat(VllmTextGenEngine.loraPath(request(null, null), null)).isNull();
+  }
+
+  @Test
+  void a_request_naming_an_adapter_without_a_path_gets_the_default() {
+    var lora = new DefaultLora("sft16", "/models/adapter");
+
+    assertThat(VllmTextGenEngine.loraName(request("other", null), lora)).isEqualTo("sft16");
+    assertThat(VllmTextGenEngine.loraPath(request("other", null), lora)).isEqualTo(
+      "/models/adapter"
+    );
   }
 }
