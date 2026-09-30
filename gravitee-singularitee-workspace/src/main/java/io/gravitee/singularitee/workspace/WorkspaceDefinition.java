@@ -421,7 +421,20 @@ public record WorkspaceDefinition(
     /** {@code distributed_executor_backend}: {@code mp} or {@code ray}. Empty falls back like {@code tensor_parallel_size}. */
     @JsonProperty("distributed_executor_backend") String distributedExecutorBackend,
     /** {@code prompt_cache}: alias for {@code enable_prefix_caching}; either key enables the prefix cache. */
-    @JsonProperty("prompt_cache") Boolean promptCache
+    @JsonProperty("prompt_cache") Boolean promptCache,
+    /**
+     * {@code lora_repo}: HuggingFace repository holding the default LoRA adapter. Empty means the model's
+     * own repository ({@code name}).
+     */
+    @JsonProperty("lora_repo") String loraRepo,
+    /**
+     * {@code lora_path}: the adapter directory (PEFT {@code adapter_config.json} + weights), relative to
+     * {@code lora_repo}, or an absolute local directory. Applied to every request that names no adapter.
+     * Requires {@code enable_lora}.
+     */
+    @JsonProperty("lora_path") String loraPath,
+    /** {@code lora_name}: the adapter's name inside vLLM. Default {@code default}. */
+    @JsonProperty("lora_name") String loraName
   ) {}
 
   /** The {@code onnx_classifier:} engine block (BERT-family sequence or token classifier). */

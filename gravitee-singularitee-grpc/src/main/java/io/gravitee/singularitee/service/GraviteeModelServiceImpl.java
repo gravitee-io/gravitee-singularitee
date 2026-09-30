@@ -409,8 +409,13 @@ public class GraviteeModelServiceImpl
     ) {
       return vllmResolver
         .resolve(request.modelName(), request.downloadExclude())
+        .flatMap(resolved ->
+          vllmLoraDirectory(request, resolved).map(lora ->
+            new Path[] { resolved, lora.orElse(null) }
+          )
+        )
         .observeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
-        .map(resolved -> vllmFactory.create(request, resolved));
+        .map(paths -> vllmFactory.create(request, paths[0], paths[1]));
     }
 
     // ONNX: resolve / download model, tokenizer, and optional config (fully reactive)
@@ -490,5 +495,35 @@ public class GraviteeModelServiceImpl
       .setSamplingTimeMs(perf.samplingTimeMs())
       .setSampleCount(perf.sampleCount())
       .build();
+  }
+
+  /**
+   * The model's default LoRA adapter directory ({@code vllm.lora_path}). From another repository
+   * ({@code vllm.lora_repo}) only that folder is downloaded, through the same cache as the weights. Empty when
+   * the model has no default adapter.
+   */
+  private io.reactivex.rxjava3.core.Single<java.util.Optional<Path>> vllmLoraDirectory(
+    ModelLoadRequest request,
+    Path modelDir
+  ) {
+    var cfg = request.vllmConfig();
+    if (!cfg.hasDefaultLora()) {
+      return io.reactivex.rxjava3.core.Single.just(java.util.Optional.empty());
+    }
+    boolean ownRepo = cfg.loraRepo().isEmpty() || cfg.loraRepo().equals(request.modelName());
+    if (Path.of(cfg.loraPath()).isAbsolute() || ownRepo) {
+      return io.reactivex.rxjava3.core.Single.just(
+        java.util.Optional.of(
+          io.gravitee.singularitee.adapter.textgen.VllmEngineFactory.loraDirectory(cfg, modelDir)
+        )
+      );
+    }
+    return vllmResolver
+      .resolveAdapter(cfg.loraRepo(), cfg.loraPath())
+      .map(dir ->
+        java.util.Optional.of(
+          io.gravitee.singularitee.adapter.textgen.VllmEngineFactory.loraDirectory(cfg, dir)
+        )
+      );
   }
 }

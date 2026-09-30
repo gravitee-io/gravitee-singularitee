@@ -99,6 +99,9 @@ public class EngineAdapter
   /** Tracks per-sequence state keyed by internal ID. */
   private final Map<Integer, VllmSequenceState> states = new ConcurrentHashMap<>();
 
+  /** One vLLM adapter id per LoRA path, shared by every sequence that uses it. */
+  private final LoraIds loraIds = new LoraIds();
+
   /** Buffer for the latest output from the iterator. */
   private final AtomicReference<VllmOutput> currentOutput = new AtomicReference<>();
 
@@ -628,11 +631,8 @@ public class EngineAdapter
     // Build optional LoRA request
     LoraRequest loraReq = null;
     if (request.hasLora()) {
-      loraReq = new LoraRequest(
-        request.loraName() != null ? request.loraName() : "lora-" + internalId,
-        internalId + 1, // loraIntId must be >= 1
-        request.loraPath()
-      );
+      var lora = loraIds.assign(request.loraName(), request.loraPath());
+      loraReq = new LoraRequest(lora.name(), lora.id(), request.loraPath());
     }
 
     // Build the vLLM4J request with full constructor (supports multimodal + LoRA)

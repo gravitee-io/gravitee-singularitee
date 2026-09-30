@@ -42,7 +42,10 @@ public record VllmConfig(
   Boolean enableSleepMode,
   int tensorParallelSize,
   int pipelineParallelSize,
-  String distributedExecutorBackend
+  String distributedExecutorBackend,
+  String loraRepo,
+  String loraPath,
+  String loraName
 ) {
   private static final VllmConfig DEFAULT = newBuilder().build();
 
@@ -53,6 +56,14 @@ public record VllmConfig(
     distributedExecutorBackend = distributedExecutorBackend == null
       ? ""
       : distributedExecutorBackend;
+    loraRepo = loraRepo == null ? "" : loraRepo;
+    loraPath = loraPath == null ? "" : loraPath;
+    loraName = loraName == null ? "" : loraName;
+  }
+
+  /** Whether the model carries a default LoRA adapter applied to every request that names none. */
+  public boolean hasDefaultLora() {
+    return !loraPath.isEmpty();
   }
 
   /** All engine defaults: what an absent YAML block means. */
@@ -87,6 +98,9 @@ public record VllmConfig(
     private int tensorParallelSize;
     private int pipelineParallelSize;
     private String distributedExecutorBackend = "";
+    private String loraRepo = "";
+    private String loraPath = "";
+    private String loraName = "";
 
     public Builder setDtype(String v) {
       this.dtype = v;
@@ -183,6 +197,21 @@ public record VllmConfig(
       return this;
     }
 
+    public Builder setLoraRepo(String v) {
+      this.loraRepo = v;
+      return this;
+    }
+
+    public Builder setLoraPath(String v) {
+      this.loraPath = v;
+      return this;
+    }
+
+    public Builder setLoraName(String v) {
+      this.loraName = v;
+      return this;
+    }
+
     public VllmConfig build() {
       return new VllmConfig(
         dtype,
@@ -203,7 +232,10 @@ public record VllmConfig(
         enableSleepMode,
         tensorParallelSize,
         pipelineParallelSize,
-        distributedExecutorBackend
+        distributedExecutorBackend,
+        loraRepo,
+        loraPath,
+        loraName
       );
     }
   }

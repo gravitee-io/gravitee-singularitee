@@ -285,4 +285,30 @@ class VllmModelResolverTest {
       VllmModelResolver.selectFiles(files)
     );
   }
+
+  @Test
+  void an_adapter_takes_only_its_own_folder() {
+    // The HITLead layout: GGUFs for llama.cpp at the root, the PEFT adapter in adapter/, and possibly full
+    // weights or other runs' files beside them. Only the adapter folder may be fetched.
+    var selected = VllmModelResolver.selectAdapterFiles(
+      Set.of(
+        "README.md",
+        "config.json",
+        "model-00001-of-00006.safetensors",
+        "Qwen3-14B-Q4_K_M.gguf",
+        "Qwen3-14B-HITLead-LoRA-f16.gguf",
+        "adapter/adapter_config.json",
+        "adapter/adapter_model.safetensors",
+        "adapter/README.md",
+        "adapter_old/adapter_config.json",
+        "runs/run.json"
+      ),
+      "adapter/"
+    );
+
+    assertThat(selected).containsExactly(
+      "adapter/adapter_config.json",
+      "adapter/adapter_model.safetensors"
+    );
+  }
 }

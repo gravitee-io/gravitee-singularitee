@@ -22,6 +22,9 @@ import io.gravitee.singularitee.inference.vllm.BatchEngine;
 import io.gravitee.singularitee.inference.vllm.VllmConfig;
 import io.gravitee.singularitee.workspace.MemoryCheckPolicyType;
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
+import io.vertx.core.json.JsonObject;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -85,7 +88,19 @@ public final class VllmEngineFactory implements ModelEngineFactory {
    *                     repo id itself (the offline-unfriendly path)
    */
   public ModelEngine create(ModelLoadRequest request, Path resolvedPath) {
+    return create(request, resolvedPath, null);
+  }
+
+  /**
+   * Creates the engine with the model's default LoRA adapter ({@code vllm.lora_path}), already on disk at
+   * {@code loraDir}. The adapter is checked before vLLM starts: one that cannot be served would otherwise
+   * answer every request as the base model, with nothing in the output to show it.
+   *
+   * @param loraDir the adapter directory, or null when the model has no default adapter
+   */
+  public ModelEngine create(ModelLoadRequest request, Path resolvedPath, Path loraDir) {
     var cfg = request.vllmConfig();
+    var defaultLora = defaultLora(request.modelName(), cfg, loraDir);
 
     var vllmConfig = new VllmConfig(
       request.modelName(),
@@ -131,8 +146,92 @@ public final class VllmEngineFactory implements ModelEngineFactory {
 
     return new VllmTextGenEngine(
       new BatchEngine(vllmConfig),
-      CheckpointModalities.read(resolvedPath, request.modelName())
+      CheckpointModalities.read(resolvedPath, request.modelName()),
+      defaultLora
     );
+  }
+
+  /** vLLM's own {@code max_lora_rank} when the workspace leaves it unset. */
+  static final int VLLM_DEFAULT_MAX_LORA_RANK = 16;
+
+  /**
+   * Where {@code lora_path} points once its repository is on disk: an absolute path is taken as is, a relative
+   * one is resolved inside {@code repoDir} (the {@code lora_repo} download, or the model's own).
+   */
+  public static Path loraDirectory(
+    io.gravitee.singularitee.workspace.config.VllmConfig cfg,
+    Path repoDir
+  ) {
+    Path path = Path.of(cfg.loraPath());
+    return path.isAbsolute() ? path : repoDir.resolve(path).normalize();
+  }
+
+  /**
+   * The default adapter to apply, or null when the model has none. Refuses, before vLLM starts, an adapter
+   * that would not be served: LoRA not enabled, no PEFT {@code adapter_config.json}, or a rank above the
+   * engine's {@code max_lora_rank}.
+   */
+  static VllmTextGenEngine.DefaultLora defaultLora(
+    String modelName,
+    io.gravitee.singularitee.workspace.config.VllmConfig cfg,
+    Path loraDir
+  ) {
+    if (!cfg.hasDefaultLora()) {
+      return null;
+    }
+    if (!cfg.enableLora()) {
+      throw new IllegalArgumentException(
+        "Model '" +
+          modelName +
+          "': vllm.lora_path is set but vllm.enable_lora is false; the adapter would " +
+          "never be applied"
+      );
+    }
+    if (loraDir == null) {
+      throw new IllegalArgumentException(
+        "Model '" +
+          modelName +
+          "': vllm.lora_path '" +
+          cfg.loraPath() +
+          "' was not resolved to a directory"
+      );
+    }
+    Path adapterConfig = loraDir.resolve("adapter_config.json");
+    if (!Files.isRegularFile(adapterConfig)) {
+      throw new IllegalArgumentException(
+        "Model '" +
+          modelName +
+          "': no PEFT adapter at " +
+          loraDir +
+          " (adapter_config.json missing); " +
+          "vLLM serves LoRA in PEFT format, not GGUF"
+      );
+    }
+    int rank;
+    try {
+      rank = new JsonObject(Files.readString(adapterConfig)).getInteger("r", 0);
+    } catch (IOException | RuntimeException e) {
+      throw new IllegalArgumentException(
+        "Model '" + modelName + "': cannot read " + adapterConfig + ": " + e.getMessage(),
+        e
+      );
+    }
+    int maxRank = cfg.maxLoraRank() > 0 ? cfg.maxLoraRank() : VLLM_DEFAULT_MAX_LORA_RANK;
+    if (rank > maxRank) {
+      throw new IllegalArgumentException(
+        "Model '" +
+          modelName +
+          "': the adapter at " +
+          loraDir +
+          " has rank " +
+          rank +
+          ", above vllm.max_lora_rank " +
+          maxRank +
+          "; raise max_lora_rank"
+      );
+    }
+    String name = cfg.loraName().isEmpty() ? "default" : cfg.loraName();
+    return new VllmTextGenEngine.DefaultLora(name, loraDir.toAbsolutePath().toString());
   }
 
   private static MemoryCheckPolicy toMemoryCheckPolicy(MemoryCheckPolicyType policy) {
