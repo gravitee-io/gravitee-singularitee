@@ -156,6 +156,10 @@ if grep -qE '^[[:space:]]*type:[[:space:]]*vllm[[:space:]]*$' "$WORKSPACE" 2>/de
   JAVA_OPTS="$JAVA_OPTS -Dvllm4j.venv=$VLLM_VENV"
   echo ">> vLLM venv: $VLLM_VENV"
 
+  # The embedded CPython inherits this shell's locale; under a non UTF-8 one its
+  # default text encoding is ASCII and `import vllm` fails decoding PyTorch sources.
+  export PYTHONUTF8=1
+
   # The JVM opens libpython through FFM with RTLD_LOCAL, which hides CPython's
   # symbols from every extension module dlopen'd afterwards. torch is the first
   # to need them and dies with:
