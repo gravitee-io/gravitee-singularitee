@@ -25,6 +25,7 @@ import io.gravitee.singularitee.engine.api.registry.UnlicensedStepException;
 import io.gravitee.singularitee.engine.pipeline.PipelineExecutor;
 import io.gravitee.singularitee.engine.pipeline.executor.StepExecutorFactory;
 import io.gravitee.singularitee.engine.remote.RemoteClassifierEngine;
+import io.gravitee.singularitee.engine.remote.RemoteDecisionEngine;
 import io.gravitee.singularitee.engine.remote.RemoteEmbeddingEngine;
 import io.gravitee.singularitee.engine.remote.RemotePipelineCallback;
 import io.gravitee.singularitee.engine.remote.RemoteRerankerEngine;
@@ -314,6 +315,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       case REMOTE_CLASSIFIER -> new RemoteClassifierEngine(client, modelDef.id(), modelDef.task());
       case REMOTE_EMBEDDING -> new RemoteEmbeddingEngine(client, modelDef.id());
       case REMOTE_RERANKER -> new RemoteRerankerEngine(client, modelDef.id());
+      case REMOTE_DECISION -> new RemoteDecisionEngine(client, modelDef.id());
       default -> throw new IllegalArgumentException("Not a remote model type: " + modelType);
     };
 

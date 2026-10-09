@@ -16,6 +16,8 @@ Any model whose engine implements `ClassifierEngine` answers a classify call wit
 
 Oversized input is split on semantic boundaries and recombined, never truncated.
 
+A decision model (`llama_cpp_decision`, `vllm_decision`) declared with `as_classifier` is a classifier too: one choice question, the option keys as labels and their probabilities as scores. It is zero-shot like GLiNER: request `labels` replace its own for that call, and `as_classifier: {}` takes every label from the request. See [Decisions](../decisions/README.md#reuse-it-as-a-classifier).
+
 ## Key types
 
 - `ClassifierEngine` (engine): `rxClassify(request)`, `rxClassify(request, labels)` for per-request GLiNER schemas, `rxClassifyBatch`, `rxClassifyPresplit`.
@@ -180,6 +182,7 @@ Keys used in this guide. Full lists: [onnx_classifier](../../reference/models/on
 
 - [Guards and redaction](../guards-and-redaction/README.md): block or mask on a classifier verdict.
 - [Routing](../routing/README.md): branch on a top label.
+- [Decisions](../decisions/README.md): typed questions, and decision models as classifiers.
 - [Embeddings and reranking](../embeddings-and-reranking/README.md): the other encoder families.
 - [Pipelines](../../concepts/pipelines/README.md) and [Workspaces](../../workspaces/README.md).
 - [HTTP API](../../api/http/README.md), [gRPC API](../../api/grpc/README.md), [Java client](../../api/java-client/README.md).

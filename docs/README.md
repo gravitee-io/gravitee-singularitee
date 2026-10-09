@@ -12,7 +12,7 @@
 | [Workspaces](./workspaces/README.md) | How do I write the YAML that declares what a server publishes? |
 | [Reference](#reference) | What is every key, every option, every default? |
 | [APIs](#apis) | How do I call it over gRPC or HTTP, and what are the conventions of each? |
-| [Guides](#guides) | How do I do X (guard, route, loop, call tools, go multimodal, run multi-server)? |
+| [Guides](#guides) | How do I do X (guard, route, decide, loop, call tools, go multimodal, run multi-server)? |
 | [Operations](#operations) | How do I deploy, observe and size it? |
 
 ## Reference
@@ -21,8 +21,8 @@ One page per model type, one page per step type, one page for templates, one for
 
 | Page | Contents |
 | --- | --- |
-| [Model types](./reference/models/README.md) | `llama_cpp`, `vllm`, `onnx_classifier`, `onnx_embedding`, `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker`, `remote_*`, `regex`, `composite_classifier`. |
-| [Step types](./reference/steps/README.md) | `infer`, `classify`, `embed`, `route`, `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`. |
+| [Model types](./reference/models/README.md) | `llama_cpp`, `vllm`, `onnx_classifier`, `onnx_embedding`, `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker`, [`llama_cpp_decision`](./reference/models/llama_cpp_decision.md), [`vllm_decision`](./reference/models/vllm_decision.md), `remote_*` (including [`remote_decision`](./reference/models/remote_decision.md)), `regex`, `composite_classifier`. |
+| [Step types](./reference/steps/README.md) | `infer`, `classify`, `embed`, `route`, `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`, [`decide`](./reference/steps/decide.md). |
 | [Templates](./reference/templates/README.md) | The `templates:` section, Jinja variables, chat and tool-extraction templates. |
 | [Context fields](./reference/context-fields.md) | Every key a step reads from or writes to the pipeline context. |
 | [Configuration](./reference/configuration.md) | Every `gravitee.yml` key, its default and its environment variable. |
@@ -32,10 +32,10 @@ One page per model type, one page per step type, one page for templates, one for
 | Page | Contents |
 | --- | --- |
 | [API overview](./api/README.md) | The two fronts, what they share, and a side-by-side of their conventions. |
-| [gRPC API](./api/grpc/README.md) | The four services, every RPC, streaming events, errors, auth, TLS. |
+| [gRPC API](./api/grpc/README.md) | The five services, every RPC, streaming events, errors, auth, TLS. |
 | [HTTP API](./api/http/README.md) | The OpenAI-compatible endpoints, error envelope, SSE, auth. |
 | [Java client](./api/java-client/README.md) | `SingulariteeClient`: the only dependency a caller needs. |
-| [OpenAPI specs](../openapi/README.md) | One machine-readable spec per API type under `openapi/`. |
+| [OpenAPI specs](../openapi/README.md) | One machine-readable spec per API type under `openapi/`, including [decisions](../openapi/decision.openapi.yaml). |
 
 ## Guides
 
@@ -45,7 +45,8 @@ One page per model type, one page per step type, one page for templates, one for
 | [Classification](./guides/classification/README.md) | Sequence, token and zero-shot classification; regex and composite classifiers. |
 | [Embeddings and reranking](./guides/embeddings-and-reranking/README.md) | Vectors, cross-encoder reranking, similarity. |
 | [Guards and redaction](./guides/guards-and-redaction/README.md) | Reject, warn or redact input with classifier, LLM-as-judge or regex guards. |
-| [Routing](./guides/routing/README.md) | Branch on a label, on embedding similarity, or on an LLM's structured answer. |
+| [Routing](./guides/routing/README.md) | Branch on a label, on embedding similarity, on an LLM's structured answer, or on a decision. |
+| [Decisions](./guides/decisions/README.md) | Typed questions (choice, score, noul) answered in one forward pass; decide steps, decision routing, guarded decision endpoints. |
 | [Loops and chain-of-thought](./guides/loops-and-cot/README.md) | Bounded self-refinement with `loop` and `break`. |
 | [Tool calling](./guides/tool-calling/README.md) | Caller tools, shortlisting, extraction dialects, repair loops. |
 | [Structured output](./guides/structured-output/README.md) | Constrained decoding: JSON Schema, JSON object, choice, regex, grammar. |

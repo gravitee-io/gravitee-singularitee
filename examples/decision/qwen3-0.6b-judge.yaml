@@ -1,0 +1,57 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Qwen3-0.6B as a decision model
+#
+# Standalone workspace. Run it with:
+#   ./run-server.sh --workspace examples/decision/qwen3-0.6b-judge.yaml
+#
+# Any chat model answers typed questions (choice, score, noul) in one forward
+# pass: the server wraps a shipped instruction in the model's chat template,
+# prefills "Answer: (" and reads the logits of the label codes A, B, C... No token
+# is generated, and the probabilities are real ones rather than a parsed string.
+#
+#   curl -s localhost:8080/v1/decisions -H 'Content-Type: application/json' -d '{
+#     "model": "judge",
+#     "input": "Customer message: I was charged twice for my order and nobody has replied.",
+#     "questions": [
+#       {"id": "route", "type": "choice", "instructions": "Which team should handle this?",
+#        "options": [{"key": "billing"}, {"key": "shipping"}, {"key": "technical"}]},
+#       {"id": "angry", "type": "noul", "instructions": "Is the customer angry?"},
+#       {"id": "urgency", "type": "score", "instructions": "How urgent is this?",
+#        "levels": ["can wait", "this week", "today", "right now"]}
+#     ]
+#   }' | jq
+#
+# The same model answers TypeSafe's System One shape on POST /v1/systemone.
+
+workspace:
+  name: qwen3-0.6b-judge
+
+  models:
+    - id: judge
+      name: Qwen/Qwen3-0.6B-GGUF
+      type: llama_cpp_decision
+      memory_check: warn
+      llama_cpp_decision:
+        path: Qwen3-0.6B-Q8_0.gguf
+        family: custom
+        prompt:
+          template: chat
+        n_ctx: 4096
+        n_seq_max: 8
+        n_parallel: 2
+        n_gpu_layers: 999

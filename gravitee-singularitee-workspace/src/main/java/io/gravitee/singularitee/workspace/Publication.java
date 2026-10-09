@@ -43,7 +43,8 @@ public final class Publication {
     "text-classification",
     "token-classification",
     "feature-extraction",
-    "reranking"
+    "reranking",
+    "decision"
   );
 
   /** Input modality slugs an entry may declare. */

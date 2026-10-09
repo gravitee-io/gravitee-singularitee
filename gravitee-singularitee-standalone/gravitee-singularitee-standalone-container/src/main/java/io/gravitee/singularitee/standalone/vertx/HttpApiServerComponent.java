@@ -30,6 +30,7 @@ import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.http.auth.BearerTokenAuthHandler;
 import io.gravitee.singularitee.http.json.OpenAiError;
 import io.gravitee.singularitee.http.router.OpenAiRoutes;
+import io.gravitee.singularitee.service.GraviteeDecisionServiceImpl;
 import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.service.GraviteePipelineServiceImpl;
@@ -99,6 +100,7 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
   > serverFactory;
   private final GraviteeInferenceServiceImpl inferenceService;
   private final GraviteeVectorServiceImpl vectorService;
+  private final GraviteeDecisionServiceImpl decisionService;
   private final GraviteeModelServiceImpl modelService;
   private final GraviteePipelineServiceImpl pipelineService;
   private final ModelRegistry modelRegistry;
@@ -116,6 +118,7 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
     VertxServerFactory<VertxServer<?, VertxServerOptions>, VertxServerOptions> serverFactory,
     GraviteeInferenceServiceImpl inferenceService,
     GraviteeVectorServiceImpl vectorService,
+    GraviteeDecisionServiceImpl decisionService,
     GraviteeModelServiceImpl modelService,
     GraviteePipelineServiceImpl pipelineService,
     ModelRegistry modelRegistry,
@@ -128,6 +131,7 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
     this.serverFactory = serverFactory;
     this.inferenceService = inferenceService;
     this.vectorService = vectorService;
+    this.decisionService = decisionService;
     this.modelService = modelService;
     this.pipelineService = pipelineService;
     this.modelRegistry = modelRegistry;
@@ -200,6 +204,7 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
       router,
       inferenceService,
       vectorService,
+      decisionService,
       modelService,
       pipelineService,
       modelRegistry,

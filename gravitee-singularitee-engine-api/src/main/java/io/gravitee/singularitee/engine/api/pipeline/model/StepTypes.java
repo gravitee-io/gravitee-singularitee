@@ -40,6 +40,7 @@ public final class StepTypes {
   public static final String REGEX_GUARD = "regex_guard";
   public static final String TOOL_SELECT = "tool_select";
   public static final String TODO = "todo";
+  public static final String DECIDE = "decide";
 
   /** The core step types every server must be able to execute. */
   public static final Set<String> CORE = Set.of(
@@ -54,7 +55,8 @@ public final class StepTypes {
     SUB_PIPELINE,
     REGEX_GUARD,
     TOOL_SELECT,
-    TODO
+    TODO,
+    DECIDE
   );
 
   private StepTypes() {}

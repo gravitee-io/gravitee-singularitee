@@ -258,7 +258,11 @@ public record WorkspaceDefinition(
     /** {@code llama_cpp_embedding}: engine block for {@code type: llama_cpp_embedding}. */
     @JsonProperty("llama_cpp_embedding") LlamaCppEmbeddingDef llamaCppEmbedding,
     /** {@code llama_cpp_reranker}: engine block for {@code type: llama_cpp_reranker}. */
-    @JsonProperty("llama_cpp_reranker") LlamaCppRerankerDef llamaCppReranker
+    @JsonProperty("llama_cpp_reranker") LlamaCppRerankerDef llamaCppReranker,
+    /** {@code llama_cpp_decision}: engine block for {@code type: llama_cpp_decision}. */
+    @JsonProperty("llama_cpp_decision") LlamaCppDecisionDef llamaCppDecision,
+    /** {@code vllm_decision}: engine block for {@code type: vllm_decision}. */
+    @JsonProperty("vllm_decision") VllmDecisionDef vllmDecision
   ) {
     /** Returns {@code true} unless the workspace explicitly hid this model. */
     public boolean isVisible() {
@@ -523,6 +527,116 @@ public record WorkspaceDefinition(
      * {@code {document}} placeholders. Unset = plain concatenation (BERT-family models).
      */
     @JsonProperty("rerank_template") String rerankTemplate
+  ) {}
+
+  /**
+   * The {@code llama_cpp_decision:} engine block: a decision model answering typed questions in
+   * one forward pass.
+   *
+   * <p>A native decision GGUF declares its family in its metadata; {@code family: custom} turns
+   * any causal model into one, scored on the label {@code codes}.
+   */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record LlamaCppDecisionDef(
+    /** {@code path}: GGUF file name inside the repository, or a local file path. */
+    @JsonProperty("path") String path,
+    /** {@code family}: {@code auto} (read from the model, default) or {@code custom}. */
+    @JsonProperty("family") String family,
+    /** {@code codes}: custom only, one single-token label code per option position. Unset = {@code A..Z}. */
+    @JsonProperty("codes") List<String> codes,
+    /** {@code debias}: custom only, {@code reverse} scores each choice in both option orders. Unset = {@code none}. */
+    @JsonProperty("debias") String debias,
+    /** {@code prompt}: where prompts come from. */
+    @JsonProperty("prompt") DecisionPromptDef prompt,
+    /** {@code temperatures}: overrides of the model's calibration temperatures, same keys. */
+    @JsonProperty("temperatures") Map<String, Float> temperatures,
+    /** {@code n_ctx}: context size per decider. Zero = 8192. */
+    @JsonProperty("n_ctx") int nCtx,
+    /** {@code n_batch}: batch size; laya, kev and clef prompts must fit in one. Zero = family default. */
+    @JsonProperty("n_batch") int nBatch,
+    /** {@code n_seq_max}: label families, sequences per decider (one holds the shared prefix). Zero = 8. */
+    @JsonProperty("n_seq_max") int nSeqMax,
+    /** {@code n_parallel}: deciders in the pool, each with its own context. Zero = 1. */
+    @JsonProperty("n_parallel") int nParallel,
+    /** {@code n_gpu_layers}: layers offloaded to the GPU. Zero = all. */
+    @JsonProperty("n_gpu_layers") int nGpuLayers,
+    /** {@code lora_path}: LoRA adapter file in the same repository, attached to every decider. */
+    @JsonProperty("lora_path") String loraPath,
+    /** {@code as_classifier}: a choice question that also publishes the model as a classifier. */
+    @JsonProperty("as_classifier") DecisionClassifierDef asClassifier
+  ) {}
+
+  /**
+   * The {@code vllm_decision:} engine block: a vLLM Semantic Router decision model, run in-process
+   * by its own model runtime. The model is the entry's {@code name}: a built-in id such as
+   * {@code vllm-sr/Decision-2.0-Kai-0.6B}, or a local package directory.
+   */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record VllmDecisionDef(
+    /**
+     * {@code family}: {@code decision1} or {@code decision2} (vLLM Semantic Router models, run by
+     * their own runtime), or {@code custom} (any causal model vLLM serves, scored on label codes).
+     * Unset = read from a built-in id.
+     */
+    @JsonProperty("family") String family,
+    /** {@code revision}: a Hub revision instead of the runtime's pin. */
+    @JsonProperty("revision") String revision,
+    /** {@code device}: {@code auto} (default), {@code cpu}, {@code cuda}, {@code cuda:1}, {@code mps}, {@code rocm}. */
+    @JsonProperty("device") String device,
+    /** {@code profile}: {@code exact} (default) or a faster profile the model enables. */
+    @JsonProperty("profile") String profile,
+    /** {@code engine}: {@code auto} (default), {@code native} or {@code onnxruntime}. */
+    @JsonProperty("engine") String engine,
+    /** {@code memory_budget_gib}: device memory the model may use. Unset = the runtime's choice. */
+    @JsonProperty("memory_budget_gib") Double memoryBudgetGib,
+    /** {@code threads}: CPU threads the runtime may use. Unset = the runtime's choice. */
+    @JsonProperty("threads") Integer threads,
+    /** {@code cache_dir}: where model files are downloaded. Unset = the server's models directory. */
+    @JsonProperty("cache_dir") String cacheDir,
+    /** {@code offline}: load from the cache only, without contacting the Hub. */
+    @JsonProperty("offline") Boolean offline,
+    /** {@code as_classifier}: a choice question that also publishes the model as a classifier. */
+    @JsonProperty("as_classifier") DecisionClassifierDef asClassifier,
+    /** {@code codes}: custom only, one single-token label code per option position. Unset = {@code A..Z}. */
+    @JsonProperty("codes") List<String> codes,
+    /** {@code debias}: custom only, {@code reverse} scores each choice in both option orders. Unset = {@code none}. */
+    @JsonProperty("debias") String debias,
+    /** {@code prompt}: custom only, where prompts come from ({@code chat}, {@code none} or a {@code templates:} id). */
+    @JsonProperty("prompt") DecisionPromptDef prompt,
+    /** {@code temperatures}: custom only, calibration temperatures keyed like {@code choice.3_5}. */
+    @JsonProperty("temperatures") Map<String, Float> temperatures,
+    /** {@code vllm}: custom only, the vLLM engine block, as for {@code type: vllm}. */
+    @JsonProperty("vllm") VllmDef vllm
+  ) {}
+
+  /**
+   * The {@code as_classifier:} block of a decision model: classifying a text asks this one choice
+   * question, so classify, guard and route steps take the model like any classifier. Labels a
+   * request sends replace {@code options} for that request.
+   */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record DecisionClassifierDef(
+    /** {@code instructions}: the question; a generic one when unset. */
+    @JsonProperty("instructions") Object instructions,
+    /**
+     * {@code options}: label to description (or null), in prompt order; unset, every request sends
+     * its labels.
+     */
+    @JsonProperty("options") Map<String, Object> options
+  ) {}
+
+  /** The {@code prompt:} block of a decision model. */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record DecisionPromptDef(
+    /**
+     * {@code template}: {@code model} (the GGUF's {@code systemone}, default for native models),
+     * {@code chat} (custom only: the chat template around a shipped instruction), {@code none}
+     * (caller-rendered prompts only, default for custom models), or the id of a {@code templates:}
+     * entry.
+     */
+    @JsonProperty("template") String template,
+    /** {@code prefill}: {@code chat} only, appended after the generation prompt. Unset = {@code "Answer: ("}. */
+    @JsonProperty("prefill") String prefill
   ) {}
 
   /** One zero-shot label of a {@code gliner_classifier}. */

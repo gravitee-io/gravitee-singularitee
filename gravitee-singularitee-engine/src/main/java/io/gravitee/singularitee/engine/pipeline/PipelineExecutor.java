@@ -48,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -120,6 +121,20 @@ public class PipelineExecutor implements PipelineExecutorCallback {
     WriteStream<InferResponse> response,
     Context callerContext
   ) {
+    return executePipeline(request, response, callerContext, context -> {});
+  }
+
+  /**
+   * As {@link #executePipeline(InferPipelineRequest, WriteStream, Context)}, letting the caller
+   * prepare the pipeline context before the first step runs and keep it to read results the
+   * stream does not carry (a decision call sets its input and reads the decide step's answers).
+   */
+  public Completable executePipeline(
+    InferPipelineRequest request,
+    WriteStream<InferResponse> response,
+    Context callerContext,
+    Consumer<PipelineContext> prepare
+  ) {
     var entryOpt = pipelineRegistry.get(request.getPipelineId());
     if (entryOpt.isEmpty()) {
       LOGGER.warn("InferPipeline: pipeline not found: {}", request.getPipelineId());
@@ -132,7 +147,7 @@ public class PipelineExecutor implements PipelineExecutorCallback {
     PipelineModel pipeline = entry.pipeline();
     entry.inFlightCount().incrementAndGet();
 
-    return walk(pipeline, request, response, callerContext).doFinally(
+    return walk(pipeline, request, response, callerContext, prepare).doFinally(
       entry.inFlightCount()::decrementAndGet
     );
   }
@@ -145,10 +160,12 @@ public class PipelineExecutor implements PipelineExecutorCallback {
     PipelineModel pipeline,
     InferPipelineRequest request,
     WriteStream<InferResponse> response,
-    Context callerContext
+    Context callerContext,
+    Consumer<PipelineContext> prepare
   ) {
     var context = PipelineContext.fromRequest(request);
     context.setServerToolNames(serverToolNames);
+    prepare.accept(context);
 
     // Stored-conversation continuation: prepend the server-curated transcript
     // (internal tool turns included) so the request's own input is just the

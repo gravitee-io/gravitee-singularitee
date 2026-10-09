@@ -126,6 +126,18 @@ public class EngineAdapter
    * {@code memory_check: fail}, or when the weights alone exceed the budget.
    */
   public EngineAdapter(VllmConfig config) {
+    this.engine = buildEngine(config);
+    this.iterator = new VllmIterator(engine);
+  }
+
+  /**
+   * Builds a vLLM engine from {@code config} with this server's policies: platform and GPU
+   * gating, the Hugging Face token, the CPython runtime, then the VRAM pre-flight.
+   *
+   * @throws InsufficientVramException when the pre-flight fails under {@code memory_check: fail},
+   *                                   or when the weights alone exceed the budget
+   */
+  public static VllmEngine buildEngine(VllmConfig config) {
     VllmEngineBuilder builder = VllmEngine.builder().dtype(resolveDtype(config.dtype()));
 
     // The weights are fetched in Java before we get here, so point vLLM at the
@@ -227,8 +239,7 @@ public class EngineAdapter
     builder.initRuntime();
 
     runMemoryCheck(config);
-    this.engine = builder.build();
-    this.iterator = new VllmIterator(engine);
+    return builder.build();
   }
 
   /**

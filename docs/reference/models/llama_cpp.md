@@ -143,7 +143,7 @@ A large MoE model with quantised KV cache (`examples/llama/qwen3.6-35b.yaml`):
   `flash_attn_type`, `cache_type_k/v` silently falls back to the default rather than failing.
 - **Platforms.** llamaj.cpp ships natives for macOS/Apple Silicon (Metal) and Linux/x86_64
   (CPU and CUDA), installed by `install.sh` into `~/.llama.cpp`. Keep `LLAMACPP_VERSION` in
-  step with the llamaj.cpp version (`b10276` with `2.7.0`); a mismatch is a
+  step with the llamaj.cpp version (`v0.6.0` with `2.9.1`); a mismatch is a
   `NoSuchMethodError` at runtime.
 - **The raw model returns the raw stream.** Channel markers and tool-call tags are parsed by
   the `infer` step's `tags:`; call a pipeline id for client-facing traffic.

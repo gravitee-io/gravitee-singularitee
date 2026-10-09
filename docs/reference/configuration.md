@@ -300,8 +300,8 @@ The script exports `GRAVITEE_HTTP_ENABLED=true`, `GRAVITEE_HTTP_PORT`, `GRAVITEE
 | `--port PORT` | `8080` | Forwarded to `run-server.sh`. |
 | `--skip-build` | off | Do not run `mvn clean install -DskipTests`. |
 | `--no-run` | off | Set everything up and exit without starting the server. |
-| `--llama-version bNNNN` | `b10276` | llama.cpp release to download. Must match the llamaj.cpp binding the build was generated against. |
-| `LLAMA_CPP_VERSION` | `b10276` | Same as `--llama-version`. |
+| `--llama-version bNNNN` | `b11429` (llama.cpp v0.6.0) | llama.cpp release to download. Must match the llamaj.cpp binding the build was generated against. |
+| `LLAMA_CPP_VERSION` | `b11429` | Same as `--llama-version`. |
 | `LLAMA_CPP_SHA256` | pinned per host for the default version | Expected digest of the release archive. Required to verify a non-default version; without it the download is installed with a warning. |
 | `NATIVE_DIR` | `~/.llama.cpp` | Where the natives are extracted. A `.llama-cpp-version` stamp records the installed release; the directory is replaced wholesale on a version change. |
 | `HF_TOKEN` | unset | Hinted at the end of setup; read by the server. |
@@ -315,8 +315,9 @@ The script exports `GRAVITEE_HTTP_ENABLED=true`, `GRAVITEE_HTTP_PORT`, `GRAVITEE
 | `-b metal\|cuda\|cpu` | required | Backend. `metal` and `cpu` build the vLLM core from source and `metal` adds the vllm-metal wheel; `cuda` installs the wheel matching the driver (the `+cu129` wheel below driver 580). |
 | `-d DIR` | `~/.venv-gravitee-ai` | Parent directory; the venv is created at `DIR/.venv`. |
 | `-v VERSION` | `3.12` | Python version, always a uv-managed standalone build. |
+| `-r` | off | Also install `vllm-srun`, the model runtime [`vllm_decision`](./models/vllm_decision.md) runs on (same as `VLLM4J_DECISION=1`). |
 
-The script pins vLLM `0.28.0`, `xgrammar 0.2.2` and `apache-tvm-ffi 0.1.11`. The Maven profiles `-Pvllm-integration,metal|cuda|cpu` invoke it during `initialize`; `-Dvllm.venv.path=` points the build at an existing venv and `vllm.setupVenv.skip=true` (the default) skips it.
+The script pins vLLM `0.31.0`, `xgrammar 0.2.7`, `apache-tvm-ffi 0.1.11` and the semantic-router commit `vllm-srun` is built from (`SR_RUNTIME_REF`); the vllm-metal wheel is resolved to the newest one for that vLLM version, with its SHA-256 checked. The Maven profiles `-Pvllm-integration,metal|cuda|cpu` invoke it during `initialize`; `-Dvllm.venv.path=` points the build at an existing venv and `vllm.setupVenv.skip=true` (the default) skips it.
 
 ### Taskfile variables
 

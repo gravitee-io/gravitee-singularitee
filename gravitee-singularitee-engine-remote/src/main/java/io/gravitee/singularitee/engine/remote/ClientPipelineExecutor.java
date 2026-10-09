@@ -465,6 +465,11 @@ public final class ClientPipelineExecutor {
       case REMOTE_CLASSIFIER -> new RemoteClassifierEngine(client, modelId, modelInfo.getTask());
       case REMOTE_EMBEDDING -> new RemoteEmbeddingEngine(client, modelId);
       case REMOTE_RERANKER -> new RemoteRerankerEngine(client, modelId);
+      case REMOTE_DECISION -> new RemoteDecisionEngine(
+        client,
+        modelId,
+        modelInfo.hasDecision() ? modelInfo.getDecision() : null
+      );
       default -> throw new IllegalArgumentException(
         "Not a remote model type: " + type + " for model " + modelId
       );

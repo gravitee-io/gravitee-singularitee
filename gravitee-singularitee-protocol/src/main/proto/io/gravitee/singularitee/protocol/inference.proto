@@ -68,7 +68,7 @@ message ClassifyRequest {
   string model_id = 1;
   // The text to classify.
   string text     = 2;
-  // Optional per-request label/entity override (GLiNER only).
+  // Optional per-request label/entity override (GLiNER and decision classifiers).
   // When provided, these replace the model's default labels for this request.
   repeated ClassifyLabel labels = 3;
 }
@@ -90,7 +90,7 @@ message ClassifyResult {
   optional int32  end   = 5;
 }
 
-// Label definition for per-request classification override (GLiNER).
+// Label definition for per-request classification override (GLiNER, decision classifiers).
 message ClassifyLabel {
   string name        = 1;
   string description = 2;
@@ -101,7 +101,7 @@ message ClassifyBatchRequest {
   string model_id           = 1;
   // The texts to classify (each classified independently).
   repeated string texts     = 2;
-  // Optional per-request label/entity override (GLiNER only).
+  // Optional per-request label/entity override (GLiNER and decision classifiers).
   // When provided, these replace the model's default labels for this request.
   repeated ClassifyLabel labels = 3;
 }

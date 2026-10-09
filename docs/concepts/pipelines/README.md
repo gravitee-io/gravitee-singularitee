@@ -9,10 +9,13 @@ A pipeline is declared in workspace YAML as `entry` plus a list of `steps`, comp
 its `StepExecutor`, which reads and writes the `PipelineContext` and returns the id of the
 next step, or nothing, which ends the walk. Callers invoke a pipeline with the `InferPipeline`
 RPC, or over HTTP by passing the pipeline id as `model`, and receive one stream of
-`InferResponse` events.
+`InferResponse` events. A pipeline whose `role: output` step is a `decide` step has the task
+`decision` and is also callable through the decision API (`Decide`, `/v1/decisions`,
+`/v1/systemone`), which returns that step's answers instead of a stream; see
+[Decisions](../../guides/decisions/README.md).
 
-Twelve step types exist: `infer`, `classify`, `embed`, `route`, `guard`, `llm_guard`,
-`regex_guard`, `break`, `loop`, `sub_pipeline`, `tool_select`, `todo`. Only `infer` (and the
+Thirteen step types exist: `infer`, `classify`, `embed`, `route`, `guard`, `llm_guard`,
+`regex_guard`, `break`, `loop`, `sub_pipeline`, `tool_select`, `todo`, `decide`. Only `infer` (and the
 `todo` step, for an `ask_user` question or narration) writes to the client stream; every other
 step is silent and only mutates the context.
 
@@ -153,7 +156,7 @@ Envelope keys only; per-step keys are in the [step reference](../../reference/st
 | `id` | string | required | What callers pass as `model` / `pipeline_id`. |
 | `entry` | string | required | Id of the first step. |
 | `steps[].id` | string | required | Step id and context-field prefix. |
-| `steps[].type` | string | required | One of the twelve step types. |
+| `steps[].type` | string | required | One of the thirteen step types. |
 | `steps[].role` | `output` / `thinking` / `internal` | `output` | `infer` only. |
 | `steps[].next_step` | string | unset | Outgoing edge; unset makes the step terminal. |
 | `steps[].config` | map | required | Type-specific block. |

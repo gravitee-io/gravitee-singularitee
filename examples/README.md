@@ -30,6 +30,7 @@ examples/
 ├── classifier/    PII, toxicity, guardrails, intent: BERT (fine-tuned) and GLiNER (zero-shot)
 ├── embedding/     embedding models for retrieval and KNN routing
 ├── reranker/      cross-encoder rerankers
+├── decision/      decision models: typed questions answered in one forward pass
 ├── pipelines/     multi-step examples: guards, routers, chain-of-thought, repair loops, todos
 ├── modular/       the includes mechanism: compose one server from shared fragments
 ├── scripts/       Python demos that drive a running server
@@ -85,6 +86,8 @@ projection GGUF. Set it and the engine loads the multimodal context.
 | `gemma4-12b.yaml` | google/gemma-4-12B-it | Dense 12B with a vision tower. |
 | `qwen3-vl-2b.yaml` | Qwen/Qwen3-VL-2B-Instruct | Vision; no mmproj to configure, unlike llama.cpp. |
 | `qwen3.8-27b.yaml` | Qwen/Qwen3.8-27B-FP8 | Dense 27.8B, official FP8 checkpoint; fits one 40 GB card. |
+| `qwen3-0.6b-judge.yaml` | Qwen/Qwen3-0.6B | A `vllm_decision` model with `family: custom`: the chat model scored on label codes through vLLM's `logprob_token_ids`, `debias: reverse`. The vLLM twin of `decision/qwen3-0.6b-judge.yaml`; run end to end on Apple Silicon. |
+| `decision-2.0-kai-0.6b.yaml` | vllm-sr/Decision-2.0-Kai-0.6B | A `vllm_decision` model on vLLM Semantic Router's runtime (needs `setup-venv.sh -r`), also published as a classifier. Runs on CPU, CUDA or MPS; run end to end on Apple Silicon. |
 
 A representative subset of the `llama/` families; quantised (AWQ/GPTQ) variants live as
 fragments under `modular/models/vllm/`. Parameter counts and context windows in each file
@@ -96,7 +99,7 @@ Two things differ from the llama.cpp equivalents:
 - Multi-GPU is explicit. Models above roughly 40 GB of weights carry `tensor_parallel_size`. Set it once for a whole deployment with `GRAVITEE_AI_VLLM_TENSORPARALLELSIZE` instead and leave it out of the workspace.
 
 The vLLM backend is far less exercised than llama.cpp. Run end to end so far: the two
-quantized Qwen3 files and `gpt-oss-20b-mac.yaml` on Apple Silicon. The rest are configured
+quantized Qwen3 files, `gpt-oss-20b-mac.yaml`, `qwen3-0.6b-judge.yaml` and `decision-2.0-kai-0.6b.yaml` on Apple Silicon. The rest are configured
 from checkpoint metadata and verified to parse, not to serve. They need a vLLM virtualenv on
 the JVM command line (`-Dvllm4j.venv=...`; `run-server.sh` sets it, see
 `scripts/setup-venv.sh`) unless you use the `vllm-cuda` image, which bundles one.
@@ -128,6 +131,17 @@ Embeddings and rerankers are complements: embed to retrieve the top candidates c
 rerank those to the final few. A cross-encoder reads `(query, document)` together, which ranks
 better but cannot be precomputed into an index. `pooling_mode` and `normalize` must match the
 model card (BGE wants `CLS` plus normalize; most sentence-transformers want `MEAN`).
+
+### `decision/`
+
+| File | ids | Notes |
+| --- | --- | --- |
+| `qwen3-0.6b-judge.yaml` | `judge` | Qwen3-0.6B as a `llama_cpp_decision` model (`family: custom`, `prompt.template: chat`): answers choice, score and noul questions on `/v1/decisions` and `/v1/systemone` from the logits of the label codes, no token generated. |
+| `qwen3-0.6b-triage.yaml` | `triage`, `support` | `triage` is a decision endpoint built as a pipeline: a regex guard answers `blocked` on a card number, then a `decide` step answers the caller's questions. `support` is a generation pipeline routed by a `decide` step and `route` with `strategy: decision`; low confidence falls back to a generalist reply. |
+
+A decision model scores options rather than writing an answer, so the result is a set of
+probabilities, not a string to parse. See [llama_cpp_decision](../docs/reference/models/llama_cpp_decision.md)
+and [`decide`](../docs/reference/steps/decide.md).
 
 ---
 

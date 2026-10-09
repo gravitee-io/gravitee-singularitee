@@ -109,7 +109,7 @@ Model-level keys only; there is no `remote_classifier:` block.
   then the client on others (`GRAVITEE_GRPC_PORT=9190 ./run-server.sh --port 8180 --workspace <client>`).
 - **Composable.** A `remote_classifier` may be a member of a local `composite_classifier`.
 - **Per-request labels** pass through to the remote; whether they apply depends on the remote
-  engine (GLiNER only).
+  engine (GLiNER and decision classifiers).
 
 ## See also
 

@@ -22,6 +22,7 @@ import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TokenStreamWriter;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.pipeline.PipelineExecutor;
+import io.gravitee.singularitee.inference.api.decision.DecisionException;
 import io.gravitee.singularitee.protocol.*;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -327,7 +328,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
 
         return responseBuilder.build();
       })
-      .subscribe(promise::complete, promise::fail);
+      .subscribe(promise::complete, e -> promise.fail(classifyFailure(e)));
     return promise.future();
   }
 
@@ -411,8 +412,16 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
         }
         return batchBuilder.build();
       })
-      .subscribe(promise::complete, promise::fail);
+      .subscribe(promise::complete, e -> promise.fail(classifyFailure(e)));
     return promise.future();
+  }
+
+  /**
+   * A decision classifier's refusal (labels it cannot take) as its gRPC status, so it reads as
+   * {@code INVALID_ARGUMENT} rather than an internal error; other failures pass through.
+   */
+  private static Throwable classifyFailure(Throwable e) {
+    return e instanceof DecisionException ? GraviteeDecisionServiceImpl.toStatus(e) : e;
   }
 
   // ---------------------------------------------------------------------------

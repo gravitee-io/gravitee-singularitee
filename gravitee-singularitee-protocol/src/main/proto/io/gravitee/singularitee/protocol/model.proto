@@ -25,6 +25,8 @@ syntax = "proto3";
 
 package io.gravitee.singularitee.protocol;
 
+import "io/gravitee/singularitee/protocol/decision.proto";
+
 option java_package = "io.gravitee.singularitee.protocol";
 option java_outer_classname = "ModelProto";
 option java_multiple_files = true;
@@ -54,6 +56,8 @@ enum ModelType {
   MODEL_TYPE_ONNX_RERANKER           = 7;
   MODEL_TYPE_LLAMA_CPP_EMBEDDING     = 8;
   MODEL_TYPE_LLAMA_CPP_RERANKER      = 9;
+  MODEL_TYPE_LLAMA_CPP_DECISION      = 10;
+  MODEL_TYPE_VLLM_DECISION           = 11;
 }
 
 // Lifecycle state of a published model.
@@ -94,6 +98,7 @@ message GetModelResponse {
   //   "token-classification": token-level classifiers / NER / PII; /classify with character spans
   //   "feature-extraction":   dense vector embeddings; /embeddings
   //   "reranking":            cross-encoder rerankers; /rerank
+  //   "decision":             decision models; /systemone, /decisions
   //
   // Empty string when the task cannot be determined.
   string task          = 13;
@@ -117,6 +122,14 @@ message GetModelResponse {
   //
   // Empty is read as text-only.
   repeated string input_modalities = 15;
+
+  // What the model produces: "decisions" for a decision model, "text" otherwise.
+  // Same vocabulary as llama-server's architecture.output_modalities, so a client
+  // can tell a decision model apart without probing it. Empty is read as text.
+  repeated string output_modalities = 16;
+
+  // Set for decision models only.
+  DecisionInfo decision = 17;
 }
 
 // ---------------------------------------------------------------------------

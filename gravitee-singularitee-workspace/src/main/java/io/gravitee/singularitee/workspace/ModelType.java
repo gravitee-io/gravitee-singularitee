@@ -15,8 +15,12 @@
  */
 package io.gravitee.singularitee.workspace;
 
+import static io.gravitee.singularitee.workspace.config.LlamaCppDecisionConfig.SOURCE_CHAT;
+
 import io.gravitee.singularitee.workspace.config.*;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Model types accepted by the workspace {@code type:} key.
@@ -130,46 +134,6 @@ public enum ModelType {
         null,
         null
       );
-    }
-
-    private VllmConfig toVllm(WorkspaceDefinition.VllmDef d) {
-      var b = VllmConfig.newBuilder();
-      if (d.dtype() != null && !d.dtype().isBlank()) b.setDtype(d.dtype());
-      if (d.maxModelLen() > 0) b.setMaxModelLen(d.maxModelLen());
-      if (d.maxNumSeqs() > 0) b.setMaxNumSeqs(d.maxNumSeqs());
-      if (d.gpuMemoryUtilization() > 0) b.setGpuMemoryUtilization(d.gpuMemoryUtilization());
-      if (d.maxNumBatchedTokens() > 0) b.setMaxNumBatchedTokens(d.maxNumBatchedTokens());
-      b.setEnforceEager(d.enforceEager());
-      b.setTrustRemoteCode(d.trustRemoteCode());
-      if (d.quantization() != null && !d.quantization().isBlank()) b.setQuantization(
-        d.quantization()
-      );
-      if (d.seed() > 0) b.setSeed(d.seed());
-      // `prompt_cache` is an alias for `enable_prefix_caching`; either enables it.
-      // Left unset when the workspace mentions neither, so the engine keeps its own
-      // default; an explicit false reaches the engine as a real disable.
-      if (d.enablePrefixCaching() != null || d.promptCache() != null) {
-        b.setEnablePrefixCaching(
-          Boolean.TRUE.equals(d.enablePrefixCaching()) || Boolean.TRUE.equals(d.promptCache())
-        );
-      }
-      b.setEnableChunkedPrefill(d.enableChunkedPrefill());
-      if (d.kvCacheDtype() != null && !d.kvCacheDtype().isBlank()) b.setKvCacheDtype(
-        d.kvCacheDtype()
-      );
-      b.setEnableLora(d.enableLora());
-      if (d.maxLoras() > 0) b.setMaxLoras(d.maxLoras());
-      if (d.maxLoraRank() > 0) b.setMaxLoraRank(d.maxLoraRank());
-      if (d.loraRepo() != null && !d.loraRepo().isBlank()) b.setLoraRepo(d.loraRepo());
-      if (d.loraPath() != null && !d.loraPath().isBlank()) b.setLoraPath(d.loraPath());
-      if (d.loraName() != null && !d.loraName().isBlank()) b.setLoraName(d.loraName());
-      if (d.enableSleepMode() != null) b.setEnableSleepMode(d.enableSleepMode());
-      if (d.tensorParallelSize() > 0) b.setTensorParallelSize(d.tensorParallelSize());
-      if (d.pipelineParallelSize() > 0) b.setPipelineParallelSize(d.pipelineParallelSize());
-      if (
-        d.distributedExecutorBackend() != null && !d.distributedExecutorBackend().isBlank()
-      ) b.setDistributedExecutorBackend(d.distributedExecutorBackend());
-      return b.build();
     }
   },
 
@@ -453,6 +417,19 @@ public enum ModelType {
     }
   },
 
+  REMOTE_DECISION("remote_decision") {
+    @Override
+    ModelLoadRequest toModelLoadRequest(
+      String modelId,
+      String modelName,
+      String modelPath,
+      MemoryCheckPolicyType memoryCheckPolicy,
+      WorkspaceDefinition.ModelDefinition modelDef
+    ) {
+      return null;
+    }
+  },
+
   // ── Client-local model types ──────────────────────────────────────────────
 
   REGEX("regex") {
@@ -547,6 +524,206 @@ public enum ModelType {
     }
   },
 
+  LLAMA_CPP_DECISION("llama_cpp_decision") {
+    @Override
+    ModelLoadRequest toModelLoadRequest(
+      String modelId,
+      String modelName,
+      String modelPath,
+      MemoryCheckPolicyType memoryCheckPolicy,
+      WorkspaceDefinition.ModelDefinition modelDef
+    ) {
+      var d = modelDef.llamaCppDecision();
+      if (d == null || d.path() == null || d.path().isBlank()) {
+        throw new IllegalArgumentException("llama_cpp_decision.path is required");
+      }
+      String family = d.family() == null ? "auto" : d.family().toLowerCase(Locale.ROOT);
+      if (!family.equals("auto") && !family.equals("custom")) {
+        throw new IllegalArgumentException(
+          "llama_cpp_decision.family must be auto or custom, got '" + d.family() + "'"
+        );
+      }
+      boolean custom = family.equals("custom");
+      String template = d.prompt() != null ? d.prompt().template() : null;
+      var config = new LlamaCppDecisionConfig(
+        d.nCtx(),
+        d.nBatch(),
+        d.nSeqMax(),
+        d.nParallel(),
+        d.nGpuLayers(),
+        d.loraPath(),
+        custom,
+        d.codes(),
+        reverse(d.debias(), custom),
+        template,
+        "",
+        d.prompt() != null ? d.prompt().prefill() : null,
+        d.temperatures(),
+        classifier("llama_cpp_decision", d.asClassifier())
+      );
+      if (SOURCE_CHAT.equals(config.promptSource()) && !custom) {
+        throw new IllegalArgumentException(
+          "llama_cpp_decision.prompt.template: chat is for family: custom"
+        );
+      }
+      return new ModelLoadRequest(
+        modelId,
+        modelName,
+        modelPath,
+        memoryCheckPolicy,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ).withLlamaCppDecision(config);
+    }
+
+    private boolean reverse(String debias, boolean custom) {
+      boolean reverse = ModelType.reverse("llama_cpp_decision", debias);
+      if (reverse && !custom) {
+        throw new IllegalArgumentException("llama_cpp_decision.debias is for family: custom");
+      }
+      return reverse;
+    }
+  },
+
+  VLLM_DECISION("vllm_decision") {
+    @Override
+    ModelLoadRequest toModelLoadRequest(
+      String modelId,
+      String modelName,
+      String modelPath,
+      MemoryCheckPolicyType memoryCheckPolicy,
+      WorkspaceDefinition.ModelDefinition modelDef
+    ) {
+      var d = modelDef.vllmDecision();
+      String family = d == null || d.family() == null ? "" : d.family().toLowerCase(Locale.ROOT);
+      if (
+        !List.of("", "decision1", "decision2", VllmDecisionConfig.FAMILY_CUSTOM).contains(family)
+      ) {
+        throw new IllegalArgumentException(
+          "vllm_decision.family must be decision1, decision2 or custom, got '" + d.family() + "'"
+        );
+      }
+      VllmDecisionConfig config;
+      if (d == null) {
+        config = VllmDecisionConfig.runtime(
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        );
+      } else if (family.equals(VllmDecisionConfig.FAMILY_CUSTOM)) {
+        config = custom(d);
+      } else {
+        rejectCustomKeys(d);
+        config = VllmDecisionConfig.runtime(
+          family.isEmpty() ? null : family,
+          d.revision(),
+          d.device(),
+          d.profile(),
+          d.engine(),
+          d.memoryBudgetGib(),
+          d.threads(),
+          d.cacheDir(),
+          d.offline(),
+          classifier("vllm_decision", d.asClassifier())
+        );
+      }
+      return new ModelLoadRequest(
+        modelId,
+        modelName,
+        modelPath,
+        memoryCheckPolicy,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ).withVllmDecision(config);
+    }
+
+    private VllmDecisionConfig custom(WorkspaceDefinition.VllmDecisionDef d) {
+      for (var key : List.of(
+        Map.entry("revision", d.revision() != null),
+        Map.entry("device", d.device() != null),
+        Map.entry("profile", d.profile() != null),
+        Map.entry("engine", d.engine() != null),
+        Map.entry("memory_budget_gib", d.memoryBudgetGib() != null),
+        Map.entry("threads", d.threads() != null),
+        Map.entry("cache_dir", d.cacheDir() != null),
+        Map.entry("offline", d.offline() != null)
+      )) {
+        if (key.getValue()) {
+          throw new IllegalArgumentException(
+            "vllm_decision." +
+              key.getKey() +
+              " is for the vllm-sr runtime; family: custom takes a vllm: engine block"
+          );
+        }
+      }
+      String template = d.prompt() != null ? d.prompt().template() : null;
+      if (LlamaCppDecisionConfig.SOURCE_MODEL.equals(template)) {
+        throw new IllegalArgumentException(
+          "vllm_decision.prompt.template: a custom model has no decision template; use chat, none or a templates: id"
+        );
+      }
+      if (d.vllm() != null && d.vllm().loraPath() != null && !d.vllm().loraPath().isBlank()) {
+        throw new IllegalArgumentException("vllm_decision.vllm.lora_path is not supported");
+      }
+      return new VllmDecisionConfig(
+        VllmDecisionConfig.FAMILY_CUSTOM,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        classifier("vllm_decision", d.asClassifier()),
+        d.codes(),
+        reverse("vllm_decision", d.debias()),
+        template,
+        "",
+        d.prompt() != null ? d.prompt().prefill() : null,
+        d.temperatures(),
+        d.vllm() != null ? toVllm(d.vllm()) : VllmConfig.getDefaultInstance()
+      );
+    }
+
+    private void rejectCustomKeys(WorkspaceDefinition.VllmDecisionDef d) {
+      for (var key : List.of(
+        Map.entry("codes", d.codes() != null),
+        Map.entry("debias", d.debias() != null),
+        Map.entry("prompt", d.prompt() != null),
+        Map.entry("temperatures", d.temperatures() != null),
+        Map.entry("vllm", d.vllm() != null)
+      )) {
+        if (key.getValue()) {
+          throw new IllegalArgumentException(
+            "vllm_decision." + key.getKey() + " is for family: custom"
+          );
+        }
+      }
+    }
+  },
+
   LLAMA_CPP_RERANKER("llama_cpp_reranker") {
     @Override
     ModelLoadRequest toModelLoadRequest(
@@ -616,6 +793,75 @@ public enum ModelType {
     this.yamlKey = yamlKey;
   }
 
+  /** The {@code vllm:} engine block as engine configuration. */
+  private static VllmConfig toVllm(WorkspaceDefinition.VllmDef d) {
+    var b = VllmConfig.newBuilder();
+    if (d.dtype() != null && !d.dtype().isBlank()) b.setDtype(d.dtype());
+    if (d.maxModelLen() > 0) b.setMaxModelLen(d.maxModelLen());
+    if (d.maxNumSeqs() > 0) b.setMaxNumSeqs(d.maxNumSeqs());
+    if (d.gpuMemoryUtilization() > 0) b.setGpuMemoryUtilization(d.gpuMemoryUtilization());
+    if (d.maxNumBatchedTokens() > 0) b.setMaxNumBatchedTokens(d.maxNumBatchedTokens());
+    b.setEnforceEager(d.enforceEager());
+    b.setTrustRemoteCode(d.trustRemoteCode());
+    if (d.quantization() != null && !d.quantization().isBlank()) b.setQuantization(
+      d.quantization()
+    );
+    if (d.seed() > 0) b.setSeed(d.seed());
+    // `prompt_cache` is an alias for `enable_prefix_caching`; either enables it.
+    // Left unset when the workspace mentions neither, so the engine keeps its own
+    // default; an explicit false reaches the engine as a real disable.
+    if (d.enablePrefixCaching() != null || d.promptCache() != null) {
+      b.setEnablePrefixCaching(
+        Boolean.TRUE.equals(d.enablePrefixCaching()) || Boolean.TRUE.equals(d.promptCache())
+      );
+    }
+    b.setEnableChunkedPrefill(d.enableChunkedPrefill());
+    if (d.kvCacheDtype() != null && !d.kvCacheDtype().isBlank()) b.setKvCacheDtype(
+      d.kvCacheDtype()
+    );
+    b.setEnableLora(d.enableLora());
+    if (d.maxLoras() > 0) b.setMaxLoras(d.maxLoras());
+    if (d.maxLoraRank() > 0) b.setMaxLoraRank(d.maxLoraRank());
+    if (d.loraRepo() != null && !d.loraRepo().isBlank()) b.setLoraRepo(d.loraRepo());
+    if (d.loraPath() != null && !d.loraPath().isBlank()) b.setLoraPath(d.loraPath());
+    if (d.loraName() != null && !d.loraName().isBlank()) b.setLoraName(d.loraName());
+    if (d.enableSleepMode() != null) b.setEnableSleepMode(d.enableSleepMode());
+    if (d.tensorParallelSize() > 0) b.setTensorParallelSize(d.tensorParallelSize());
+    if (d.pipelineParallelSize() > 0) b.setPipelineParallelSize(d.pipelineParallelSize());
+    if (
+      d.distributedExecutorBackend() != null && !d.distributedExecutorBackend().isBlank()
+    ) b.setDistributedExecutorBackend(d.distributedExecutorBackend());
+    return b.build();
+  }
+
+  /** Whether {@code debias} asks for both option orders: {@code none} (or unset) or {@code reverse}. */
+  private static boolean reverse(String block, String debias) {
+    if (debias == null || debias.isBlank() || debias.equalsIgnoreCase("none")) return false;
+    if (!debias.equalsIgnoreCase("reverse")) {
+      throw new IllegalArgumentException(
+        block + ".debias must be none or reverse, got '" + debias + "'"
+      );
+    }
+    return true;
+  }
+
+  /**
+   * The {@code as_classifier:} question of a decision model, or {@code null} when unset. Both keys
+   * are optional: without {@code options} every classification sends its own labels.
+   */
+  private static DecisionClassifierQuestion classifier(
+    String block,
+    WorkspaceDefinition.DecisionClassifierDef d
+  ) {
+    if (d == null) return null;
+    if (d.options() != null && d.options().isEmpty()) {
+      throw new IllegalArgumentException(
+        block + ".as_classifier.options is empty; omit it to take labels from each request"
+      );
+    }
+    return new DecisionClassifierQuestion(d.instructions(), d.options());
+  }
+
   /**
    * Returns {@code true} if this model type represents a remote model.
    */
@@ -624,7 +870,8 @@ public enum ModelType {
       this == REMOTE_LLM ||
       this == REMOTE_CLASSIFIER ||
       this == REMOTE_EMBEDDING ||
-      this == REMOTE_RERANKER
+      this == REMOTE_RERANKER ||
+      this == REMOTE_DECISION
     );
   }
 
@@ -684,10 +931,12 @@ public enum ModelType {
             "remote_classifier",
             "remote_embedding",
             "remote_reranker",
+            "remote_decision",
             "regex",
             "composite_classifier",
             "llama_cpp_embedding",
             "llama_cpp_reranker",
+            "llama_cpp_decision",
           }
         )
     );

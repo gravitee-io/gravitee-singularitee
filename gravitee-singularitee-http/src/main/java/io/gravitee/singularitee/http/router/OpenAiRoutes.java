@@ -20,12 +20,15 @@ import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.http.handler.ChatCompletionsHandler;
 import io.gravitee.singularitee.http.handler.ClassifyHandler;
 import io.gravitee.singularitee.http.handler.CompletionsHandler;
+import io.gravitee.singularitee.http.handler.DecisionsHandler;
 import io.gravitee.singularitee.http.handler.EmbeddingsHandler;
 import io.gravitee.singularitee.http.handler.ModelsHandler;
 import io.gravitee.singularitee.http.handler.RerankHandler;
 import io.gravitee.singularitee.http.handler.ResponsesHandler;
 import io.gravitee.singularitee.http.handler.SimilarityHandler;
+import io.gravitee.singularitee.http.handler.SystemOneHandler;
 import io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver;
+import io.gravitee.singularitee.service.GraviteeDecisionServiceImpl;
 import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.service.GraviteePipelineServiceImpl;
@@ -50,6 +53,7 @@ public final class OpenAiRoutes {
     Router router,
     GraviteeInferenceServiceImpl inference,
     GraviteeVectorServiceImpl vector,
+    GraviteeDecisionServiceImpl decisions,
     GraviteeModelServiceImpl models,
     GraviteePipelineServiceImpl pipelines,
     ModelRegistry modelRegistry,
@@ -65,6 +69,8 @@ public final class OpenAiRoutes {
     var classify = new ClassifyHandler(inference, modelRegistry);
     var rerank = new RerankHandler(vector, modelRegistry);
     var similarity = new SimilarityHandler(vector, modelRegistry);
+    var systemOne = new SystemOneHandler(decisions, modelRegistry, pipelineRegistry);
+    var decisionsHandler = new DecisionsHandler(decisions, modelRegistry, pipelineRegistry);
     var modelsHandler = new ModelsHandler(models, pipelines, exposePipelines);
 
     post(router, "/chat/completions", chat);
@@ -74,6 +80,8 @@ public final class OpenAiRoutes {
     post(router, "/classify", classify);
     post(router, "/rerank", rerank);
     post(router, "/similarity", similarity);
+    post(router, "/systemone", systemOne);
+    post(router, "/decisions", decisionsHandler);
 
     router.get("/v1/models").handler(modelsHandler::list);
     router.get("/models").handler(modelsHandler::list);

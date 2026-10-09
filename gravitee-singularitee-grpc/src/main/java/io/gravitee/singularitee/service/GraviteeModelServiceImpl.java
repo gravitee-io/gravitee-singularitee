@@ -16,10 +16,14 @@
 package io.gravitee.singularitee.service;
 
 import io.gravitee.singularitee.adapter.ModelEngineFactory;
+import io.gravitee.singularitee.adapter.decision.LlamaCppDecisionFactory;
+import io.gravitee.singularitee.adapter.decision.ProtoTypedEngine;
+import io.gravitee.singularitee.adapter.decision.VllmDecisionFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerClassifierFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerNerFactory;
 import io.gravitee.singularitee.adapter.textgen.LlamaCppEngineFactory;
 import io.gravitee.singularitee.adapter.textgen.VllmEngineFactory;
+import io.gravitee.singularitee.engine.api.DecisionEngine;
 import io.gravitee.singularitee.engine.api.ModelEngine;
 import io.gravitee.singularitee.engine.api.ModelEngineToken;
 import io.gravitee.singularitee.engine.api.TextGenEngine;
@@ -230,6 +234,7 @@ public class GraviteeModelServiceImpl
       .setTask(entry.task())
       .setHidden(!entry.visible())
       .addAllInputModalities(entry.inputModalities());
+    addDecisionInfo(builder, entry.engine());
 
     if (entry.engine() instanceof TextGenEngine tge) {
       if (tge.chatTemplateString() != null) builder.setChatTemplate(tge.chatTemplateString());
@@ -250,16 +255,15 @@ public class GraviteeModelServiceImpl
     var builder = ListModelsResponse.newBuilder();
     for (var kv : registry.entries()) {
       if (!kv.getValue().visible()) continue;
-      builder.addModels(
-        GetModelResponse.newBuilder()
-          .setModelId(kv.getKey())
-          .setModelName(kv.getValue().modelName())
-          .setModelType(resolveModelTypeFromEngine(kv.getValue().engine()))
-          .setStatus(ModelStatus.MODEL_STATUS_ACTIVE)
-          .setTask(kv.getValue().task())
-          .addAllInputModalities(kv.getValue().inputModalities())
-          .build()
-      );
+      var model = GetModelResponse.newBuilder()
+        .setModelId(kv.getKey())
+        .setModelName(kv.getValue().modelName())
+        .setModelType(resolveModelTypeFromEngine(kv.getValue().engine()))
+        .setStatus(ModelStatus.MODEL_STATUS_ACTIVE)
+        .setTask(kv.getValue().task())
+        .addAllInputModalities(kv.getValue().inputModalities());
+      addDecisionInfo(model, kv.getValue().engine());
+      builder.addModels(model.build());
     }
     return Future.succeededFuture(builder.build());
   }
@@ -402,6 +406,33 @@ public class GraviteeModelServiceImpl
       }).subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io());
     }
 
+    // llama.cpp decision: the GGUF and its LoRA come from the same repository
+    if (
+      factory instanceof LlamaCppDecisionFactory decisionFactory &&
+      ggufResolver != null &&
+      !request.modelPath().isEmpty()
+    ) {
+      return Single.fromCallable(() -> {
+        Path resolved = ggufResolver.resolve(request.modelName(), request.modelPath());
+        String loraPath = request.llamaCppDecision().loraPath();
+        Path lora = loraPath.isEmpty() ? null : ggufResolver.resolve(request.modelName(), loraPath);
+        return decisionFactory.create(request, resolved, lora);
+      }).subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io());
+    }
+
+    // vLLM custom decision model: weights downloaded like a vllm model's. The vllm-sr models fall
+    // through: their runtime resolves and verifies its own pinned files.
+    if (
+      factory instanceof VllmDecisionFactory decisionFactory &&
+      request.vllmDecision().custom() &&
+      vllmResolver != null
+    ) {
+      return vllmResolver
+        .resolve(request.modelName(), request.downloadExclude())
+        .observeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
+        .map(resolved -> decisionFactory.create(request, resolved));
+    }
+
     // vLLM: download the model in Java first, then hand the engine a directory.
     // Same reason as every other backend: one cache, one download path, and a
     // load that needs no network once warm.
@@ -446,12 +477,24 @@ public class GraviteeModelServiceImpl
     );
   }
 
+  /** Decision models advertise the "decisions" output modality and what they accept. */
+  private static void addDecisionInfo(GetModelResponse.Builder builder, ModelEngine engine) {
+    if (engine instanceof DecisionEngine decision) {
+      builder
+        .addOutputModalities(DecisionEngine.OUTPUT_MODALITY)
+        .setDecision(DecisionProtoMapper.info(decision.capabilities()));
+    }
+  }
+
   private ModelType resolveModelTypeFromEngine(ModelEngine engine) {
     return switch (engine.type()) {
       case TEXT_GEN -> ModelType.MODEL_TYPE_LLAMA_CPP;
       case CLASSIFIER -> ModelType.MODEL_TYPE_ONNX_CLASSIFIER;
       case EMBEDDING -> ModelType.MODEL_TYPE_ONNX_EMBEDDING;
       case RERANKER -> ModelType.MODEL_TYPE_ONNX_RERANKER;
+      case DECISION -> engine instanceof ProtoTypedEngine typed
+        ? typed.protoModelType()
+        : ModelType.MODEL_TYPE_LLAMA_CPP_DECISION;
     };
   }
 
@@ -465,6 +508,8 @@ public class GraviteeModelServiceImpl
     if (req.hasGlinerNer()) return ModelType.MODEL_TYPE_GLINER_NER;
     if (req.hasLlamaCppEmbedding()) return ModelType.MODEL_TYPE_LLAMA_CPP_EMBEDDING;
     if (req.hasLlamaCppReranker()) return ModelType.MODEL_TYPE_LLAMA_CPP_RERANKER;
+    if (req.hasLlamaCppDecision()) return ModelType.MODEL_TYPE_LLAMA_CPP_DECISION;
+    if (req.hasVllmDecision()) return ModelType.MODEL_TYPE_VLLM_DECISION;
     return ModelType.MODEL_TYPE_UNSPECIFIED;
   }
 

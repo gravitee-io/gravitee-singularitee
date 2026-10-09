@@ -18,12 +18,14 @@ package io.gravitee.singularitee.workspace;
 import io.gravitee.singularitee.workspace.config.GlinerClassifierConfig;
 import io.gravitee.singularitee.workspace.config.GlinerNerConfig;
 import io.gravitee.singularitee.workspace.config.LlamaCppConfig;
+import io.gravitee.singularitee.workspace.config.LlamaCppDecisionConfig;
 import io.gravitee.singularitee.workspace.config.LlamaCppEmbeddingConfig;
 import io.gravitee.singularitee.workspace.config.LlamaCppRerankerConfig;
 import io.gravitee.singularitee.workspace.config.OnnxClassifierConfig;
 import io.gravitee.singularitee.workspace.config.OnnxEmbeddingConfig;
 import io.gravitee.singularitee.workspace.config.OnnxRerankerConfig;
 import io.gravitee.singularitee.workspace.config.VllmConfig;
+import io.gravitee.singularitee.workspace.config.VllmDecisionConfig;
 import java.util.List;
 
 /**
@@ -59,6 +61,8 @@ public record ModelLoadRequest(
   OnnxRerankerConfig onnxReranker,
   LlamaCppEmbeddingConfig llamaCppEmbedding,
   LlamaCppRerankerConfig llamaCppReranker,
+  LlamaCppDecisionConfig llamaCppDecision,
+  VllmDecisionConfig vllmDecision,
   /**
    * Glob patterns for repository files to skip when downloading this model, from
    * {@code download.exclude:} in the workspace. Never {@code null}; an empty
@@ -127,6 +131,8 @@ public record ModelLoadRequest(
       onnxReranker,
       llamaCppEmbedding,
       llamaCppReranker,
+      null,
+      null,
       List.of(),
       "",
       true,
@@ -150,6 +156,8 @@ public record ModelLoadRequest(
       onnxReranker,
       llamaCppEmbedding,
       llamaCppReranker,
+      llamaCppDecision,
+      vllmDecision,
       exclude,
       task,
       visible,
@@ -181,6 +189,58 @@ public record ModelLoadRequest(
       onnxReranker,
       llamaCppEmbedding,
       llamaCppReranker,
+      llamaCppDecision,
+      vllmDecision,
+      downloadExclude,
+      task,
+      visible,
+      modalities
+    );
+  }
+
+  /** Returns a copy of this request carrying a llama.cpp decision config instead of its engine config. */
+  public ModelLoadRequest withLlamaCppDecision(LlamaCppDecisionConfig config) {
+    return new ModelLoadRequest(
+      modelId,
+      modelName,
+      modelPath,
+      memoryCheckPolicy,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      config,
+      null,
+      downloadExclude,
+      task,
+      visible,
+      modalities
+    );
+  }
+
+  /** Returns a copy of this request carrying a vLLM decision config instead of its engine config. */
+  public ModelLoadRequest withVllmDecision(VllmDecisionConfig config) {
+    return new ModelLoadRequest(
+      modelId,
+      modelName,
+      modelPath,
+      memoryCheckPolicy,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      config,
       downloadExclude,
       task,
       visible,
@@ -231,5 +291,15 @@ public record ModelLoadRequest(
   /** Returns {@code true} if this request carries a llama.cpp reranker config. */
   public boolean hasLlamaCppReranker() {
     return llamaCppReranker != null;
+  }
+
+  /** Returns {@code true} if this request carries a llama.cpp decision config. */
+  public boolean hasLlamaCppDecision() {
+    return llamaCppDecision != null;
+  }
+
+  /** Returns {@code true} if this request carries a vLLM decision config. */
+  public boolean hasVllmDecision() {
+    return vllmDecision != null;
   }
 }

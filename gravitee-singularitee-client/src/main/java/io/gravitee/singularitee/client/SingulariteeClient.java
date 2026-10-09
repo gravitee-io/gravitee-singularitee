@@ -116,6 +116,7 @@ public final class SingulariteeClient implements AutoCloseable {
   private final GraviteePipelineServiceGrpcClient pipelineStub;
   private final GraviteeInferenceServiceGrpcClient inferenceStub;
   private final GraviteeVectorServiceGrpcClient vectorStub;
+  private final GraviteeDecisionServiceGrpcClient decisionStub;
   private final boolean ownsVertx;
 
   /**
@@ -453,6 +454,7 @@ public final class SingulariteeClient implements AutoCloseable {
     this.pipelineStub = GraviteePipelineServiceGrpcClient.create(grpcClient, address);
     this.inferenceStub = GraviteeInferenceServiceGrpcClient.create(grpcClient, address);
     this.vectorStub = GraviteeVectorServiceGrpcClient.create(grpcClient, address);
+    this.decisionStub = GraviteeDecisionServiceGrpcClient.create(grpcClient, address);
   }
 
   // =========================================================================
@@ -652,6 +654,35 @@ public final class SingulariteeClient implements AutoCloseable {
    */
   public Single<TextRerankResponse> textRerank(TextRerankRequest request) {
     return Single.fromCompletionStage(vectorStub.textRerank(request).toCompletionStage())
+      .retryWhen(retryPolicy())
+      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+  }
+
+  // =========================================================================
+  // Decisions
+  // =========================================================================
+
+  /**
+   * Answers typed questions (choice, score, noul) about one state with a decision model or a
+   * decision pipeline. A pipeline halted by a guard answers with {@code blocked} set.
+   *
+   * @param request the target, the state and questions (or rendered prompts)
+   * @return a {@link Single} that emits the answers, in request order
+   */
+  public Single<DecideResponse> decide(DecideRequest request) {
+    return Single.fromCompletionStage(decisionStub.decide(request).toCompletionStage())
+      .retryWhen(retryPolicy())
+      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+  }
+
+  /**
+   * Asks the same questions about several states; results come back in input order.
+   *
+   * @param request the target, the states and the questions
+   * @return a {@link Single} that emits one response per state
+   */
+  public Single<DecideBatchResponse> decideBatch(DecideBatchRequest request) {
+    return Single.fromCompletionStage(decisionStub.decideBatch(request).toCompletionStage())
       .retryWhen(retryPolicy())
       .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
   }

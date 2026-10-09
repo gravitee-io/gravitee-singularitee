@@ -28,6 +28,7 @@ package io.gravitee.singularitee.engine.api;
  *   <li>{@link ClassifierEngine} in {@code SEQUENCE} mode: {@link #TEXT_CLASSIFICATION}</li>
  *   <li>{@link ClassifierEngine} in {@code TOKEN} mode: {@link #TOKEN_CLASSIFICATION}</li>
  *   <li>{@link EmbeddingEngine}: {@link #FEATURE_EXTRACTION}</li>
+ *   <li>{@link DecisionEngine}: {@link #DECISION}</li>
  * </ul>
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -49,6 +50,9 @@ public final class ModelTasks {
 
   /** Cross-encoder reranking. Maps to /rerank. */
   public static final String RERANKING = "reranking";
+
+  /** Typed questions (choice, score, noul) answered in one forward pass. Maps to /systemone, /decisions. */
+  public static final String DECISION = "decision";
 
   private ModelTasks() {}
 }

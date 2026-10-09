@@ -17,6 +17,11 @@ package io.gravitee.singularitee.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
+import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
+import io.gravitee.singularitee.plugin.decide.DecideStepConfig;
+import io.gravitee.singularitee.plugin.route.RouteStepConfig;
+import io.gravitee.singularitee.plugin.route.RoutingStrategy;
 import io.gravitee.singularitee.plugin.test.TestStepPlugins;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -161,6 +166,104 @@ class ExamplesWorkspaceTest {
     // embedding_knn routes on reference sentences; without them there is nothing to match against.
     var route = routeConfigOf("pipelines/embedding-router.yaml");
     assertThat(route.rules()).allSatisfy(rule -> assertThat(rule.sentences()).isNotEmpty());
+  }
+
+  @Test
+  void decision_judge_example_publishes_a_custom_decision_model() throws IOException {
+    var requests = load("decision/qwen3-0.6b-judge.yaml");
+
+    assertThat(requests.models())
+      .singleElement()
+      .satisfies(model -> {
+        assertThat(model.hasLlamaCppDecision()).isTrue();
+        assertThat(model.modelPath()).isEqualTo("Qwen3-0.6B-Q8_0.gguf");
+        assertThat(model.llamaCppDecision().custom()).isTrue();
+        assertThat(model.llamaCppDecision().promptSource()).isEqualTo("chat");
+        assertThat(model.llamaCppDecision().nParallel()).isEqualTo(2);
+      });
+  }
+
+  @Test
+  void vllm_decision_example_publishes_a_runtime_scored_classifier() throws IOException {
+    var requests = load("vllm/decision-2.0-kai-0.6b.yaml");
+
+    assertThat(requests.models())
+      .singleElement()
+      .satisfies(model -> {
+        assertThat(model.hasVllmDecision()).isTrue();
+        assertThat(model.modelName()).isEqualTo("vllm-sr/Decision-2.0-Kai-0.6B");
+        assertThat(model.vllmDecision().device()).isEqualTo("auto");
+        assertThat(model.vllmDecision().classifier().options()).containsOnlyKeys(
+          "billing",
+          "account",
+          "other"
+        );
+      });
+  }
+
+  @Test
+  void vllm_judge_example_scores_a_chat_model_on_label_codes() throws IOException {
+    var requests = load("vllm/qwen3-0.6b-judge.yaml");
+
+    assertThat(requests.models())
+      .singleElement()
+      .satisfies(model -> {
+        assertThat(model.hasVllmDecision()).isTrue();
+        assertThat(model.vllmDecision().custom()).isTrue();
+        assertThat(model.vllmDecision().promptSource()).isEqualTo("chat");
+        assertThat(model.vllmDecision().reverse()).isTrue();
+        assertThat(model.vllmDecision().vllm().maxModelLen()).isEqualTo(4096);
+      });
+  }
+
+  @Test
+  void decision_triage_example_wires_decide_and_decision_routing() throws IOException {
+    var requests = load("decision/qwen3-0.6b-triage.yaml");
+
+    assertThat(requests.models())
+      .filteredOn(ModelLoadRequest::hasLlamaCppDecision)
+      .singleElement()
+      .satisfies(model -> assertThat(model.llamaCppDecision().reverse()).isTrue());
+
+    var triage = pipeline(requests, "triage");
+    var decide = (DecideStepConfig) step(triage, "decide").config();
+    assertThat(decide.questionsFromRequest()).isTrue();
+
+    var support = pipeline(requests, "support");
+    var classify = (DecideStepConfig) step(support, "classify").config();
+    assertThat(classify.questions())
+      .singleElement()
+      .satisfies(q -> assertThat(q.id()).isEqualTo("team"));
+    var route = (RouteStepConfig) step(support, "route").config();
+    assertThat(route.strategy()).isEqualTo(RoutingStrategy.DECISION);
+    assertThat(route.inputField()).isEqualTo("classify.team");
+    assertThat(route.minConfidence()).isEqualTo(0.3);
+  }
+
+  private static YamlWorkspaceLoader.WorkspaceRequests load(String relative) throws IOException {
+    return YamlWorkspaceLoader.load(
+      examplesDir().resolve(relative),
+      null,
+      TestStepPlugins.codecs()
+    );
+  }
+
+  private static PipelineModel pipeline(YamlWorkspaceLoader.WorkspaceRequests requests, String id) {
+    return requests
+      .pipelines()
+      .stream()
+      .filter(p -> p.id().equals(id))
+      .findFirst()
+      .orElseThrow();
+  }
+
+  private static StepModel step(PipelineModel pipeline, String id) {
+    return pipeline
+      .steps()
+      .stream()
+      .filter(s -> s.id().equals(id))
+      .findFirst()
+      .orElseThrow();
   }
 
   private static io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel onlyPipeline(

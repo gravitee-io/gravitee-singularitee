@@ -1,0 +1,20 @@
+{#- The user turn of the `chat` prompt source. The model's chat template wraps it, then a prefill
+    ending in "(" makes an option label the next token. Variables: type, instructions, state,
+    options (key, description, label). -#}
+Read the content, then answer the question by choosing one option.
+
+Content:
+{% if state is string %}{{ state }}{% else %}{{ state | tojson }}{% endif %}
+
+Question: {% if instructions is string %}{{ instructions }}{% else %}{{ instructions | tojson }}{% endif %}
+{%- if type == "score" %}
+Rate it on this scale, from lowest to highest.
+{%- endif %}
+
+Options:
+{%- for option in options %}
+({{ option.label }}) {% if type == "noul" %}{{ "Yes" if option.key == "true" else "No" }}{% elif type == "choice" %}{{ option.key }}{% endif %}
+{%- if option.description is not none %}{{ ": " if type != "score" else "" }}{{ option.description }}{% endif %}
+{%- endfor %}
+
+Reply with the letter of the option in parentheses.

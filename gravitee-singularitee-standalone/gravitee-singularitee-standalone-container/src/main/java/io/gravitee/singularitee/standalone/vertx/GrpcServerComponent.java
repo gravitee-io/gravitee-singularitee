@@ -25,6 +25,7 @@ import io.gravitee.node.vertx.server.VertxServerOptions;
 import io.gravitee.node.vertx.server.http.VertxHttpServer;
 import io.gravitee.node.vertx.server.http.VertxHttpServerOptions;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
+import io.gravitee.singularitee.service.GraviteeDecisionServiceImpl;
 import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.service.GraviteePipelineServiceImpl;
@@ -131,6 +132,7 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
   private final GraviteePipelineServiceImpl pipelineService;
   private final GraviteeInferenceServiceImpl inferenceService;
   private final GraviteeVectorServiceImpl vectorService;
+  private final GraviteeDecisionServiceImpl decisionService;
   private final Tracer tracer;
   private final ReadinessState readinessState;
 
@@ -146,6 +148,7 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
     GraviteePipelineServiceImpl pipelineService,
     GraviteeInferenceServiceImpl inferenceService,
     GraviteeVectorServiceImpl vectorService,
+    GraviteeDecisionServiceImpl decisionService,
     Tracer tracer,
     ReadinessState readinessState
   ) {
@@ -156,6 +159,7 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
     this.pipelineService = pipelineService;
     this.inferenceService = inferenceService;
     this.vectorService = vectorService;
+    this.decisionService = decisionService;
     this.tracer = tracer;
     this.readinessState = readinessState;
   }
@@ -210,6 +214,7 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
     pipelineService.bind(grpcServer);
     inferenceService.bind(grpcServer);
     vectorService.bind(grpcServer);
+    decisionService.bind(grpcServer);
 
     // Optionally wrap the gRPC server with HTTP Basic authentication.
     final boolean authEnabled = environment.getProperty(

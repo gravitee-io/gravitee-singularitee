@@ -43,18 +43,23 @@ includes exactly one of them.
 | `llama_cpp_embedding` | embedding (bi-encoder) | llama.cpp | `feature-extraction` | [llama_cpp_embedding](../reference/models/llama_cpp_embedding.md) |
 | `onnx_reranker` | reranker (cross-encoder) | ONNX Runtime | `reranking` | [onnx_reranker](../reference/models/onnx_reranker.md) |
 | `llama_cpp_reranker` | reranker (cross-encoder) | llama.cpp | `reranking` | [llama_cpp_reranker](../reference/models/llama_cpp_reranker.md) |
+| `llama_cpp_decision` | decision model (typed questions, no generation) | llama.cpp | `decision` | [llama_cpp_decision](../reference/models/llama_cpp_decision.md) |
+| `vllm_decision` | decision model (vLLM Semantic Router Decision 1.0 / 2.0, or any vLLM model with `family: custom`) | vllm_srun or vLLM, through vLLM4j | `decision` | [vllm_decision](../reference/models/vllm_decision.md) |
 | `regex` | token classifier, pure Java | none (in-process) | `token-classification` | [regex](../reference/models/regex.md) |
 | `composite_classifier` | union of classifiers, pure Java | none (in-process) | widest of its members | [composite_classifier](../reference/models/composite_classifier.md) |
 | `remote_llm` | proxy | gRPC to another Singularitee | `text-generation` | [remote_llm](../reference/models/remote_llm.md) |
 | `remote_classifier` | proxy | gRPC to another Singularitee | `text-classification` unless declared | [remote_classifier](../reference/models/remote_classifier.md) |
 | `remote_embedding` | proxy | gRPC to another Singularitee | `feature-extraction` | [remote_embedding](../reference/models/remote_embedding.md) |
 | `remote_reranker` | proxy | gRPC to another Singularitee | `reranking` | [remote_reranker](../reference/models/remote_reranker.md) |
+| `remote_decision` | proxy | gRPC to another Singularitee | `decision` | [remote_decision](../reference/models/remote_decision.md) |
 
 Sequence classification labels the whole input (sentiment, toxicity, intent). Token
 classification labels spans inside it (PII, entities) and returns character offsets, which is
 what the `guard` step's redaction needs. Zero-shot models take their label set from the
 workspace instead of from training. Embedders turn text into a vector; rerankers score a
-`(query, document)` pair directly.
+`(query, document)` pair directly. A decision model answers typed questions (choice, score,
+noul) about a state in one forward pass and returns probabilities, not text; see
+[Decisions](../guides/decisions/README.md).
 
 llama.cpp is the default engine and the one to develop against: cross-platform, no Python,
 set up by `install.sh`. ONNX Runtime and GLiNER need nothing beyond the build. vLLM is opt-in
@@ -66,14 +71,15 @@ class-loading error.
 
 Every published entry advertises a task, the slug `/v1/models` reports and callers route on:
 `text-generation`, `text-classification`, `token-classification`, `feature-extraction`,
-`reranking`. A model answers it from its engine; a pipeline inherits the model behind its
+`reranking`, `decision`. A model answers it from its engine; a pipeline inherits the model behind its
 `role: output` step. `task:` on an entry overrides it; any other value fails the workspace at
 load. Nothing is ever advertised as "pipeline".
 
 Modalities are what an entry accepts as input (`text`, `image`, `audio`). They are detected,
 not declared: llama.cpp asks its multimodal projector, vLLM reads `vision_config` /
 `audio_config` from the checkpoint's `config.json`, a pipeline takes the union over its
-model-bound steps. The HTTP API refuses media the target cannot read (`unsupported_modality`)
+model-bound steps. A decision model also reports `output_modalities: ["decisions"]`, the
+value llama.cpp's server uses for the same kind of model. The HTTP API refuses media the target cannot read (`unsupported_modality`)
 rather than dropping it. Declare `modalities:` only where detection cannot run (a `remote_*`
 proxy, a vLLM model never resolved locally). A vision or audio model is still
 `task: text-generation`.
