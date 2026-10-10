@@ -58,8 +58,6 @@ public final class DecisionRunner implements AutoCloseable {
   /** Where the {@code chat} prompt source's instruction template ships. */
   static final String CHAT_INSTRUCTION_RESOURCE = "chat-systemone.jinja";
 
-  private static final int MAX_SCORE_LEVELS = 10;
-
   private final DecisionBackend backend;
   private final DecisionDialect dialect;
   private final PromptSource source;
@@ -359,43 +357,14 @@ public final class DecisionRunner implements AutoCloseable {
   }
 
   private void validate(List<Question> questions) {
-    if (questions.isEmpty()) {
-      throw new DecisionException(Reason.INVALID_REQUEST, "\"questions\" must not be empty");
-    }
-    var ids = new HashSet<String>();
+    DecisionQuestions.validate(questions);
     for (Question question : questions) {
-      String id = question.id();
-      if (id == null || id.isBlank()) {
-        throw new DecisionException(Reason.INVALID_REQUEST, "question ids must not be blank");
-      }
-      if (!ids.add(id)) throw DecisionException.invalid(id, "duplicate question id");
-      if (question.instructions() == null) {
-        throw DecisionException.invalid(id, "\"instructions\" must be provided");
-      }
-      if (question instanceof Question.Choice choice) {
-        var keys = new HashSet<String>();
-        for (Option option : choice.options()) {
-          if (option.key() == null || option.key().isEmpty() || !keys.add(option.key())) {
-            throw DecisionException.invalid(id, "option keys must be unique and not empty");
-          }
-        }
-      }
-      checkOptionCount(id, question.kind(), question.options().size());
+      checkOptionCount(question.id(), question.kind(), question.options().size());
     }
   }
 
   private void checkOptionCount(String id, QuestionKind kind, int n) {
-    switch (kind) {
-      case CHOICE -> {
-        if (n < 1) throw DecisionException.invalid(id, "a choice needs at least one option");
-      }
-      case SCORE -> {
-        if (n < 2 || n > MAX_SCORE_LEVELS) {
-          throw DecisionException.invalid(id, "a score needs 2 to 10 levels");
-        }
-      }
-      case NOUL -> {}
-    }
+    DecisionQuestions.checkCount(id, kind, n);
     int outputs = dialect.outputs(kind, n);
     if (Math.max(n, outputs) > capabilities.maxOptions()) {
       throw DecisionException.invalid(

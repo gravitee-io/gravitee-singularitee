@@ -65,6 +65,6 @@ Model-level keys only; there is no `remote_decision:` block.
 
 ## See also
 
-- [llama_cpp_decision](./llama_cpp_decision.md), [vllm_decision](./vllm_decision.md).
+- [llama_cpp_decision](./llama_cpp_decision.md), [vllm_decision](./vllm_decision.md), [gliner_decision](./gliner_decision.md).
 - [Remote and multi-server](../../guides/remote-and-multi-server/README.md).
 - [remote_classifier](./remote_classifier.md), [remote_reranker](./remote_reranker.md).

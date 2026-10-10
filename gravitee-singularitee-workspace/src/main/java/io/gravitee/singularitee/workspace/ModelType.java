@@ -724,6 +724,41 @@ public enum ModelType {
     }
   },
 
+  GLINER_DECISION("gliner_decision") {
+    @Override
+    ModelLoadRequest toModelLoadRequest(
+      String modelId,
+      String modelName,
+      String modelPath,
+      MemoryCheckPolicyType memoryCheckPolicy,
+      WorkspaceDefinition.ModelDefinition modelDef
+    ) {
+      var d = modelDef.glinerDecision();
+      var config = d == null
+        ? new GlinerDecisionConfig(null, null, null)
+        : new GlinerDecisionConfig(
+          d.modelDir(),
+          d.variant(),
+          classifier("gliner_decision", d.asClassifier())
+        );
+      return new ModelLoadRequest(
+        modelId,
+        modelName,
+        modelPath,
+        memoryCheckPolicy,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ).withGlinerDecision(config);
+    }
+  },
+
   LLAMA_CPP_RERANKER("llama_cpp_reranker") {
     @Override
     ModelLoadRequest toModelLoadRequest(
@@ -937,6 +972,8 @@ public enum ModelType {
             "llama_cpp_embedding",
             "llama_cpp_reranker",
             "llama_cpp_decision",
+            "vllm_decision",
+            "gliner_decision",
           }
         )
     );

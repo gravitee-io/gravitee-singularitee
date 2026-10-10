@@ -4,7 +4,7 @@
 
 ## Overview
 
-`DecideStepExecutor` binds to a `DecisionEngine` (`llama_cpp_decision`, `vllm_decision`, `remote_decision`). It
+`DecideStepExecutor` binds to a `DecisionEngine` (`llama_cpp_decision`, `vllm_decision`, `gliner_decision`, `remote_decision`). It
 asks its questions about the state read from `input_field`, in one engine call, and writes each
 answer to the context. The step never branches: [`route`](./route.md) (`strategy: decision`),
 [`break`](./break.md) and [`loop`](./loop.md) act on what it writes.
@@ -136,6 +136,6 @@ read as `{{ classify['team.confidence'] }}`.
 
 ## See also
 
-- [llama_cpp_decision](../models/llama_cpp_decision.md), [vllm_decision](../models/vllm_decision.md), [remote_decision](../models/remote_decision.md)
+- [llama_cpp_decision](../models/llama_cpp_decision.md), [vllm_decision](../models/vllm_decision.md), [gliner_decision](../models/gliner_decision.md), [remote_decision](../models/remote_decision.md)
 - [`route`](./route.md) (`strategy: decision`), [`classify`](./classify.md)
 - [Context fields](../context-fields.md)

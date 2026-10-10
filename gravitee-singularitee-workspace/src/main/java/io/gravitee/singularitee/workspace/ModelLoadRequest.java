@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.workspace;
 
 import io.gravitee.singularitee.workspace.config.GlinerClassifierConfig;
+import io.gravitee.singularitee.workspace.config.GlinerDecisionConfig;
 import io.gravitee.singularitee.workspace.config.GlinerNerConfig;
 import io.gravitee.singularitee.workspace.config.LlamaCppConfig;
 import io.gravitee.singularitee.workspace.config.LlamaCppDecisionConfig;
@@ -63,6 +64,7 @@ public record ModelLoadRequest(
   LlamaCppRerankerConfig llamaCppReranker,
   LlamaCppDecisionConfig llamaCppDecision,
   VllmDecisionConfig vllmDecision,
+  GlinerDecisionConfig glinerDecision,
   /**
    * Glob patterns for repository files to skip when downloading this model, from
    * {@code download.exclude:} in the workspace. Never {@code null}; an empty
@@ -133,6 +135,7 @@ public record ModelLoadRequest(
       llamaCppReranker,
       null,
       null,
+      null,
       List.of(),
       "",
       true,
@@ -158,6 +161,7 @@ public record ModelLoadRequest(
       llamaCppReranker,
       llamaCppDecision,
       vllmDecision,
+      glinerDecision,
       exclude,
       task,
       visible,
@@ -191,6 +195,7 @@ public record ModelLoadRequest(
       llamaCppReranker,
       llamaCppDecision,
       vllmDecision,
+      glinerDecision,
       downloadExclude,
       task,
       visible,
@@ -216,6 +221,7 @@ public record ModelLoadRequest(
       null,
       config,
       null,
+      null,
       downloadExclude,
       task,
       visible,
@@ -230,6 +236,33 @@ public record ModelLoadRequest(
       modelName,
       modelPath,
       memoryCheckPolicy,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      config,
+      null,
+      downloadExclude,
+      task,
+      visible,
+      modalities
+    );
+  }
+
+  /** Returns a copy of this request carrying a GLiNER decision config instead of its engine config. */
+  public ModelLoadRequest withGlinerDecision(GlinerDecisionConfig config) {
+    return new ModelLoadRequest(
+      modelId,
+      modelName,
+      modelPath,
+      memoryCheckPolicy,
+      null,
       null,
       null,
       null,
@@ -301,5 +334,10 @@ public record ModelLoadRequest(
   /** Returns {@code true} if this request carries a vLLM decision config. */
   public boolean hasVllmDecision() {
     return vllmDecision != null;
+  }
+
+  /** Returns {@code true} if this request carries a GLiNER decision config. */
+  public boolean hasGlinerDecision() {
+    return glinerDecision != null;
   }
 }

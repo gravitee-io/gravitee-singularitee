@@ -186,7 +186,7 @@ model (cosine ranking) or a reranker model (cross-encoder scoring).
 | `Decide` | `DecideRequest { oneof target { model_id, pipeline_id }, oneof input { TemplatedInput templated, RawInput raw }, include_raw_scores }` | `DecideResponse { model_id, repeated DecisionAnswer answers, TokenUsage usage, DecisionBlocked blocked }` |
 | `DecideBatch` | `DecideBatchRequest { oneof target, repeated DecideBatchState states, repeated DecisionQuestion questions, include_raw_scores }` | `DecideBatchResponse { repeated DecideResponse results }` |
 
-A target is a decision model (`llama_cpp_decision`, `vllm_decision`, `remote_decision`) or a pipeline whose task is
+A target is a decision model (`llama_cpp_decision`, `vllm_decision`, `gliner_decision`, `remote_decision`) or a pipeline whose task is
 `decision` (its `role: output` step is a `decide` step). Templated input lets the server render
 the prompt from the model's prompt source; raw input sends prompts the caller already rendered.
 Which of the two a model accepts is in `GetModelResponse.decision`.
@@ -232,7 +232,7 @@ results come back in input order and the first failure fails the call.
 | `hidden` | `true` for `visible: false` entries. |
 | `input_modalities` | `text` plus `image` and/or `audio`; empty reads as text-only. |
 | `output_modalities` | `decisions` for a decision model, the value llama.cpp's server reports; empty reads as text. |
-| `decision` | Decision models only: `DecisionInfo { family, max_options, joint, templated, raw }`, the family (`openjev`, `lev`, `nimble`, `kev`, `laya`, `clef`, `custom` for llama.cpp and `vllm_decision`; `decision1`, `decision2` for vLLM Semantic Router models), the most options a question may have, whether questions are decided together, and which input modes the model accepts. |
+| `decision` | Decision models only: `DecisionInfo { family, max_options, joint, templated, raw }`, the family (`openjev`, `lev`, `nimble`, `kev`, `laya`, `clef`, `custom` for llama.cpp and `vllm_decision`; `decision1`, `decision2` for vLLM Semantic Router models, `gliner` for `gliner_decision`), the most options a question may have, whether questions are decided together, and which input modes the model accepts. |
 
 ### GraviteePipelineService
 

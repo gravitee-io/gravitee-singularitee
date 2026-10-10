@@ -21,7 +21,8 @@ import java.util.Locale;
  * How a decision model reads its scores. Native families are declared by the model
  * ({@code <arch>.decision.type}); {@link #CUSTOM} is any causal model scored on
  * caller-chosen label tokens; {@link #DECISION1} and {@link #DECISION2} are served by a runtime
- * that renders and scores its prompts itself.
+ * that renders and scores its prompts itself; {@link #GLINER} is a span-and-label encoder that
+ * reads each question as a classification task.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -47,7 +48,12 @@ public enum DecisionFamily {
    */
   DECISION1,
   /** vLLM Semantic Router Decision 2.0, rendered and scored by its own model runtime. */
-  DECISION2;
+  DECISION2,
+  /**
+   * A GLiNER2 classifier asked one classification task per question (GLiNER2.5-Decide): the
+   * question id and instructions are the task, the options its labels.
+   */
+  GLINER;
 
   /** The lower-case name used on the wire and in the workspace. */
   public String wireName() {

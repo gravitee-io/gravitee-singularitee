@@ -58,6 +58,7 @@ enum ModelType {
   MODEL_TYPE_LLAMA_CPP_RERANKER      = 9;
   MODEL_TYPE_LLAMA_CPP_DECISION      = 10;
   MODEL_TYPE_VLLM_DECISION           = 11;
+  MODEL_TYPE_GLINER_DECISION         = 12;
 }
 
 // Lifecycle state of a published model.

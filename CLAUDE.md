@@ -218,7 +218,7 @@ workspace:
 
 **Model types** (`ModelType.java`): `llama_cpp`, `vllm`, `onnx_classifier`, `onnx_embedding`,
 `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker`,
-`llama_cpp_decision`, `vllm_decision`, the `remote_*` proxies (`remote_decision` included), and `regex` / `composite_classifier` (pure Java, run anywhere).
+`llama_cpp_decision`, `vllm_decision`, `gliner_decision`, the `remote_*` proxies (`remote_decision` included), and `regex` / `composite_classifier` (pure Java, run anywhere).
 
 **Step types** (one plugin module each under `gravitee-singularitee-plugins/`): `infer`, `classify`, `embed`, `route`,
 `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`,

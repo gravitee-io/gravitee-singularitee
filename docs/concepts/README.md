@@ -45,6 +45,7 @@ includes exactly one of them.
 | `llama_cpp_reranker` | reranker (cross-encoder) | llama.cpp | `reranking` | [llama_cpp_reranker](../reference/models/llama_cpp_reranker.md) |
 | `llama_cpp_decision` | decision model (typed questions, no generation) | llama.cpp | `decision` | [llama_cpp_decision](../reference/models/llama_cpp_decision.md) |
 | `vllm_decision` | decision model (vLLM Semantic Router Decision 1.0 / 2.0, or any vLLM model with `family: custom`) | vllm_srun or vLLM, through vLLM4j | `decision` | [vllm_decision](../reference/models/vllm_decision.md) |
+| `gliner_decision` | decision model (a GLiNER2 bundle such as GLiNER2.5-Decide, one classification task per question) | GLiNER (gliner4j on llama.cpp or ONNX Runtime) | `decision` | [gliner_decision](../reference/models/gliner_decision.md) |
 | `regex` | token classifier, pure Java | none (in-process) | `token-classification` | [regex](../reference/models/regex.md) |
 | `composite_classifier` | union of classifiers, pure Java | none (in-process) | widest of its members | [composite_classifier](../reference/models/composite_classifier.md) |
 | `remote_llm` | proxy | gRPC to another Singularitee | `text-generation` | [remote_llm](../reference/models/remote_llm.md) |

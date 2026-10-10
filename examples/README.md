@@ -138,10 +138,11 @@ model card (BGE wants `CLS` plus normalize; most sentence-transformers want `MEA
 | --- | --- | --- |
 | `qwen3-0.6b-judge.yaml` | `judge` | Qwen3-0.6B as a `llama_cpp_decision` model (`family: custom`, `prompt.template: chat`): answers choice, score and noul questions on `/v1/decisions` and `/v1/systemone` from the logits of the label codes, no token generated. |
 | `qwen3-0.6b-triage.yaml` | `triage`, `support` | `triage` is a decision endpoint built as a pipeline: a regex guard answers `blocked` on a card number, then a `decide` step answers the caller's questions. `support` is a generation pipeline routed by a `decide` step and `route` with `strategy: decision`; low confidence falls back to a generalist reply. |
+| `gliner2.5-decide.yaml` | `decide` | GLiNER2.5-Decide (340M) as a `gliner_decision` model: each question is a GLiNER classification task, its options the labels. Needs the llama.cpp bundle GLiNER4j exports (`task decide:llamacpp`); set `model_dir` to it. |
 
 A decision model scores options rather than writing an answer, so the result is a set of
-probabilities, not a string to parse. See [llama_cpp_decision](../docs/reference/models/llama_cpp_decision.md)
-and [`decide`](../docs/reference/steps/decide.md).
+probabilities, not a string to parse. See [llama_cpp_decision](../docs/reference/models/llama_cpp_decision.md),
+[gliner_decision](../docs/reference/models/gliner_decision.md) and [`decide`](../docs/reference/steps/decide.md).
 
 ---
 

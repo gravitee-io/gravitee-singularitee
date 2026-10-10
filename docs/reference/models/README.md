@@ -25,6 +25,7 @@ built in-process with no engine at all. The type string is parsed case-insensiti
 | [`llama_cpp_reranker`](./llama_cpp_reranker.md) | reranker | llama.cpp | `reranking` | as `llama_cpp` |
 | [`llama_cpp_decision`](./llama_cpp_decision.md) | decision model | llama.cpp | `decision` | as `llama_cpp` |
 | [`vllm_decision`](./vllm_decision.md) | decision model: vLLM Semantic Router, or any vLLM model (`family: custom`) | vllm_srun / vLLM (vLLM4j) | `decision` | as `vllm`; runtime models also CPU, MPS, ROCm |
+| [`gliner_decision`](./gliner_decision.md) | decision model: a GLiNER2 bundle (GLiNER2.5-Decide) | gliner4j (llama.cpp or ONNX Runtime) | `decision` | as `gliner_classifier` |
 | [`remote_llm`](./remote_llm.md) | proxy | gRPC | `text-generation` | any JVM |
 | [`remote_classifier`](./remote_classifier.md) | proxy | gRPC | `text-classification` unless declared | any JVM |
 | [`remote_embedding`](./remote_embedding.md) | proxy | gRPC | `feature-extraction` | any JVM |

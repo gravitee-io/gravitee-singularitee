@@ -21,7 +21,7 @@ One page per model type, one page per step type, one page for templates, one for
 
 | Page | Contents |
 | --- | --- |
-| [Model types](./reference/models/README.md) | `llama_cpp`, `vllm`, `onnx_classifier`, `onnx_embedding`, `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker`, [`llama_cpp_decision`](./reference/models/llama_cpp_decision.md), [`vllm_decision`](./reference/models/vllm_decision.md), `remote_*` (including [`remote_decision`](./reference/models/remote_decision.md)), `regex`, `composite_classifier`. |
+| [Model types](./reference/models/README.md) | `llama_cpp`, `vllm`, `onnx_classifier`, `onnx_embedding`, `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker`, [`llama_cpp_decision`](./reference/models/llama_cpp_decision.md), [`vllm_decision`](./reference/models/vllm_decision.md), [`gliner_decision`](./reference/models/gliner_decision.md), `remote_*` (including [`remote_decision`](./reference/models/remote_decision.md)), `regex`, `composite_classifier`. |
 | [Step types](./reference/steps/README.md) | `infer`, `classify`, `embed`, `route`, `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`, [`decide`](./reference/steps/decide.md). |
 | [Templates](./reference/templates/README.md) | The `templates:` section, Jinja variables, chat and tool-extraction templates. |
 | [Context fields](./reference/context-fields.md) | Every key a step reads from or writes to the pipeline context. |

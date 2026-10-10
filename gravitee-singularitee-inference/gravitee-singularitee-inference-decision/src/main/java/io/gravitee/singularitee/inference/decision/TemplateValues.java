@@ -77,7 +77,7 @@ final class TemplateValues {
     return SPECIAL_TOKEN.matcher(kevRender(value, 0)).replaceAll("<¦$1¦>");
   }
 
-  private static String kevRender(Object value, int indent) {
+  static String kevRender(Object value, int indent) {
     String pad = "  ".repeat(indent);
     return switch (value) {
       case null -> "";

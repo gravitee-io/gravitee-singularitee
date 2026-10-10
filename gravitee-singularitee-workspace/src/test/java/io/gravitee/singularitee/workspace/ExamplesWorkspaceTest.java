@@ -184,6 +184,19 @@ class ExamplesWorkspaceTest {
   }
 
   @Test
+  void gliner_decision_example_publishes_a_local_bundle() throws IOException {
+    var requests = load("decision/gliner2.5-decide.yaml");
+
+    assertThat(requests.models())
+      .singleElement()
+      .satisfies(model -> {
+        assertThat(model.hasGlinerDecision()).isTrue();
+        assertThat(model.modelName()).isEqualTo("fastino/GLiNER2.5-Decide");
+        assertThat(model.glinerDecision().modelDir()).isEqualTo("models/decide-llamacpp");
+      });
+  }
+
+  @Test
   void vllm_decision_example_publishes_a_runtime_scored_classifier() throws IOException {
     var requests = load("vllm/decision-2.0-kai-0.6b.yaml");
 

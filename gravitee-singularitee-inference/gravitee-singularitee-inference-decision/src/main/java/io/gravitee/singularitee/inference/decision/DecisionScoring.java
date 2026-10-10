@@ -30,7 +30,7 @@ import java.util.List;
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-final class DecisionScoring {
+public final class DecisionScoring {
 
   private DecisionScoring() {}
 
@@ -43,7 +43,7 @@ final class DecisionScoring {
    * @param noulRating  whether a noul is read as a rating scale (lev) rather than true / false
    * @param includeRaw  whether to carry the raw scores
    */
-  static Answer answer(
+  public static Answer answer(
     String questionId,
     QuestionKind kind,
     List<String> optionKeys,

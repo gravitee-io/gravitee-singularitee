@@ -36,6 +36,7 @@ import io.gravitee.singularitee.adapter.decision.VllmDecisionFactory;
 import io.gravitee.singularitee.adapter.embedding.LlamaCppEmbeddingFactory;
 import io.gravitee.singularitee.adapter.embedding.OnnxEmbeddingFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerClassifierFactory;
+import io.gravitee.singularitee.adapter.gliner.GlinerDecisionFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerNerFactory;
 import io.gravitee.singularitee.adapter.reranker.LlamaCppRerankerFactory;
 import io.gravitee.singularitee.adapter.reranker.OnnxRerankerFactory;
@@ -410,6 +411,7 @@ public class SingulariteeConfiguration {
   static final String VLLM_DECISION_PROBE = "io.gravitee.vllm.decision.VllmDecider";
   static final String ONNX_PROBE = "ai.onnxruntime.OrtEnvironment";
   static final String GLINER_PROBE = "io.gravitee.lab.gliner4j.runtime.BaseRuntime";
+  static final String GLINER_DECISION_PROBE = "io.gravitee.lab.gliner4j.GLiNER4jDecider";
 
   /**
    * Engine factories keyed by model type, limited to the engines whose library is on the
@@ -476,6 +478,9 @@ public class SingulariteeConfiguration {
     );
     registerIfPresent(factories, ModelType.MODEL_TYPE_GLINER_NER, GLINER_PROBE, () ->
       new GlinerNerFactory(vertx)
+    );
+    registerIfPresent(factories, ModelType.MODEL_TYPE_GLINER_DECISION, GLINER_DECISION_PROBE, () ->
+      new GlinerDecisionFactory(vertx)
     );
 
     LOGGER.info(

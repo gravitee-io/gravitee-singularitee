@@ -16,7 +16,7 @@ Any model whose engine implements `ClassifierEngine` answers a classify call wit
 
 Oversized input is split on semantic boundaries and recombined, never truncated.
 
-A decision model (`llama_cpp_decision`, `vllm_decision`) declared with `as_classifier` is a classifier too: one choice question, the option keys as labels and their probabilities as scores. It is zero-shot like GLiNER: request `labels` replace its own for that call, and `as_classifier: {}` takes every label from the request. See [Decisions](../decisions/README.md#reuse-it-as-a-classifier).
+A decision model (`llama_cpp_decision`, `vllm_decision`, `gliner_decision`) declared with `as_classifier` is a classifier too: one choice question, the option keys as labels and their probabilities as scores. It is zero-shot like GLiNER: request `labels` replace its own for that call, and `as_classifier: {}` takes every label from the request. See [Decisions](../decisions/README.md#reuse-it-as-a-classifier).
 
 ## Key types
 

@@ -262,7 +262,9 @@ public record WorkspaceDefinition(
     /** {@code llama_cpp_decision}: engine block for {@code type: llama_cpp_decision}. */
     @JsonProperty("llama_cpp_decision") LlamaCppDecisionDef llamaCppDecision,
     /** {@code vllm_decision}: engine block for {@code type: vllm_decision}. */
-    @JsonProperty("vllm_decision") VllmDecisionDef vllmDecision
+    @JsonProperty("vllm_decision") VllmDecisionDef vllmDecision,
+    /** {@code gliner_decision}: engine block for {@code type: gliner_decision}. */
+    @JsonProperty("gliner_decision") GlinerDecisionDef glinerDecision
   ) {
     /** Returns {@code true} unless the workspace explicitly hid this model. */
     public boolean isVisible() {
@@ -661,6 +663,17 @@ public record WorkspaceDefinition(
     @JsonProperty("variant") String variant,
     /** {@code token_cap}: maximum tokens per chunk, sent when positive. */
     @JsonProperty("token_cap") int tokenCap
+  ) {}
+
+  /** The {@code gliner_decision:} engine block (typed questions on a GLiNER2 classifier). */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record GlinerDecisionDef(
+    /** {@code model_dir}: local bundle directory; unset, the bundle is downloaded from {@code name}. */
+    @JsonProperty("model_dir") String modelDir,
+    /** {@code variant}: ONNX variant folder, or the GGUF quantisation of a llama.cpp bundle. */
+    @JsonProperty("variant") String variant,
+    /** {@code as_classifier}: also publish the model as a classifier. */
+    @JsonProperty("as_classifier") DecisionClassifierDef asClassifier
   ) {}
 
   /** One entity type of a {@code gliner_ner} model. */

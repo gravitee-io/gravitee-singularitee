@@ -27,11 +27,12 @@ info:
     generated: answers are probabilities read from the model.
 
     - Two routes over the same service: `/v1/systemone` takes and returns the
-      request and response shape llama.cpp's server serves at `/v1/systemone`;
+      request and response shape of TypeSafe's System One API, as llama.cpp's
+      server also serves it;
       `/v1/decisions` is OpenAI-shaped (`id`, `object`, `created`, `usage`, the
       error object) and mirrors the gRPC messages, with ordered arrays.
     - Both paths are served under `/v1` (documented here) and bare.
-    - `model` is a decision model id (`llama_cpp_decision`, `vllm_decision`, `remote_decision`) or the
+    - `model` is a decision model id (`llama_cpp_decision`, `vllm_decision`, `gliner_decision`, `remote_decision`) or the
       id of a pipeline whose task is `decision`, that is whose `role: output` step is
       a `decide` step; `pipeline:<id>` forces the pipeline registry. An unknown or
       hidden id returns `400` with `code: model_not_found`; anything else that does
@@ -54,12 +55,17 @@ paths:
     post:
       tags: [Decisions]
       operationId: systemOne
-      summary: Answer typed questions, llama.cpp server shape
+      summary: Answer typed questions, TypeSafe System One shape
       description: |
         Questions are an object keyed by id; answers come back keyed the same way.
         Templated input only: the server renders the prompt from the model's prompt
         source. A model configured with `prompt.template: none` answers `400` with
         `code: unsupported_input`.
+
+        Differences from TypeSafe's System One API: a validation error is `400` with
+        the error object, not `422`; `usage.output_tokens` is always `0`; the response
+        `model` echoes the id that was asked for; `model` may also name a decision
+        pipeline; overload is `503` while models load, not `429` / `529`.
       requestBody:
         required: true
         content:

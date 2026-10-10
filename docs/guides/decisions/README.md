@@ -12,7 +12,7 @@ A decision model reads a **state** and answers **typed questions** without gener
 | `score` | place the state on 2 to 10 ordered levels | `score` (expected level), `mode`, `probabilities`, `confidence` |
 | `noul` | yes or no | `probability_true` (`noul` on `/v1/systemone`) |
 
-Four kinds of model serve this:
+Five kinds of model serve this:
 
 | Kind | Type | Where prompts come from | Use it when |
 | --- | --- | --- | --- |
@@ -20,6 +20,7 @@ Four kinds of model serve this:
 | Any chat model | `llama_cpp_decision`, `family: custom` | the chat template around a shipped instruction (`chat`), a workspace template, or the caller (`none`) | you want a judge from a general model, with real probabilities instead of a parsed string |
 | Any model vLLM serves | [`vllm_decision`](../../reference/models/vllm_decision.md), `family: custom` | as the chat model above; vLLM reports the label codes' log probabilities | your judge runs on vLLM (larger models, AWQ/GPTQ, tensor parallel) |
 | vLLM Semantic Router model | [`vllm_decision`](../../reference/models/vllm_decision.md), `family` from the id | its own runtime (`vllm_srun`), in-process | you want a purpose-built decision model (`vllm-sr/Decision-2.0-Kai-0.6B` and up) and run the vLLM venv |
+| GLiNER2 bundle | [`gliner_decision`](../../reference/models/gliner_decision.md) | no prompt: each question is a classification task (id and instructions), its options the labels | you want a small encoder (GLiNER2.5-Decide, 340M) answering in tens of milliseconds per question |
 
 A custom model is scored on label codes (`A`, `B`, `C`... by default): the prompt ends where a code is the next token, and the logit of each code is the option's score.
 

@@ -20,6 +20,7 @@ import io.gravitee.singularitee.adapter.decision.LlamaCppDecisionFactory;
 import io.gravitee.singularitee.adapter.decision.ProtoTypedEngine;
 import io.gravitee.singularitee.adapter.decision.VllmDecisionFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerClassifierFactory;
+import io.gravitee.singularitee.adapter.gliner.GlinerDecisionFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerNerFactory;
 import io.gravitee.singularitee.adapter.textgen.LlamaCppEngineFactory;
 import io.gravitee.singularitee.adapter.textgen.VllmEngineFactory;
@@ -463,7 +464,9 @@ public class GraviteeModelServiceImpl
 
     // GLiNER: resolve / download model directory reactively (download stays off the event loop)
     if (
-      (factory instanceof GlinerClassifierFactory || factory instanceof GlinerNerFactory) &&
+      (factory instanceof GlinerClassifierFactory ||
+        factory instanceof GlinerNerFactory ||
+        factory instanceof GlinerDecisionFactory) &&
       glinerResolver != null
     ) {
       return glinerResolver
@@ -510,6 +513,7 @@ public class GraviteeModelServiceImpl
     if (req.hasLlamaCppReranker()) return ModelType.MODEL_TYPE_LLAMA_CPP_RERANKER;
     if (req.hasLlamaCppDecision()) return ModelType.MODEL_TYPE_LLAMA_CPP_DECISION;
     if (req.hasVllmDecision()) return ModelType.MODEL_TYPE_VLLM_DECISION;
+    if (req.hasGlinerDecision()) return ModelType.MODEL_TYPE_GLINER_DECISION;
     return ModelType.MODEL_TYPE_UNSPECIFIED;
   }
 
