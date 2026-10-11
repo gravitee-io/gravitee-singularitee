@@ -40,7 +40,7 @@
         <maven.compiler.release>25</maven.compiler.release>
 
         <!-- Gravitee ecosystem -->
-        <gravitee-bom.version>9.0.2</gravitee-bom.version>
+        <gravitee-bom.version>9.0.9</gravitee-bom.version>
         <!-- The plugin framework version gravitee-node 9.2.0 pins; step plugins are gravitee plugins. -->
         <gravitee-plugin.version>4.2.1</gravitee-plugin.version>
         <gravitee-node.version>9.2.0</gravitee-node.version>
