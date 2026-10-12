@@ -49,7 +49,8 @@ public record VllmRequest(
   List<Map<String, Object>> tools,
   String loraName,
   String loraPath,
-  StructuredOutput structuredOutput
+  StructuredOutput structuredOutput,
+  Integer topLogprobs
 ) implements GenerationRequest {
   /**
    * Builds a request from a raw payload map; tag configs are left {@code null}
@@ -72,7 +73,8 @@ public record VllmRequest(
       PayloadParser.parseTools(payload.get("tools")),
       PayloadParser.stringValue(payload.get("loraName")),
       PayloadParser.stringValue(payload.get("loraPath")),
-      null // structuredOutput
+      null, // structuredOutput
+      PayloadParser.intValue(payload.get(Constants.TOP_LOGPROBS))
     );
   }
 

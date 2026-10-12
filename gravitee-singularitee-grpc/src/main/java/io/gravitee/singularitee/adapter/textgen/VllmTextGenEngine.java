@@ -186,7 +186,8 @@ public final class VllmTextGenEngine
       null, // tools: rendered by Jinja4j at the executor level
       loraName(request, defaultLora),
       loraPath(request, defaultLora),
-      request.structuredOutput()
+      request.structuredOutput(),
+      request.topLogprobs()
     );
   }
 

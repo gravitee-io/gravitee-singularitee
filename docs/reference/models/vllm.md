@@ -132,6 +132,9 @@ non-positive properties count as unset.
 - **Adapters are loaded once per path.** vLLM keeps an adapter loaded under the id of its path, so replacing
   the files of an adapter on disk has no effect on a running server: restart it, or publish the new adapter
   under another path.
+- **Log-probabilities.** `logprobs` / `top_logprobs` (`SamplingParams.top_logprobs` over gRPC) are
+  asked of vLLM per request and stamped on each streamed token, as on llama.cpp. When one vLLM
+  step covers several tokens, its delta carries the last position only.
 - **Opt-in.** The build skips the venv (`vllm.setupVenv.skip=true`). Create it with
   `./scripts/setup-venv.sh -b cuda` (or `metal`, `cpu`) and run any `examples/vllm/*.yaml`;
   `--venv` or `$VLLM_VENV` point elsewhere. vLLM4j is compiled against one vLLM Python API:

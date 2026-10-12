@@ -46,6 +46,7 @@ class EngineAdapterLoraRequestTest {
       null,
       loraName,
       loraPath,
+      null,
       null
     );
   }
