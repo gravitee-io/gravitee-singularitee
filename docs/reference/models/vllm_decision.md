@@ -18,11 +18,11 @@ Two kinds of model load under this type:
 
 | Kind | `family` | Who renders and scores | Weights |
 | --- | --- | --- | --- |
-| vLLM Semantic Router model | `decision1`, `decision2` (read from a built-in id) | the model's own runtime, `vllm_srun` | downloaded and verified by the runtime |
+| vLLM Semantic Router model | `decision1`, `decision2`, `decision3` (read from a built-in id) | the model's own runtime, `vllm_srun` | downloaded and verified by the runtime |
 | Any causal model | `custom` | the server, as `llama_cpp_decision` `family: custom`; vLLM computes the logits | downloaded like a [`vllm`](./vllm.md) model's |
 
-**vLLM Semantic Router models.** vLLM's `LLMEngine` does not run the `vllm-sr/Decision-1.0-*` and
-`vllm-sr/Decision-2.0-*` models; their runtime, `vllm_srun`, owns the prompt layout and the
+**vLLM Semantic Router models.** vLLM's `LLMEngine` does not run the `vllm-sr/Decision-1.0-*`,
+`vllm-sr/Decision-2.0-*` and `vllm-sr/d3*` models; their runtime, `vllm_srun`, owns the prompt layout and the
 scoring. vLLM4j's `VllmDecider` drives it in the embedded CPython: no HTTP server, no extra
 process. A request goes to it as a System One body (the state and the named questions), so the
 answers are the runtime's own, calibrated by the model. At load the runtime resolves the pinned
@@ -104,6 +104,7 @@ The built-in runtime models, all under `vllm-sr/`:
 | --- | --- |
 | `decision1` | `Decision-1.0-Kai-0.6B`, `-Lex-0.6B`, `-Route-0.6B` (encoder), `-Eos`, `-Sol`, `-Nox`, `-Lux` (Qwen3.5) |
 | `decision2` | `Decision-2.0-Kai-0.6B`, `-Eos-0.8B`, `-Sol-2B`, `-Nox-4B`, `-Lux-9B`, `-Vega-27B` |
+| `decision3` | `d3` (26B, Qwen3.8-27B), `d3-flash` (8.4B), `d3-mini` (4.5B), `d3-nano` (2.2B), `d3-lite` (0.85B), `d3-edge` (0.59B), the smaller ones on Qwen3.5; a code readout over a non-causal backbone |
 
 Each pins its own minimum device memory, from 4 GiB (Kai) to 72 GiB (Vega).
 
@@ -114,7 +115,7 @@ a key of the other kind fails the model.
 
 | Key | Kind | Type | Default | Purpose |
 | --- | --- | --- | --- | --- |
-| `family` | both | string | from `name` | `decision1`, `decision2` or `custom`. Read from a built-in id (`Decision-1.0-`, `Decision-2.0-`); required otherwise. |
+| `family` | both | string | from `name` | `decision1`, `decision2`, `decision3` or `custom`. Read from a built-in id (`Decision-1.0-`, `Decision-2.0-`, `d3`); required otherwise. |
 | `as_classifier` | both | object | unset | `instructions` and `options` (label to description): a choice question that also publishes the model as a classifier. Both optional; request `labels` replace `options` per call (zero-shot), see [llama_cpp_decision](./llama_cpp_decision.md#options). |
 | `revision` | runtime | string | the runtime's pin | A Hub revision to load instead. |
 | `device` | runtime | string | `auto` | `auto`, `cpu`, `cuda`, `cuda:1`, `mps`, `rocm`. |
@@ -133,6 +134,11 @@ a key of the other kind fails the model.
 
 ## Notes
 
+- **Golden answers are checked per device class.** The runtime holds reference answers for some
+  device classes (`cpu`, `rocm`, `cuda`) and refuses a model that drifts past its tolerance there
+  (`golden answers differ from the reference`, 0.001 on CPU). On Apple Silicon, `device: auto`
+  runs on the CPU, where a `d3` model can drift past that; `device: mps` has no reference, so only
+  determinism is checked.
 - **The venv.** Both kinds run in the vLLM venv. Runtime models also need `vllm-srun`:
   `scripts/setup-venv.sh -r` (or `VLLM4J_DECISION=1`) installs it from a pinned semantic-router
   commit on the torch vLLM installed; `Dockerfile.vllm-cuda` does the same. The type is

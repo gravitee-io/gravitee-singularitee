@@ -88,6 +88,7 @@ projection GGUF. Set it and the engine loads the multimodal context.
 | `qwen3.8-27b.yaml` | Qwen/Qwen3.8-27B-FP8 | Dense 27.8B, official FP8 checkpoint; fits one 40 GB card. |
 | `qwen3-0.6b-judge.yaml` | Qwen/Qwen3-0.6B | A `vllm_decision` model with `family: custom`: the chat model scored on label codes through vLLM's `logprob_token_ids`, `debias: reverse`. The vLLM twin of `decision/qwen3-0.6b-judge.yaml`; run end to end on Apple Silicon. |
 | `decision-2.0-kai-0.6b.yaml` | vllm-sr/Decision-2.0-Kai-0.6B | A `vllm_decision` model on vLLM Semantic Router's runtime (needs `setup-venv.sh -r`), also published as a classifier. Runs on CPU, CUDA or MPS; run end to end on Apple Silicon. |
+| `d3-lite.yaml` | vllm-sr/d3-lite | Decision 3.0's 1.7 GB model as a `vllm_decision` model (`decision3`, read from the id) on vLLM Semantic Router's runtime (needs `setup-venv.sh -r`). Text only. |
 
 A representative subset of the `llama/` families; quantised (AWQ/GPTQ) variants live as
 fragments under `modular/models/vllm/`. Parameter counts and context windows in each file

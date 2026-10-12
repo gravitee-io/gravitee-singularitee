@@ -232,7 +232,7 @@ results come back in input order and the first failure fails the call.
 | `hidden` | `true` for `visible: false` entries. |
 | `input_modalities` | `text` plus `image` and/or `audio`; empty reads as text-only. |
 | `output_modalities` | `decisions` for a decision model, the value llama.cpp's server reports; empty reads as text. |
-| `decision` | Decision models only: `DecisionInfo { family, max_options, joint, templated, raw }`, the family (`openjev`, `lev`, `nimble`, `kev`, `laya`, `clef`, `custom` for llama.cpp and `vllm_decision`; `decision1`, `decision2` for vLLM Semantic Router models, `gliner` for `gliner_decision`), the most options a question may have, whether questions are decided together, and which input modes the model accepts. |
+| `decision` | Decision models only: `DecisionInfo { family, max_options, joint, templated, raw }`, the family (`openjev`, `lev`, `nimble`, `kev`, `laya`, `clef`, `custom` for llama.cpp and `vllm_decision`; `decision1`, `decision2`, `decision3` for vLLM Semantic Router models, `gliner` for `gliner_decision`), the most options a question may have, whether questions are decided together, and which input modes the model accepts. |
 
 ### GraviteePipelineService
 

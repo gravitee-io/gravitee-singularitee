@@ -49,7 +49,7 @@ sealed interface DecisionDialect
       case KEV -> new KevDialect();
       case LAYA -> new LayaDialect();
       case CLEF -> new ClefDialect();
-      case DECISION1, DECISION2, GLINER -> throw new IllegalArgumentException(
+      case DECISION1, DECISION2, DECISION3, GLINER -> throw new IllegalArgumentException(
         family.wireName() + " models are rendered and scored by their own runtime"
       );
     };

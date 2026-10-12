@@ -92,7 +92,7 @@ RUN set -eux; \
 # It is not on PyPI: installed from the commit's source archive, which needs no
 # git in the image. torch is constrained to the one vLLM ships, so the runtime
 # shares it instead of pulling its own.
-ARG SR_RUNTIME_REF=f4c54cffb5dcb0385ada52c7c03e99b5663ed402
+ARG SR_RUNTIME_REF=de4b2f2c63fcc662f62766f9c5922c4d5d4efed3
 RUN set -eux; \
     PY="${GRAVITEEIO_HOME}/vllm-venv/bin/python"; \
     "$PY" -m pip --version >/dev/null 2>&1 || "$PY" -m ensurepip --upgrade; \

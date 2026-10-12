@@ -270,6 +270,16 @@ class VllmDecisionModelTest {
     assertThat(VllmDecisionModel.familyOf("/models/my-package", "Decision1")).isEqualTo(
       DecisionFamily.DECISION1
     );
+    assertThat(VllmDecisionModel.familyOf("vllm-sr/d3", null)).isEqualTo(DecisionFamily.DECISION3);
+    assertThat(VllmDecisionModel.familyOf("vllm-sr/d3-lite", null)).isEqualTo(
+      DecisionFamily.DECISION3
+    );
+    assertThat(VllmDecisionModel.familyOf("/models/my-package", "decision3")).isEqualTo(
+      DecisionFamily.DECISION3
+    );
+    assertThatThrownBy(() -> VllmDecisionModel.familyOf("vllm-sr/d30", null)).hasMessageContaining(
+      "set family"
+    );
     assertThatThrownBy(() -> VllmDecisionModel.familyOf("/models/my-package", null))
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessageContaining("set family");

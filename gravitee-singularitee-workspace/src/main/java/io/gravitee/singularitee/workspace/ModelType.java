@@ -604,10 +604,18 @@ public enum ModelType {
       var d = modelDef.vllmDecision();
       String family = d == null || d.family() == null ? "" : d.family().toLowerCase(Locale.ROOT);
       if (
-        !List.of("", "decision1", "decision2", VllmDecisionConfig.FAMILY_CUSTOM).contains(family)
+        !List.of(
+          "",
+          "decision1",
+          "decision2",
+          "decision3",
+          VllmDecisionConfig.FAMILY_CUSTOM
+        ).contains(family)
       ) {
         throw new IllegalArgumentException(
-          "vllm_decision.family must be decision1, decision2 or custom, got '" + d.family() + "'"
+          "vllm_decision.family must be decision1, decision2, decision3 or custom, got '" +
+            d.family() +
+            "'"
         );
       }
       VllmDecisionConfig config;

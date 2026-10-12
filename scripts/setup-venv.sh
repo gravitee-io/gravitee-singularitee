@@ -41,7 +41,7 @@ XGRAMMAR_VERSION="0.2.7"
 TVM_FFI_VERSION="0.1.11"
 # vllm-srun is not on PyPI: installed from the semantic-router repository at
 # this commit. See install_decision_runtime().
-SR_RUNTIME_REF="f4c54cffb5dcb0385ada52c7c03e99b5663ed402"
+SR_RUNTIME_REF="de4b2f2c63fcc662f62766f9c5922c4d5d4efed3"
 WITH_DECISION="${VLLM4J_DECISION:-0}"
 
 print_usage() {
@@ -149,7 +149,7 @@ install_common() {
 }
 
 # Installs vllm-srun, the model runtime of vLLM Semantic Router, which serves
-# its decision models (vllm-sr/Decision-1.0-*, Decision-2.0-*). vLLM's
+# its decision models (vllm-sr/Decision-1.0-*, Decision-2.0-*, d3*). vLLM's
 # LLMEngine cannot run them; VllmDecider drives this runtime in-process.
 #
 # torch is constrained to the version vLLM already installed, so the runtime

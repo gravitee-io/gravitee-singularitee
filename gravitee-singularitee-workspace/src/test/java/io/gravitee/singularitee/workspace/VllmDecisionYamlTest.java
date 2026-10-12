@@ -154,7 +154,7 @@ class VllmDecisionYamlTest {
       map("family: custom\nprompt:\n  template: model\n")
     ).hasMessageContaining("no decision template");
     assertThatThrownBy(() -> map("family: clef\n")).hasMessageContaining(
-      "decision1, decision2 or custom"
+      "decision1, decision2, decision3 or custom"
     );
     assertThatThrownBy(() -> map("family: custom\ndebias: shuffle\n")).hasMessageContaining(
       "vllm_decision.debias must be none or reverse"

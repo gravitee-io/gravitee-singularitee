@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * A vLLM Semantic Router decision model, run in-process by its own model runtime
@@ -48,6 +49,9 @@ import java.util.Set;
  * @author GraviteeSource Team
  */
 public final class VllmDecisionModel implements AutoCloseable {
+
+  /** Decision 3.0's built-in ids: {@code vllm-sr/d3} and its sizes ({@code vllm-sr/d3-lite}...). */
+  private static final Pattern DECISION3_ID = Pattern.compile("(?:.*/)?d3(?:-[a-z]+)?");
 
   /** Most options a choice question may list. */
   static final int MAX_OPTIONS = 255;
@@ -113,7 +117,8 @@ public final class VllmDecisionModel implements AutoCloseable {
   /**
    * The family of {@code model}: the declared one, or the one its built-in id names.
    *
-   * @param declared {@code decision1}, {@code decision2}, or {@code null} / blank to infer it
+   * @param declared {@code decision1}, {@code decision2}, {@code decision3}, or {@code null} /
+   *                 blank to infer it
    * @throws IllegalArgumentException when neither says
    */
   public static DecisionFamily familyOf(String model, String declared) {
@@ -121,15 +126,19 @@ public final class VllmDecisionModel implements AutoCloseable {
       return switch (declared.toLowerCase(Locale.ROOT)) {
         case "decision1" -> DecisionFamily.DECISION1;
         case "decision2" -> DecisionFamily.DECISION2;
+        case "decision3" -> DecisionFamily.DECISION3;
         default -> throw new IllegalArgumentException(
-          "family must be decision1 or decision2, got '" + declared + "'"
+          "family must be decision1, decision2 or decision3, got '" + declared + "'"
         );
       };
     }
     if (model.contains("Decision-1.0-")) return DecisionFamily.DECISION1;
     if (model.contains("Decision-2.0-")) return DecisionFamily.DECISION2;
+    if (DECISION3_ID.matcher(model).matches()) return DecisionFamily.DECISION3;
     throw new IllegalArgumentException(
-      "cannot tell the family of '" + model + "' from its name; set family: decision1 or decision2"
+      "cannot tell the family of '" +
+        model +
+        "' from its name; set family: decision1, decision2 or decision3"
     );
   }
 

@@ -576,7 +576,7 @@ public record WorkspaceDefinition(
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record VllmDecisionDef(
     /**
-     * {@code family}: {@code decision1} or {@code decision2} (vLLM Semantic Router models, run by
+     * {@code family}: {@code decision1}, {@code decision2} or {@code decision3} (vLLM Semantic Router models, run by
      * their own runtime), or {@code custom} (any causal model vLLM serves, scored on label codes).
      * Unset = read from a built-in id.
      */

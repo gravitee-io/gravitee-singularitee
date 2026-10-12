@@ -25,7 +25,7 @@ import java.util.Map;
  *
  * <p>Plain configuration, never on the wire. {@code null} keeps the runtime's default.
  *
- * @param family          {@code decision1}, {@code decision2} or {@code custom}; {@code null}
+ * @param family          {@code decision1}, {@code decision2}, {@code decision3} or {@code custom}; {@code null}
  *                        reads it from the built-in model id
  * @param revision        runtime models: a Hub revision instead of the runtime's pin
  * @param device          runtime models: {@code auto}, {@code cpu}, {@code cuda}, {@code mps}...
