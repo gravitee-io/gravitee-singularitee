@@ -34,7 +34,6 @@ import io.vertx.rxjava3.core.http.HttpClient;
 import io.vertx.rxjava3.core.http.HttpClientResponse;
 import io.vertx.rxjava3.ext.web.client.HttpRequest;
 import io.vertx.rxjava3.ext.web.client.WebClient;
-import io.vertx.rxjava3.ext.web.codec.BodyCodec;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -444,21 +443,11 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
 
   /**
    * Follows the {@code /resolve/...} redirect chain by hand (Vert.x's automatic redirect
-   * handling would replay the {@code Authorization} header to the CDN, which signed S3-style
-   * URLs reject) and probes Range support with a 1-byte request.
+   * handling would replay the {@code Authorization} header to the CDN) and probes Range support
+   * with a 1-byte request.
    */
   private Single<ResolvedSource> resolveDownloadUrl(String repository, String fileName) {
-    String url =
-      (ssl ? "https://" : "http://") +
-      hubHost +
-      ":" +
-      hubPort +
-      "/" +
-      repository +
-      "/resolve/main/" +
-      fileName +
-      "?download=true";
-    return probe(url, 0);
+    return probe(hubUrl("/" + repository + "/resolve/main/" + fileName) + "?download=true", 0);
   }
 
   /**
@@ -785,18 +774,11 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
           () -> statSize(tempPath),
           totalSize
         );
-        return authorize(client.request(HttpMethod.GET, resolvePath))
-          .addQueryParam("download", "true")
-          .followRedirects(true)
-          .as(BodyCodec.pipe(asyncFile))
-          .rxSend()
-          .doFinally(() -> {
-            vertx.cancelTimer(timerId);
-            asyncFile.close();
-          })
+        return openFollowingRedirects(hubUrl(resolvePath) + "?download=true", 0)
           .flatMap(response -> {
             if (response.statusCode() >= 400) {
-              return Single.<Path>error(
+              abortProbe(response);
+              return Single.<HttpClientResponse>error(
                 new IllegalStateException(
                   "Download failed for [" +
                     fileName +
@@ -807,13 +789,25 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
                 )
               );
             }
-            return publish(tempPath, outputPath).andThen(
+            return response
+              .pipe()
+              .endOnComplete(false)
+              .rxTo(asyncFile)
+              .andThen(asyncFile.rxFlush())
+              .toSingleDefault(response);
+          })
+          .doFinally(() -> {
+            vertx.cancelTimer(timerId);
+            asyncFile.close();
+          })
+          .flatMap(response ->
+            publish(tempPath, outputPath).andThen(
               Single.fromCallable(() -> {
                 LOG.info("Downloaded [{}/{}] -> {}", repository, fileName, outputPath);
                 return outputPath.toAbsolutePath();
               })
-            );
-          });
+            )
+          );
       })
       .onErrorResumeNext(err ->
         vertx
@@ -822,6 +816,44 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
           .onErrorComplete()
           .andThen(Single.<Path>error(err))
       );
+  }
+
+  /**
+   * Opens {@code url} and follows its redirects by hand, sending the token only to the hub: a
+   * redirect target (the CDN, or any host a redirect names) never sees it. The returned response
+   * is paused, its body not yet consumed.
+   */
+  private Single<HttpClientResponse> openFollowingRedirects(String url, int hops) {
+    if (hops > MAX_REDIRECTS) {
+      return Single.error(new NonRetryableException("Too many redirects resolving [" + url + "]"));
+    }
+    return probeClient
+      .rxRequest(new RequestOptions().setMethod(HttpMethod.GET).setAbsoluteURI(url))
+      .flatMap(request -> {
+        if (hfToken != null && isHubUrl(url)) {
+          request.putHeader("Authorization", "Bearer " + hfToken);
+        }
+        return request.rxSend();
+      })
+      .flatMap(response -> {
+        int status = response.statusCode();
+        if (status >= 300 && status < 400) {
+          String location = response.getHeader("Location");
+          abortProbe(response);
+          if (location == null) {
+            return Single.error(
+              new IllegalStateException("Redirect without Location resolving [" + url + "]")
+            );
+          }
+          return openFollowingRedirects(URI.create(url).resolve(location).toString(), hops + 1);
+        }
+        response.pause();
+        return Single.just(response);
+      });
+  }
+
+  private String hubUrl(String path) {
+    return (ssl ? "https://" : "http://") + hubHost + ":" + hubPort + path;
   }
 
   /**

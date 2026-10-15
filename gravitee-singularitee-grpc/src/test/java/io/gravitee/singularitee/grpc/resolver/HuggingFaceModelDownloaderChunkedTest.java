@@ -382,4 +382,37 @@ class HuggingFaceModelDownloaderChunkedTest {
     assertThat(Files.readAllBytes(result)).isEqualTo(small);
     assertThat(requests).allMatch(s -> s.range() == null);
   }
+
+  @Test
+  void single_stream_download_never_sends_authorization_to_the_cdn(@TempDir Path tmp)
+    throws Exception {
+    byte[] small = new byte[1024];
+    for (int i = 0; i < small.length; i++) {
+      small[i] = (byte) i;
+    }
+    payload = small;
+
+    Path result = downloader()
+      .download(REPO, List.of(FILE), tmp, Map.of(FILE, 1024L))
+      .timeout(60, TimeUnit.SECONDS)
+      .blockingGet()
+      .get(0);
+
+    assertThat(Files.readAllBytes(result)).isEqualTo(small);
+    assertThat(cdnRequests())
+      .isNotEmpty()
+      .allMatch(s -> s.auth() == null);
+    assertThat(requests)
+      .filteredOn(s -> s.path().contains("/resolve/"))
+      .allMatch(s -> "Bearer secret-token".equals(s.auth()));
+  }
+
+  @Test
+  void falls_back_to_single_stream_without_sending_authorization_to_the_cdn(@TempDir Path tmp) {
+    ignoreRange = true;
+
+    download(tmp);
+
+    assertThat(cdnRequests()).allMatch(s -> s.auth() == null);
+  }
 }
