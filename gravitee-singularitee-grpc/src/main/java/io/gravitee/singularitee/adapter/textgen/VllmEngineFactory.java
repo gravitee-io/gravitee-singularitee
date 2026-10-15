@@ -28,6 +28,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.TreeSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Creates a vLLM-backed {@link VllmTextGenEngine} from a {@link ModelLoadRequest}.
@@ -45,6 +47,8 @@ import java.util.TreeSet;
  * @author GraviteeSource Team
  */
 public final class VllmEngineFactory implements ModelEngineFactory {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(VllmEngineFactory.class);
 
   /**
    * Server-wide fallbacks for the vLLM GPU topology, applied when a model does
@@ -97,6 +101,12 @@ public final class VllmEngineFactory implements ModelEngineFactory {
   public ModelEngine create(ModelLoadRequest request, Path resolvedPath, Path loraDir) {
     var cfg = request.vllmConfig();
     var defaultLora = defaultLora(request.modelName(), cfg, loraDir);
+    if (cfg.trustRemoteCode()) {
+      LOGGER.warn(
+        "Model '{}' enables trust_remote_code: its repository's Python runs inside this process",
+        request.modelName()
+      );
+    }
 
     return new VllmTextGenEngine(
       new BatchEngine(
