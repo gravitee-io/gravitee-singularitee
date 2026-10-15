@@ -58,6 +58,7 @@ GRAVITEE_AI_WORKSPACE_PATH=/path/to/workspace.yaml \
 | `grpc.compressionSupported` | `false` | `GRAVITEE_GRPC_COMPRESSIONSUPPORTED` | gRPC message compression. |
 | `grpc.idleTimeout` | `0` | `GRAVITEE_GRPC_IDLETIMEOUT` | Connection idle timeout in seconds; `0` disables. |
 | `grpc.tcpKeepAlive` | `true` | `GRAVITEE_GRPC_TCPKEEPALIVE` | TCP keep-alive. |
+| `grpc.max-message-size` | `262144` | `GRAVITEE_GRPC_MAXMESSAGESIZE` | Largest inbound gRPC message in bytes; a larger one is rejected before it is decoded. Raise it for base64 images or audio over `Infer`/`InferPipeline`. |
 | `grpc.secured` | `false` | `GRAVITEE_GRPC_SECURED` | Enable TLS on the gRPC port; certificates come from `grpc.ssl.*`. |
 | `grpc.haproxy.proxyProtocol` | `false` | `GRAVITEE_GRPC_HAPROXY_PROXYPROTOCOL` | Accept the HAProxy PROXY protocol (v1/v2). |
 | `grpc.haproxy.proxyProtocolTimeout` | `10000` | `GRAVITEE_GRPC_HAPROXY_PROXYPROTOCOLTIMEOUT` | PROXY header timeout in ms. |
@@ -111,6 +112,7 @@ The workspace decides which endpoints are reached over TLS (`ssl: true` on the e
 | `http.host` | `0.0.0.0` | `GRAVITEE_HTTP_HOST` | Bind address. A non-loopback bind without `http.auth` logs a warning. |
 | `http.idleTimeout` | `0` | `GRAVITEE_HTTP_IDLETIMEOUT` | Idle timeout in seconds; `0` disables. |
 | `http.tcpKeepAlive` | `true` | `GRAVITEE_HTTP_TCPKEEPALIVE` | TCP keep-alive. |
+| `http.max-body-size` | `10485760` | `GRAVITEE_HTTP_MAXBODYSIZE` | Largest request body in bytes (`413` beyond it). Bodies are read only after `http.auth`; multipart uploads are never written to disk. |
 | `http.expose-pipelines` | `true` | `GRAVITEE_HTTP_EXPOSEPIPELINES` | List pipelines on `/v1/models` and accept pipeline ids as `model`. |
 | `http.secured` | `false` | `GRAVITEE_HTTP_SECURED` | TLS on the HTTP port. |
 | `http.ssl.*` | unset | `GRAVITEE_HTTP_SSL_*` | Same structure as `grpc.ssl.*`. |
