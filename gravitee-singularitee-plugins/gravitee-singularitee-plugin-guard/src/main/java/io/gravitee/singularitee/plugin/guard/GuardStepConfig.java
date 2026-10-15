@@ -16,6 +16,8 @@
 package io.gravitee.singularitee.plugin.guard;
 
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
+import io.gravitee.singularitee.engine.api.pipeline.model.GuardOnEmpty;
+import io.gravitee.singularitee.engine.api.pipeline.model.GuardScope;
 import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
 import java.util.List;
 
@@ -42,7 +44,9 @@ public record GuardStepConfig(
   GuardAction action,
   List<GuardTrigger> triggers,
   String message,
-  boolean redactWithEntityType
+  boolean redactWithEntityType,
+  GuardScope scope,
+  GuardOnEmpty onEmpty
 ) implements ModelBoundConfig {
   public GuardStepConfig {
     modelId = modelId == null ? "" : modelId;
@@ -51,6 +55,8 @@ public record GuardStepConfig(
     action = action == null ? GuardAction.REJECT : action;
     triggers = triggers == null ? List.of() : List.copyOf(triggers);
     message = message == null ? "" : message;
+    scope = scope == null ? GuardScope.CONVERSATION : scope;
+    onEmpty = onEmpty == null ? GuardOnEmpty.parse(null, action) : onEmpty;
   }
 
   /** One trigger: a classifier label and the minimum score that fires it. */

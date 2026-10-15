@@ -124,7 +124,7 @@ Hidden from Jinja: `prompt` is exposed but excluded from the step-map split; `to
 
 | State | Written by | Read by |
 | --- | --- | --- |
-| `messages` | `infer` (`output` / `thinking` append an assistant turn), `loop` (`loopback_message`), `todo` (call and result turns), redacting guards (rewrite the user turn) | `infer` (passthrough conversation), `tool_select` (last user turn), `sub_pipeline` (`forward_messages`), Jinja `messages` / `history` / `system` |
+| `messages` | `infer` (`output` / `thinking` append an assistant turn), `loop` (`loopback_message`), `todo` (call and result turns), redacting guards (rewrite every matching turn in scope) | `infer` (passthrough conversation), `tool_select` (last user turn), `sub_pipeline` (`forward_messages`), Jinja `messages` / `history` / `system` |
 | `generated_messages` | `infer` | Jinja |
 | `verdicts` | `guard`, `llm_guard` | Jinja |
 | extracted tool calls | `infer` | `todo`, the final `COMPLETED` event, conversation storage |

@@ -18,6 +18,7 @@ package io.gravitee.singularitee.plugin.guard;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gravitee.singularitee.engine.api.pipeline.executor.GuardInputs;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
@@ -46,7 +47,9 @@ public final class GuardStepCodec implements StepConfigCodec<GuardStepConfig> {
     @JsonProperty("trigger") TriggerYaml trigger,
     @JsonProperty("triggers") List<TriggerYaml> triggers,
     @JsonProperty("message") String message,
-    @JsonProperty("redact_with_entity_type") boolean redactWithEntityType
+    @JsonProperty("redact_with_entity_type") boolean redactWithEntityType,
+    @JsonProperty("scope") String scope,
+    @JsonProperty("on_empty") String onEmpty
   ) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -79,7 +82,9 @@ public final class GuardStepCodec implements StepConfigCodec<GuardStepConfig> {
       GuardAction.parse(d.action()),
       triggers,
       d.message() != null && !d.message().isBlank() ? d.message() : "",
-      d.redactWithEntityType()
+      d.redactWithEntityType(),
+      GuardInputs.parseScope(stepId, d.inputField(), d.scope()),
+      GuardInputs.parseOnEmpty(stepId, d.onEmpty(), GuardAction.parse(d.action()))
     );
   }
 

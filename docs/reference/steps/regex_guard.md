@@ -4,7 +4,7 @@
 
 ## Overview
 
-`RegexGuardStepExecutor` applies the `patterns` list to `input_field`. For `reject` and `warn` the patterns are combined into one alternation with positional named groups, so the first matching entry's `name` is known without the author writing group syntax. For `redact` every pattern is scanned for spans, overlapping or adjacent spans are merged, and each span is replaced with `[NAME]` or `[REDACTED]`; `messages` and `prompt` are rewritten so downstream templates see the redacted text. The executor is deprecated: declare a `regex` model (or a `composite_classifier`) and reference it from a [`guard`](./guard.md) step, which offers the same matching with the common trigger and redaction semantics.
+`RegexGuardStepExecutor` applies the `patterns` list to one context field (`input_field`) or to each of the request's turns selected by `scope`; the first turn holding a match decides. For `reject` and `warn` the patterns are combined into one alternation with positional named groups, so the first matching entry's `name` is known without the author writing group syntax. For `redact` every pattern is scanned for spans, overlapping or adjacent spans are merged, and each span is replaced with `[NAME]` or `[REDACTED]`; `messages` and `prompt` are rewritten so downstream templates see the redacted text. The executor is deprecated: declare a `regex` model (or a `composite_classifier`) and reference it from a [`guard`](./guard.md) step, which offers the same matching with the common trigger and redaction semantics.
 
 ## Usage
 
@@ -29,7 +29,9 @@
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `input_field` | string | `prompt` | Context key to scan. An empty value skips the step. |
+| `input_field` | string | `prompt` | Context key to scan. `prompt` (or unset) means the request itself, scanned per `scope`; any other key is scanned alone. |
+| `scope` | string | `conversation` | Turns inspected when the guard reads the request (`input_field` unset or `prompt`): `last_user`, `user_turns`, or `conversation` (every user, assistant and tool turn; system turns are excluded). Each turn is scanned on its own and any match fires. Refused alongside any other `input_field`. A request sent as a bare prompt is inspected as that prompt. |
+| `on_empty` | string | `reject`; `skip` for `warn` | What to do when there is no text to inspect (a blank field, or no turn in scope with text, such as an image-only message): `reject` halts with `FINISH_REASON_GUARD_BLOCKED` and the rendered `message`, `skip` passes to the next step. |
 | `patterns` | list of `{name, pattern}` | required | Named Java regexes. An empty list skips the step. |
 | `patterns[].name` | string | required | Free-form label (spaces and punctuation allowed); used as `[NAME]` replacement and in the `entity_type*` fields. |
 | `patterns[].pattern` | string | required | Java `Pattern` source. Blank patterns are ignored in `redact` mode. |
@@ -40,7 +42,7 @@
 
 ## Context fields
 
-Reads: `input_field` (default `prompt`), `messages` (for redaction).
+Reads: `messages` and `prompt` (per `scope`), or `input_field` when it names another key.
 
 Writes, `reject` / `warn` on match:
 
@@ -58,7 +60,7 @@ Writes, `redact` on match:
 | --- | --- |
 | `<id>.triggered` | `true` |
 | `<id>.entity_types` | Comma-separated distinct names of the merged spans. |
-| `<output_field>` | The redacted text; `prompt` and the matching user turn in `messages` are rewritten too. |
+| `<output_field>` | The redacted last user turn (or redacted field); every matching turn in `messages` and `prompt` are rewritten too. |
 
 ## Notes
 

@@ -23,6 +23,8 @@ import io.gravitee.singularitee.engine.api.ChatTurn;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
+import io.gravitee.singularitee.engine.api.pipeline.model.GuardOnEmpty;
+import io.gravitee.singularitee.engine.api.pipeline.model.GuardScope;
 import io.gravitee.singularitee.engine.template.JinjaTemplateRenderer;
 import io.gravitee.singularitee.plugin.regexguard.RegexGuardStepConfig.RegexEntity;
 import io.reactivex.rxjava3.core.Maybe;
@@ -81,6 +83,8 @@ class RegexGuardStepExecutorTest {
     private final List<RegexEntity> patterns = new java.util.ArrayList<>();
     private boolean redactWithEntityType;
     private String message;
+    private GuardScope scope;
+    private GuardOnEmpty onEmpty;
 
     Builder(GuardAction action) {
       this.action = action;
@@ -101,8 +105,27 @@ class RegexGuardStepExecutorTest {
       return this;
     }
 
+    Builder setScope(GuardScope s) {
+      scope = s;
+      return this;
+    }
+
+    Builder setOnEmpty(GuardOnEmpty e) {
+      onEmpty = e;
+      return this;
+    }
+
     RegexGuardStepConfig build() {
-      return new RegexGuardStepConfig(null, patterns, redactWithEntityType, action, null, message);
+      return new RegexGuardStepConfig(
+        null,
+        patterns,
+        redactWithEntityType,
+        action,
+        null,
+        message,
+        scope,
+        onEmpty
+      );
     }
   }
 
@@ -352,6 +375,91 @@ class RegexGuardStepExecutorTest {
 
       assertThat(pctx.get("r.entity_types")).contains("Email Address");
       assertThat(pctx.get("r.entity_types")).contains("Phone Number");
+    }
+  }
+
+  // Scope and empty input
+
+  @Nested
+  class ScopeAndEmptyInput {
+
+    private static final String EMAIL = "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}";
+
+    private PipelineContext transcript() {
+      var messages = List.of(
+        new ChatTurn(ChatRole.USER, "I am foo@bar.com"),
+        new ChatTurn(ChatRole.ASSISTANT, "noted"),
+        new ChatTurn(ChatRole.TOOL, "owner: baz@qux.org", List.of(), List.of(), "call-1", "lookup"),
+        new ChatTurn(ChatRole.USER, "what next?")
+      );
+      return new PipelineContext("what next?", messages, null, List.of(), null);
+    }
+
+    @Test
+    void default_scope_rejects_a_match_in_an_earlier_turn() {
+      var pctx = transcript();
+      executor.execute(
+        "r",
+        cfg(GuardAction.REJECT).addPatterns(entry("Email", EMAIL)).build(),
+        stepContext(pctx)
+      );
+      assertThat(pctx.isHalted()).isTrue();
+    }
+
+    @Test
+    void last_user_scope_ignores_earlier_turns() {
+      var pctx = transcript();
+      var cfg = cfg(GuardAction.REJECT)
+        .addPatterns(entry("Email", EMAIL))
+        .setScope(GuardScope.LAST_USER)
+        .build();
+      executor.execute("r", cfg, stepContext(pctx));
+      assertThat(pctx.isHalted()).isFalse();
+    }
+
+    @Test
+    void redact_masks_user_and_tool_turns() {
+      var pctx = transcript();
+      var cfg = cfg(GuardAction.REDACT)
+        .setRedactWithEntityType(true)
+        .addPatterns(entry("Email", EMAIL))
+        .build();
+      executor.execute("r", cfg, stepContext(pctx));
+      assertThat(pctx.messages())
+        .extracting(ChatTurn::content)
+        .containsExactly("I am [EMAIL]", "noted", "owner: [EMAIL]", "what next?");
+      assertThat(pctx.messages().get(2).toolCallId()).isEqualTo("call-1");
+      assertThat(pctx.get("r.output")).isEqualTo("what next?");
+    }
+
+    @Test
+    void empty_input_rejects_by_default_and_skips_when_asked() {
+      var rejecting = contextWith("");
+      executor.execute(
+        "r",
+        cfg(GuardAction.REJECT).addPatterns(entry("Email", EMAIL)).build(),
+        stepContext(rejecting)
+      );
+      assertThat(rejecting.isHalted()).isTrue();
+
+      var skipping = contextWith("");
+      var cfg = cfg(GuardAction.REJECT)
+        .addPatterns(entry("Email", EMAIL))
+        .setOnEmpty(GuardOnEmpty.SKIP)
+        .build();
+      executor.execute("r", cfg, stepContext(skipping));
+      assertThat(skipping.isHalted()).isFalse();
+    }
+
+    @Test
+    void warn_guards_skip_empty_input_by_default() {
+      var pctx = contextWith("");
+      executor.execute(
+        "r",
+        cfg(GuardAction.WARN).addPatterns(entry("Email", EMAIL)).build(),
+        stepContext(pctx)
+      );
+      assertThat(pctx.isHalted()).isFalse();
     }
   }
 }

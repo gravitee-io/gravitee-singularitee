@@ -15,21 +15,24 @@
  */
 package io.gravitee.singularitee.plugin.regexguard;
 
-import io.gravitee.singularitee.engine.api.ChatRole;
-import io.gravitee.singularitee.engine.api.ChatTurn;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
+import io.gravitee.singularitee.engine.api.pipeline.executor.GuardInputs;
+import io.gravitee.singularitee.engine.api.pipeline.executor.GuardInputs.Target;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutor;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateContextHelper;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateRenderer;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
+import io.gravitee.singularitee.engine.api.pipeline.model.GuardOnEmpty;
 import io.gravitee.singularitee.plugin.regexguard.RegexGuardStepConfig.RegexEntity;
 import io.gravitee.singularitee.protocol.FinishReason;
 import io.reactivex.rxjava3.core.Maybe;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -119,14 +122,33 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
       return ctx.rxNextStep(stepId);
     }
 
-    String text = resolveInputText(stepId, cfg.inputField(), ctx);
-    if (text == null) return ctx.rxNextStep(stepId);
+    List<Target> targets = GuardInputs.resolve(
+      cfg.inputField(),
+      cfg.scope(),
+      ctx.pipelineContext()
+    );
+    if (targets.isEmpty()) return onEmpty(stepId, cfg, ctx);
 
     if (cfg.action() == GuardAction.REDACT) {
-      return executeRedact(stepId, cfg, text, ctx);
+      return executeRedact(stepId, cfg, targets, ctx);
     }
 
-    return executeTrigger(stepId, cfg, text, ctx);
+    return executeTrigger(stepId, cfg, targets, ctx);
+  }
+
+  /** No text to inspect: skip, or halt as a fired reject guard would. */
+  private Maybe<String> onEmpty(String stepId, RegexGuardStepConfig cfg, StepContext ctx) {
+    if (cfg.onEmpty() == GuardOnEmpty.SKIP) {
+      LOGGER.debug("RegexGuard '{}': nothing to inspect, skipping (on_empty: skip)", stepId);
+      return ctx.rxNextStep(stepId);
+    }
+    LOGGER.info("RegexGuard '{}': nothing to inspect, rejecting (on_empty: reject)", stepId);
+    var pctx = ctx.pipelineContext();
+    if (!cfg.message().isBlank()) {
+      pctx.setHaltMessage(resolveMessage(cfg.message(), pctx));
+    }
+    pctx.signalHalt(cfg.inputField(), FinishReason.FINISH_REASON_GUARD_BLOCKED);
+    return ctx.rxNextStep(stepId);
   }
 
   // REJECT / WARN: single combined alternation with positional groups
@@ -134,14 +156,22 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
   private Maybe<String> executeTrigger(
     String stepId,
     RegexGuardStepConfig cfg,
-    String text,
+    List<Target> targets,
     StepContext ctx
   ) {
     List<RegexEntity> entries = cfg.patterns();
     Pattern combined = buildCombinedPattern(entries);
-    Matcher m = combined.matcher(text);
+    // The first target, in transcript order, holding a match decides.
+    Matcher m = null;
+    for (Target target : targets) {
+      Matcher candidate = combined.matcher(target.text());
+      if (candidate.find()) {
+        m = candidate;
+        break;
+      }
+    }
 
-    if (!m.find()) {
+    if (m == null) {
       return ctx.rxNextStep(stepId);
     }
 
@@ -207,9 +237,48 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
   private Maybe<String> executeRedact(
     String stepId,
     RegexGuardStepConfig cfg,
-    String text,
+    List<Target> targets,
     StepContext ctx
   ) {
+    var pctx = ctx.pipelineContext();
+    String outputField = resolveOutputField(cfg.outputField(), stepId);
+    LinkedHashSet<String> matchedNames = new LinkedHashSet<>();
+    Map<Target, String> redacted = new LinkedHashMap<>();
+    for (Target target : targets) {
+      String result = redact(target.text(), cfg, matchedNames);
+      if (result != null) redacted.put(target, result);
+    }
+
+    if (redacted.isEmpty()) {
+      pctx.set(outputField, GuardInputs.primaryText(targets, pctx, Map.of()));
+      return ctx.rxNextStep(stepId);
+    }
+
+    String entityTypesCsv = String.join(", ", matchedNames);
+    LOGGER.info(
+      "RegexGuard '{}': redacted {} of {} target(s), types=[{}]",
+      stepId,
+      redacted.size(),
+      targets.size(),
+      entityTypesCsv
+    );
+
+    pctx.set(stepId + ".triggered", "true");
+    pctx.set(stepId + ".entity_types", entityTypesCsv);
+
+    // Rewrites every redacted turn and keeps {{ prompt }} in sync, so {{ prompt }},
+    // {{ messages }} and {{ history }} reflect the redaction downstream.
+    GuardInputs.applyRedactions(pctx, redacted);
+    pctx.set(outputField, GuardInputs.primaryText(targets, pctx, redacted));
+
+    return ctx.rxNextStep(stepId);
+  }
+
+  /**
+   * Masks every pattern match in {@code text}, adding the matched entry names to
+   * {@code matchedNames}; {@code null} when nothing matched.
+   */
+  private String redact(String text, RegexGuardStepConfig cfg, Set<String> matchedNames) {
     record Span(int start, int end, String name) {}
     List<Span> allSpans = new ArrayList<>();
 
@@ -222,11 +291,7 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
       }
     }
 
-    if (allSpans.isEmpty()) {
-      String outputField = resolveOutputField(cfg.outputField(), stepId);
-      ctx.pipelineContext().set(outputField, text);
-      return ctx.rxNextStep(stepId);
-    }
+    if (allSpans.isEmpty()) return null;
 
     // Sort by start, then merge overlapping / adjacent spans
     allSpans.sort((a, b) -> Integer.compare(a.start(), b.start()));
@@ -248,16 +313,7 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
     }
     mergedBounds.add(cur);
     mergedNames.add(curName);
-
-    LinkedHashSet<String> matchedNames = new LinkedHashSet<>(mergedNames);
-    String entityTypesCsv = String.join(", ", matchedNames);
-
-    LOGGER.info(
-      "RegexGuard '{}': redacting {} span(s), types=[{}]",
-      stepId,
-      mergedBounds.size(),
-      entityTypesCsv
-    );
+    matchedNames.addAll(mergedNames);
 
     // Replace in reverse order to preserve earlier offsets
     var sb = new StringBuilder(text);
@@ -271,39 +327,7 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
         sb.replace(start, end, replacement);
       }
     }
-    String redacted = sb.toString();
-
-    var pctx = ctx.pipelineContext();
-    pctx.set(stepId + ".triggered", "true");
-    pctx.set(stepId + ".entity_types", entityTypesCsv);
-
-    String outputField = resolveOutputField(cfg.outputField(), stepId);
-    pctx.set(outputField, redacted);
-
-    // Rewrite messages so {{ messages }} / {{ history }} reflect the redaction
-    if (pctx.messages() != null) {
-      var redactedMessages = pctx
-        .messages()
-        .stream()
-        .map(msg -> {
-          if (msg.role() == ChatRole.USER && msg.content().equals(text)) {
-            return new ChatTurn(msg.role(), redacted, msg.media());
-          }
-          return msg;
-        })
-        .toList();
-      pctx.setMessages(redactedMessages);
-    }
-
-    // Sync KEY_PROMPT so {{ prompt }} reflects the redaction
-    String inputField = cfg.inputField();
-    if (
-      inputField == null || inputField.isBlank() || inputField.equals(PipelineContext.KEY_PROMPT)
-    ) {
-      pctx.set(PipelineContext.KEY_PROMPT, redacted);
-    }
-
-    return ctx.rxNextStep(stepId);
+    return sb.toString();
   }
 
   // ── Pattern compilation helpers ───────────────────────────────────────────
@@ -341,19 +365,6 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
   }
 
   // ── Shared helpers ─────────────────────────────────────────────────────────
-
-  /** Reads the input field, falling back to {@code KEY_PROMPT}. Returns {@code null} on miss. */
-  private static String resolveInputText(String stepId, String inputField, StepContext ctx) {
-    String field = (inputField == null || inputField.isBlank())
-      ? PipelineContext.KEY_PROMPT
-      : inputField;
-    String value = ctx.pipelineContext().get(field);
-    if (value == null || value.isBlank()) {
-      LOGGER.debug("RegexGuard '{}': input field '{}' is empty, skipping", stepId, field);
-      return null;
-    }
-    return value;
-  }
 
   /** Resolves the output field name, defaulting to {@code <stepId>.output}. */
   private static String resolveOutputField(String provided, String stepId) {
