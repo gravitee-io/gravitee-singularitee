@@ -42,8 +42,7 @@ workspace:
             output_field: generate.output
 ```
 
-A quantised checkpoint (`examples/modular/models/vllm/llm-qwen3-awq.yaml`) adds `quantization: awq` and
-`trust_remote_code: true`. A repository carrying duplicate weights
+A quantised checkpoint (`examples/modular/models/vllm/llm-qwen3-awq.yaml`) adds `quantization: awq`. A repository carrying duplicate weights
 (`examples/vllm/gpt-oss-20b-mac.yaml`) trims the transfer:
 
 ```yaml
@@ -92,7 +91,7 @@ llama.cpp's format, not vLLM's), the config declares no rank `r`, or the adapter
 | `gpu_memory_utilization` | double | `0.5` | Fraction of total GPU memory vLLM may claim, weights and KV cache included. |
 | `max_num_batched_tokens` | int | unset (vLLM default) | Tokens per scheduler step. |
 | `enforce_eager` | boolean | `false` | Skip CUDA graph capture. |
-| `trust_remote_code` | boolean | `false` | Allow the checkpoint's custom modelling code. |
+| `trust_remote_code` | boolean | `false` | Allow the checkpoint's custom modelling or tokenizer code. That Python runs inside the server process, so enable it only for a repository whose code you have reviewed; loading such a model logs a warning. Architectures vLLM supports natively (Qwen3, Llama, Mistral, ...) never need it, quantised or not. |
 | `quantization` | string | unset | `awq`, `gptq`, `fp8`, ... |
 | `seed` | int | unset | Sampler seed, forwarded when `> 0`. |
 | `enable_prefix_caching` | boolean | unset (vLLM default) | Three-valued: unset leaves vLLM's default, `false` disables. |

@@ -21,7 +21,10 @@
 #
 # MoE 16B (3B active, 64 experts) on the DeepSeek-V3 architecture, bf16. Note the
 # short 8192-token positional encoding, the smallest window of any model here.
-# trust_remote_code is required: the checkpoint ships its own config class.
+# trust_remote_code is required: the checkpoint ships its own config and tokenizer code.
+# trust_remote_code runs the repository's Python (here its tokenizer, tokenization_moonshot.py)
+# inside the server process, with its credentials and every tenant's traffic. Review that code
+# before enabling it, and mirror the checkpoint so it cannot change between downloads.
 #
 # ⚠ Linux + CUDA only. vLLM runs from a host venv (scripts/setup-venv.sh) unless
 #   you use the -vllm-cuda image, which bundles it:
