@@ -35,6 +35,7 @@ import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition;
 import io.gravitee.singularitee.workspace.YamlWorkspaceLoader;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -99,6 +100,11 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     Path path = Path.of(workspacePath);
     LOGGER.info("Loading workspace from: {}", path.toAbsolutePath());
 
+    // Strict: any model, remote model or pipeline that fails to load fails startup, so a
+    // deployment never comes up ready while serving only part of its workspace.
+    boolean strict = configuration.getProperty("ai.workspace.strict", Boolean.class, false);
+    List<String> failures = new ArrayList<>();
+
     // Resolve the templates base path from gravitee.home (set by Bootstrap).
     String graviteeHome = System.getProperty("gravitee.home");
     Path templatesPath = graviteeHome != null ? Path.of(graviteeHome, "templates") : null;
@@ -108,6 +114,9 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       ws = YamlWorkspaceLoader.load(path, templatesPath, stepPlugins.codecs());
     } catch (Exception e) {
       LOGGER.error("Failed to parse workspace file {}: {}", path, e.getMessage(), e);
+      if (strict) {
+        throw new IllegalStateException("Workspace " + path + " failed to parse", e);
+      }
       stepExecutorFactory.setSubPipelineCallbacks(pipelineExecutor, Map.of());
       return;
     }
@@ -126,6 +135,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
         LOGGER.info("Workspace model loaded: id={}, name={}", resolvedId, req.modelName());
       } catch (Exception e) {
         LOGGER.warn("Workspace model '{}' failed to load: {}", req.modelName(), e.getMessage());
+        failures.add("model '" + req.modelName() + "': " + e.getMessage());
       }
       loaded++;
     }
@@ -145,6 +155,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
           modelDef.id(),
           e.getMessage()
         );
+        failures.add("remote model '" + modelDef.id() + "': " + e.getMessage());
       }
     }
 
@@ -155,8 +166,8 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       modelService::registerPrebuiltModel
     );
 
-    // Pipelines. A model that failed to load leaves an inert pipeline (WARN and carry on),
-    // but a step whose license feature is missing is a different class of error: the
+    // Pipelines. A pipeline naming a model that failed to load is not registered (WARN and
+    // carry on, or fail in strict mode), but a step whose license feature is missing is a different class of error: the
     // node must not come up serving a workspace with a safety-relevant step silently
     // absent, so the load fails.
     for (var pipeline : ws.pipelines()) {
@@ -172,7 +183,14 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
           pipeline.name(),
           e.getMessage()
         );
+        failures.add("pipeline '" + pipeline.name() + "': " + e.getMessage());
       }
+    }
+
+    if (strict && !failures.isEmpty()) {
+      throw new IllegalStateException(
+        "Workspace load failed (ai.workspace.strict): " + String.join("; ", failures)
+      );
     }
 
     // Remote sub-pipeline callbacks

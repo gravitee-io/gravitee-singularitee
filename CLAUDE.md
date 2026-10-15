@@ -326,7 +326,8 @@ compatibility values. Don't invent new ones; conforming clients will reject them
 
 **A failed model load does not fail startup.** `WorkspaceLoaderComponent` logs a WARN and
 carries on, so a bad repo name yields a *healthy* server with `/v1/models` returning `[]`. If a
-workspace looks inert, grep the log for `failed to load`.
+workspace looks inert, grep the log for `failed to load`. `ai.workspace.strict: true` makes
+any such failure fail startup instead.
 
 **Ports bind before models load.** `/health` answers 200 immediately while calls return
 `UNAVAILABLE` / 503 ("Model server is still loading"). A TCP readiness probe is not enough;

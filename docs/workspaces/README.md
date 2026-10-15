@@ -220,7 +220,8 @@ than globbing a folder that holds several.
 **Load failures are not fatal.** A model whose files cannot be resolved (wrong repo, wrong
 `path`) is logged as `failed to load` by `WorkspaceLoaderComponent` and the server comes up
 without it. A pipeline whose model is missing fails to register the same way. An inert
-server with `/v1/models` empty almost always means one of these lines is in the log.
+server with `/v1/models` empty almost always means one of these lines is in the log. Set
+`ai.workspace.strict: true` to make any of them fail startup instead.
 
 **Structure is validated, weights are not.** `ExamplesWorkspaceTest` (and `task test:examples`)
 parses and resolves every `examples/**.yaml`, including the modular fragments, through the
