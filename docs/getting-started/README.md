@@ -188,7 +188,7 @@ download of a multi-GB model.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| Server is healthy but `/v1/models` returns `[]` | A model failed to load. `WorkspaceLoaderComponent` logs a WARN and continues; startup does not fail. | `grep "failed to load" <log>`; check the HuggingFace repo name and file `path`. |
+| Server is healthy but `/v1/models` returns `[]` | A model failed to load. `WorkspaceLoaderComponent` logs a WARN and continues; startup fails only with `ai.workspace.strict: true`. | `grep "failed to load" <log>`; check the HuggingFace repo name and file `path`. |
 | Calls return `UNAVAILABLE` or `503 Model server is still loading` | The workspace is still loading (or still downloading). | Wait for `Models loaded` in the log; poll `/v1/models`. |
 | Out of memory at model load | KV cache is `n_ctx x n_seq_max` per llama.cpp model. | Lower `n_seq_max` before lowering `n_ctx` or changing the quantisation. |
 | Old behaviour after a code change; ONNX fails on macOS after a `-Pcuda` build | `run-server.sh` launches whatever is in `target/distribution`. | Rebuild with the default profile. |

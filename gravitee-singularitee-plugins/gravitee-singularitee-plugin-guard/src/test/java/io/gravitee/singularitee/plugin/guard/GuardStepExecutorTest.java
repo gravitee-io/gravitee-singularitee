@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.plugin.guard;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -30,6 +31,7 @@ import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.ClassifyResponse;
 import io.gravitee.singularitee.engine.api.ModelTasks;
+import io.gravitee.singularitee.engine.api.TextGenEngine;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.SpanScribe;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
@@ -182,5 +184,31 @@ class GuardStepExecutorTest {
     var imageOnly = List.of(new ChatTurn(ChatRole.USER, ""));
     var pctx = run(cfg(GuardAction.REJECT, GuardScope.CONVERSATION, GuardOnEmpty.SKIP), imageOnly);
     assertThat(pctx.isHalted()).isFalse();
+  }
+
+  @Test
+  void a_guard_whose_model_is_not_loaded_fails_the_request() {
+    var pctx = context(HOSTILE_EARLIER_TURN);
+    var cfg = cfg(GuardAction.REJECT, GuardScope.CONVERSATION, GuardOnEmpty.REJECT);
+
+    assertThatThrownBy(() -> executor.execute("g", cfg, stepContext(pctx)).blockingGet())
+      .isInstanceOf(IllegalStateException.class)
+      .hasMessageContaining("not loaded");
+  }
+
+  @Test
+  void a_guard_bound_to_a_model_of_another_type_fails_the_request() {
+    var registry = new ModelRegistry();
+    registry.register("tox", "an-llm", mock(TextGenEngine.class), token -> {});
+    var bound = new GuardStepExecutor(
+      new StepExecutionContext(registry, null, null),
+      mock(TemplateRenderer.class)
+    );
+    var pctx = context(HOSTILE_EARLIER_TURN);
+    var cfg = cfg(GuardAction.REJECT, GuardScope.CONVERSATION, GuardOnEmpty.REJECT);
+
+    assertThatThrownBy(() -> bound.execute("g", cfg, stepContext(pctx)).blockingGet())
+      .isInstanceOf(IllegalStateException.class)
+      .hasMessageContaining("ClassifierEngine");
   }
 }

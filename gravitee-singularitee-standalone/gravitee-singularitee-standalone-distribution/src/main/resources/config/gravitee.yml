@@ -132,6 +132,9 @@ ai:
   # Override at run time with GRAVITEE_AI_WORKSPACE_PATH.
   workspace:
     path:
+    # true: fail startup when the workspace does not parse or anything in it fails to load,
+    # instead of serving the part that loaded.
+    strict: false
 
   # Directory where model files (GGUF, ONNX, GLiNER) are stored / downloaded.
   # Models referenced by filename in workspace definitions resolve relative to this path.

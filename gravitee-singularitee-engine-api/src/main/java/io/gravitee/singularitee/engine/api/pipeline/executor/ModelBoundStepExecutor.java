@@ -73,10 +73,16 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
 
   @Override
   public final Maybe<String> execute(String stepId, C config, StepContext ctx) {
+    // A step that cannot reach its model fails the request rather than being skipped: a skipped
+    // guard would let the request through unchecked.
     var entryOpt = execContext.lookupModel(getModelId(config));
     if (entryOpt.isEmpty()) {
       execContext.logModelNotFound(stepId, getModelId(config));
-      return ctx.rxNextStep(stepId);
+      return Maybe.error(
+        new IllegalStateException(
+          "Step '" + stepId + "': model '" + getModelId(config) + "' is not loaded"
+        )
+      );
     }
 
     ModelEngine engine = entryOpt.get().engine();
@@ -87,7 +93,16 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
         engineType().getSimpleName(),
         engine.getClass().getSimpleName()
       );
-      return ctx.rxNextStep(stepId);
+      return Maybe.error(
+        new IllegalStateException(
+          "Step '" +
+            stepId +
+            "': model '" +
+            getModelId(config) +
+            "' is not a " +
+            engineType().getSimpleName()
+        )
+      );
     }
 
     final E typed = engineType().cast(engine);
