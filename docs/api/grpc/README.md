@@ -87,7 +87,7 @@ Slow consumers are cancelled after `ai.streaming.buffer-capacity` tokens of lag.
 | `sampling_params` | `SamplingParams` | `max_tokens` (0 = engine default), `temperature` (negative = engine default), `top_p`, `presence_penalty`, `frequency_penalty`, `seed` (0 = random), `top_logprobs` (0 = off). |
 | `reasoning_tags`, `tool_call_tags` | `TagConfig` | `open_tag`, `close_tag`, `open_tag_alternatives`, `close_tag_alternatives`, `repeatable`. Routes tokens to the reasoning or tool channel. |
 | `stop` | repeated string | Stop strings. |
-| `lora` | `LoraConfig` | `lora_name`, `lora_path`. |
+| `lora` | `LoraConfig` | `lora_name`, `lora_path`. A `lora_path` is refused with `invalid_request_error` unless `ai.inference.request-lora.enabled` is set. |
 | `tools_json` | repeated string | Tool definitions in function-calling JSON, injected through the chat template. |
 | `template_context` | `google.protobuf.Struct` | Extra chat-template variables (`enable_thinking`, `reasoning_effort`). Ignored with `prompt`. |
 | `structured_output` | `StructuredOutputFormat` | Tag 53. Constrains decoding to a format, see below. |

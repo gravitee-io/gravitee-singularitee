@@ -144,6 +144,12 @@ The workspace decides which endpoints are reached over TLS (`ssl: true` on the e
 | --- | --- | --- | --- |
 | `ai.streaming.buffer-capacity` | `256` | `GRAVITEE_AI_STREAMING_BUFFERCAPACITY` | Tokens a slow client may lag behind before its stream is cancelled instead of buffering without bound. |
 
+### `ai.inference.*`
+
+| Key | Default | Env var | Purpose |
+| --- | --- | --- | --- |
+| `ai.inference.request-lora.enabled` | `false` | `GRAVITEE_AI_INFERENCE_REQUESTLORA_ENABLED` | Lets a raw `Infer` name its own `lora.lora_path`. Off, such a request fails with `invalid_request_error` and only workspace-declared adapters load. Enable it only when every caller is trusted to pick an adapter path. |
+
 ### `ai.todos.*` (cross-request plan persistence)
 
 | Key | Default | Env var | Purpose |

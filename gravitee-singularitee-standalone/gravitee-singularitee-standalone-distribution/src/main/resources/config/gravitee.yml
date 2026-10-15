@@ -165,6 +165,12 @@ ai:
   streaming:
     buffer-capacity: 256
 
+  # A raw Infer naming its own lora.lora_path is refused unless enabled: the path reaches the
+  # engine's adapter loader. Enable it only when every caller is trusted to pick an adapter path.
+  #inference:
+  #  request-lora:
+  #    enabled: false
+
   # Cross-request todo-plan persistence, keyed by the request's cache_key
   # (OpenAI prompt_cache_key / user). session-ttl is the idle timeout in
   # seconds; 0 disables persistence.

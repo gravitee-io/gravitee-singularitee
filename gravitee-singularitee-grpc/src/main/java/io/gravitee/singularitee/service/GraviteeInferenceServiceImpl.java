@@ -52,19 +52,28 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
   private final io.gravitee.singularitee.engine.pipeline.PipelineExecutor pipelineExecutor;
   private final InferenceMetrics metrics;
   private final ServiceInstrumentation instrumentation;
+  private final boolean requestLoraEnabled;
 
-  /** Wires the service to the model registry, pipeline executor, tracer and metrics. */
+  /**
+   * Wires the service to the model registry, pipeline executor, tracer and metrics.
+   *
+   * @param requestLoraEnabled whether a raw {@code Infer} may name its own LoRA adapter path
+   *     ({@code ai.inference.request-lora.enabled}); when false such requests are refused, so only
+   *     adapters declared in the workspace are ever loaded
+   */
   public GraviteeInferenceServiceImpl(
     Vertx vertx,
     ModelRegistry registry,
     PipelineExecutor pipelineExecutor,
     Tracer tracer,
-    InferenceMetrics metrics
+    InferenceMetrics metrics,
+    boolean requestLoraEnabled
   ) {
     this.vertx = vertx;
     this.registry = registry;
     this.pipelineExecutor = pipelineExecutor;
     this.metrics = metrics;
+    this.requestLoraEnabled = requestLoraEnabled;
     this.instrumentation = new ServiceInstrumentation(vertx, tracer, metrics);
   }
 
@@ -92,6 +101,20 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
       LOGGER.warn("Infer: model {} is not a text-gen engine", request.getModelId());
       metrics.recordRequest("infer", request.getModelId(), InferenceMetrics.STATUS_ERROR);
       response.end();
+      return;
+    }
+
+    // A caller-chosen adapter path reaches the engine's adapter loader (a filesystem path or a
+    // repository id), so it is opt-in: by default only workspace-declared adapters load.
+    if (!requestLoraEnabled && request.hasLora() && !request.getLora().getLoraPath().isBlank()) {
+      LOGGER.warn("Infer: refused request-level LoRA adapter for model {}", request.getModelId());
+      metrics.recordRequest("infer", request.getModelId(), InferenceMetrics.STATUS_ERROR);
+      response.end(
+        TokenStreamWriter.failed(
+          "invalid_request_error",
+          "request-level LoRA adapters are disabled; declare the adapter in the workspace"
+        )
+      );
       return;
     }
 
