@@ -15,14 +15,14 @@
  */
 package io.gravitee.singularitee.plugin.guard;
 
-import io.gravitee.singularitee.engine.api.ChatRole;
-import io.gravitee.singularitee.engine.api.ChatTurn;
 import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.ClassifyResponse;
 import io.gravitee.singularitee.engine.api.ClassifyResult;
 import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
+import io.gravitee.singularitee.engine.api.pipeline.executor.GuardInputs;
+import io.gravitee.singularitee.engine.api.pipeline.executor.GuardInputs.Target;
 import io.gravitee.singularitee.engine.api.pipeline.executor.ModelBoundStepExecutor;
 import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.pipeline.executor.SpanScribe;
@@ -31,12 +31,16 @@ import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContex
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateContextHelper;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateRenderer;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
+import io.gravitee.singularitee.engine.api.pipeline.model.GuardOnEmpty;
 import io.gravitee.singularitee.plugin.guard.GuardStepConfig.GuardTrigger;
 import io.gravitee.singularitee.protocol.FinishReason;
+import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Maybe;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,27 +81,21 @@ public final class GuardStepExecutor
     ClassifierEngine engine,
     StepContext ctx
   ) {
-    String text = resolveInputText(stepId, cfg.inputField(), ctx);
-    if (text == null) return ctx.rxNextStep(stepId);
+    var pctx = ctx.pipelineContext();
+    List<Target> targets = GuardInputs.resolve(cfg.inputField(), cfg.scope(), pctx);
 
     // Capture the step-span scribe now: the verdict is written after the async classify, on a
     // context where ctx.stepScribe() no longer resolves to this step's span (see InferStepExecutor).
     final SpanScribe stepScribe = ctx.stepScribe();
 
-    return engine
-      .rxClassify(new ClassifyRequest(text))
-      .flatMapMaybe(result -> {
-        List<GuardTrigger> triggers = cfg.triggers();
+    if (targets.isEmpty()) return onEmpty(stepId, cfg, ctx, stepScribe);
 
-        LOGGER.info(
-          "GuardStep '{}': classification results={}, watching triggers={}",
-          stepId,
-          result.allScores(),
-          triggers
-            .stream()
-            .map(t -> t.label() + ">=" + t.score())
-            .toList()
-        );
+    // One classification per target, so a long benign turn cannot dilute a short hostile one.
+    return Flowable.fromIterable(targets)
+      .concatMapSingle(t -> engine.rxClassify(new ClassifyRequest(t.text())))
+      .toList()
+      .flatMapMaybe(results -> {
+        List<GuardTrigger> triggers = cfg.triggers();
 
         float minThreshold = triggers.isEmpty()
           ? 0f
@@ -108,36 +106,33 @@ public final class GuardStepExecutor
         // chunk ranges) but those are not entities; gate on the engine's task so they aren't
         // treated as redactable entities or used to trigger the guard.
         boolean tokenClassification = ModelTasks.TOKEN_CLASSIFICATION.equals(engine.task());
-        boolean hasTokenEntities =
-          tokenClassification &&
-          result.results() != null &&
-          result
-            .results()
-            .stream()
-            .anyMatch(
-              r ->
-                r.start() != null &&
-                r.end() != null &&
-                !r.label().equals("O") &&
-                !r.label().startsWith("O-") &&
-                r.score() >= minThreshold
-            );
 
-        List<MatchedTrigger> matchedTriggers = new ArrayList<>();
-        for (GuardTrigger t : triggers) {
-          Float score = result.allScores().get(t.label());
-          if (score != null && score >= t.score()) {
-            matchedTriggers.add(new MatchedTrigger(t.label(), score));
-          }
+        List<Verdict> verdicts = new ArrayList<>();
+        for (int i = 0; i < targets.size(); i++) {
+          ClassifyResponse result = results.get(i);
+          LOGGER.info(
+            "GuardStep '{}': target {}/{} classification results={}, watching triggers={}",
+            stepId,
+            i + 1,
+            targets.size(),
+            result.allScores(),
+            triggers
+              .stream()
+              .map(t -> t.label() + ">=" + t.score())
+              .toList()
+          );
+          verdicts.add(
+            evaluate(targets.get(i), result, triggers, tokenClassification, minThreshold)
+          );
         }
-        matchedTriggers.sort(Comparator.comparingDouble(MatchedTrigger::score).reversed());
 
-        boolean triggered = hasTokenEntities || !matchedTriggers.isEmpty();
+        List<MatchedTrigger> matchedTriggers = strongestPerLabel(verdicts);
+        boolean triggered = verdicts.stream().anyMatch(Verdict::triggered);
 
         if (!triggered) {
           if (cfg.action() == GuardAction.REDACT) {
             String outputField = resolveOutputField(cfg.outputField(), stepId, ".redacted");
-            ctx.pipelineContext().set(outputField, text);
+            pctx.set(outputField, GuardInputs.primaryText(targets, pctx, Map.of()));
           }
           // Span introspection: the guard's decision when nothing matched.
           stepScribe
@@ -158,9 +153,8 @@ public final class GuardStepExecutor
           cfg.action(),
           stepId,
           cfg,
-          text,
-          result,
-          hasTokenEntities,
+          targets,
+          verdicts,
           minThreshold,
           matchedTriggers,
           ctx,
@@ -168,6 +162,86 @@ public final class GuardStepExecutor
         );
         return ctx.rxNextStep(stepId);
       });
+  }
+
+  /** What one inspected target produced. */
+  private record Verdict(
+    Target target,
+    ClassifyResponse result,
+    boolean hasTokenEntities,
+    List<MatchedTrigger> matched
+  ) {
+    boolean triggered() {
+      return hasTokenEntities || !matched.isEmpty();
+    }
+  }
+
+  private static Verdict evaluate(
+    Target target,
+    ClassifyResponse result,
+    List<GuardTrigger> triggers,
+    boolean tokenClassification,
+    float minThreshold
+  ) {
+    boolean hasTokenEntities =
+      tokenClassification &&
+      result.results() != null &&
+      result
+        .results()
+        .stream()
+        .anyMatch(
+          r ->
+            r.start() != null &&
+            r.end() != null &&
+            !r.label().equals("O") &&
+            !r.label().startsWith("O-") &&
+            r.score() >= minThreshold
+        );
+    List<MatchedTrigger> matched = new ArrayList<>();
+    for (GuardTrigger t : triggers) {
+      Float score = result.allScores().get(t.label());
+      if (score != null && score >= t.score()) {
+        matched.add(new MatchedTrigger(t.label(), score));
+      }
+    }
+    return new Verdict(target, result, hasTokenEntities, matched);
+  }
+
+  /** Each matched label once, at its highest score across targets, strongest first. */
+  private static List<MatchedTrigger> strongestPerLabel(List<Verdict> verdicts) {
+    Map<String, MatchedTrigger> best = new LinkedHashMap<>();
+    for (Verdict v : verdicts) {
+      for (MatchedTrigger m : v.matched()) {
+        best.merge(m.label(), m, (a, b) -> a.score() >= b.score() ? a : b);
+      }
+    }
+    List<MatchedTrigger> sorted = new ArrayList<>(best.values());
+    sorted.sort(Comparator.comparingDouble(MatchedTrigger::score).reversed());
+    return sorted;
+  }
+
+  /** No text to inspect: skip, or halt as a fired reject guard would. */
+  private Maybe<String> onEmpty(
+    String stepId,
+    GuardStepConfig cfg,
+    StepContext ctx,
+    SpanScribe stepScribe
+  ) {
+    if (cfg.onEmpty() == GuardOnEmpty.SKIP) {
+      LOGGER.debug("GuardStep '{}': nothing to inspect, skipping (on_empty: skip)", stepId);
+      return ctx.rxNextStep(stepId);
+    }
+    LOGGER.info("GuardStep '{}': nothing to inspect, rejecting (on_empty: reject)", stepId);
+    var pctx = ctx.pipelineContext();
+    if (!cfg.message().isBlank()) {
+      pctx.setHaltMessage(resolveGuardMessage(cfg.message(), pctx));
+    }
+    stepScribe
+      .set(SpanNames.key("monitor.verdict"), "reject")
+      .set(SpanNames.key("monitor.triggered_step"), stepId)
+      .set(SpanNames.key("guard.empty_input"), true);
+    pctx.signalHalt(cfg.inputField(), FinishReason.FINISH_REASON_GUARD_BLOCKED);
+    return ctx.rxNextStep(stepId);
   }
 
   private record MatchedTrigger(String label, float score) {
@@ -214,9 +288,8 @@ public final class GuardStepExecutor
     GuardAction action,
     String stepId,
     GuardStepConfig cfg,
-    String text,
-    ClassifyResponse result,
-    boolean hasTokenEntities,
+    List<Target> targets,
+    List<Verdict> verdicts,
     float threshold,
     List<MatchedTrigger> matchedTriggers,
     StepContext ctx,
@@ -248,34 +321,26 @@ public final class GuardStepExecutor
         );
       }
       case REDACT -> {
+        Map<Target, String> redacted = new LinkedHashMap<>();
+        for (Verdict v : verdicts) {
+          if (!v.triggered()) continue;
+          redacted.put(
+            v.target(),
+            v.hasTokenEntities()
+              ? redactSpans(
+                v.target().text(),
+                v.result().results(),
+                threshold,
+                cfg.redactWithEntityType()
+              )
+              : "************"
+          );
+        }
+        // Rewrites every redacted turn and keeps {{ prompt }} in sync, so no downstream template
+        // sees the original text.
+        GuardInputs.applyRedactions(pctx, redacted);
         String outputField = resolveOutputField(cfg.outputField(), stepId, ".redacted");
-        String redacted = hasTokenEntities
-          ? redactSpans(text, result.results(), threshold, cfg.redactWithEntityType())
-          : "************";
-        pctx.set(outputField, redacted);
-
-        if (pctx.messages() != null) {
-          var redactedMessages = pctx
-            .messages()
-            .stream()
-            .map(m -> {
-              if (m.role() == ChatRole.USER && m.content().equals(text)) {
-                return new ChatTurn(m.role(), redacted, m.media());
-              }
-              return m;
-            })
-            .toList();
-          pctx.setMessages(redactedMessages);
-        }
-
-        // Keep KEY_PROMPT in sync: if the guard was operating on the prompt field,
-        // {{ prompt }} in downstream templates must reflect the redacted value,
-        // not the original unredacted input. Without this, {{ prompt }} leaks
-        // PII even after a successful redaction pass.
-        String inputField = cfg.inputField();
-        if (inputField.isBlank() || inputField.equals(PipelineContext.KEY_PROMPT)) {
-          pctx.set(PipelineContext.KEY_PROMPT, redacted);
-        }
+        pctx.set(outputField, GuardInputs.primaryText(targets, pctx, redacted));
       }
     }
   }

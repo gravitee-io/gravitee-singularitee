@@ -16,6 +16,8 @@
 package io.gravitee.singularitee.plugin.regexguard;
 
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
+import io.gravitee.singularitee.engine.api.pipeline.model.GuardOnEmpty;
+import io.gravitee.singularitee.engine.api.pipeline.model.GuardScope;
 import java.util.List;
 
 /**
@@ -39,7 +41,9 @@ public record RegexGuardStepConfig(
   boolean redactWithEntityType,
   GuardAction action,
   String outputField,
-  String message
+  String message,
+  GuardScope scope,
+  GuardOnEmpty onEmpty
 ) {
   public RegexGuardStepConfig {
     inputField = inputField == null ? "" : inputField;
@@ -47,6 +51,8 @@ public record RegexGuardStepConfig(
     action = action == null ? GuardAction.REJECT : action;
     outputField = outputField == null ? "" : outputField;
     message = message == null ? "" : message;
+    scope = scope == null ? GuardScope.CONVERSATION : scope;
+    onEmpty = onEmpty == null ? GuardOnEmpty.parse(null, action) : onEmpty;
   }
 
   /** One named pattern: a free-form label and a Java regular expression. */

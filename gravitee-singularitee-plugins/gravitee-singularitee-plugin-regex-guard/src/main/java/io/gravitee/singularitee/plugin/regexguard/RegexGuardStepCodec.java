@@ -18,6 +18,7 @@ package io.gravitee.singularitee.plugin.regexguard;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gravitee.singularitee.engine.api.pipeline.executor.GuardInputs;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
@@ -42,7 +43,9 @@ public final class RegexGuardStepCodec implements StepConfigCodec<RegexGuardStep
     @JsonProperty("redact_with_entity_type") boolean redactWithEntityType,
     @JsonProperty("action") String action,
     @JsonProperty("output_field") String outputField,
-    @JsonProperty("message") String message
+    @JsonProperty("message") String message,
+    @JsonProperty("scope") String scope,
+    @JsonProperty("on_empty") String onEmpty
   ) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -79,7 +82,9 @@ public final class RegexGuardStepCodec implements StepConfigCodec<RegexGuardStep
       d.redactWithEntityType(),
       GuardAction.parse(d.action()),
       d.outputField() != null && !d.outputField().isBlank() ? d.outputField() : "",
-      d.message() != null && !d.message().isBlank() ? d.message() : ""
+      d.message() != null && !d.message().isBlank() ? d.message() : "",
+      GuardInputs.parseScope(stepId, d.inputField(), d.scope()),
+      GuardInputs.parseOnEmpty(stepId, d.onEmpty(), GuardAction.parse(d.action()))
     );
   }
 }

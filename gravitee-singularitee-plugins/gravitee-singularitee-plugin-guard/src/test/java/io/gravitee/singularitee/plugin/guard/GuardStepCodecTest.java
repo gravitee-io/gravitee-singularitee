@@ -19,6 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
+import io.gravitee.singularitee.engine.api.pipeline.model.GuardOnEmpty;
+import io.gravitee.singularitee.engine.api.pipeline.model.GuardScope;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import io.gravitee.singularitee.plugin.guard.GuardStepConfig.GuardTrigger;
 import java.util.List;
@@ -100,5 +102,38 @@ class GuardStepCodecTest {
     assertThatThrownBy(() -> codec.parse("my_guard", Map.of("triggers", "not-a-list"), ctx))
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessageContaining("my_guard");
+  }
+
+  @Test
+  void scope_and_on_empty_default_to_the_strict_values() {
+    var cfg = codec.parse("g", Map.of("model_id", "toxicity"), ctx);
+
+    assertThat(cfg.scope()).isEqualTo(GuardScope.CONVERSATION);
+    assertThat(cfg.onEmpty()).isEqualTo(GuardOnEmpty.REJECT);
+  }
+
+  @Test
+  void parses_scope_and_on_empty() {
+    var cfg = codec.parse(
+      "g",
+      Map.of("model_id", "toxicity", "scope", "last_user", "on_empty", "skip"),
+      ctx
+    );
+
+    assertThat(cfg.scope()).isEqualTo(GuardScope.LAST_USER);
+    assertThat(cfg.onEmpty()).isEqualTo(GuardOnEmpty.SKIP);
+  }
+
+  @Test
+  void scope_with_a_named_input_field_is_refused() {
+    assertThatThrownBy(() ->
+      codec.parse(
+        "g",
+        Map.of("model_id", "toxicity", "input_field", "generate.output", "scope", "user_turns"),
+        ctx
+      )
+    )
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("input_field");
   }
 }
