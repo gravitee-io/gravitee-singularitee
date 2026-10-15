@@ -96,7 +96,7 @@ Step values apply only when non-zero. Precedence at request time: request `sampl
 | `sampling.frequency_penalty` | float | `0` | Frequency penalty. |
 | `sampling.stop` | list of string | unset | Stop strings; mapped to `InferStepConfig.stop`. |
 
-`SamplingParams.seed` and `top_logprobs` exist on the wire and can be set per request, but have no YAML key on the step. `LoraConfig` (`lora_name`, `lora_path`) is likewise a proto-only field of `InferStepConfig`: the workspace loader never sets it, so adapters are selected per request or in the model's `llama_cpp.lora_path`.
+`SamplingParams.seed` and `top_logprobs` exist on the wire and can be set per request, but have no YAML key on the step. `LoraConfig` (`lora_name`, `lora_path`) is likewise a proto-only field of `InferStepConfig`: the workspace loader never sets it, so adapters are selected in the model's `llama_cpp.lora_path` / `vllm.lora_path`, or per raw `Infer` request when `ai.inference.request-lora.enabled` is set.
 
 ### `tags`
 

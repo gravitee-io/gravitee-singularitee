@@ -738,14 +738,16 @@ public class SingulariteeConfiguration {
     ModelRegistry modelRegistry,
     PipelineExecutor pipelineExecutor,
     Tracer singulariteeTracer,
-    InferenceMetrics inferenceMetrics
+    InferenceMetrics inferenceMetrics,
+    Configuration configuration
   ) {
     return new GraviteeInferenceServiceImpl(
       vertx.getDelegate(),
       modelRegistry,
       pipelineExecutor,
       singulariteeTracer,
-      inferenceMetrics
+      inferenceMetrics,
+      configuration.getProperty("ai.inference.request-lora.enabled", Boolean.class, false)
     );
   }
 

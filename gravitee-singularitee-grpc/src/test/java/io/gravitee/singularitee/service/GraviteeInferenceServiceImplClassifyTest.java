@@ -67,7 +67,8 @@ class GraviteeInferenceServiceImplClassifyTest {
       registry,
       null,
       mock(Tracer.class),
-      new InferenceMetrics(null)
+      new InferenceMetrics(null),
+      false
     );
   }
 

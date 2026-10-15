@@ -353,7 +353,7 @@ public final class TokenStreamWriter {
       .build();
   }
 
-  static InferResponse failed(String code, String message) {
+  public static InferResponse failed(String code, String message) {
     return InferResponse.newBuilder()
       .setEventType(ResponseEventType.RESPONSE_EVENT_TYPE_FAILED)
       .setResponseFailed(
