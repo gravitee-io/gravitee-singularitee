@@ -54,7 +54,7 @@ RUN set -eux; \
 RUN groupadd -r -f graviteeio \
     && useradd -r -g root -d ${GRAVITEEIO_HOME} -s /usr/sbin/nologin graviteeio
 
-COPY --chown=graviteeio:root \
+COPY --chown=root:root \
      ./gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution/ \
      ${GRAVITEEIO_HOME}/
 
@@ -66,11 +66,23 @@ COPY --chown=graviteeio:root \
 # CUDA-enabled llama.cpp native libraries. LLAMA_CPP_LIB_PATH makes llamaj.cpp load
 # these instead of extracting the JAR's bundled CPU-only set.
 ENV LLAMA_CPP_LIB_PATH=${GRAVITEEIO_HOME}/native/llama-cuda
-COPY --from=llama-build --chown=graviteeio:root /llama-libs/ ${LLAMA_CPP_LIB_PATH}/
+COPY --from=llama-build --chown=root:root /llama-libs/ ${LLAMA_CPP_LIB_PATH}/
 
-COPY --chown=graviteeio:root docker/cuda/cuda-env.sh    ${GRAVITEEIO_HOME}/bin/cuda-env.sh
-COPY --chown=graviteeio:root docker/cuda/entrypoint.sh  ${GRAVITEEIO_HOME}/bin/cuda-entrypoint.sh
+COPY --chown=root:root docker/cuda/cuda-env.sh    ${GRAVITEEIO_HOME}/bin/cuda-env.sh
+COPY --chown=root:root docker/cuda/entrypoint.sh  ${GRAVITEEIO_HOME}/bin/cuda-entrypoint.sh
 RUN chmod 0755 ${GRAVITEEIO_HOME}/bin/cuda-env.sh ${GRAVITEEIO_HOME}/bin/cuda-entrypoint.sh
+
+# Code is root-owned and read-only to the runtime user, so a compromised process cannot plant a
+# plugin, library or script that loads on the next start. Only the directories the server writes
+# are owned by graviteeio, group root with group write, for arbitrary runtime uids in group root.
+RUN set -eux; \
+    chmod -R go-w "${GRAVITEEIO_HOME}"; \
+    mkdir -p "${GRAVITEEIO_HOME}/logs" "${GRAVITEEIO_HOME}/models" "${GRAVITEEIO_HOME}/plugins/.work" "/home/graviteeio"; \
+    chown graviteeio:root "${GRAVITEEIO_HOME}/logs" "${GRAVITEEIO_HOME}/models" "${GRAVITEEIO_HOME}/plugins/.work" "/home/graviteeio"; \
+    chmod 0770 "${GRAVITEEIO_HOME}/logs" "${GRAVITEEIO_HOME}/models" "${GRAVITEEIO_HOME}/plugins/.work" "/home/graviteeio"
+
+# HOME (CUDA kernel cache, Python and HuggingFace caches) lives outside the read-only install.
+ENV HOME=/home/graviteeio
 
 ENV LD_LIBRARY_PATH=${LLAMA_CPP_LIB_PATH}:/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}
 

@@ -250,6 +250,22 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
       );
     }
 
+    // The management API ships a well-known default password; harmless on loopback, not once the
+    // port is reachable from elsewhere.
+    if (
+      environment.getProperty("services.core.http.enabled", Boolean.class, true) &&
+      "adminadmin".equals(
+        environment.getProperty("services.core.http.authentication.users.admin")
+      ) &&
+      !isLoopback(environment.getProperty("services.core.http.host", "localhost"))
+    ) {
+      LOGGER.warn(
+        "Management API is bound to non-loopback host '{}' with the default admin password; " +
+          "set services.core.http.authentication.users.admin before exposing it",
+        environment.getProperty("services.core.http.host")
+      );
+    }
+
     // Attach gRPC handler and start listening
     var latch = new CountDownLatch(1);
     final boolean[] started = { false };
