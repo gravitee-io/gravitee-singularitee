@@ -28,7 +28,15 @@ USER root
 RUN apt-get update && apt-get install --yes --no-install-recommends libjemalloc2 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-COPY --chown=graviteeio:root ./gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution/ ${GRAVITEEIO_HOME}/
+# Code is root-owned and read-only to the runtime user, so a compromised process cannot plant a
+# plugin, library or script that loads on the next start. Only the directories the server writes
+# are owned by graviteeio, group root with group write, for arbitrary runtime uids in group root.
+COPY --chown=root:root ./gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution/ ${GRAVITEEIO_HOME}/
+RUN set -eux; \
+    chmod -R go-w "${GRAVITEEIO_HOME}"; \
+    mkdir -p "${GRAVITEEIO_HOME}/logs" "${GRAVITEEIO_HOME}/models" "${GRAVITEEIO_HOME}/plugins/.work"; \
+    chown graviteeio:root "${GRAVITEEIO_HOME}/logs" "${GRAVITEEIO_HOME}/models" "${GRAVITEEIO_HOME}/plugins/.work"; \
+    chmod 0770 "${GRAVITEEIO_HOME}/logs" "${GRAVITEEIO_HOME}/models" "${GRAVITEEIO_HOME}/plugins/.work"
 
 WORKDIR ${GRAVITEEIO_HOME}
 EXPOSE 9090

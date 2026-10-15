@@ -185,7 +185,7 @@ JVM and Vert.x meters from gravitee-node are exposed alongside.
 ## Notes
 
 - Meter names are dotted in code (`ai.infer.requests`); the Prometheus registry turns `.` into `_` and appends `_total` or `_seconds` by meter type. Use the names above in PromQL.
-- Metrics live on the management port (`services.core.http`, default `localhost:18092`, basic auth), not on the gRPC or HTTP API ports. Change the default management credentials before exposing it.
+- Metrics live on the management port (`services.core.http`, default `localhost:18092`, basic auth), not on the gRPC or HTTP API ports. Change the default management credentials before exposing it; a non-loopback bind with the default password logs a warning at startup.
 - An inbound `traceparent` is honoured, so a gateway in front of the server sees one trace across processes.
 - Client-side pipeline execution (`ClientPipelineExecutor`) runs with the no-op tracer and emits no spans.
 - Without `nvidia-smi` the GPU collector logs once and stays idle; no `gpu_*` series appear and nothing else is affected.

@@ -85,8 +85,7 @@ RUN set -eux; \
     test -n "$LIBPY"; \
     mkdir -p "${GRAVITEEIO_HOME}/vllm-venv/lib"; \
     ln -sf "$LIBPY" "${GRAVITEEIO_HOME}/vllm-venv/lib/$(basename "${LIBPY%%.so*}").so"; \
-    "${GRAVITEEIO_HOME}/vllm-venv/bin/python" -c 'import vllm; print("vllm", vllm.__version__)'; \
-    chown -h graviteeio:root "${GRAVITEEIO_HOME}/vllm-venv" || true
+    "${GRAVITEEIO_HOME}/vllm-venv/bin/python" -c 'import vllm; print("vllm", vllm.__version__)'
 
 # vllm-srun, vLLM Semantic Router's model runtime, serves vllm_decision models.
 # It is not on PyPI: installed from the commit's source archive, which needs no
@@ -172,29 +171,34 @@ snapshot_download(model, \
       du -sh "${GRAVITEEIO_HOME}/models"; \
     fi
 
-COPY --chown=graviteeio:root \
+COPY --chown=root:root \
      ./gravitee-singularitee-standalone/gravitee-singularitee-standalone-distribution/target/distribution/ \
      ${GRAVITEEIO_HOME}/
 
 
-COPY --chown=graviteeio:root examples/ ${GRAVITEEIO_HOME}/examples/
+COPY --chown=root:root examples/ ${GRAVITEEIO_HOME}/examples/
 
 # Picked up by cuda-entrypoint.sh unless GRAVITEE_AI_WORKSPACE_PATH overrides it.
 RUN set -eux; \
     if [ -n "${BAKE_WORKSPACE}" ]; then \
       cp "${GRAVITEEIO_HOME}/examples/${BAKE_WORKSPACE}" "${GRAVITEEIO_HOME}/workspace.yaml"; \
-      chown graviteeio:root "${GRAVITEEIO_HOME}/workspace.yaml"; \
     fi
 
-COPY --chown=graviteeio:root docker/cuda/cuda-env.sh    ${GRAVITEEIO_HOME}/bin/cuda-env.sh
-COPY --chown=graviteeio:root docker/cuda/entrypoint.sh  ${GRAVITEEIO_HOME}/bin/cuda-entrypoint.sh
+COPY --chown=root:root docker/cuda/cuda-env.sh    ${GRAVITEEIO_HOME}/bin/cuda-env.sh
+COPY --chown=root:root docker/cuda/entrypoint.sh  ${GRAVITEEIO_HOME}/bin/cuda-entrypoint.sh
 RUN chmod 0755 ${GRAVITEEIO_HOME}/bin/cuda-env.sh ${GRAVITEEIO_HOME}/bin/cuda-entrypoint.sh
 
-# Group-writable so an arbitrary runtime uid in group root can still create it.
+# Code is root-owned and read-only to the runtime user, so a compromised process cannot plant a
+# plugin, library or script that loads on the next start. Only the directories the server writes
+# are owned by graviteeio, group root with group write, for arbitrary runtime uids in group root.
 RUN set -eux; \
-    mkdir -p "${GRAVITEEIO_HOME}/models"; \
-    chown graviteeio:root "${GRAVITEEIO_HOME}" "${GRAVITEEIO_HOME}/models"; \
-    chmod 0775 "${GRAVITEEIO_HOME}" "${GRAVITEEIO_HOME}/models"
+    chmod -R go-w "${GRAVITEEIO_HOME}"; \
+    mkdir -p "${GRAVITEEIO_HOME}/logs" "${GRAVITEEIO_HOME}/models" "${GRAVITEEIO_HOME}/plugins/.work" "/home/graviteeio"; \
+    chown graviteeio:root "${GRAVITEEIO_HOME}/logs" "${GRAVITEEIO_HOME}/models" "${GRAVITEEIO_HOME}/plugins/.work" "/home/graviteeio"; \
+    chmod 0770 "${GRAVITEEIO_HOME}/logs" "${GRAVITEEIO_HOME}/models" "${GRAVITEEIO_HOME}/plugins/.work" "/home/graviteeio"
+
+# HOME (CUDA kernel cache, Python and HuggingFace caches) lives outside the read-only install.
+ENV HOME=/home/graviteeio
 
 # The base image sets its own ENTRYPOINT for vLLM's OpenAI server; override it.
 WORKDIR ${GRAVITEEIO_HOME}

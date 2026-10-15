@@ -78,8 +78,9 @@ if [ -z "${GRAVITEE_AI_MODELS_PATH:-}" ]; then
   if mkdir -p "${MODELS_DIR}" 2>/dev/null && [ -w "${MODELS_DIR}" ]; then
     echo "[cuda-entrypoint] models: ${MODELS_DIR}"
   else
-    FALLBACK="${TMPDIR:-/tmp}/graviteeio-singularitee-models"
-    mkdir -p "${FALLBACK}"
+    # A fresh private directory: a fixed name under a shared /tmp could be pre-created by
+    # another user and seeded with model files.
+    FALLBACK="$(mktemp -d "${TMPDIR:-/tmp}/graviteeio-singularitee-models.XXXXXX")"
     export GRAVITEE_AI_MODELS_PATH="${FALLBACK}"
     echo "[cuda-entrypoint] WARNING: ${MODELS_DIR} is not writable as $(id -u):$(id -g); falling back to ${FALLBACK}."
     echo "[cuda-entrypoint] WARNING: that path is not persistent; models will be downloaded again on every start."
