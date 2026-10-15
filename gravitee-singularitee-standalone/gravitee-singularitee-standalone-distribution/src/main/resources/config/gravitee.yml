@@ -32,6 +32,7 @@ grpc:
   compressionSupported: false # gRPC message compression
   idleTimeout: 0 # Connection idle timeout in seconds (0 = no timeout)
   tcpKeepAlive: true # TCP keep-alive
+  max-message-size: 262144 # Largest inbound gRPC message in bytes (raise for base64 media)
   # --- Outbound TLS (workspace remote: endpoints with `ssl: true`) ---
   # The workspace decides WHICH endpoints are reached over TLS; this block
   # decides WHAT to present. Unset = JVM default trust store, no client cert.
@@ -91,6 +92,7 @@ http:
   host: 0.0.0.0
   idleTimeout: 0
   tcpKeepAlive: true
+  max-body-size: 10485760            # largest request body in bytes, read only after auth
   expose-pipelines: true             # list pipelines on /v1/models and accept pipeline ids
 #  events:
 #    progress-type: gravitee.progress # type string of Responses-API progress events

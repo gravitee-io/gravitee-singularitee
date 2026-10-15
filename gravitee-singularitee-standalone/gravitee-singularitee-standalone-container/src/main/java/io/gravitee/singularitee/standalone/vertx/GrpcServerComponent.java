@@ -34,6 +34,7 @@ import io.vertx.core.Context;
 import io.vertx.core.Handler;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.grpc.server.GrpcServer;
+import io.vertx.grpc.server.GrpcServerOptions;
 import io.vertx.rxjava3.core.Vertx;
 import io.vertx.rxjava3.core.http.HttpServer;
 import java.util.LinkedHashMap;
@@ -209,7 +210,16 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
     this.httpServer = vertxHttpServer.newInstance();
 
     // Create gRPC server and bind all AI services
-    GrpcServer grpcServer = GrpcServer.server(vertx.getDelegate());
+    GrpcServer grpcServer = GrpcServer.server(
+      vertx.getDelegate(),
+      new GrpcServerOptions().setMaxMessageSize(
+        environment.getProperty(
+          GRPC_PREFIX + ".max-message-size",
+          Long.class,
+          GrpcServerOptions.DEFAULT_MAX_MESSAGE_SIZE
+        )
+      )
+    );
     modelService.bind(grpcServer);
     pipelineService.bind(grpcServer);
     inferenceService.bind(grpcServer);

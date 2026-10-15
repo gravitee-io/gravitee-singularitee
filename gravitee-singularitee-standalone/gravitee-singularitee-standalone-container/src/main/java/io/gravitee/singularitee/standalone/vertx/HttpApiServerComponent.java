@@ -170,35 +170,21 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
       true
     );
 
-    Router router = Router.router(vertx.getDelegate());
-    router.route().handler(BodyHandler.create());
-
-    // Unauthenticated liveness: always 200, before auth and the readiness gate.
-    router
-      .get("/health")
-      .handler(rc ->
-        rc.response().setStatusCode(200).putHeader("content-type", "text/plain").end("OK")
-      );
-
-    // Readiness gate: until the workspace has loaded its models, service calls get 503.
-    router
-      .route()
-      .handler(rc -> {
-        if (readinessState.isReady()) {
-          rc.next();
-        } else {
-          writeError(rc, 503, "Model server is still loading", "server_error", "model_not_ready");
-        }
-      });
-
     final boolean authEnabled = environment.getProperty(
       AUTH_PREFIX + ".enabled",
       Boolean.class,
       false
     );
-    if (authEnabled) {
-      router.route().handler(buildAuthHandler());
-    }
+    Router router = guardedRouter(
+      vertx.getDelegate(),
+      readinessState,
+      authEnabled ? buildAuthHandler() : null,
+      environment.getProperty(
+        HTTP_PREFIX + ".max-body-size",
+        Long.class,
+        BodyHandler.DEFAULT_BODY_LIMIT
+      )
+    );
 
     OpenAiRoutes.mount(
       router,
@@ -211,30 +197,6 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
       pipelineRegistry,
       exposePipelines
     );
-
-    router.errorHandler(404, ctx ->
-      writeError(ctx, 404, "Unknown endpoint", "invalid_request_error", "not_found")
-    );
-    router.errorHandler(405, ctx ->
-      writeError(ctx, 405, "Method not allowed", "invalid_request_error", "method_not_allowed")
-    );
-    router
-      .route()
-      .failureHandler(ctx -> {
-        Throwable failure = ctx.failure();
-        if (ctx.statusCode() == 404 || ctx.statusCode() == 405) {
-          writeError(
-            ctx,
-            ctx.statusCode(),
-            "Request error",
-            "invalid_request_error",
-            "invalid_request_error"
-          );
-          return;
-        }
-        LOGGER.error("Unhandled HTTP API failure", failure);
-        writeError(ctx, 500, "Internal error", "internal_error", "internal_error");
-      });
 
     if (!authEnabled && !isLoopback(options.getHost())) {
       LOGGER.warn(
@@ -382,6 +344,82 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
 
   private static boolean isLoopback(String host) {
     return host == null || host.isBlank() || "localhost".equals(host) || host.startsWith("127.");
+  }
+
+  /**
+   * The handler chain every API route sits behind: liveness, the readiness gate, optional auth,
+   * then body reading, plus the OpenAI-shaped error handlers. Bodies are read only once the caller is authenticated, and capped; no
+   * endpoint takes multipart uploads, so none are written to disk.
+   *
+   * @param authHandler the auth handler, or {@code null} when auth is disabled
+   */
+  static Router guardedRouter(
+    io.vertx.core.Vertx vertx,
+    ReadinessState readinessState,
+    Handler<RoutingContext> authHandler,
+    long maxBodySize
+  ) {
+    Router router = Router.router(vertx);
+
+    // Unauthenticated liveness: always 200, before auth and the readiness gate.
+    router
+      .get("/health")
+      .handler(rc ->
+        rc.response().setStatusCode(200).putHeader("content-type", "text/plain").end("OK")
+      );
+
+    // Readiness gate: until the workspace has loaded its models, service calls get 503.
+    router
+      .route()
+      .handler(rc -> {
+        if (readinessState.isReady()) {
+          rc.next();
+        } else {
+          writeError(rc, 503, "Model server is still loading", "server_error", "model_not_ready");
+        }
+      });
+
+    if (authHandler != null) {
+      router.route().handler(authHandler);
+    }
+    router.errorHandler(404, ctx ->
+      writeError(ctx, 404, "Unknown endpoint", "invalid_request_error", "not_found")
+    );
+    router.errorHandler(405, ctx ->
+      writeError(ctx, 405, "Method not allowed", "invalid_request_error", "method_not_allowed")
+    );
+    router
+      .route()
+      .failureHandler(ctx -> {
+        int status = ctx.statusCode();
+        if (status == 413) {
+          writeError(
+            ctx,
+            413,
+            "Request body too large",
+            "invalid_request_error",
+            "request_too_large"
+          );
+          return;
+        }
+        if (status >= 400 && status < 500) {
+          writeError(
+            ctx,
+            status,
+            "Request error",
+            "invalid_request_error",
+            "invalid_request_error"
+          );
+          return;
+        }
+        LOGGER.error("Unhandled HTTP API failure", ctx.failure());
+        writeError(ctx, 500, "Internal error", "internal_error", "internal_error");
+      });
+
+    router
+      .route()
+      .handler(BodyHandler.create().setHandleFileUploads(false).setBodyLimit(maxBodySize));
+    return router;
   }
 
   private static void writeError(

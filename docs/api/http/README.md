@@ -89,6 +89,7 @@ message. Invalid JSON is a `400` as well.
 | 404 | `invalid_request_error` | `model_not_found` | `GET /v1/models/{id}` for an unknown or hidden id. |
 | 404 | `invalid_request_error` | `not_found` | Unknown path. |
 | 405 | `invalid_request_error` | `method_not_allowed` | Known path, wrong method. |
+| 413 | `invalid_request_error` | `request_too_large` | Body larger than `http.max-body-size` (default 10 MiB). |
 | 500 | `server_error` | `server_error` | Decisions only: the model produced no usable scores. |
 | 500 | `internal_error` | `internal_error` | Unexpected failure. |
 | 503 | `server_error` | `model_not_ready` | Workspace still loading. |
