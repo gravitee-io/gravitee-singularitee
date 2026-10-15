@@ -38,6 +38,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -144,7 +145,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     }
 
     // Remote models (gRPC proxies)
-    remoteClients = buildRemoteClients(ws.remotes(), configuration);
+    remoteClients = buildRemoteClients(ws.remotes(), configuration, failures);
 
     for (var modelDef : ws.remoteModels()) {
       try {
@@ -167,9 +168,9 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     );
 
     // Pipelines. A pipeline naming a model that failed to load is not registered (WARN and
-    // carry on, or fail in strict mode), but a step whose license feature is missing is a different class of error: the
-    // node must not come up serving a workspace with a safety-relevant step silently
-    // absent, so the load fails.
+    // carry on, or fail in strict mode), but a step whose license feature is missing is a
+    // different class of error: the node must not come up serving a workspace with a
+    // safety-relevant step silently absent, so the load fails.
     for (var pipeline : ws.pipelines()) {
       try {
         String resolvedId = pipelineRegistry.register(pipeline);
@@ -252,9 +253,10 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
 
   // Remote model helpers
 
-  private static Map<String, SingulariteeClient> buildRemoteClients(
+  static Map<String, SingulariteeClient> buildRemoteClients(
     Map<String, WorkspaceDefinition.RemoteEndpoint> remotes,
-    Configuration configuration
+    Configuration configuration,
+    List<String> failures
   ) {
     // Resolved once, and only when something actually needs it: the outbound key
     // material is per-deployment, but an endpoint opts in with `ssl: true`.
@@ -275,12 +277,16 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
         keepAlive == -1 ? "always-on" : keepAlive,
         ep.effectiveSsl() ? "tls" : "plaintext"
       );
-      if (ep.hasCredentials() && !ep.effectiveSsl()) {
-        LOGGER.warn(
-          "Remote '{}' sends Basic credentials over plaintext; set ssl: true unless {} is loopback",
+      // Basic credentials over plaintext would cross the network readable by anyone on the
+      // path, so such an endpoint is refused unless it stays on this host.
+      if (ep.hasCredentials() && !ep.effectiveSsl() && !isLoopbackHost(ep.host())) {
+        LOGGER.error(
+          "Remote '{}' refused: Basic credentials to {} require ssl: true",
           entry.getKey(),
           ep.host()
         );
+        failures.add("remote '" + entry.getKey() + "': Basic credentials require ssl: true");
+        continue;
       }
       clients.put(
         entry.getKey(),
@@ -362,5 +368,12 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       callbacks.put(entry.getKey(), new RemotePipelineCallback(entry.getValue()));
     }
     return callbacks;
+  }
+
+  /** Whether a remote host is this machine, so traffic to it never crosses the network. */
+  static boolean isLoopbackHost(String host) {
+    if (host == null) return false;
+    String h = host.trim().toLowerCase(Locale.ROOT);
+    return h.equals("localhost") || h.startsWith("127.") || h.equals("::1") || h.equals("[::1]");
   }
 }

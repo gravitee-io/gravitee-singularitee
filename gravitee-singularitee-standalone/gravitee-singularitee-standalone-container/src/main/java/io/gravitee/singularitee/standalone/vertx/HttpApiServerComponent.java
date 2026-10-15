@@ -348,8 +348,9 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
 
   /**
    * The handler chain every API route sits behind: liveness, the readiness gate, optional auth,
-   * then body reading, plus the OpenAI-shaped error handlers. Bodies are read only once the caller is authenticated, and capped; no
-   * endpoint takes multipart uploads, so none are written to disk.
+   * then body reading, plus the OpenAI-shaped error handlers. Bodies are read only once the
+   * caller is authenticated, and capped; no endpoint takes multipart uploads, so none are
+   * written to disk.
    *
    * @param authHandler the auth handler, or {@code null} when auth is disabled
    */

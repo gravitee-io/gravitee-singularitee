@@ -123,7 +123,7 @@ public record WorkspaceDefinition(
      * {@code ssl}: reach the endpoint over TLS. Server certificates are validated against the
      * JVM default trust store and ALPN negotiates HTTP/2; client certificates are not
      * supported here. Defaults to {@code false} (plaintext), so Basic credentials on a
-     * non-loopback endpoint belong with {@code ssl: true}.
+     * non-loopback endpoint require {@code ssl: true}: without it the endpoint is refused at load.
      */
     @JsonProperty("ssl") Boolean ssl
   ) {

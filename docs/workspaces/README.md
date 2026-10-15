@@ -124,7 +124,7 @@ Point the same loader at your own file with `YamlWorkspaceLoader.load(path, temp
 | `endpoint.id` | string | unset | Name referenced by `server:` (not needed on `default`). |
 | `endpoint.host` / `endpoint.port` | string / int | unset | gRPC address. |
 | `endpoint.ssl` | bool | `false` | Reach the endpoint over TLS. Trust material and any client certificate come from `grpc.client.ssl.*` in `gravitee.yml`. |
-| `endpoint.username` / `endpoint.password` | string | unset | HTTP Basic credentials sent as gRPC metadata. Pair them with `ssl: true` off loopback. |
+| `endpoint.username` / `endpoint.password` | string | unset | HTTP Basic credentials sent as gRPC metadata. Require `ssl: true` unless `host` is loopback; a plaintext endpoint with credentials is refused at load. |
 | `endpoint.http2_keep_alive_timeout` | int | `-1` | Seconds an idle HTTP/2 connection is held; `-1` keeps it open indefinitely. |
 
 ### Common model keys
