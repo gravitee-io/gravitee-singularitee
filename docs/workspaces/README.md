@@ -187,7 +187,9 @@ Built-in templates and the variables available are in [Templates](../reference/t
 Entries are file names or globs (`llama/*.yaml`), expanded alphabetically. Subfolders are
 allowed (`classifier/pii-bert.yaml`). Includes are not recursive: an included file's own
 `includes:` is ignored. A glob whose directory does not exist logs a warning and contributes
-nothing.
+nothing. A relative entry must stay inside its folder: one that `../` takes outside fails the
+workspace load, the same rule as a template's `file:`. An absolute entry is used as given and
+logged.
 
 Because ids are logical, several fragments may share one (`examples/modular/models/llama/llm-*.yaml`
 and `vllm/llm-*.yaml` all publish `llm`). A server lists the one it wants explicitly rather

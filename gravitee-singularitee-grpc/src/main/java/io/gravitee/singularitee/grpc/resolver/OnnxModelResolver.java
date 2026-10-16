@@ -106,7 +106,12 @@ public final class OnnxModelResolver {
   public Single<ModelLoadRequest> resolve(ModelLoadRequest request) {
     String modelName = request.modelName();
     // mirror the HF handle on disk: <cacheRoot>/<org-id>/<model-id>
-    Path modelCacheDir = cacheDir.resolve(modelName);
+    Path modelCacheDir;
+    try {
+      modelCacheDir = CachePaths.under(cacheDir, modelName);
+    } catch (IllegalArgumentException e) {
+      return Single.error(e);
+    }
 
     ensureCacheDir(modelCacheDir);
 
@@ -327,7 +332,12 @@ public final class OnnxModelResolver {
     }
 
     // 2. Already cached from a previous run
-    Path cached = modelCacheDir.resolve(filePath);
+    Path cached;
+    try {
+      cached = CachePaths.under(modelCacheDir, filePath);
+    } catch (IllegalArgumentException e) {
+      return Single.error(e);
+    }
     if (Files.exists(cached)) {
       LOGGER.info("ONNX file already cached: {}", cached.toAbsolutePath());
       return Single.just(cached.toAbsolutePath());
@@ -430,7 +440,12 @@ public final class OnnxModelResolver {
 
     // 3. Check if a previous run downloaded every tokenizer file, into the sub-directory named by
     // tokenizer_path or, for well-known tokenizer files, into the model directory itself
-    Path cachedDir = modelCacheDir.resolve(tokenizerPath);
+    Path cachedDir;
+    try {
+      cachedDir = CachePaths.under(modelCacheDir, tokenizerPath);
+    } catch (IllegalArgumentException e) {
+      return Single.error(e);
+    }
     if (CacheMarker.isComplete(cachedDir, TOKENIZER_MARKER)) {
       LOGGER.info("Tokenizer already cached: {}", cachedDir.toAbsolutePath());
       return Single.just(cachedDir.toAbsolutePath());
