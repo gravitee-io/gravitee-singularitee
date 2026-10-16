@@ -118,6 +118,36 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
       return;
     }
 
+    // Media the model cannot read would reach the native decoders or fail deep in tokenization;
+    // refuse it up front, as the HTTP API does.
+    if (request.hasMessages()) {
+      var unsupported = Modalities.firstUnsupported(
+        Modalities.attached(request.getMessages().getMessagesList()),
+        entry.inputModalities()
+      );
+      if (unsupported.isPresent()) {
+        LOGGER.warn(
+          "Infer: model {} does not accept {} input",
+          request.getModelId(),
+          unsupported.get()
+        );
+        metrics.recordRequest("infer", request.getModelId(), InferenceMetrics.STATUS_ERROR);
+        response.end(
+          TokenStreamWriter.failed(
+            "unsupported_modality",
+            "model `" +
+              request.getModelId() +
+              "` does not accept " +
+              unsupported.get() +
+              " input (accepts: " +
+              String.join(", ", entry.inputModalities()) +
+              ")"
+          )
+        );
+        return;
+      }
+    }
+
     int seqId = entry.nextSequenceId();
     var context = vertx.getOrCreateContext();
 

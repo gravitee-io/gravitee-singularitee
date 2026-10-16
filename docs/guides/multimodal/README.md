@@ -13,7 +13,8 @@ with vision or audio tokens. Pipelines do not change; a workspace binds the logi
 to a multimodal model file.
 
 What an entry accepts is detected, not declared, and published on `GET /v1/models` as
-`input_modalities`. HTTP refuses media the target cannot read with `400 unsupported_modality`.
+`input_modalities`. HTTP refuses media the target cannot read with `400 unsupported_modality`; gRPC `Infer` and
+`InferPipeline` fail the stream with `error_code: unsupported_modality`.
 
 ## Key types
 
@@ -23,6 +24,7 @@ What an entry accepts is detected, not declared, and published on `GET /v1/model
 | `MediaContent`, `MediaType` | `protocol` (`inference.proto`) | Wire form on `ChatMessage.media`. |
 | `PipelineRequestBuilder.applyContent` | `http` | Parses OpenAI content-part arrays. |
 | `HandlerSupport.requireSupportedModalities` | `http` | The `unsupported_modality` pre-flight on `/v1/chat/completions` and `/v1/responses`. |
+| `Modalities.attached` | `engine-api` | The same pre-flight on gRPC `Infer` and `InferPipeline`, over `ChatMessage.media`. |
 | `LlamaCppTextGenEngine`, `CheckpointModalities` | `grpc` | Modality detection: the projector for llama.cpp, `config.json` for vLLM. |
 
 ## Usage

@@ -17,6 +17,12 @@ package io.gravitee.singularitee.engine.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.protobuf.ByteString;
+import io.gravitee.singularitee.protocol.ChatMessage;
+import io.gravitee.singularitee.protocol.MediaContent;
+import io.gravitee.singularitee.protocol.MediaType;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class ModalitiesTest {
@@ -32,5 +38,37 @@ class ModalitiesTest {
   @Test
   void a_text_only_answer_reuses_the_shared_constant() {
     assertThat(Modalities.of(false, false)).isSameAs(Modalities.TEXT_ONLY);
+  }
+
+  @Test
+  void attached_media_maps_to_modalities() {
+    var messages = List.of(
+      message(MediaType.MEDIA_TYPE_IMAGE_JPEG),
+      message(MediaType.MEDIA_TYPE_AUDIO_WAV),
+      ChatMessage.newBuilder().setContent("plain").build()
+    );
+    assertThat(Modalities.attached(messages)).containsExactly("image", "audio");
+  }
+
+  @Test
+  void opaque_media_needs_a_media_capable_model() {
+    assertThat(
+      Modalities.attached(List.of(message(MediaType.MEDIA_TYPE_APPLICATION_OCTET)))
+    ).containsExactly("image");
+  }
+
+  @Test
+  void first_unsupported_names_the_missing_modality() {
+    assertThat(Modalities.firstUnsupported(Set.of("image"), Modalities.TEXT_ONLY)).contains(
+      "image"
+    );
+    assertThat(Modalities.firstUnsupported(Set.of("image"), List.of("text", "image"))).isEmpty();
+    assertThat(Modalities.firstUnsupported(Set.of(), Modalities.TEXT_ONLY)).isEmpty();
+  }
+
+  private static ChatMessage message(MediaType type) {
+    return ChatMessage.newBuilder()
+      .addMedia(MediaContent.newBuilder().setMediaType(type).setData(ByteString.copyFromUtf8("x")))
+      .build();
   }
 }
