@@ -84,7 +84,12 @@ public final class GlinerModelResolver {
   public Single<ModelLoadRequest> resolve(ModelLoadRequest request) {
     String modelName = request.modelName();
     // mirror the HF handle on disk: <cacheRoot>/<org-id>/<model-id>
-    Path modelCacheDir = cacheDir.resolve(modelName);
+    Path modelCacheDir;
+    try {
+      modelCacheDir = CachePaths.under(cacheDir, modelName);
+    } catch (IllegalArgumentException e) {
+      return Single.error(e);
+    }
 
     if (request.hasGlinerClassifier()) {
       return resolveClassifier(request, modelName, modelCacheDir);

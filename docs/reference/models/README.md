@@ -82,7 +82,9 @@ safetensors falls back to `.bin`, which is refused unless `ai.vllm.allow-pickle-
 Weights resolve in Java through `HuggingFaceModelDownloader` into
 `ai.models.path` (`run-server.sh` sets `~/.cache/gravitee-singularitee/models`), mirrored as
 `<cache>/<org>/<model>/`. A path that already exists locally is used as-is; a cached file is
-reused; otherwise the file is fetched from the repository named by `name`. `HF_TOKEN` (or
+reused; otherwise the file is fetched from the repository named by `name`. An absolute path
+(`name`, `path`, `model_path`, `tokenizer_path`) is an operator choice and is used as given; a
+relative one is joined onto the cache and refused if `../` takes it outside. `HF_TOKEN` (or
 `ai.huggingface.token`) unlocks gated repositories. Each type's page states what its resolver
 downloads.
 

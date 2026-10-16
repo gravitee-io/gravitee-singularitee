@@ -88,8 +88,8 @@ public final class GgufModelResolver {
 
     // 2. Check if it was already downloaded in a previous run
     // mirror the HF handle on disk: <cacheRoot>/<org-id>/<model-id>
-    Path modelCacheDir = cacheDir.resolve(modelName);
-    Path cachedFile = modelCacheDir.resolve(modelPath);
+    Path modelCacheDir = CachePaths.under(cacheDir, modelName);
+    Path cachedFile = CachePaths.under(modelCacheDir, modelPath);
     if (Files.exists(cachedFile)) {
       LOGGER.info("Model already cached: {}", cachedFile.toAbsolutePath());
       return cachedFile.toAbsolutePath();

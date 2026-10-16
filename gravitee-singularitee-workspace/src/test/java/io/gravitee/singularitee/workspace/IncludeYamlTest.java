@@ -43,6 +43,22 @@ class IncludeYamlTest {
   // ---------------------------------------------------------------------------
 
   @Test
+  void a_relative_include_that_escapes_its_folder_is_refused(@TempDir Path tmp) throws IOException {
+    Files.createDirectories(tmp.resolve("models"));
+    Files.writeString(tmp.resolve("outside.yaml"), "workspace:\n  models: []\n");
+    Path mainYaml = tmp.resolve("main.yaml");
+    for (String pattern : new String[] { "../outside.yaml", "../*.yaml" }) {
+      Files.writeString(
+        mainYaml,
+        "workspace:\n  name: w\n  includes:\n    models:\n      - \"" + pattern + "\"\n"
+      );
+      assertThatThrownBy(() -> YamlWorkspaceLoader.load(mainYaml, null, TestStepPlugins.codecs()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("resolves outside");
+    }
+  }
+
+  @Test
   void loads_and_merges_include_files(@TempDir Path tmp) throws IOException {
     // Loader resolves models/ and pipelines/ relative to workspace dir; create subdirs
     Path modelsDir = Files.createDirectories(tmp.resolve("models"));

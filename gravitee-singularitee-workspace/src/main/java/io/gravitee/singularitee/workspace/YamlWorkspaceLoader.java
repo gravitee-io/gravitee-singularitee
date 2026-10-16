@@ -904,12 +904,14 @@ public final class YamlWorkspaceLoader {
     boolean hasWildcard = pattern.contains("*") || pattern.contains("?") || pattern.contains("{");
     if (!hasWildcard) {
       // Literal path: single-element list, existence checked by the caller.
-      return List.of(baseDir.resolve(pattern));
+      return List.of(includePath(baseDir, pattern));
     }
 
     // Separate directory prefix from glob segment so we open the right dir
     int lastSlash = pattern.lastIndexOf('/');
-    Path searchDir = lastSlash >= 0 ? baseDir.resolve(pattern.substring(0, lastSlash)) : baseDir;
+    Path searchDir = lastSlash >= 0
+      ? includePath(baseDir, pattern.substring(0, lastSlash))
+      : baseDir;
     String globSegment = lastSlash >= 0 ? pattern.substring(lastSlash + 1) : pattern;
 
     if (!Files.isDirectory(searchDir)) {
@@ -925,6 +927,29 @@ public final class YamlWorkspaceLoader {
     }
     results.sort(java.util.Comparator.comparing(p -> p.getFileName().toString()));
     return results;
+  }
+
+  /**
+   * Resolves an include path under its folder. An absolute path is an explicit operator choice
+   * and is logged; a relative one must stay under {@code baseDir}, the same rule as a
+   * template's {@code file:}.
+   *
+   * @throws IllegalArgumentException if a relative path resolves outside {@code baseDir}
+   */
+  private static Path includePath(Path baseDir, String path) {
+    Path p = Path.of(path);
+    if (p.isAbsolute()) {
+      LOGGER.info("Including from an absolute path: {}", p);
+      return p;
+    }
+    Path base = baseDir.toAbsolutePath().normalize();
+    Path resolved = base.resolve(p).normalize();
+    if (!resolved.startsWith(base)) {
+      throw new IllegalArgumentException(
+        "Refusing include '" + path + "': resolves outside " + base
+      );
+    }
+    return resolved;
   }
 
   /**

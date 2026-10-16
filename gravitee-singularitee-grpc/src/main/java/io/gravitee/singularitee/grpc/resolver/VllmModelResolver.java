@@ -150,7 +150,12 @@ public final class VllmModelResolver {
     }
 
     // Mirror the HF handle on disk: <cacheRoot>/<org>/<model>
-    Path modelCacheDir = cacheDir.resolve(modelName);
+    Path modelCacheDir;
+    try {
+      modelCacheDir = CachePaths.under(cacheDir, modelName);
+    } catch (IllegalArgumentException e) {
+      return Single.error(e);
+    }
     if (CacheMarker.isComplete(modelCacheDir, null)) {
       LOGGER.info("vLLM model already cached: {}", modelCacheDir.toAbsolutePath());
       return checkedDirectory(modelName, modelCacheDir.toAbsolutePath());
@@ -214,7 +219,12 @@ public final class VllmModelResolver {
     }
     String prefix = stripSlashes(adapterPath) + "/";
     String key = "lora:" + stripSlashes(adapterPath);
-    Path repoCacheDir = cacheDir.resolve(repo);
+    Path repoCacheDir;
+    try {
+      repoCacheDir = CachePaths.under(cacheDir, repo);
+    } catch (IllegalArgumentException e) {
+      return Single.error(e);
+    }
     if (CacheMarker.isComplete(repoCacheDir, key)) {
       LOGGER.info("LoRA adapter already cached: {}", repoCacheDir.resolve(prefix).toAbsolutePath());
       return checkedDirectory(
