@@ -95,6 +95,8 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       LOGGER.info("No workspace configured (ai.workspace.path not set). Skipping workspace load.");
       // Still set default sub-pipeline callbacks (local-only)
       stepExecutorFactory.setSubPipelineCallbacks(pipelineExecutor, Map.of());
+      // Nothing to load: an empty server is ready at once.
+      readinessState.markReady();
       return;
     }
 
@@ -114,12 +116,13 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     try {
       ws = YamlWorkspaceLoader.load(path, templatesPath, stepPlugins.codecs());
     } catch (Exception e) {
+      // Unlike a model download, a file that does not parse fails the same way on every start,
+      // so it fails startup in every mode rather than leaving a node that never becomes ready.
       LOGGER.error("Failed to parse workspace file {}: {}", path, e.getMessage(), e);
-      if (strict) {
-        throw new IllegalStateException("Workspace " + path + " failed to parse", e);
-      }
-      stepExecutorFactory.setSubPipelineCallbacks(pipelineExecutor, Map.of());
-      return;
+      throw new IllegalStateException(
+        "Workspace " + path + " failed to parse: " + e.getMessage(),
+        e
+      );
     }
 
     // Local models (GPU-bound, loaded sequentially)

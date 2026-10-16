@@ -49,6 +49,19 @@ public class SingulariteeContainer extends SpringBasedContainer {
     return classes;
   }
 
+  /**
+   * Exits the JVM when startup failed. The base container logs the failure and stops the node,
+   * then returns normally; engine and Vert.x threads still running would keep the process up
+   * as a node that serves nothing, so an orchestrator would never see it fail.
+   */
+  @Override
+  protected void doStart() throws Exception {
+    super.doStart();
+    if (stopped) {
+      System.exit(1);
+    }
+  }
+
   @Override
   public String name() {
     return "Gravitee.io - Singularitee";
