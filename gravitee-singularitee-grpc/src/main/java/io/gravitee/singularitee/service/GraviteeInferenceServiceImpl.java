@@ -283,7 +283,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
             .setResponseFailed(
               ResponseFailed.newBuilder()
                 .setErrorCode(TokenStreamWriter.errorCode(e))
-                .setErrorMessage(e.getMessage() != null ? e.getMessage() : "Pipeline failed")
+                .setErrorMessage(ClientErrors.message(e, "Pipeline failed"))
                 .build()
             )
             .build();

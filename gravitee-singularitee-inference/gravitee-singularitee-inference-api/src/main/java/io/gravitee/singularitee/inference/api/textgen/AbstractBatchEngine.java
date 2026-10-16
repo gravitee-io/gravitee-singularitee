@@ -79,6 +79,8 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
   private final Map<Integer, SequenceState<STATE>> sequences = new ConcurrentHashMap<>();
   private final Map<Integer, Integer> externalToInternal = new ConcurrentHashMap<>();
   private final Deque<QueuedSequence<REQUEST>> pending = new ArrayDeque<>();
+  /** Final tokens for queued sequences that failed to start; drained by the worker loop. */
+  private final List<InferenceToken<TOKEN>> deferredFinals = new ArrayList<>();
   private final Deque<Integer> availableSlots;
   /**
    * Cross-request KV prefix cache bookkeeping, or {@code null} when disabled by
@@ -362,30 +364,34 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       lock.lock();
       try {
         // Wait for work
-        while (running.get() && sequences.isEmpty()) {
+        while (running.get() && sequences.isEmpty() && deferredFinals.isEmpty()) {
           hasWork.await();
         }
         if (!running.get()) {
           return;
         }
+        out.addAll(deferredFinals);
+        deferredFinals.clear();
 
-        // Process next batch
-        adapter
-          .processNextBatch()
-          .ifPresent(output -> {
-            SequenceState<STATE> state = sequences.get(output.sequenceId());
-            if (state != null) {
-              processOutput(state, output.token(), out);
-            }
-          });
+        if (!sequences.isEmpty()) {
+          // Process next batch
+          adapter
+            .processNextBatch()
+            .ifPresent(output -> {
+              SequenceState<STATE> state = sequences.get(output.sequenceId());
+              if (state != null) {
+                processOutput(state, output.token(), out);
+              }
+            });
 
-        emitFinals(out);
+          emitFinals(out);
 
-        // AFTER emitFinals: that is what completes sequences normally, and on the
-        // iteration where a model hits EOS processNextBatch() is already empty.
-        // Whatever it left behind while the backend is stalled is truly stranded.
-        if (!sequences.isEmpty() && adapter.hasStalled()) {
-          failAllSequences(out);
+          // AFTER emitFinals: that is what completes sequences normally, and on the
+          // iteration where a model hits EOS processNextBatch() is already empty.
+          // Whatever it left behind while the backend is stalled is truly stranded.
+          if (!sequences.isEmpty() && adapter.hasStalled()) {
+            failAllSequences(out);
+          }
         }
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
@@ -706,8 +712,10 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       externalToInternal.put(seqId, internalId);
       hasWork.signalAll();
     } catch (Exception e) {
-      LOGGER.error("Error starting sequence: {}", e.getMessage());
+      // Rethrown so the request fails instead of waiting forever for a final token.
+      LOGGER.error("Error starting sequence {}: {}", seqId, e.getMessage());
       returnSlot(internalId);
+      throw e instanceof RuntimeException re ? re : new IllegalStateException(e.getMessage(), e);
     }
   }
 
@@ -794,7 +802,15 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
     }
     QueuedSequence<REQUEST> next = pending.pollFirst();
     if (next != null) {
-      startSequence(next.seqId(), next.request(), next.cacheKey());
+      try {
+        startSequence(next.seqId(), next.request(), next.cacheKey());
+      } catch (RuntimeException e) {
+        // No caller to throw to: end the queued request so it does not hang.
+        deferredFinals.add(
+          new InferenceToken<>(next.seqId(), null, 0, true, "stalled", 0, 0, 0, 0, null)
+        );
+        hasWork.signalAll();
+      }
     }
   }
 

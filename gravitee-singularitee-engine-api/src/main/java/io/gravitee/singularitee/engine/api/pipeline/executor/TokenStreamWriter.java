@@ -15,6 +15,7 @@
  */
 package io.gravitee.singularitee.engine.api.pipeline.executor;
 
+import io.gravitee.singularitee.engine.api.ClientErrors;
 import io.gravitee.singularitee.engine.api.ModelEnginePerformance;
 import io.gravitee.singularitee.engine.api.ModelEngineToken;
 import io.gravitee.singularitee.engine.api.TextGenEngine;
@@ -199,7 +200,7 @@ public final class TokenStreamWriter {
           // idempotent; best effort
         }
         try {
-          response.end(failed("stream_overflow", t.getMessage()));
+          response.end(failed("stream_overflow", ClientErrors.message(t, "Inference failed")));
         } catch (Exception ignore) {
           // client already gone
         }
@@ -230,7 +231,7 @@ public final class TokenStreamWriter {
           s.cancel();
         }
         try {
-          response.end(failed(errorCode(error), error.getMessage()));
+          response.end(failed(errorCode(error), ClientErrors.message(error, "Inference failed")));
         } catch (Exception ignore) {
           // client already gone
         }

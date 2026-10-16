@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.http.handler;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.gravitee.singularitee.engine.api.ClientErrors;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.http.json.JsonResponses;
 import io.gravitee.singularitee.http.json.Utils;
@@ -216,7 +217,14 @@ public final class HandlerSupport {
     } else if (msg.contains("is not a") || msg.contains("is neither")) {
       JsonResponses.writeError(rc, 400, msg, "invalid_request_error", "model", "unsupported_model");
     } else {
-      JsonResponses.writeError(rc, 500, msg, "internal_error", null, "internal_error");
+      JsonResponses.writeError(
+        rc,
+        500,
+        ClientErrors.message(err, "Internal error"),
+        "internal_error",
+        null,
+        "internal_error"
+      );
     }
   }
 }

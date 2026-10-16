@@ -15,6 +15,7 @@
  */
 package io.gravitee.singularitee.http.handler;
 
+import io.gravitee.singularitee.engine.api.ClientErrors;
 import io.gravitee.singularitee.http.json.JsonResponses;
 import io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver.Resolution;
 import io.gravitee.singularitee.http.translation.TokenMessage;
@@ -57,9 +58,9 @@ public final class Dispatch {
     return tokens;
   }
 
-  /** Writes a 500 {@code internal_error} envelope carrying the throwable's message. */
+  /** Writes a 500 {@code internal_error} envelope; see {@link ClientErrors} for its message. */
   public static void failInternal(RoutingContext rc, Throwable t) {
-    String msg = t.getMessage() == null ? "Internal error" : t.getMessage();
+    String msg = ClientErrors.message(t, "Internal error");
     JsonResponses.writeError(rc, 500, msg, "internal_error", null, "internal_error");
   }
 }
