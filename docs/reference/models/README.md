@@ -62,7 +62,7 @@ character, everything else literal, case-insensitive. A pattern without `/` also
 bare file name (`"*.pth"` catches `original/consolidated.00.pth`); a pattern with `/` is
 anchored at the repository root. Blank entries are dropped. Excludes only narrow the engine's
 own selection; for `vllm` they apply before the weight format is chosen, so excluding the
-safetensors falls back to `.bin`.
+safetensors falls back to `.bin`, which is refused unless `ai.vllm.allow-pickle-weights` is set.
 
 ## Validation at load
 

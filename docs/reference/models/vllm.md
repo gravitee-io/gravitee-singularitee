@@ -4,7 +4,8 @@
 
 ## Overview
 
-`vllm` loads a safetensors (or `.bin`) checkpoint named by `name` and serves it as a
+`vllm` loads a safetensors checkpoint named by `name` (a pickle `.bin` one only with
+`ai.vllm.allow-pickle-weights`) and serves it as a
 `TextGenEngine` (`text-generation`). The JVM loads CPython out of a virtualenv that vLLM4j
 reads from `-Dvllm4j.venv`; `run-server.sh` finds `~/.venv-gravitee-ai/.venv` and passes it.
 `VllmModelResolver` downloads the checkpoint in Java so all engines share one cache;
@@ -148,7 +149,10 @@ non-positive properties count as unset.
   skipped with a warning.
 - **What gets downloaded.** `VllmModelResolver` lists the repository and takes the metadata
   (`.json`, `.txt`, `.model`, `.jinja`) plus one weight format, safetensors preferred,
-  `.bin` only when the repository has no safetensors. GGUF, ONNX and other runtimes' copies
+  `.bin` only when the repository has no safetensors. `.bin` weights are PyTorch pickles, and
+  unpickling runs code embedded in the file, so a model, adapter, local directory or cached copy
+  whose only weights are `.bin` is refused unless `ai.vllm.allow-pickle-weights` is `true`.
+  GGUF, ONNX and other runtimes' copies
   are never fetched. `download.exclude` narrows this further and is applied before the weight
   format is chosen. A `.complete` marker is written once every selected file is on disk, and
   only that marker makes the next start skip the download: an interrupted download (a missing

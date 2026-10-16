@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,18 +89,37 @@ public final class VllmModelResolver {
     ".md"
   );
 
+  /** The configuration key that lets pickle-only weights load. */
+  public static final String ALLOW_PICKLE_KEY = "ai.vllm.allow-pickle-weights";
+
   private final HuggingFaceModelDownloader downloader;
   private final Path cacheDir;
+  private final boolean allowPickle;
 
   /** HuggingFace access with an optional token and the default cache directory. */
   public VllmModelResolver(Vertx vertx, String hfToken) {
     this(new HuggingFaceModelDownloader(vertx, hfToken), DEFAULT_CACHE_DIR);
   }
 
-  /** Full control over the downloader and cache directory (used by tests). */
+  /** Full control over the downloader and cache directory; pickle weights refused. */
   public VllmModelResolver(HuggingFaceModelDownloader downloader, Path cacheDir) {
+    this(downloader, cacheDir, false);
+  }
+
+  /**
+   * @param allowPickle whether a model or adapter whose only weights are PyTorch {@code .bin}
+   *                    files may load. Those are pickles, and unpickling runs code embedded in
+   *                    the file, so a repository can execute code in the server at load time.
+   *                    Safetensors carry tensors only.
+   */
+  public VllmModelResolver(
+    HuggingFaceModelDownloader downloader,
+    Path cacheDir,
+    boolean allowPickle
+  ) {
     this.downloader = downloader;
     this.cacheDir = cacheDir;
+    this.allowPickle = allowPickle;
   }
 
   /** Resolves {@code modelName} with no download excludes. */
@@ -126,14 +146,14 @@ public final class VllmModelResolver {
     Path asPath = Path.of(modelName);
     if (Files.isDirectory(asPath)) {
       LOGGER.info("vLLM model is local: {}", asPath.toAbsolutePath());
-      return Single.just(asPath.toAbsolutePath());
+      return checkedDirectory(modelName, asPath.toAbsolutePath());
     }
 
     // Mirror the HF handle on disk: <cacheRoot>/<org>/<model>
     Path modelCacheDir = cacheDir.resolve(modelName);
     if (CacheMarker.isComplete(modelCacheDir, null)) {
       LOGGER.info("vLLM model already cached: {}", modelCacheDir.toAbsolutePath());
-      return Single.just(modelCacheDir.toAbsolutePath());
+      return checkedDirectory(modelName, modelCacheDir.toAbsolutePath());
     }
 
     LOGGER.info("Downloading vLLM model [{}] from HuggingFace", modelName);
@@ -142,8 +162,11 @@ public final class VllmModelResolver {
     return downloader
       .listRepoFileSizes(modelName)
       .flatMap(repoFileSizes -> {
+        if (!allowPickle && pickleOnly(repoFileSizes.keySet(), exclude)) {
+          return Single.<List<Path>>error(pickleRefused(modelName));
+        }
         List<String> files = selectFiles(repoFileSizes.keySet(), exclude);
-        if (files.isEmpty()) {
+        if (files.stream().noneMatch(VllmModelResolver::isWeight)) {
           return Single.<List<Path>>error(
             new IllegalStateException(
               "vLLM model [" +
@@ -194,13 +217,19 @@ public final class VllmModelResolver {
     Path repoCacheDir = cacheDir.resolve(repo);
     if (CacheMarker.isComplete(repoCacheDir, key)) {
       LOGGER.info("LoRA adapter already cached: {}", repoCacheDir.resolve(prefix).toAbsolutePath());
-      return Single.just(repoCacheDir.toAbsolutePath());
+      return checkedDirectory(
+        repo + "/" + prefix,
+        repoCacheDir.resolve(prefix).toAbsolutePath()
+      ).map(ignored -> repoCacheDir.toAbsolutePath());
     }
     ensureCacheDir(repoCacheDir);
     return downloader
       .listRepoFileSizes(repo)
       .flatMap(repoFileSizes -> {
         List<String> files = selectAdapterFiles(repoFileSizes.keySet(), prefix);
+        if (!allowPickle && files.stream().anyMatch(f -> hasSuffix(f, PYTORCH_BIN))) {
+          return Single.<List<Path>>error(pickleRefused(repo + "/" + prefix));
+        }
         if (files.stream().noneMatch(f -> f.equals(prefix + "adapter_config.json"))) {
           return Single.<List<Path>>error(
             new IllegalStateException(
@@ -276,6 +305,49 @@ public final class VllmModelResolver {
       .filter(file -> hasAnySuffix(file, METADATA_SUFFIXES) || hasSuffix(file, weightSuffix))
       .sorted()
       .toList();
+  }
+
+  /**
+   * Whether the weights {@link #selectFiles} would pick are pickles: the repository has
+   * {@code .bin} weights and, after the excludes, no safetensors.
+   */
+  static boolean pickleOnly(Set<String> repoFiles, List<String> exclude) {
+    return selectFiles(repoFiles, exclude)
+      .stream()
+      .anyMatch(f -> hasSuffix(f, PYTORCH_BIN));
+  }
+
+  private static boolean isWeight(String file) {
+    return hasSuffix(file, SAFETENSORS) || hasSuffix(file, PYTORCH_BIN);
+  }
+
+  /** A local or cached directory, refused when its only weights are pickles. */
+  private Single<Path> checkedDirectory(String modelName, Path dir) {
+    if (allowPickle || !Files.isDirectory(dir)) {
+      return Single.just(dir);
+    }
+    try (var walk = Files.walk(dir)) {
+      Set<String> files = walk
+        .filter(Files::isRegularFile)
+        .map(f -> dir.relativize(f).toString())
+        .collect(Collectors.toSet());
+      return pickleOnly(files, List.of())
+        ? Single.error(pickleRefused(modelName))
+        : Single.just(dir);
+    } catch (IOException e) {
+      return Single.error(e);
+    }
+  }
+
+  private static IllegalStateException pickleRefused(String what) {
+    return new IllegalStateException(
+      "vLLM weights [" +
+        what +
+        "]: the only weights are PyTorch .bin pickles, which can run code when loaded. " +
+        "Use a safetensors build of the model, or set " +
+        ALLOW_PICKLE_KEY +
+        "=true if you trust the source"
+    );
   }
 
   private static boolean hasSuffix(String file, String suffix) {
