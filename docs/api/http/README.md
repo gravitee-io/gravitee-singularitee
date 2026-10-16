@@ -91,7 +91,7 @@ message. Invalid JSON is a `400` as well.
 | 405 | `invalid_request_error` | `method_not_allowed` | Known path, wrong method. |
 | 413 | `invalid_request_error` | `request_too_large` | Body larger than `http.max-body-size` (default 10 MiB). |
 | 500 | `server_error` | `server_error` | Decisions only: the model produced no usable scores. |
-| 500 | `internal_error` | `internal_error` | Unexpected failure. |
+| 500 | `internal_error` | `internal_error` | Unexpected failure. The message is generic, `Internal error (ref 1a2b3c4d)`; the server log carries the full error under the same ref. |
 | 503 | `server_error` | `model_not_ready` | Workspace still loading. |
 
 Failures that happen during generation are not HTTP errors: Chat and Completions end the choice

@@ -138,7 +138,7 @@ counts as an image.
 | `RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA` | `ResponseOutputTextDelta` | `delta`, `item_index`, `part_index`, `repeated PositionLogprobs logprobs` (only with `top_logprobs > 0`) |
 | `RESPONSE_EVENT_TYPE_PROGRESS` | `ResponseProgress` | `step_id`, `repeated TodoItem todos { id, title, status, proof }`, `completed`, `total` |
 | `RESPONSE_EVENT_TYPE_COMPLETED` | `ResponseCompleted` | `TokenUsage usage { prompt_tokens, completion_tokens, reasoning_tokens, tool_tokens }`, `InferencePerformance performance`, `FinishReason finish_reason`, `repeated ToolCall tool_calls { name, arguments_json, coercible_args, id }` |
-| `RESPONSE_EVENT_TYPE_FAILED` | `ResponseFailed` | `error_code` (`content_filter`, `previous_response_not_found`, `invalid_request_error`, `unsupported_modality`, `server_error`), `error_message` |
+| `RESPONSE_EVENT_TYPE_FAILED` | `ResponseFailed` | `error_code` (`content_filter`, `previous_response_not_found`, `invalid_request_error`, `unsupported_modality`, `server_error`), `error_message`. A `server_error` message is generic, `Inference failed (ref 1a2b3c4d)`; the server log carries the full error under the same ref. |
 
 `FinishReason`:
 

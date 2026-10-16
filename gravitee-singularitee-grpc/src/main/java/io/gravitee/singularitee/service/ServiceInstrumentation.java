@@ -18,6 +18,7 @@ package io.gravitee.singularitee.service;
 import io.gravitee.node.api.opentelemetry.Span;
 import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.node.api.opentelemetry.internal.InternalRequest;
+import io.gravitee.singularitee.engine.api.ClientErrors;
 import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
 import io.opentelemetry.api.trace.SpanKind;
 import io.vertx.core.Context;
@@ -74,7 +75,10 @@ final class ServiceInstrumentation {
       finish(ctx, span, op, model, startNanos, e);
       throw e;
     }
-    return future.andThen(ar -> finish(ctx, span, op, model, startNanos, ar.cause()));
+    // The caller sees a generic message for an internal failure; the span and log keep the detail.
+    return future
+      .andThen(ar -> finish(ctx, span, op, model, startNanos, ar.cause()))
+      .recover(e -> Future.failedFuture(ClientErrors.forClient(e, "Internal error")));
   }
 
   private Span startSpan(Context ctx, String spanName, String model) {
