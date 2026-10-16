@@ -31,6 +31,7 @@ import io.vertx.grpc.client.InvalidStatusException;
 import io.vertx.grpc.common.GrpcErrorException;
 import io.vertx.grpc.common.GrpcStatus;
 import java.net.ConnectException;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -123,6 +124,7 @@ public final class SingulariteeClient implements AutoCloseable {
   private final GraviteeDecisionServiceGrpcClient decisionStub;
   private final boolean ownsVertx;
   private final String endpoint;
+  private final boolean secureChannel;
 
   /**
    * Creates a new client connected to Singularitee at the given host and port,
@@ -411,6 +413,7 @@ public final class SingulariteeClient implements AutoCloseable {
   ) {
     this.vertx = vertx;
     this.ownsVertx = ownsVertx;
+    this.secureChannel = (ssl && (tls == null || !tls.trustAll())) || isLoopbackHost(host);
     // Configure HttpClientOptions with a short connect timeout so that
     // RPCs against an unreachable remote fail fast instead of waiting for
     // the default 60s TCP connect timeout. Vert.x's HttpClient transparently
@@ -865,5 +868,20 @@ public final class SingulariteeClient implements AutoCloseable {
         })
       )
       .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+  }
+
+  /**
+   * Whether what this client receives can be trusted to come from the server it names: TLS
+   * that verifies the server's certificate, or a server on this machine. Plaintext to another
+   * host, or TLS with {@code trustAll}, can be read and rewritten in transit.
+   */
+  public boolean isSecureChannel() {
+    return secureChannel;
+  }
+
+  private static boolean isLoopbackHost(String host) {
+    if (host == null) return false;
+    String h = host.trim().toLowerCase(Locale.ROOT);
+    return h.equals("localhost") || h.startsWith("127.") || h.equals("::1") || h.equals("[::1]");
   }
 }

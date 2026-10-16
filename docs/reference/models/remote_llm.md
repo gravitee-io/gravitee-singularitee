@@ -7,7 +7,10 @@
 `remote_llm` registers a `TextGenEngine` (`text-generation`) whose every call travels to the
 server named by `server:`. The proxy fetches the remote model's chat template, BOS and EOS
 through `GetModel` so `infer` steps render prompts locally exactly as the remote would,
-and it reads the remote's input modalities off the same probe. `RemoteTextGenEngine`
+and it reads the remote's input modalities off the same probe. The template is Jinja the client executes, so it is used only when the endpoint is
+`ssl: true` with server verification or its host is loopback; over plaintext to another host
+it is ignored with a warning, and steps send structured messages for the remote to render
+(or render with their own `chat_template:`). `RemoteTextGenEngine`
 implements it; `WorkspaceLoaderComponent` (server) or `ClientPipelineExecutor` (client)
 registers it.
 
