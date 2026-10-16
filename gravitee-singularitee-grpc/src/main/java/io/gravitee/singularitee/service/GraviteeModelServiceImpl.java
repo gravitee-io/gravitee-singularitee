@@ -36,6 +36,7 @@ import io.gravitee.singularitee.grpc.resolver.VllmModelResolver;
 import io.gravitee.singularitee.protocol.*;
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
 import io.reactivex.rxjava3.core.Single;
+import io.vertx.core.Completable;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
@@ -566,4 +567,16 @@ public class GraviteeModelServiceImpl
 
   /** A vLLM model on disk: its weights directory and its default LoRA adapter directory, null when none. */
   private record VllmPaths(Path model, Path lora) {}
+
+  // gRPC transport: a failure leaves as a status carrying its message (see GrpcErrors).
+
+  @Override
+  protected void getModel(GetModelRequest request, Completable<GetModelResponse> response) {
+    getModel(request).onComplete(GrpcErrors.reportingStatus(response));
+  }
+
+  @Override
+  protected void listModels(ListModelsRequest request, Completable<ListModelsResponse> response) {
+    listModels(request).onComplete(GrpcErrors.reportingStatus(response));
+  }
 }
