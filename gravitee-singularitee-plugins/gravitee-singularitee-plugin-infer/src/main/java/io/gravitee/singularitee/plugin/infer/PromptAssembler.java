@@ -35,6 +35,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +58,9 @@ import org.slf4j.LoggerFactory;
 final class PromptAssembler {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PromptAssembler.class);
+
+  /** Step and model pairs whose remote-rendering fallback has already been logged at WARN. */
+  private static final Set<String> REMOTE_FALLBACK_REPORTED = ConcurrentHashMap.newKeySet();
 
   static final ObjectMapper TOOL_JSON_MAPPER = new ObjectMapper();
 
@@ -129,13 +134,19 @@ final class PromptAssembler {
     // silently breaks models that depend on it. Ship the structured messages
     // instead: the engine forwards them and the model server renders
     // with its own authoritative template.
-    LOGGER.error(
+    // A local engine without a template is misconfigured. A remote proxy renders on the server,
+    // so its fallback is expected and is reported once per step and model, not per request.
+    String noTemplate =
       "InferStep '{}': model '{}' has no chat template, sending structured " +
-        "messages for engine-side rendering (template variables like " +
-        "enable_thinking are forwarded via template_context)",
-      stepId,
-      cfg.modelId()
-    );
+      "messages for engine-side rendering (template variables like " +
+      "enable_thinking are forwarded via template_context)";
+    if (!tge.rendersMessagesRemotely()) {
+      LOGGER.error(noTemplate, stepId, cfg.modelId());
+    } else if (REMOTE_FALLBACK_REPORTED.add(stepId + "\u0000" + cfg.modelId())) {
+      LOGGER.warn(noTemplate, stepId, cfg.modelId());
+    } else {
+      LOGGER.debug(noTemplate, stepId, cfg.modelId());
+    }
     // Passthrough case: keep the caller's original turns so multimodal
     // media survives (the resolved maps carry role/content only). YAML-
     // defined messages and bare prompts never carry media; convert those.

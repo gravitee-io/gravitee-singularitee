@@ -126,6 +126,15 @@ public non-sealed interface TextGenEngine extends ModelEngine {
   }
 
   /**
+   * Whether structured messages sent without a rendered prompt are rendered by the server this
+   * engine forwards to, with that model's own template. True for a remote proxy, so a missing
+   * local template is an expected fallback there rather than a misconfiguration.
+   */
+  default boolean rendersMessagesRemotely() {
+    return false;
+  }
+
+  /**
    * The literal text of every token this model parses as special (control / user-defined),
    * {@code <|im_start|>}, {@code <|channel|>}, {@code <start_of_turn>}, and so on.
    *
