@@ -130,8 +130,8 @@ The workspace decides which endpoints are reached over TLS (`ssl: true` on the e
 
 | Key | Default | Env var | Purpose |
 | --- | --- | --- | --- |
-| `ai.workspace.path` | unset | `GRAVITEE_AI_WORKSPACE_PATH` | Workspace YAML loaded at boot. Unset starts an empty server. |
-| `ai.workspace.strict` | `false` | `GRAVITEE_AI_WORKSPACE_STRICT` | Fail startup when the workspace does not parse or any model, remote model or pipeline fails to load. Off, failures are logged and the server serves what loaded; a pipeline whose model failed is never registered. Turn it on where an orchestrator should replace an instance instead of routing to a partial one. |
+| `ai.workspace.path` | unset | `GRAVITEE_AI_WORKSPACE_PATH` | Workspace YAML loaded at boot. Unset starts an empty server, ready at once. A file that does not parse (bad YAML, an unknown step, an include outside its folder) fails startup whatever `ai.workspace.strict` says. |
+| `ai.workspace.strict` | `false` | `GRAVITEE_AI_WORKSPACE_STRICT` | Fail startup when any model, remote model or pipeline fails to load (a workspace that does not parse always fails startup). Off, failures are logged and the server serves what loaded; a pipeline whose model failed is never registered. Turn it on where an orchestrator should replace an instance instead of routing to a partial one. |
 | `ai.models.path` | `${gravitee.home}/models` | `GRAVITEE_AI_MODELS_PATH` | Model cache. Blank falls back to `~/.cache/gravitee-singularitee/models`; `run-server.sh` sets that path explicitly so `mvn clean` never removes weights. |
 | `ai.huggingface.token` | unset | `GRAVITEE_AI_HUGGINGFACE_TOKEN` | Token for gated repos. Blank falls back to the `HF_TOKEN` environment variable. |
 | `ai.huggingface.download.chunkSize` | `10485760` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_CHUNKSIZE` | Bytes per HTTP Range request in the parallel download path. |
