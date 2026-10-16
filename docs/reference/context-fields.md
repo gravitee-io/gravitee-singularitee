@@ -39,7 +39,7 @@ Seeded by `PipelineContext.fromRequest` before the first step runs.
 | Key | Type | Source | Notes |
 | --- | --- | --- | --- |
 | `prompt` | flat field, Jinja `{{ prompt }}` | Last user message of the request conversation, or the bare prompt string. | Rewritten by redacting guards when they operate on it. |
-| any `context` entry | flat field | `InferPipelineRequest.context` map (HTTP translates known request fields into it). | Arbitrary `key -> string`. Dotted keys nest in Jinja like step fields. |
+| any `context` entry | flat field | `InferPipelineRequest.context` map (HTTP translates known request fields into it). | Arbitrary `key -> string`. Dotted keys nest in Jinja like step fields. A key the pipeline writes itself is ignored: one whose top-level segment is a step id, the top-level segment of a step's `output_field`, `prompt`, `todos` or `conversation`, and every key starting with `__`. |
 | `reasoning_effort` | flat field, Jinja variable | Request context. | Overrides a step's `context.reasoning_effort` in the Jinja and engine template context. |
 | `instructions` | flat field | Request context (Responses-style `instructions`). | Prepended as a leading system turn at render time only; never stored in the conversation. |
 | `messages` | structured, Jinja `messages` | Request conversation (`role`, `content`, `tool_calls`, `tool_call_id`, `name`, media). | Grows as `infer`, `loop` and `todo` steps append turns. A stored conversation (`previous_response_id`) is prepended first. |

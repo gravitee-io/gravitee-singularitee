@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.plugin.classify;
 
 import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
+import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
 
 /**
  * Runtime config of a {@code classify} step.
@@ -33,7 +34,7 @@ public record ClassifyStepConfig(
   String inputField,
   String outputField,
   float threshold
-) implements ModelBoundConfig {
+) implements ModelBoundConfig, OutputFieldConfig {
   public ClassifyStepConfig {
     modelId = modelId == null ? "" : modelId;
     inputField = inputField == null ? "" : inputField;

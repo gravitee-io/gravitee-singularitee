@@ -15,6 +15,8 @@
  */
 package io.gravitee.singularitee.plugin.subpipeline;
 
+import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
+
 /**
  * Runtime config of a {@code sub_pipeline} step: which pipeline to invoke, where its
  * prompt comes from, where its output lands, and how the transcript is forwarded.
@@ -37,7 +39,7 @@ public record SubPipelineStepConfig(
   String remoteId,
   String systemPrompt,
   boolean forwardMessages
-) {
+) implements OutputFieldConfig {
   public SubPipelineStepConfig {
     pipelineId = pipelineId == null ? "" : pipelineId;
     inputField = inputField == null ? "" : inputField;

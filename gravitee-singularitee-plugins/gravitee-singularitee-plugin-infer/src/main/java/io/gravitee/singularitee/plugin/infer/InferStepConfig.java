@@ -17,6 +17,7 @@ package io.gravitee.singularitee.plugin.infer;
 
 import io.gravitee.singularitee.engine.api.pipeline.model.MessageTemplate;
 import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
+import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
 import io.gravitee.singularitee.protocol.LoraConfig;
 import io.gravitee.singularitee.protocol.SamplingParams;
 import io.gravitee.singularitee.protocol.TagConfig;
@@ -71,7 +72,7 @@ public record InferStepConfig(
   String toolExtractionTemplate,
   String chatTemplate,
   Boolean exposeServerTools
-) implements ModelBoundConfig {
+) implements ModelBoundConfig, OutputFieldConfig {
   public InferStepConfig {
     modelId = modelId == null ? "" : modelId;
     outputField = outputField == null ? "" : outputField;

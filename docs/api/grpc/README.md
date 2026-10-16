@@ -101,7 +101,7 @@ Slow consumers are cancelled after `ai.streaming.buffer-capacity` tokens of lag.
 | `pipeline_id` | string | Target pipeline. |
 | `prompt` / `messages` | oneof | Same as `InferRequest`. |
 | `sampling_params` | `SamplingParams` | Override applied to the pipeline's infer steps. |
-| `context` | map<string,string> | Seed values readable as `{{context.<key>}}`; `reasoning_effort` and `instructions` are conventional keys. |
+| `context` | map<string,string> | Seed values readable as `{{context.<key>}}`; `reasoning_effort` and `instructions` are conventional keys. Keys the pipeline writes itself (step ids, `output_field` roots, `prompt`, `todos`, `conversation`, `__*`) are ignored; see [context fields](../../reference/context-fields.md). |
 | `tools` | repeated `ToolDefinition` | `name`, `description`, `parameters` (`ToolParameterDef { name, type, description, required }`), `template`. Rendered through `{{tools}}`. |
 | `request_id` | string | Echoed back; also the id a stored conversation is kept under. |
 | `cache_key` | string | As above. |
