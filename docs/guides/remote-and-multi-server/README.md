@@ -176,7 +176,10 @@ Full tables: [Workspaces](../../workspaces/README.md),
 - Remote model entries carry no engine config. Sampling and templates are configured on the
   serving workspace and in pipeline steps.
 - `remote_llm` renders prompts locally with the remote model's own chat template, fetched
-  from `GetModel`, so a step's `prompt:` and `tags:` behave exactly as on the server.
+  from `GetModel`, so a step's `prompt:` and `tags:` behave exactly as on the server. The template is Jinja the client executes, so it is used only when the endpoint is
+  `ssl: true` with server verification or its host is loopback; over plaintext to another host
+  it is ignored with a warning, and steps send structured messages for the remote to render
+  (or render with their own `chat_template:`).
 - `regex` and `composite_classifier` need no server: they are registered in-process by
   `ClientLocalModelRegistrar` wherever the workspace runs.
 - Build dev truststores with `keytool -importcert`, not `openssl pkcs12 -nokeys`; Java reads

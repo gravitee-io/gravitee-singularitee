@@ -111,9 +111,10 @@ public final class RemoteTextGenEngine implements TextGenEngine {
   ) {
     this.client = client;
     this.modelId = modelId;
-    this.chatTemplate = chatTemplate;
-    this.bosToken = bosToken != null ? bosToken : "";
-    this.eosToken = eosToken != null ? eosToken : "";
+    boolean trusted = trustsRemoteTemplate(client, modelId, chatTemplate);
+    this.chatTemplate = trusted ? chatTemplate : null;
+    this.bosToken = trusted && bosToken != null ? bosToken : "";
+    this.eosToken = trusted && eosToken != null ? eosToken : "";
     this.inputModalities = inputModalities == null || inputModalities.isEmpty()
       ? Modalities.TEXT_ONLY
       : List.copyOf(inputModalities);
@@ -174,7 +175,11 @@ public final class RemoteTextGenEngine implements TextGenEngine {
           if (info.getInputModalitiesCount() > 0) {
             inputModalities = List.copyOf(info.getInputModalitiesList());
           }
-          if (template != null && !template.isEmpty()) {
+          if (!trustsRemoteTemplate(client, modelId, template)) {
+            bosToken = "";
+            eosToken = "";
+            metadataLoaded = true;
+          } else if (template != null && !template.isEmpty()) {
             chatTemplate = template;
             metadataLoaded = true;
             LOGGER.info(
@@ -204,6 +209,30 @@ public final class RemoteTextGenEngine implements TextGenEngine {
           );
         }
       );
+  }
+
+  /**
+   * Whether a chat template received from the remote may be rendered here. The template is
+   * Jinja the client executes, so it is taken only over a channel that authenticates the
+   * server (see {@link SingulariteeClient#isSecureChannel()}). Otherwise it is dropped: steps
+   * send structured messages for the remote to render with its own template, or render with
+   * their own {@code chat_template:}.
+   */
+  private static boolean trustsRemoteTemplate(
+    SingulariteeClient client,
+    String modelId,
+    String template
+  ) {
+    if (template == null || template.isEmpty() || client.isSecureChannel()) {
+      return true;
+    }
+    LOGGER.warn(
+      "RemoteTextGenEngine: ignoring the chat template the remote sent for model '{}': the " +
+        "connection is plaintext to a non-loopback host (or TLS without server verification). " +
+        "Set ssl: true on the endpoint, or give the infer step its own chat_template",
+      modelId
+    );
+    return false;
   }
 
   @Override
