@@ -18,6 +18,7 @@ package io.gravitee.singularitee.plugin.regexguard;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardOnEmpty;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardScope;
+import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
 import java.util.List;
 
 /**
@@ -44,7 +45,7 @@ public record RegexGuardStepConfig(
   String message,
   GuardScope scope,
   GuardOnEmpty onEmpty
-) {
+) implements OutputFieldConfig {
   public RegexGuardStepConfig {
     inputField = inputField == null ? "" : inputField;
     patterns = patterns == null ? List.of() : List.copyOf(patterns);

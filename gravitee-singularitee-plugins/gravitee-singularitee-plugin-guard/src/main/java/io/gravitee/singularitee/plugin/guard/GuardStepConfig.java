@@ -19,6 +19,7 @@ import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardOnEmpty;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardScope;
 import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
+import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
 import java.util.List;
 
 /**
@@ -47,7 +48,7 @@ public record GuardStepConfig(
   boolean redactWithEntityType,
   GuardScope scope,
   GuardOnEmpty onEmpty
-) implements ModelBoundConfig {
+) implements ModelBoundConfig, OutputFieldConfig {
   public GuardStepConfig {
     modelId = modelId == null ? "" : modelId;
     inputField = inputField == null ? "" : inputField;

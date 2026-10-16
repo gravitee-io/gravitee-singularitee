@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.plugin.embed;
 
 import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
+import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
 
 /**
  * Runtime config of an {@code embed} step.
@@ -28,7 +29,7 @@ import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
  * @author GraviteeSource Team
  */
 public record EmbedStepConfig(String modelId, String inputField, String outputField) implements
-  ModelBoundConfig {
+  ModelBoundConfig, OutputFieldConfig {
   public EmbedStepConfig {
     modelId = modelId == null ? "" : modelId;
     inputField = inputField == null ? "" : inputField;

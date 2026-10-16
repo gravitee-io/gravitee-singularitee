@@ -232,7 +232,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
     // The pipeline walk is fully reactive: subscribe directly on the caller context.
     // No Schedulers.io() wrapping needed since no step blocks a thread.
     var disposable = pipelineExecutor
-      .executePipeline(request, response, callerContext)
+      .executeCallerPipeline(request, response, callerContext)
       .subscribe(
         () -> {
           metrics.recordPipelineRequest(request.getPipelineId(), InferenceMetrics.STATUS_SUCCESS);

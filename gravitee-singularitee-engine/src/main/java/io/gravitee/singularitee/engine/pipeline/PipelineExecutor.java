@@ -152,6 +152,37 @@ public class PipelineExecutor implements PipelineExecutorCallback {
     );
   }
 
+  /**
+   * Entry point for an external caller: drops the request {@code context} keys the pipeline
+   * writes itself (see {@link CallerContext}), then runs it like {@link #executePipeline}.
+   * Sub-pipelines skip this on purpose, since they inherit the parent's context as-is.
+   */
+  public Completable executeCallerPipeline(
+    InferPipelineRequest request,
+    WriteStream<InferResponse> response,
+    Context callerContext
+  ) {
+    var sanitized = pipelineRegistry
+      .get(request.getPipelineId())
+      .map(entry -> {
+        var dropped = CallerContext.reservedKeys(
+          entry.pipeline(),
+          request.getContextMap().keySet()
+        );
+        if (dropped.isEmpty()) {
+          return request;
+        }
+        LOGGER.debug(
+          "Pipeline '{}': ignoring caller context key(s) the pipeline writes itself: {}",
+          request.getPipelineId(),
+          dropped
+        );
+        return CallerContext.withoutReservedKeys(entry.pipeline(), request);
+      })
+      .orElse(request);
+    return executePipeline(sanitized, response, callerContext);
+  }
+
   // ---------------------------------------------------------------------------
   // DAG walk: recursive reactive chain
   // ---------------------------------------------------------------------------
