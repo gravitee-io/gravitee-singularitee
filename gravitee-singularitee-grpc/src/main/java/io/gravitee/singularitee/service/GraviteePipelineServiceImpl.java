@@ -18,6 +18,7 @@ package io.gravitee.singularitee.service;
 import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.protocol.*;
+import io.vertx.core.Completable;
 import io.vertx.core.Future;
 
 /**
@@ -91,5 +92,23 @@ public class GraviteePipelineServiceImpl extends GraviteePipelineServiceGrpcServ
       );
     }
     return Future.succeededFuture(builder.build());
+  }
+
+  // gRPC transport: a failure leaves as a status carrying its message (see GrpcErrors).
+
+  @Override
+  protected void getPipeline(
+    GetPipelineRequest request,
+    Completable<GetPipelineResponse> response
+  ) {
+    getPipeline(request).onComplete(GrpcErrors.reportingStatus(response));
+  }
+
+  @Override
+  protected void listPipelines(
+    ListPipelinesRequest request,
+    Completable<ListPipelinesResponse> response
+  ) {
+    listPipelines(request).onComplete(GrpcErrors.reportingStatus(response));
   }
 }

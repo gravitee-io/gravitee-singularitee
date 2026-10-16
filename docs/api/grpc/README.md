@@ -48,9 +48,16 @@ any model loads. Until the workspace has finished loading, every RPC is answered
 REQUIRED` with a `grpc.ssl.truststore` turns it into mTLS. ALPN is forced on: gRPC needs HTTP/2.
 Build truststores with `keytool -importcert`; `scripts/gen-dev-certs.sh` produces a working set.
 
-**Errors.** Unary RPCs fail the call when the target is missing or of the wrong kind; the status
-message is `Model not found: <id>`, `Model '<id>' is not an embedding model`, `Model <id> is not
-a classifier`, or `Model '<id>' is neither an embedding nor a reranker model`. Streaming RPCs
+**Errors.** Unary RPCs fail the call with a status code and a message:
+
+| Status | When | Example message |
+| --- | --- | --- |
+| `NOT_FOUND` (5) | Unknown model or pipeline id. | `Model not found: <id>`, `Pipeline not found: <id>` |
+| `INVALID_ARGUMENT` (3) | Target of the wrong kind, or a rejected argument. | `Model '<id>' is not an embedding model`, `Model <id> is not a classifier`, `Model '<id>' is neither an embedding nor a reranker model`, `Vectors must have the same length` |
+| `INTERNAL` (13) | Engine, native or I/O failure. | `Internal error (ref 1a2b3c4d)`; the server log carries the full error under the same ref. |
+| `UNKNOWN` (2) | Any other failure the server reports to the caller as is. | its own message |
+
+Streaming RPCs
 behave differently: an `Infer` against an unknown id or a non-text-generation model ends the
 stream with no events at all, and a failure during generation (guard block, engine error, unknown
 `previous_response_id`) arrives as a `RESPONSE_EVENT_TYPE_FAILED` event rather than a gRPC error.

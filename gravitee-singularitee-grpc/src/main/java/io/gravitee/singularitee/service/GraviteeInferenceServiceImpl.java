@@ -24,6 +24,10 @@ import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.pipeline.PipelineExecutor;
 import io.gravitee.singularitee.inference.api.decision.DecisionException;
 import io.gravitee.singularitee.protocol.*;
+import io.gravitee.singularitee.protocol.ClassifyRequest;
+import io.gravitee.singularitee.protocol.ClassifyResponse;
+import io.gravitee.singularitee.protocol.ClassifyResult;
+import io.vertx.core.Completable;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -316,9 +320,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
    * error to the caller) when the model id is unknown or not a classifier.
    */
   @Override
-  public Future<io.gravitee.singularitee.protocol.ClassifyResponse> classify(
-    io.gravitee.singularitee.protocol.ClassifyRequest request
-  ) {
+  public Future<ClassifyResponse> classify(ClassifyRequest request) {
     return instrumentation.traceUnary(
       SpanNames.key("classify"),
       "classify",
@@ -327,9 +329,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
     );
   }
 
-  private Future<io.gravitee.singularitee.protocol.ClassifyResponse> classifyInternal(
-    io.gravitee.singularitee.protocol.ClassifyRequest request
-  ) {
+  private Future<ClassifyResponse> classifyInternal(ClassifyRequest request) {
     var entryOpt = registry.get(request.getModelId());
     if (entryOpt.isEmpty()) {
       LOGGER.warn("Classify: model not found: {}", request.getModelId());
@@ -352,14 +352,14 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
       .map(l -> new ClassifierEngine.ClassifyLabel(l.getName(), l.getDescription()))
       .toList();
 
-    Promise<io.gravitee.singularitee.protocol.ClassifyResponse> promise = Promise.promise();
+    Promise<ClassifyResponse> promise = Promise.promise();
     ce
       .rxClassify(
         new io.gravitee.singularitee.engine.api.ClassifyRequest(request.getText()),
         labels
       )
       .map(result -> {
-        var responseBuilder = io.gravitee.singularitee.protocol.ClassifyResponse.newBuilder()
+        var responseBuilder = ClassifyResponse.newBuilder()
           .setTopLabel(result.topLabel() == null ? "" : result.topLabel())
           .setTopScore(result.topScore());
 
@@ -369,9 +369,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
 
         if (result.results() != null) {
           for (var r : result.results()) {
-            var rb = io.gravitee.singularitee.protocol.ClassifyResult.newBuilder()
-              .setLabel(r.label())
-              .setScore(r.score());
+            var rb = ClassifyResult.newBuilder().setLabel(r.label()).setScore(r.score());
             if (r.token() != null) rb.setToken(r.token());
             if (r.start() != null) rb.setStart(r.start());
             if (r.end() != null) rb.setEnd(r.end());
@@ -394,9 +392,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
    * {@link #classify}.
    */
   @Override
-  public Future<io.gravitee.singularitee.protocol.ClassifyBatchResponse> classifyBatch(
-    io.gravitee.singularitee.protocol.ClassifyBatchRequest request
-  ) {
+  public Future<ClassifyBatchResponse> classifyBatch(ClassifyBatchRequest request) {
     return instrumentation.traceUnary(
       SpanNames.key("classify.batch"),
       "classify",
@@ -405,9 +401,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
     );
   }
 
-  private Future<io.gravitee.singularitee.protocol.ClassifyBatchResponse> classifyBatchInternal(
-    io.gravitee.singularitee.protocol.ClassifyBatchRequest request
-  ) {
+  private Future<ClassifyBatchResponse> classifyBatchInternal(ClassifyBatchRequest request) {
     var entryOpt = registry.get(request.getModelId());
     if (entryOpt.isEmpty()) {
       LOGGER.warn("ClassifyBatch: model not found: {}", request.getModelId());
@@ -436,13 +430,13 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
       .map(l -> new ClassifierEngine.ClassifyLabel(l.getName(), l.getDescription()))
       .toList();
 
-    Promise<io.gravitee.singularitee.protocol.ClassifyBatchResponse> promise = Promise.promise();
+    Promise<ClassifyBatchResponse> promise = Promise.promise();
     ce
       .rxClassifyBatch(requests, labels)
       .map(results -> {
-        var batchBuilder = io.gravitee.singularitee.protocol.ClassifyBatchResponse.newBuilder();
+        var batchBuilder = ClassifyBatchResponse.newBuilder();
         for (var result : results) {
-          var responseBuilder = io.gravitee.singularitee.protocol.ClassifyResponse.newBuilder()
+          var responseBuilder = ClassifyResponse.newBuilder()
             .setTopLabel(result.topLabel() == null ? "" : result.topLabel())
             .setTopScore(result.topScore());
 
@@ -452,9 +446,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
 
           if (result.results() != null) {
             for (var r : result.results()) {
-              var rb = io.gravitee.singularitee.protocol.ClassifyResult.newBuilder()
-                .setLabel(r.label())
-                .setScore(r.score());
+              var rb = ClassifyResult.newBuilder().setLabel(r.label()).setScore(r.score());
               if (r.token() != null) rb.setToken(r.token());
               if (r.start() != null) rb.setStart(r.start());
               if (r.end() != null) rb.setEnd(r.end());
@@ -576,5 +568,20 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
       proto.getCloseTag(),
       proto.getOpenTagAlternativesList()
     );
+  }
+
+  // gRPC transport: a failure leaves as a status carrying its message (see GrpcErrors).
+
+  @Override
+  protected void classify(ClassifyRequest request, Completable<ClassifyResponse> response) {
+    classify(request).onComplete(GrpcErrors.reportingStatus(response));
+  }
+
+  @Override
+  protected void classifyBatch(
+    ClassifyBatchRequest request,
+    Completable<ClassifyBatchResponse> response
+  ) {
+    classifyBatch(request).onComplete(GrpcErrors.reportingStatus(response));
   }
 }

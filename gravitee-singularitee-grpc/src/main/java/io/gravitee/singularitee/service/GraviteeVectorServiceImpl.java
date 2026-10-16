@@ -22,6 +22,7 @@ import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
 import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.protocol.*;
+import io.vertx.core.Completable;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -378,5 +379,43 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
       arr[i] = vec.getValues(i);
     }
     return arr;
+  }
+
+  // gRPC transport: a failure leaves as a status carrying its message (see GrpcErrors).
+
+  @Override
+  protected void cosineSimilarity(
+    CosineSimilarityRequest request,
+    Completable<CosineSimilarityResponse> response
+  ) {
+    cosineSimilarity(request).onComplete(GrpcErrors.reportingStatus(response));
+  }
+
+  @Override
+  protected void rank(RankRequest request, Completable<RankResponse> response) {
+    rank(request).onComplete(GrpcErrors.reportingStatus(response));
+  }
+
+  @Override
+  protected void embed(EmbedRequest request, Completable<EmbedResponse> response) {
+    embed(request).onComplete(GrpcErrors.reportingStatus(response));
+  }
+
+  @Override
+  protected void embedBatch(EmbedBatchRequest request, Completable<EmbedBatchResponse> response) {
+    embedBatch(request).onComplete(GrpcErrors.reportingStatus(response));
+  }
+
+  @Override
+  protected void textSimilarity(
+    TextSimilarityRequest request,
+    Completable<TextSimilarityResponse> response
+  ) {
+    textSimilarity(request).onComplete(GrpcErrors.reportingStatus(response));
+  }
+
+  @Override
+  protected void textRerank(TextRerankRequest request, Completable<TextRerankResponse> response) {
+    textRerank(request).onComplete(GrpcErrors.reportingStatus(response));
   }
 }
