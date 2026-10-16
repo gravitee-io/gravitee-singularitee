@@ -24,6 +24,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.reactivex.rxjava3.core.Single;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -377,5 +378,94 @@ class VllmModelResolverTest {
 
     resolver.resolveAdapter(" ", "adapter").test().assertError(IllegalArgumentException.class);
     resolver.resolveAdapter("acme/loras", "").test().assertError(IllegalArgumentException.class);
+  }
+
+  @Test
+  void a_pickle_only_repository_is_refused_by_default(@TempDir Path cache) {
+    var downloader = mock(HuggingFaceModelDownloader.class);
+    when(downloader.listRepoFileSizes("acme/legacy")).thenReturn(
+      Single.just(Map.of("config.json", 1L, "pytorch_model.bin", 100L))
+    );
+
+    new VllmModelResolver(downloader, cache)
+      .resolve("acme/legacy")
+      .test()
+      .assertError(
+        e ->
+          e instanceof IllegalStateException &&
+          e.getMessage().contains(VllmModelResolver.ALLOW_PICKLE_KEY)
+      );
+
+    verify(downloader, never()).download(any(), any(), any(), any());
+  }
+
+  @Test
+  void a_pickle_only_repository_loads_when_allowed(@TempDir Path cache) {
+    var downloader = mock(HuggingFaceModelDownloader.class);
+    Map<String, Long> sizes = Map.of("config.json", 1L, "pytorch_model.bin", 100L);
+    Path dir = cache.resolve("acme/legacy");
+    List<String> files = List.of("config.json", "pytorch_model.bin");
+    when(downloader.listRepoFileSizes("acme/legacy")).thenReturn(Single.just(sizes));
+    when(downloader.download("acme/legacy", files, dir, sizes)).thenReturn(
+      Single.just(files.stream().map(dir::resolve).toList())
+    );
+
+    assertThat(
+      new VllmModelResolver(downloader, cache, true).resolve("acme/legacy").blockingGet()
+    ).isEqualTo(dir.toAbsolutePath());
+  }
+
+  @Test
+  void excluding_the_safetensors_does_not_fall_back_to_pickles_by_default(@TempDir Path cache) {
+    var downloader = mock(HuggingFaceModelDownloader.class);
+    when(downloader.listRepoFileSizes("acme/both")).thenReturn(
+      Single.just(Map.of("config.json", 1L, "model.safetensors", 100L, "pytorch_model.bin", 100L))
+    );
+
+    new VllmModelResolver(downloader, cache)
+      .resolve("acme/both", List.of("*.safetensors"))
+      .test()
+      .assertError(IllegalStateException.class);
+  }
+
+  @Test
+  void a_repository_without_any_weights_is_refused(@TempDir Path cache) {
+    var downloader = mock(HuggingFaceModelDownloader.class);
+    when(downloader.listRepoFileSizes("acme/empty")).thenReturn(
+      Single.just(Map.of("config.json", 1L, "tokenizer.json", 1L))
+    );
+
+    new VllmModelResolver(downloader, cache)
+      .resolve("acme/empty")
+      .test()
+      .assertError(e -> e.getMessage().contains("no loadable weights"));
+  }
+
+  @Test
+  void a_local_pickle_only_directory_is_refused(@TempDir Path dir) throws Exception {
+    Files.writeString(dir.resolve("config.json"), "{}");
+    Files.writeString(dir.resolve("pytorch_model.bin"), "x");
+    var resolver = new VllmModelResolver(
+      mock(HuggingFaceModelDownloader.class),
+      dir.resolve("cache")
+    );
+
+    resolver.resolve(dir.toString()).test().assertError(IllegalStateException.class);
+
+    Files.writeString(dir.resolve("model.safetensors"), "x");
+    resolver.resolve(dir.toString()).test().assertValue(dir.toAbsolutePath());
+  }
+
+  @Test
+  void a_pickle_adapter_is_refused_by_default(@TempDir Path cache) {
+    var downloader = mock(HuggingFaceModelDownloader.class);
+    when(downloader.listRepoFileSizes("acme/loras")).thenReturn(
+      Single.just(Map.of("adapter/adapter_config.json", 1L, "adapter/adapter_model.bin", 10L))
+    );
+
+    new VllmModelResolver(downloader, cache)
+      .resolveAdapter("acme/loras", "adapter")
+      .test()
+      .assertError(IllegalStateException.class);
   }
 }

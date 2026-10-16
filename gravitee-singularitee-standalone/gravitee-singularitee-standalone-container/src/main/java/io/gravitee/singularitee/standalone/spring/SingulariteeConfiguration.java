@@ -270,7 +270,11 @@ public class SingulariteeConfiguration {
     HuggingFaceModelDownloader downloader,
     Configuration configuration
   ) {
-    return new VllmModelResolver(downloader, getModelsDir(configuration));
+    return new VllmModelResolver(
+      downloader,
+      getModelsDir(configuration),
+      configuration.getProperty(VllmModelResolver.ALLOW_PICKLE_KEY, Boolean.class, false)
+    );
   }
 
   private static Path getModelsDir(Configuration configuration) {

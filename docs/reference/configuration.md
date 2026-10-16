@@ -192,15 +192,16 @@ Presentation only: the model and the wire see these names, while internal identi
 | `step.<id>.enabled` | `true` | `GRAVITEE_STEP_<ID>_ENABLED` | Switch off a step plugin by its manifest id (for example `step.route.enabled: false`). |
 | `license.key` | `${gravitee.home}/license/license.key` | `GRAVITEE_LICENSE_KEY` | Platform license file. Absent means the OSS license: every core step registers. A step whose `plugin.properties` declares a `feature=` must have that feature listed in the license's `features` to register; a workspace declaring such a step without the feature fails to load with the feature named. |
 
-### `ai.vllm.*` (deployment-wide GPU topology)
+### `ai.vllm.*`
 
-A model's own `vllm:` value wins; these apply when the workspace leaves the field unset; when both are unset vLLM decides.
+The GPU topology keys are deployment-wide: a model's own `vllm:` value wins; these apply when the workspace leaves the field unset; when both are unset vLLM decides.
 
 | Key | Default | Env var | Purpose |
 | --- | --- | --- | --- |
 | `ai.vllm.tensor-parallel-size` | unset | `GRAVITEE_AI_VLLM_TENSORPARALLELSIZE` | GPUs to shard each layer across. |
 | `ai.vllm.pipeline-parallel-size` | unset | `GRAVITEE_AI_VLLM_PIPELINEPARALLELSIZE` | Pipeline stages. |
 | `ai.vllm.distributed-executor-backend` | unset | `GRAVITEE_AI_VLLM_DISTRIBUTEDEXECUTORBACKEND` | `mp` or `ray`. |
+| `ai.vllm.allow-pickle-weights` | `false` | `GRAVITEE_AI_VLLM_ALLOWPICKLEWEIGHTS` | Lets a `vllm` model or LoRA adapter whose only weights are PyTorch `.bin` pickles load. Unpickling runs code embedded in the file, so off by default; enable it only for sources you trust. |
 
 ### `services.core.http.*` (management API)
 

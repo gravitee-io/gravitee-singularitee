@@ -190,6 +190,9 @@ ai:
   #  tensor-parallel-size: 1
   #  pipeline-parallel-size: 1
   #  distributed-executor-backend: mp   # mp | ray
+  #  # Load models or adapters whose only weights are PyTorch .bin pickles. Unpickling runs
+  #  # code embedded in the file, so this stays off unless every model source is trusted.
+  #  allow-pickle-weights: false
 
   # Presentation names of the server-owned tools. The model and the wire see
   # these names; internal identity, stored state and the proto contract never
