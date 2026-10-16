@@ -22,6 +22,7 @@ import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.node.api.opentelemetry.internal.InternalRequest;
 import io.gravitee.singularitee.engine.api.ChatRole;
 import io.gravitee.singularitee.engine.api.ChatTurn;
+import io.gravitee.singularitee.engine.api.Modalities;
 import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
 import io.gravitee.singularitee.engine.api.pipeline.TodoSessionStore;
@@ -30,6 +31,7 @@ import io.gravitee.singularitee.engine.api.pipeline.executor.OpenInference;
 import io.gravitee.singularitee.engine.api.pipeline.executor.PipelineExecutorCallback;
 import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
+import io.gravitee.singularitee.engine.api.pipeline.executor.TokenStreamWriter;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
@@ -153,15 +155,36 @@ public class PipelineExecutor implements PipelineExecutorCallback {
   }
 
   /**
-   * Entry point for an external caller: drops the request {@code context} keys the pipeline
-   * writes itself (see {@link CallerContext}), then runs it like {@link #executePipeline}.
-   * Sub-pipelines skip this on purpose, since they inherit the parent's context as-is.
+   * Entry point for an external caller: refuses media the pipeline does not accept, drops the
+   * request {@code context} keys the pipeline writes itself (see {@link CallerContext}), then
+   * runs it like {@link #executePipeline}. Sub-pipelines skip this on purpose, since they
+   * inherit the parent's context as-is.
    */
   public Completable executeCallerPipeline(
     InferPipelineRequest request,
     WriteStream<InferResponse> response,
     Context callerContext
   ) {
+    var unsupported = request.hasMessages()
+      ? pipelineRegistry
+        .get(request.getPipelineId())
+        .flatMap(entry -> {
+          var accepted = entry.pipeline().inputModalities().isEmpty()
+            ? Modalities.TEXT_ONLY
+            : entry.pipeline().inputModalities();
+          return Modalities.firstUnsupported(
+            Modalities.attached(request.getMessages().getMessagesList()),
+            accepted
+          ).map(m -> "pipeline `" + request.getPipelineId() + "` does not accept " + m + " input");
+        })
+      : Optional.<String>empty();
+    if (unsupported.isPresent()) {
+      LOGGER.warn("InferPipeline: {}", unsupported.get());
+      return Completable.fromAction(() ->
+        response.end(TokenStreamWriter.failed("unsupported_modality", unsupported.get()))
+      );
+    }
+
     var sanitized = pipelineRegistry
       .get(request.getPipelineId())
       .map(entry -> {

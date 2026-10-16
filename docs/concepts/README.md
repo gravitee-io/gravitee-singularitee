@@ -80,7 +80,7 @@ Modalities are what an entry accepts as input (`text`, `image`, `audio`). They a
 not declared: llama.cpp asks its multimodal projector, vLLM reads `vision_config` /
 `audio_config` from the checkpoint's `config.json`, a pipeline takes the union over its
 model-bound steps. A decision model also reports `output_modalities: ["decisions"]`, the
-value llama.cpp's server uses for the same kind of model. The HTTP API refuses media the target cannot read (`unsupported_modality`)
+value llama.cpp's server uses for the same kind of model. The HTTP and gRPC APIs refuse media the target cannot read (`unsupported_modality`)
 rather than dropping it. Declare `modalities:` only where detection cannot run (a `remote_*`
 proxy, a vLLM model never resolved locally). A vision or audio model is still
 `task: text-generation`.

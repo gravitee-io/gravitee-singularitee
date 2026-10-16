@@ -126,7 +126,9 @@ invalid_request_error`. Engine support and the JSON Schema subset are in
 
 `ChatMessage { Role role, string content, repeated MediaContent media, repeated ToolCall tool_calls, string tool_call_id, string name }`.
 `Role` is `ROLE_SYSTEM`, `ROLE_USER`, `ROLE_ASSISTANT`, `ROLE_TOOL`. `MediaContent { MediaType media_type, bytes data }`
-carries base64 text as bytes; `MediaType` is `IMAGE_JPEG`, `IMAGE_PNG`, `IMAGE_GIF`, `IMAGE_BMP`, `AUDIO_WAV` or `APPLICATION_OCTET`.
+carries base64 text as bytes; `MediaType` is `IMAGE_JPEG`, `IMAGE_PNG`, `IMAGE_GIF`, `IMAGE_BMP`, `AUDIO_WAV` or `APPLICATION_OCTET`. Media the target does not accept
+(see `input_modalities`) fails the stream with `error_code: unsupported_modality`; `APPLICATION_OCTET`
+counts as an image.
 
 `InferResponse { ResponseEventType event_type, oneof event, StepRole step_role }`:
 
@@ -136,7 +138,7 @@ carries base64 text as bytes; `MediaType` is `IMAGE_JPEG`, `IMAGE_PNG`, `IMAGE_G
 | `RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA` | `ResponseOutputTextDelta` | `delta`, `item_index`, `part_index`, `repeated PositionLogprobs logprobs` (only with `top_logprobs > 0`) |
 | `RESPONSE_EVENT_TYPE_PROGRESS` | `ResponseProgress` | `step_id`, `repeated TodoItem todos { id, title, status, proof }`, `completed`, `total` |
 | `RESPONSE_EVENT_TYPE_COMPLETED` | `ResponseCompleted` | `TokenUsage usage { prompt_tokens, completion_tokens, reasoning_tokens, tool_tokens }`, `InferencePerformance performance`, `FinishReason finish_reason`, `repeated ToolCall tool_calls { name, arguments_json, coercible_args, id }` |
-| `RESPONSE_EVENT_TYPE_FAILED` | `ResponseFailed` | `error_code` (`content_filter`, `previous_response_not_found`, `invalid_request_error`, `server_error`), `error_message` |
+| `RESPONSE_EVENT_TYPE_FAILED` | `ResponseFailed` | `error_code` (`content_filter`, `previous_response_not_found`, `invalid_request_error`, `unsupported_modality`, `server_error`), `error_message` |
 
 `FinishReason`:
 

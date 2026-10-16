@@ -15,8 +15,13 @@
  */
 package io.gravitee.singularitee.engine.api;
 
+import io.gravitee.singularitee.protocol.ChatMessage;
+import io.gravitee.singularitee.protocol.MediaContent;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Input modality slugs exposed in {@code GetModelResponse.input_modalities}.
@@ -62,6 +67,34 @@ public final class Modalities {
     if (vision) modalities.add(IMAGE);
     if (audio) modalities.add(AUDIO);
     return List.copyOf(modalities);
+  }
+
+  /**
+   * Returns the media modalities attached to {@code messages}, never including {@link #TEXT}.
+   * An unspecified or opaque media type counts as {@link #IMAGE}: it is still handed to the
+   * engine as media, so it needs a model that reads media.
+   */
+  public static Set<String> attached(List<ChatMessage> messages) {
+    Set<String> found = new LinkedHashSet<>(2);
+    for (ChatMessage message : messages) {
+      for (MediaContent media : message.getMediaList()) {
+        found.add(
+          switch (media.getMediaType()) {
+            case MEDIA_TYPE_AUDIO_WAV -> AUDIO;
+            default -> IMAGE;
+          }
+        );
+      }
+    }
+    return found;
+  }
+
+  /** The first of {@code attached} that {@code accepted} lacks, if any. */
+  public static Optional<String> firstUnsupported(Set<String> attached, List<String> accepted) {
+    return attached
+      .stream()
+      .filter(m -> !accepted.contains(m))
+      .findFirst();
   }
 
   private Modalities() {}
