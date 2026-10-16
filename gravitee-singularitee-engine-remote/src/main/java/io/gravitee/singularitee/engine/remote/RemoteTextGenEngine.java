@@ -144,6 +144,11 @@ public final class RemoteTextGenEngine implements TextGenEngine {
   }
 
   @Override
+  public boolean rendersMessagesRemotely() {
+    return true;
+  }
+
+  @Override
   public String bosToken() {
     return bosToken;
   }
