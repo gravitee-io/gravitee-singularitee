@@ -65,7 +65,7 @@ beyond the build either. Everything in `examples/` outside `examples/vllm/` runs
 CPython out of, so it is skipped by default (`vllm.setupVenv.skip=true`):
 
 ```bash
-./scripts/setup-venv.sh -b metal        # or -b cuda | -b cpu; -d <dir>, -v 3.12
+./scripts/setup-venv.sh -b metal        # or -b cuda | -b cpu; -d <dir>, -v 3.12; -r adds vllm-srun
 ./run-server.sh --workspace examples/vllm/gpt-oss-20b-mac.yaml   # venv auto-detected
 ```
 
@@ -87,9 +87,9 @@ Metal applies `gpu_memory_utilization` to *total* unified memory rather than wha
 | `engine-api` | The plugin-facing contracts: step SPI, pipeline/step model, `PipelineContext`/`StepContext`, engine model interfaces, registries, template rendering. Its own coordinate `io.gravitee.singularitee.engine.api` and package namespace `io.gravitee.singularitee.engine.api.*` (no split package with `engine`). |
 | `engine` | The runtime that wires and executes them: `StepExecutorFactory`, `StepDispatcher` + platform decorators, `PipelineExecutor`, `ConversationStore`. Depends on `engine-api`; no step executors. Coordinate `io.gravitee.singularitee.engine`, package namespace `io.gravitee.singularitee.engine.*` (the pipeline runtime lives under `engine.pipeline`). |
 | `plugin-api` | Step plugin SPI (`StepExecutorPlugin`, `StepDecoratorPlugin`, `StepExecutorServices`) + assembly and license gate. Depends on `engine-api`, so plugins never pull the engine runtime. |
-| `plugins` | One module per core step: the 12 core OSS steps. Further steps can live in their own separate plugin repos, loaded the same way. |
+| `plugins` | One module per core step: the 13 core OSS steps. Further steps can live in their own separate plugin repos, loaded the same way. |
 | `engine-remote` | `remote_*` proxy engines + `ClientPipelineExecutor` (client-side DAG, remote models). |
-| `inference` | Vendored engines (`-api`, `-llama-cpp`, `-vllm`, `-onnx`, `-math`) behind `AbstractBatchEngine`. |
+| `inference` | Vendored engines (`-api`, `-llama-cpp`, `-vllm`, `-onnx`, `-math`) behind `AbstractBatchEngine`; `-decision` holds the engine-agnostic decision-model logic (prompt layout per family, scoring) over a `DecisionBackend`. |
 | `workspace` | `YamlWorkspaceLoader`: YAML to model/pipeline definitions. `ModelType` lives here. |
 | `grpc` | gRPC service impls, engine-adapter factories, HuggingFace resolvers. |
 | `http` | OpenAI-compatible HTTP/JSON API. Pure translation, no inference logic. |
@@ -125,7 +125,7 @@ docs/
 │   ├── steps/<type>.md  one page per step type, every key of its config
 │   └── templates/       the templates: section, Jinja variables, dialect templates
 ├── api/                 overview + conventions side by side
-│   ├── grpc/            the four services, every RPC, events, errors, auth
+│   ├── grpc/            the five services, every RPC, events, errors, auth
 │   ├── http/            OpenAI-compatible endpoints, envelope, SSE, auth
 │   └── java-client/     SingulariteeClient
 ├── guides/<topic>/      task-oriented: text-generation, classification, embeddings-and-reranking,
@@ -218,15 +218,15 @@ workspace:
 
 **Model types** (`ModelType.java`): `llama_cpp`, `vllm`, `onnx_classifier`, `onnx_embedding`,
 `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker`,
-the `remote_*` proxies, and `regex` / `composite_classifier` (pure Java, run anywhere).
+`llama_cpp_decision`, `vllm_decision`, `gliner_decision`, the `remote_*` proxies (`remote_decision` included), and `regex` / `composite_classifier` (pure Java, run anywhere).
 
 **Step types** (one plugin module each under `gravitee-singularitee-plugins/`): `infer`, `classify`, `embed`, `route`,
-`guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`.
-Further steps can ship as separate plugin repos, loaded the same way.
+`guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`,
+`decide`. Further steps can ship as separate plugin repos, loaded the same way.
 
 **Publication**: `task:`, `visible:` and `modalities:` apply to both a model and a pipeline entry.
 `task` is the slug `/v1/models` advertises (`text-generation`, `text-classification`,
-`token-classification`, `feature-extraction`, `reranking`); unset, a model reports its
+`token-classification`, `feature-extraction`, `reranking`, `decision`); unset, a model reports its
 engine's and a pipeline inherits the model behind its `role: output` step. Pipelines are
 never labelled `pipeline`. `visible: false` drops an entry from the listings and from HTTP
 resolution while leaving it callable as a pipeline dependency and over gRPC: publish the
@@ -373,12 +373,13 @@ GPU-only ONNX Runtime behind that fails on macOS. Rebuild before testing.
 the per-engine images; local development wants the default.
 
 **Keep the venv's vLLM version in step with the image.** `scripts/setup-venv.sh` pins vLLM
-`0.28.0`, matching `Dockerfile.vllm-cuda`'s `VLLM_IMAGE`; vLLM4j is compiled against a specific
-vLLM Python API, so a drifting venv fails at model load rather than at build. See
-[Engines](#engines-llamacpp-is-the-default) for the setup itself.
+`0.31.0` (vLLM4j `0.6.0`), matching `Dockerfile.vllm-cuda`'s `VLLM_IMAGE`; vLLM4j is compiled
+against a specific vLLM Python API, so a drifting venv fails at model load rather than at build.
+`vllm_decision` also needs `vllm-srun` (`setup-venv.sh -r`), pinned by `SR_RUNTIME_REF` in both
+the script and the Dockerfile. See [Engines](#engines-llamacpp-is-the-default) for the setup itself.
 
 **Keep `LLAMACPP_VERSION` in lockstep with llamaj.cpp.** The FFI bindings are ABI-specific;
-a mismatch shows up as a runtime `NoSuchMethodError`. Currently `b10276` ↔ llamaj.cpp `2.7.0`
+a mismatch shows up as a runtime `NoSuchMethodError`. Currently llama.cpp `v0.6.0` (nightly `b11429`) ↔ llamaj.cpp `2.9.1`
 (`Dockerfile.llama-cuda`, `install.sh`).
 
 **Java reads zero entries from openssl cert-only PKCS12 bundles.** `openssl pkcs12

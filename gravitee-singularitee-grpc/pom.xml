@@ -76,6 +76,10 @@
         </dependency>
         <dependency>
             <groupId>io.gravitee.singularitee.inference</groupId>
+            <artifactId>gravitee-singularitee-inference-decision</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.singularitee.inference</groupId>
             <artifactId>gravitee-singularitee-inference-llama-cpp</artifactId>
         </dependency>
         <dependency>

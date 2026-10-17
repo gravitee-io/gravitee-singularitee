@@ -17,13 +17,14 @@
 #
 # vLLM image (CUDA).
 #
-# Serves vllm / vllm_embedding / vllm_reranker. Built on vllm/vllm-openai, which
+# Serves vllm and vllm_decision. Built on vllm/vllm-openai, which
 # already carries CUDA, Python and vLLM itself; we only add the JVM and the
 # distribution. Nothing here runs vLLM's OpenAI server; the image is used purely
 # as a correctly-assembled vLLM runtime that vLLM4j drives in-process over FFM.
 #
 # Keep VLLM_IMAGE's version in step with scripts/setup-venv.sh's VLLM_VERSION:
 # vLLM4j is compiled against a specific vLLM Python API and both must agree.
+# Likewise SR_RUNTIME_REF with the script's: vllm_decision runs on that runtime.
 #
 # Build (the distribution must be assembled first):
 #   mvn clean install -DskipTests -Pdist-vllm
@@ -34,7 +35,7 @@
 #
 
 # cu129 runs on driver r525+; the default tag is CUDA 13 and needs r580+.
-ARG VLLM_IMAGE=vllm/vllm-openai:v0.28.0-cu129
+ARG VLLM_IMAGE=vllm/vllm-openai:v0.31.0-cu129
 
 FROM ${VLLM_IMAGE} AS runtime
 
@@ -86,6 +87,20 @@ RUN set -eux; \
     ln -sf "$LIBPY" "${GRAVITEEIO_HOME}/vllm-venv/lib/$(basename "${LIBPY%%.so*}").so"; \
     "${GRAVITEEIO_HOME}/vllm-venv/bin/python" -c 'import vllm; print("vllm", vllm.__version__)'; \
     chown -h graviteeio:root "${GRAVITEEIO_HOME}/vllm-venv" || true
+
+# vllm-srun, vLLM Semantic Router's model runtime, serves vllm_decision models.
+# It is not on PyPI: installed from the commit's source archive, which needs no
+# git in the image. torch is constrained to the one vLLM ships, so the runtime
+# shares it instead of pulling its own.
+ARG SR_RUNTIME_REF=de4b2f2c63fcc662f62766f9c5922c4d5d4efed3
+RUN set -eux; \
+    PY="${GRAVITEEIO_HOME}/vllm-venv/bin/python"; \
+    "$PY" -m pip --version >/dev/null 2>&1 || "$PY" -m ensurepip --upgrade; \
+    echo "torch==$("$PY" -c 'import torch; print(torch.__version__)')" > /tmp/torch.txt; \
+    "$PY" -m pip install --no-cache-dir --constraint /tmp/torch.txt \
+      "vllm-srun @ https://github.com/vllm-project/semantic-router/archive/${SR_RUNTIME_REF}.tar.gz#subdirectory=src/model-runtime"; \
+    rm -f /tmp/torch.txt; \
+    "$PY" -c 'import vllm_srun'
 
 # cuda-env.sh turns this into -Dvllm4j.venv=... and preloads libpython.
 ENV VLLM4J_VENV=${GRAVITEEIO_HOME}/vllm-venv

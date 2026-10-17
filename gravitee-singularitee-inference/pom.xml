@@ -36,6 +36,7 @@
     <modules>
         <module>gravitee-singularitee-inference-math</module>
         <module>gravitee-singularitee-inference-api</module>
+        <module>gravitee-singularitee-inference-decision</module>
         <module>gravitee-singularitee-inference-onnx</module>
         <module>gravitee-singularitee-inference-llama-cpp</module>
         <module>gravitee-singularitee-inference-vllm</module>

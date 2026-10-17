@@ -5,8 +5,8 @@
 ## Overview
 
 A workspace does not have to load its models in-process. A model of type `remote_llm`,
-`remote_classifier`, `remote_embedding` or `remote_reranker` is a thin proxy that calls the
-`Infer`, `Classify`, `Embed` or `TextRerank` RPC of the endpoint named by `server:` (or the
+`remote_classifier`, `remote_embedding`, `remote_reranker` or `remote_decision` is a thin proxy
+that calls the `Infer`, `Classify`, `Embed`, `TextRerank` or `Decide` RPC of the endpoint named by `server:` (or the
 `default:` endpoint). The pipeline executor is the same one the server uses, so every step
 type, halt and finish reason behaves identically; only the model calls travel over gRPC.
 
@@ -160,7 +160,7 @@ Full tables: [Workspaces](../../workspaces/README.md),
 | `endpoint.ssl` | bool | `false` | TLS with ALPN; trust and client certificate from `grpc.client.ssl.*`. |
 | `endpoint.username`, `endpoint.password` | string | unset | Basic auth metadata; on when `username` is non-blank. |
 | `endpoint.http2_keep_alive_timeout` | seconds | `-1` (forever) | Idle HTTP/2 connection timeout. |
-| `model.type` | enum | required | `remote_llm`, `remote_classifier`, `remote_embedding`, `remote_reranker`. |
+| `model.type` | enum | required | `remote_llm`, `remote_classifier`, `remote_embedding`, `remote_reranker`, `remote_decision`. |
 | `model.server` | string | `default` | Endpoint id; startup fails if neither it nor a `default` endpoint exists. |
 | `model.modalities` | list | probed | Override for proxies whose remote cannot be probed. |
 | `grpc.client.ssl.truststore.*`, `.keystore.*` | `type`, `path`, `password` (`keyPath` for PEM) | JVM default / unset | Outbound trust and identity. |

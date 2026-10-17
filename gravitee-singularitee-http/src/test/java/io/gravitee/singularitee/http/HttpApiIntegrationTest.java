@@ -177,6 +177,7 @@ class HttpApiIntegrationTest {
       router,
       inference,
       vector,
+      null,
       modelService,
       pipelineService,
       modelRegistry,

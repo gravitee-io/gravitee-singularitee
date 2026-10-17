@@ -90,6 +90,8 @@ client certificate. Passing `null` for `tls` uses the JVM default trust store.
 | `rank(RankRequest)` | `Single<RankResponse>` | `GraviteeVectorService/Rank` |
 | `textSimilarity(TextSimilarityRequest)` | `Single<TextSimilarityResponse>` | `GraviteeVectorService/TextSimilarity` |
 | `textRerank(TextRerankRequest)` | `Single<TextRerankResponse>` | `GraviteeVectorService/TextRerank` |
+| `decide(DecideRequest)` | `Single<DecideResponse>` | `GraviteeDecisionService/Decide` |
+| `decideBatch(DecideBatchRequest)` | `Single<DecideBatchResponse>` | `GraviteeDecisionService/DecideBatch` |
 | `shutdown()` / `close()` | void | Closes the gRPC client and, for owned instances, Vert.x. |
 
 Request and response types are the generated protobuf classes in
@@ -114,6 +116,43 @@ try (var client = new SingulariteeClient("localhost", 9090)) {
     System.out.println(vec.getEmbedding().getValuesCount() + " dims");
 }
 ```
+
+### Decisions
+
+```java
+import io.gravitee.singularitee.protocol.ChoiceQuestion;
+import io.gravitee.singularitee.protocol.DecideRequest;
+import io.gravitee.singularitee.protocol.DecisionOption;
+import io.gravitee.singularitee.protocol.DecisionQuestion;
+import io.gravitee.singularitee.protocol.NoulQuestion;
+import io.gravitee.singularitee.protocol.TemplatedInput;
+import com.google.protobuf.Value;
+
+var response = client.decide(DecideRequest.newBuilder()
+    .setPipelineId("triage")                       // or setModelId("judge")
+    .setTemplated(TemplatedInput.newBuilder()
+        .setText("I was charged twice and nobody has replied.")
+        .addQuestions(DecisionQuestion.newBuilder()
+            .setId("team")
+            .setInstructions(Value.newBuilder().setStringValue("Which team?"))
+            .setChoice(ChoiceQuestion.newBuilder()
+                .addOptions(DecisionOption.newBuilder().setKey("billing"))
+                .addOptions(DecisionOption.newBuilder().setKey("shipping"))))
+        .addQuestions(DecisionQuestion.newBuilder()
+            .setId("angry")
+            .setInstructions(Value.newBuilder().setStringValue("Is the customer angry?"))
+            .setNoul(NoulQuestion.getDefaultInstance())))
+    .build()).blockingGet();
+
+if (response.hasBlocked()) {
+    System.out.println("blocked: " + response.getBlocked().getMessage());
+} else {
+    response.getAnswersList().forEach(a -> System.out.println(a.getQuestionId() + " " + a));
+}
+```
+
+A guard that halts a decision pipeline sets `blocked` on a successful response; failures arrive
+as `GrpcErrorException` with `NOT_FOUND`, `INVALID_ARGUMENT`, `FAILED_PRECONDITION` or `INTERNAL`.
 
 ### Streaming
 

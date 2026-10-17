@@ -22,14 +22,17 @@ import io.gravitee.singularitee.inference.api.textgen.AudioContent;
 import io.gravitee.singularitee.inference.api.textgen.Content;
 import io.gravitee.singularitee.inference.api.textgen.ImageContent;
 import io.gravitee.singularitee.inference.api.textgen.InferencePerformance;
+import io.gravitee.singularitee.inference.api.textgen.PositionLogprobs;
 import io.gravitee.singularitee.inference.api.textgen.PromptStats;
 import io.gravitee.singularitee.inference.api.textgen.Role;
 import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.inference.api.textgen.TagConfig;
 import io.gravitee.singularitee.inference.api.textgen.TokenChannel;
+import io.gravitee.singularitee.inference.api.textgen.TokenLogprobEntry;
 import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
 import io.gravitee.vllm.engine.CompletionOutput;
 import io.gravitee.vllm.engine.GuidedDecodingParams;
+import io.gravitee.vllm.engine.LogprobEntry;
 import io.gravitee.vllm.engine.LoraRequest;
 import io.gravitee.vllm.engine.ModelIntrospection;
 import io.gravitee.vllm.engine.MultiModalData;
@@ -44,13 +47,17 @@ import io.gravitee.vllm.platform.VllmBackend;
 import io.gravitee.vllm.runtime.PythonRuntime;
 import io.gravitee.vllm.state.ConversationState;
 import java.lang.foreign.Arena;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -126,6 +133,18 @@ public class EngineAdapter
    * {@code memory_check: fail}, or when the weights alone exceed the budget.
    */
   public EngineAdapter(VllmConfig config) {
+    this.engine = buildEngine(config);
+    this.iterator = new VllmIterator(engine);
+  }
+
+  /**
+   * Builds a vLLM engine from {@code config} with this server's policies: platform and GPU
+   * gating, the Hugging Face token, the CPython runtime, then the VRAM pre-flight.
+   *
+   * @throws InsufficientVramException when the pre-flight fails under {@code memory_check: fail},
+   *                                   or when the weights alone exceed the budget
+   */
+  public static VllmEngine buildEngine(VllmConfig config) {
     VllmEngineBuilder builder = VllmEngine.builder().dtype(resolveDtype(config.dtype()));
 
     // The weights are fetched in Java before we get here, so point vLLM at the
@@ -227,8 +246,7 @@ public class EngineAdapter
     builder.initRuntime();
 
     runMemoryCheck(config);
-    this.engine = builder.build();
-    this.iterator = new VllmIterator(engine);
+    return builder.build();
   }
 
   /**
@@ -601,6 +619,8 @@ public class EngineAdapter
     if (request.structuredOutput() != null) {
       sp.guidedDecoding(guidedDecoding(request.structuredOutput()));
     }
+    int topLogprobs = request.topLogprobs() != null ? Math.max(0, request.topLogprobs()) : 0;
+    if (topLogprobs > 0) sp.logprobs(topLogprobs);
 
     // Keep the markers the tag FSM below is about to look for.
     //
@@ -659,7 +679,8 @@ public class EngineAdapter
       requestId,
       sp,
       conversationState,
-      System.currentTimeMillis()
+      System.currentTimeMillis(),
+      topLogprobs
     );
     states.put(internalId, state);
     return state;
@@ -808,6 +829,48 @@ public class EngineAdapter
   }
 
   @Override
+  public PositionLogprobs logprobsOf(VllmSequenceState state) {
+    if (state == null || state.topLogprobs == 0 || state.lastOutput == null) {
+      return null;
+    }
+    return positionLogprobs(state.lastOutput, state.topLogprobs);
+  }
+
+  /**
+   * The logprobs of the last token {@code output} generated: the sampled token, and the
+   * {@code top} most likely candidates by rank. vLLM may add the sampled token outside the top
+   * ranks; it is then listed last. {@code null} when the output carries none.
+   */
+  static PositionLogprobs positionLogprobs(VllmOutput output, int top) {
+    List<Integer> tokenIds = output.tokenIds();
+    List<Map<Integer, LogprobEntry>> logprobs = output.logprobs();
+    if (tokenIds.isEmpty() || logprobs == null || logprobs.isEmpty()) {
+      return null;
+    }
+    Map<Integer, LogprobEntry> position = logprobs.getLast();
+    LogprobEntry chosen = position == null ? null : position.get(tokenIds.getLast());
+    if (chosen == null) {
+      return null;
+    }
+    var candidates = position
+      .values()
+      .stream()
+      .filter(e -> e.rank() <= top)
+      .sorted(Comparator.comparingInt(LogprobEntry::rank))
+      .map(EngineAdapter::toLogprobEntry)
+      .collect(Collectors.toCollection(ArrayList::new));
+    if (chosen.rank() > top) candidates.add(toLogprobEntry(chosen));
+    return new PositionLogprobs(toLogprobEntry(chosen), candidates);
+  }
+
+  private static TokenLogprobEntry toLogprobEntry(LogprobEntry entry) {
+    String token = entry.decodedToken() == null ? "" : entry.decodedToken();
+    var bytes = new ArrayList<Integer>();
+    for (byte b : token.getBytes(StandardCharsets.UTF_8)) bytes.add(b & 0xFF);
+    return new TokenLogprobEntry(token, entry.tokenId(), entry.logprob(), bytes);
+  }
+
+  @Override
   public TokenChannel channelOf(VllmSequenceState state) {
     if (state == null || state.conversationState == null) {
       return null;
@@ -934,6 +997,7 @@ public class EngineAdapter
     final SamplingParams samplingParams;
     final ConversationState conversationState;
     final long startTimeMs;
+    final int topLogprobs;
     VllmOutput lastOutput;
     String finishReason;
     long finishedTimeMs;
@@ -943,12 +1007,14 @@ public class EngineAdapter
       String requestId,
       SamplingParams samplingParams,
       ConversationState conversationState,
-      long startTimeMs
+      long startTimeMs,
+      int topLogprobs
     ) {
       this.requestId = requestId;
       this.samplingParams = samplingParams;
       this.conversationState = conversationState;
       this.startTimeMs = startTimeMs;
+      this.topLogprobs = topLogprobs;
     }
   }
 }

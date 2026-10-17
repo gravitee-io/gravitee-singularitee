@@ -94,6 +94,10 @@ Hidden from Jinja: `prompt` is exposed but excluded from the step-map split; `to
 | `classify` | `<out>` (`<id>.label`) | Top label. |
 | `classify` | `<out>.score` | Top score. |
 | `embed` | `<out>` (`<id>.embedding`) | `[f0, f1, ...]`. |
+| `decide` | `<p>.<q>` (`p` = `output_field`, default `<id>`) | Per answer `q`: the chosen key (choice), the expected level (score) or the probability of yes (noul). |
+| `decide` | `<p>.<q>.confidence` | Choice and score: 0 to 1. Read by `route` with `strategy: decision` and `min_confidence`. |
+| `decide` | `<p>.<q>.mode` | Score: the most probable level. |
+| `decide` | `<p>.<q>.probabilities` | Choice and score: JSON object of key to probability. |
 | `route` | `<id>.label` | Resolved label. |
 | `route` | `<id>.matched` | `true` when a rule matched. |
 | `guard` | `<id>.label`, `<id>.score` | Top matched trigger and its score (4 decimals). |
@@ -129,6 +133,8 @@ Hidden from Jinja: `prompt` is exposed but excluded from the step-map split; `to
 | halt state (`haltReason`, `breakOutputField`, `haltMessage`) | `break`, `loop` (never), guards, `sub_pipeline`, `todo` | `PipelineExecutor` |
 | usage and performance totals | `infer`, `sub_pipeline` | the final `COMPLETED` event |
 | todo plan, plan lock, constraints | `todo`, request restore | `todo`, Jinja `todos` / `constraints`, session and conversation stores |
+| decision request | a decision call targeting the pipeline | `decide` (`questions: request`) |
+| decision result, decision failure | `decide` | the decision service, which answers the call with them |
 
 ## Notes
 

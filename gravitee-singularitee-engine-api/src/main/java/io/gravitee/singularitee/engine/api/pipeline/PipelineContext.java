@@ -19,6 +19,8 @@ import io.gravitee.singularitee.engine.api.ChatRole;
 import io.gravitee.singularitee.engine.api.ChatTurn;
 import io.gravitee.singularitee.engine.api.StructuredOutputs;
 import io.gravitee.singularitee.engine.api.tools.ServerToolNames;
+import io.gravitee.singularitee.inference.api.decision.DecisionRequest;
+import io.gravitee.singularitee.inference.api.decision.DecisionResult;
 import io.gravitee.singularitee.inference.api.textgen.StructuredOutput;
 import io.gravitee.singularitee.protocol.ChatMessage;
 import io.gravitee.singularitee.protocol.ChatMessageList;
@@ -216,6 +218,18 @@ public final class PipelineContext {
    */
   private volatile String haltMessage = null;
 
+  /** What a decision call sent when this pipeline is its target; {@code null} otherwise. */
+  private volatile DecisionRequest decisionRequest;
+
+  /** The answers of the last {@code decide} step that ran; {@code null} until one does. */
+  private volatile DecisionResult decisionResult;
+
+  /**
+   * Why a {@code decide} step failed. The dispatcher ends a pipeline quietly on a step error, so a
+   * decision call reads the cause here rather than from the stream.
+   */
+  private volatile RuntimeException decisionFailure;
+
   /**
    * Builds the context for one pipeline run from the incoming request parts.
    * Proto messages are converted to {@link ChatTurn}s; {@code null} collections are
@@ -311,6 +325,36 @@ public final class PipelineContext {
    */
   public StructuredOutput requestStructuredOutput() {
     return requestStructuredOutput;
+  }
+
+  /** Records what a decision call sent, before the pipeline runs. */
+  public void setDecisionRequest(DecisionRequest decisionRequest) {
+    this.decisionRequest = decisionRequest;
+  }
+
+  /** What a decision call sent when this pipeline is its target, or {@code null}. */
+  public DecisionRequest decisionRequest() {
+    return decisionRequest;
+  }
+
+  /** Records the answers of a {@code decide} step; the last one to run wins. */
+  public void setDecisionResult(DecisionResult decisionResult) {
+    this.decisionResult = decisionResult;
+  }
+
+  /** The answers of the last {@code decide} step that ran, or {@code null}. */
+  public DecisionResult decisionResult() {
+    return decisionResult;
+  }
+
+  /** Records why a {@code decide} step failed. */
+  public void setDecisionFailure(RuntimeException decisionFailure) {
+    this.decisionFailure = decisionFailure;
+  }
+
+  /** Why a {@code decide} step failed, or {@code null}. */
+  public RuntimeException decisionFailure() {
+    return decisionFailure;
   }
 
   /** Sets the client cache-affinity key (see {@link #cacheKey()}). */

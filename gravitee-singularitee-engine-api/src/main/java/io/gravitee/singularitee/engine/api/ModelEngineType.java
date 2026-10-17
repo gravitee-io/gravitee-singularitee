@@ -33,4 +33,7 @@ public enum ModelEngineType {
 
   /** Synchronous cross-encoder reranking (ONNX BERT backend). */
   RERANKER,
+
+  /** Typed questions answered without generating tokens (llama.cpp backend). */
+  DECISION,
 }

@@ -139,11 +139,12 @@ NATIVE_DIR="${NATIVE_DIR:-$HOME/.llama.cpp}"
 # Detected from the workspace so `--workspace examples/vllm/...` just works;
 # --venv or $VLLM_VENV override the location.
 JAVA_OPTS="${JAVA_OPTS:-}"
-# Three ways a workspace can be a vLLM one: it declares the type directly, it
+# Three ways a workspace can be a vLLM one: it declares the type directly
+# (vllm, or vllm_decision whose runtime shares the venv), it
 # lives in examples/vllm/, or (the case that is easy to miss) it is a modular
 # server whose "type: vllm" sits in an included fragment (includes.models:
 # "vllm/llm-*.yaml") rather than in the file itself.
-if grep -qE '^[[:space:]]*type:[[:space:]]*vllm[[:space:]]*$' "$WORKSPACE" 2>/dev/null \
+if grep -qE '^[[:space:]]*type:[[:space:]]*vllm(_decision)?[[:space:]]*$' "$WORKSPACE" 2>/dev/null \
    || grep -qE '^[[:space:]]*-[[:space:]]*vllm/' "$WORKSPACE" 2>/dev/null \
    || [[ "$WORKSPACE" == */examples/vllm/* ]]; then
   VLLM_VENV="${VLLM_VENV:-$HOME/.venv-gravitee-ai/.venv}"

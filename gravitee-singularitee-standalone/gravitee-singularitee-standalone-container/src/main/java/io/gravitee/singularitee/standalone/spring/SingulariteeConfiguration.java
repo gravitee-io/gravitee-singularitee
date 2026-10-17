@@ -31,9 +31,12 @@ import io.gravitee.plugin.core.api.PluginClassLoaderFactory;
 import io.gravitee.plugin.core.api.PluginRegistry;
 import io.gravitee.singularitee.adapter.ModelEngineFactory;
 import io.gravitee.singularitee.adapter.classifier.OnnxClassifierFactory;
+import io.gravitee.singularitee.adapter.decision.LlamaCppDecisionFactory;
+import io.gravitee.singularitee.adapter.decision.VllmDecisionFactory;
 import io.gravitee.singularitee.adapter.embedding.LlamaCppEmbeddingFactory;
 import io.gravitee.singularitee.adapter.embedding.OnnxEmbeddingFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerClassifierFactory;
+import io.gravitee.singularitee.adapter.gliner.GlinerDecisionFactory;
 import io.gravitee.singularitee.adapter.gliner.GlinerNerFactory;
 import io.gravitee.singularitee.adapter.reranker.LlamaCppRerankerFactory;
 import io.gravitee.singularitee.adapter.reranker.OnnxRerankerFactory;
@@ -66,6 +69,7 @@ import io.gravitee.singularitee.inference.math.vanilla.NativeMath;
 import io.gravitee.singularitee.plugin.api.StepExecutorServices;
 import io.gravitee.singularitee.plugin.api.StepPlugins;
 import io.gravitee.singularitee.protocol.ModelType;
+import io.gravitee.singularitee.service.GraviteeDecisionServiceImpl;
 import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.service.GraviteePipelineServiceImpl;
@@ -404,8 +408,10 @@ public class SingulariteeConfiguration {
   static final String LLAMA_CPP_PROBE = "io.gravitee.llama.cpp.LlamaModel";
 
   static final String VLLM_PROBE = "io.gravitee.vllm.engine.VllmEngine";
+  static final String VLLM_DECISION_PROBE = "io.gravitee.vllm.decision.VllmDecider";
   static final String ONNX_PROBE = "ai.onnxruntime.OrtEnvironment";
   static final String GLINER_PROBE = "io.gravitee.lab.gliner4j.runtime.BaseRuntime";
+  static final String GLINER_DECISION_PROBE = "io.gravitee.lab.gliner4j.GLiNER4jDecider";
 
   /**
    * Engine factories keyed by model type, limited to the engines whose library is on the
@@ -415,7 +421,8 @@ public class SingulariteeConfiguration {
   public Map<ModelType, ModelEngineFactory> engineFactories(
     Vertx vertx,
     GioMaths gioMaths,
-    Configuration configuration
+    Configuration configuration,
+    TemplateRenderer templateRenderer
   ) {
     // Server-wide streaming policy (gravitee.yml: ai.streaming.buffer-capacity): the
     // per-sequence token buffer depth a slow client may fall behind before its stream
@@ -439,10 +446,22 @@ public class SingulariteeConfiguration {
     registerIfPresent(factories, ModelType.MODEL_TYPE_LLAMA_CPP_RERANKER, LLAMA_CPP_PROBE, () ->
       new LlamaCppRerankerFactory(gioMaths, vertx)
     );
+    registerIfPresent(factories, ModelType.MODEL_TYPE_LLAMA_CPP_DECISION, LLAMA_CPP_PROBE, () ->
+      new LlamaCppDecisionFactory(new DelegatingChatTemplateRenderer(templateRenderer), vertx)
+    );
 
     var vllmDefaults = getVllmDistributedDefaults(configuration);
     registerIfPresent(factories, ModelType.MODEL_TYPE_VLLM, VLLM_PROBE, () ->
       new VllmEngineFactory(vllmDefaults)
+    );
+    registerIfPresent(factories, ModelType.MODEL_TYPE_VLLM_DECISION, VLLM_DECISION_PROBE, () ->
+      new VllmDecisionFactory(
+        getModelsDir(configuration),
+        getHfToken(configuration),
+        new DelegatingChatTemplateRenderer(templateRenderer),
+        new VllmEngineFactory(vllmDefaults),
+        vertx
+      )
     );
 
     registerIfPresent(factories, ModelType.MODEL_TYPE_ONNX_CLASSIFIER, ONNX_PROBE, () ->
@@ -459,6 +478,9 @@ public class SingulariteeConfiguration {
     );
     registerIfPresent(factories, ModelType.MODEL_TYPE_GLINER_NER, GLINER_PROBE, () ->
       new GlinerNerFactory(vertx)
+    );
+    registerIfPresent(factories, ModelType.MODEL_TYPE_GLINER_DECISION, GLINER_DECISION_PROBE, () ->
+      new GlinerDecisionFactory(vertx)
     );
 
     LOGGER.info(
@@ -548,6 +570,26 @@ public class SingulariteeConfiguration {
       vertx.getDelegate(),
       modelRegistry,
       gioMaths,
+      singulariteeTracer,
+      inferenceMetrics
+    );
+  }
+
+  /** Decision service: typed questions answered by decision models and decision pipelines. */
+  @Bean
+  public GraviteeDecisionServiceImpl decisionService(
+    Vertx vertx,
+    ModelRegistry modelRegistry,
+    PipelineRegistry pipelineRegistry,
+    PipelineExecutor pipelineExecutor,
+    Tracer singulariteeTracer,
+    InferenceMetrics inferenceMetrics
+  ) {
+    return new GraviteeDecisionServiceImpl(
+      vertx.getDelegate(),
+      modelRegistry,
+      pipelineRegistry,
+      pipelineExecutor,
       singulariteeTracer,
       inferenceMetrics
     );
@@ -791,6 +833,7 @@ public class SingulariteeConfiguration {
     GraviteePipelineServiceImpl pipelineService,
     GraviteeInferenceServiceImpl inferenceService,
     GraviteeVectorServiceImpl vectorService,
+    GraviteeDecisionServiceImpl decisionService,
     Tracer singulariteeTracer,
     io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState
   ) {
@@ -802,6 +845,7 @@ public class SingulariteeConfiguration {
       pipelineService,
       inferenceService,
       vectorService,
+      decisionService,
       singulariteeTracer,
       readinessState
     );
@@ -815,6 +859,7 @@ public class SingulariteeConfiguration {
     io.gravitee.node.vertx.server.VertxServerFactory serverFactory,
     GraviteeInferenceServiceImpl inferenceService,
     GraviteeVectorServiceImpl vectorService,
+    GraviteeDecisionServiceImpl decisionService,
     GraviteeModelServiceImpl modelService,
     GraviteePipelineServiceImpl pipelineService,
     ModelRegistry modelRegistry,
@@ -828,6 +873,7 @@ public class SingulariteeConfiguration {
       serverFactory,
       inferenceService,
       vectorService,
+      decisionService,
       modelService,
       pipelineService,
       modelRegistry,

@@ -1,16 +1,17 @@
 # gRPC API
 
-> The primary API: four services on port 9090, defined by the `.proto` files in `gravitee-singularitee-protocol` and implemented in `gravitee-singularitee-grpc`.
+> The primary API: five services on port 9090, defined by the `.proto` files in `gravitee-singularitee-protocol` and implemented in `gravitee-singularitee-grpc`.
 
 ## Overview
 The gRPC front is a Vert.x gRPC server built through gravitee-node's `VertxServerFactory`, so TLS
 with hot-reloadable certificates, SNI, mTLS and the HAProxy PROXY protocol all come from the
-`grpc.*` block in `gravitee.yml`. Four services share one port:
+`grpc.*` block in `gravitee.yml`. Five services share one port:
 
 | Service | Proto | Role |
 | --- | --- | --- |
 | `GraviteeInferenceService` | `inference.proto` | Streaming text generation (`Infer`, `InferPipeline`) and classification. |
 | `GraviteeVectorService` | `vector.proto` | Embeddings, cosine similarity, ranking, text similarity, reranking. |
+| `GraviteeDecisionService` | `decision.proto` | Typed questions (choice, score, noul) answered by a decision model or a decision pipeline. |
 | `GraviteeModelService` | `model.proto` | Read-only model catalogue. |
 | `GraviteePipelineService` | `pipeline.proto` | Read-only pipeline catalogue. |
 
@@ -18,7 +19,7 @@ Models and pipelines are loaded once at startup from the workspace; there is no 
 retire RPC. Server reflection is not registered: point tools at the proto files.
 
 ## Key types
-- `GraviteeInferenceServiceImpl`, `GraviteeVectorServiceImpl`, `GraviteeModelServiceImpl`, `GraviteePipelineServiceImpl` (`gravitee-singularitee-grpc`, package `io.gravitee.singularitee.service`): the implementations, driven by both fronts.
+- `GraviteeInferenceServiceImpl`, `GraviteeVectorServiceImpl`, `GraviteeDecisionServiceImpl`, `GraviteeModelServiceImpl`, `GraviteePipelineServiceImpl` (`gravitee-singularitee-grpc`, package `io.gravitee.singularitee.service`): the implementations, driven by both fronts.
 - `GrpcServerComponent` (`gravitee-singularitee-standalone-container`): binds the services, the readiness gate, tracing and `GrpcBasicAuthHandler`.
 - `InferResponse`: the streamed event envelope shared by `Infer` and `InferPipeline`.
 - `FinishReason`, `StepRole`, `ResponseEventType`: the enums a streaming client switches on.
@@ -53,6 +54,8 @@ a classifier`, or `Model '<id>' is neither an embedding nor a reranker model`. S
 behave differently: an `Infer` against an unknown id or a non-text-generation model ends the
 stream with no events at all, and a failure during generation (guard block, engine error, unknown
 `previous_response_id`) arrives as a `RESPONSE_EVENT_TYPE_FAILED` event rather than a gRPC error.
+`GraviteeDecisionService` maps its failures to proper status codes, see
+[GraviteeDecisionService](#graviteedecisionservice).
 
 **Streaming.** `Infer` and `InferPipeline` return a server stream of `InferResponse`:
 
@@ -156,7 +159,9 @@ Tags 4 and 5 are reserved and never emitted.
 `ClassifyResponse { top_label, top_score, map<string,float> all_scores, repeated ClassifyResult results }`;
 `ClassifyResult { label, score, optional token, optional start, optional end }` carries character
 offsets for token-classification models. `ClassifyLabel { name, description }` overrides the
-label set per request on GLiNER models.
+label set per request on GLiNER models and on decision models published with `as_classifier`;
+labels a decision classifier refuses (duplicates, too many, none when it has no labels of its
+own) answer `INVALID_ARGUMENT`.
 
 ### GraviteeVectorService
 
@@ -174,6 +179,40 @@ label set per request on GLiNER models.
 lengths required). `top_k: 0` returns every candidate, sorted. `TextRerank` accepts an embedding
 model (cosine ranking) or a reranker model (cross-encoder scoring).
 
+### GraviteeDecisionService
+
+| RPC | Request | Response |
+| --- | --- | --- |
+| `Decide` | `DecideRequest { oneof target { model_id, pipeline_id }, oneof input { TemplatedInput templated, RawInput raw }, include_raw_scores }` | `DecideResponse { model_id, repeated DecisionAnswer answers, TokenUsage usage, DecisionBlocked blocked }` |
+| `DecideBatch` | `DecideBatchRequest { oneof target, repeated DecideBatchState states, repeated DecisionQuestion questions, include_raw_scores }` | `DecideBatchResponse { repeated DecideResponse results }` |
+
+A target is a decision model (`llama_cpp_decision`, `vllm_decision`, `gliner_decision`, `remote_decision`) or a pipeline whose task is
+`decision` (its `role: output` step is a `decide` step). Templated input lets the server render
+the prompt from the model's prompt source; raw input sends prompts the caller already rendered.
+Which of the two a model accepts is in `GetModelResponse.decision`.
+
+| Message | Fields |
+| --- | --- |
+| `TemplatedInput` | `oneof state { text, google.protobuf.Value json, ChatMessageList messages }`, `repeated MediaContent images`, `repeated DecisionQuestion questions` (empty for a pipeline whose decide step declares its own). |
+| `DecisionQuestion` | `id`, `google.protobuf.Value instructions`, `oneof kind { ChoiceQuestion choice { repeated DecisionOption options { key, description } }, ScoreQuestion score { repeated Value levels }, NoulQuestion noul { optional when_true, optional when_false } }`. |
+| `RawInput` | `repeated RawPrompt prompts`. |
+| `RawPrompt` | `question_id`, `oneof kind { RawChoice { option_keys }, RawScore { levels }, RawNoul }`, `oneof body { text, TokenList tokens }`. Text is tokenized with special tokens parsed and no BOS. |
+| `DecisionAnswer` | `question_id`, `oneof result { ChoiceAnswer { choice, probabilities, confidence }, ScoreAnswer { score, mode, probabilities, confidence }, NoulAnswer { probability_true } }`, `repeated RawScores raw_scores` (one per scoring variant, before temperature, only with `include_raw_scores`). |
+| `OptionProbability` | `key`, `probability`; choice options in prompt order, score levels keyed `"0".."n-1"`. |
+| `DecisionBlocked` | `code` (`content_filter`), `message`, `step_id`: set when a guard halted the pipeline. This is a successful response, not an error. |
+
+`usage.prompt_tokens` counts every prompt token evaluated; nothing is generated. Questions are
+rendered and answered in request order. `DecideBatch` asks the same questions about each state;
+results come back in input order and the first failure fails the call.
+
+| Status | When |
+| --- | --- |
+| `NOT_FOUND` | Unknown model or pipeline id. |
+| `INVALID_ARGUMENT` | Malformed question or prompt; the message names it (`questions.<id>: ...`). |
+| `FAILED_PRECONDITION` | Not a decision target, an input mode the model's prompt source refuses, or media (images are not read yet). |
+| `INTERNAL` | The model produced no usable scores (a joint head that could not use the decision order). |
+| `UNAVAILABLE` | Workspace still loading. |
+
 ### GraviteeModelService
 
 | RPC | Request | Response |
@@ -186,12 +225,14 @@ model (cosine ranking) or a reranker model (cross-encoder scoring).
 | Field | Purpose |
 | --- | --- |
 | `model_id`, `model_name` | Logical id and HuggingFace repo or path. |
-| `model_type` | `ModelType` enum: `LLAMA_CPP`, `VLLM`, `ONNX_CLASSIFIER`, `ONNX_EMBEDDING`, `GLINER_CLASSIFIER`, `GLINER_NER`, `ONNX_RERANKER`, `LLAMA_CPP_EMBEDDING`, `LLAMA_CPP_RERANKER`. |
+| `model_type` | `ModelType` enum: `LLAMA_CPP`, `VLLM`, `ONNX_CLASSIFIER`, `ONNX_EMBEDDING`, `GLINER_CLASSIFIER`, `GLINER_NER`, `ONNX_RERANKER`, `LLAMA_CPP_EMBEDDING`, `LLAMA_CPP_RERANKER`, `LLAMA_CPP_DECISION`, `VLLM_DECISION`. |
 | `status` | `MODEL_STATUS_ACTIVE` or `MODEL_STATUS_ERROR`. |
 | `chat_template`, `bos_token`, `eos_token` | Template metadata, so a remote client can render prompts locally. |
-| `task` | `text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`; empty when unknown. |
+| `task` | `text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`, `decision`; empty when unknown. |
 | `hidden` | `true` for `visible: false` entries. |
 | `input_modalities` | `text` plus `image` and/or `audio`; empty reads as text-only. |
+| `output_modalities` | `decisions` for a decision model, the value llama.cpp's server reports; empty reads as text. |
+| `decision` | Decision models only: `DecisionInfo { family, max_options, joint, templated, raw }`, the family (`openjev`, `lev`, `nimble`, `kev`, `laya`, `clef`, `custom` for llama.cpp and `vllm_decision`; `decision1`, `decision2`, `decision3` for vLLM Semantic Router models, `gliner` for `gliner_decision`), the most options a question may have, whether questions are decided together, and which input modes the model accepts. |
 
 ### GraviteePipelineService
 
@@ -236,6 +277,13 @@ grpcurl -plaintext -import-path $PROTO -proto io/gravitee/singularitee/protocol/
 grpcurl -plaintext -import-path $PROTO -proto io/gravitee/singularitee/protocol/inference.proto \
   -d '{"model_id":"pii","text":"mail me at a@b.com"}' \
   localhost:9090 $PKG.GraviteeInferenceService/Classify
+
+# Decision: typed questions about one state
+grpcurl -plaintext -import-path $PROTO -proto io/gravitee/singularitee/protocol/decision.proto \
+  -d '{"model_id":"judge","templated":{"text":"The app crashes when I open settings.","questions":[
+       {"id":"route","instructions":"Which team?","choice":{"options":[{"key":"billing"},{"key":"technical"}]}},
+       {"id":"angry","instructions":"Is the user angry?","noul":{}}]}}' \
+  localhost:9090 $PKG.GraviteeDecisionService/Decide
 
 # Embeddings
 grpcurl -plaintext -import-path $PROTO -proto io/gravitee/singularitee/protocol/vector.proto \
@@ -293,5 +341,6 @@ grpcurl -cacert certs/ca.pem -import-path $PROTO -proto io/gravitee/singularitee
 - [HTTP API](../http/README.md)
 - [Pipelines](../../concepts/pipelines/README.md)
 - [Structured output](../../guides/structured-output/README.md)
+- [`decide` step](../../reference/steps/decide.md)
 - [Remote models and multi-server](../../guides/remote-and-multi-server/README.md)
 - [Observability](../../operations/observability/README.md)

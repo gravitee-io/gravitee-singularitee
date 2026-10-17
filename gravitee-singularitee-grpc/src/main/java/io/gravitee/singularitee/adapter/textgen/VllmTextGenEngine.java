@@ -32,8 +32,9 @@ import org.slf4j.LoggerFactory;
 /**
  * {@link TextGenEngine} backed by a vLLM {@link BatchEngine}.
  *
- * <p>This class and {@link VllmEngineFactory} are the <strong>only</strong> places in the
- * project that may import {@code gravitee-inference-vllm} types.
+ * <p>This class and {@link VllmEngineFactory}, with their decision counterparts
+ * {@code VllmDecisionEngine} and {@code VllmDecisionFactory}, are the <strong>only</strong> places
+ * in the project that may import {@code gravitee-inference-vllm} types.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -185,7 +186,8 @@ public final class VllmTextGenEngine
       null, // tools: rendered by Jinja4j at the executor level
       loraName(request, defaultLora),
       loraPath(request, defaultLora),
-      request.structuredOutput()
+      request.structuredOutput(),
+      request.topLogprobs()
     );
   }
 

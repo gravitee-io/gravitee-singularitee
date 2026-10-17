@@ -24,12 +24,13 @@ import java.util.List;
  * {@code adapter} package (registry, pipeline, service) are allowed to reference.
  * No {@code gravitee-inference-*} types ever cross this boundary.
  *
- * <p>Permitted subtypes cover the four engine categories:
+ * <p>Permitted subtypes cover the five engine categories:
  * <ul>
  *   <li>{@link TextGenEngine}: streaming token generation (llama.cpp, vLLM)</li>
  *   <li>{@link ClassifierEngine}: synchronous label + score classification (ONNX BERT)</li>
  *   <li>{@link EmbeddingEngine}: synchronous dense vector embedding (ONNX BERT)</li>
  *   <li>{@link RerankerEngine}: synchronous cross-encoder reranking (ONNX BERT)</li>
+ *   <li>{@link DecisionEngine}: typed questions answered in one forward pass (llama.cpp)</li>
  * </ul>
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
@@ -37,7 +38,7 @@ import java.util.List;
  */
 public sealed interface ModelEngine
   extends AutoCloseable
-  permits TextGenEngine, ClassifierEngine, EmbeddingEngine, RerankerEngine {
+  permits TextGenEngine, ClassifierEngine, EmbeddingEngine, RerankerEngine, DecisionEngine {
   /**
    * Returns the type category of this engine.
    *

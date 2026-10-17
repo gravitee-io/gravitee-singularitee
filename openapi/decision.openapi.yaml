@@ -1,0 +1,388 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+openapi: 3.1.0
+info:
+  title: Singularitee Decision API
+  version: "1.0"
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  description: |
+    Typed questions (`choice`, `score`, `noul`) answered by a decision model in one
+    forward pass, over the HTTP API of `gravitee-singularitee-http`. Nothing is
+    generated: answers are probabilities read from the model.
+
+    - Two routes over the same service: `/v1/systemone` takes and returns the
+      request and response shape of TypeSafe's System One API, as llama.cpp's
+      server also serves it;
+      `/v1/decisions` is OpenAI-shaped (`id`, `object`, `created`, `usage`, the
+      error object) and mirrors the gRPC messages, with ordered arrays.
+    - Both paths are served under `/v1` (documented here) and bare.
+    - `model` is a decision model id (`llama_cpp_decision`, `vllm_decision`, `gliner_decision`, `remote_decision`) or the
+      id of a pipeline whose task is `decision`, that is whose `role: output` step is
+      a `decide` step; `pipeline:<id>` forces the pipeline registry. An unknown or
+      hidden id returns `400` with `code: model_not_found`; anything else that does
+      not decide returns `400` with `code: unsupported_model`.
+    - Questions are rendered and answered in request order.
+    - Image input is not read yet: any image is refused with `unsupported_modality`.
+    - A decision pipeline halted by a guard answers `200` with no answers and a
+      `blocked` object; it is not an error.
+    - The server is opt-in (`http.enabled: false` by default) and listens on port `8080`.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+tags:
+  - name: Decisions
+    description: Choice, score and yes/no questions answered by a decision model.
+
+paths:
+  /v1/systemone:
+    post:
+      tags: [Decisions]
+      operationId: systemOne
+      summary: Answer typed questions, TypeSafe System One shape
+      description: |
+        Questions are an object keyed by id; answers come back keyed the same way.
+        Templated input only: the server renders the prompt from the model's prompt
+        source. A model configured with `prompt.template: none` answers `400` with
+        `code: unsupported_input`.
+
+        Differences from TypeSafe's System One API: a validation error is `400` with
+        the error object, not `422`; `usage.output_tokens` is always `0`; the response
+        `model` echoes the id that was asked for; `model` may also name a decision
+        pipeline; overload is `503` while models load, not `429` / `529`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemOneRequest"
+      responses:
+        "200":
+          description: One answer per question.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemOneResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+  /v1/decisions:
+    post:
+      tags: [Decisions]
+      operationId: decide
+      summary: Answer typed questions, OpenAI-shaped
+      description: |
+        Send either `input` with `questions` (the server renders the prompts), or
+        `prompts` the caller already rendered (the server only scores them). Sending
+        both, or neither, is a `400`. Which mode a model accepts depends on its prompt
+        source: a model without a template takes prompts only, a model that decides
+        all questions jointly (clef) takes questions only; the other mode answers
+        `400` with `code: unsupported_input`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecisionsRequest"
+      responses:
+        "200":
+          description: One answer per question or prompt, in request order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionsResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503": { $ref: "#/components/responses/NotReady" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Opt-in API-key auth (`http.auth.enabled: true`, `http.auth.type: bearer`,
+        keys in `http.auth.tokens`). When disabled, requests need no credentials.
+        Failures return 401 with `WWW-Authenticate: Bearer` and `code: invalid_api_key`.
+
+  responses:
+    BadRequest:
+      description: |
+        Invalid JSON or schema violation, or a malformed question or prompt
+        (`code: invalid_request_error`, the message names it as `questions.<id>: ...`);
+        unknown or hidden model (`code: model_not_found`); a model or pipeline that does
+        not decide (`code: unsupported_model`); an input mode the model refuses
+        (`code: unsupported_input`); an image (`code: unsupported_modality`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: "Missing or invalid bearer token (`code: invalid_api_key`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServerError:
+      description: |
+        The model produced no usable scores (`type: server_error`, `code: server_error`),
+        or an unexpected failure (`type: internal_error`, `code: internal_error`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotReady:
+      description: "Workspace still loading (`type: server_error`, `code: model_not_ready`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, type, param, code]
+          properties:
+            message: { type: string }
+            type:
+              type: string
+              enum: [invalid_request_error, internal_error, server_error]
+            param:
+              type: [string, "null"]
+              description: The offending field, or `null`.
+            code:
+              type: [string, "null"]
+              enum:
+                - invalid_request_error
+                - model_not_found
+                - unsupported_model
+                - unsupported_input
+                - unsupported_modality
+                - invalid_api_key
+                - model_not_ready
+                - not_found
+                - method_not_allowed
+                - server_error
+                - internal_error
+                - null
+
+    JsonValue:
+      description: Any JSON value. A value that is not a string reaches the prompt template as JSON.
+
+    QuestionType:
+      type: string
+      enum: [choice, score, noul]
+
+    Blocked:
+      type: object
+      description: Set when a guard halted the decision pipeline before it decided.
+      required: [code, message]
+      properties:
+        code: { type: string, const: content_filter }
+        message: { type: string, description: The halting step's rendered message. }
+
+    RawScores:
+      type: array
+      description: |
+        Only with `include_raw_scores: true`: one array per scoring variant (a family
+        or a `debias: reverse` model scores a choice in both option orders), before
+        temperature.
+      items:
+        type: array
+        items: { type: number }
+
+    SystemOneRequest:
+      type: object
+      required: [model, state, questions]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+          description: Decision model id, or the id of a decision pipeline.
+        state:
+          $ref: "#/components/schemas/JsonValue"
+          description: The content to evaluate.
+        questions:
+          type: object
+          minProperties: 1
+          description: Question id to question.
+          additionalProperties:
+            type: object
+            required: [type, instructions]
+            properties:
+              type: { $ref: "#/components/schemas/QuestionType" }
+              instructions: { $ref: "#/components/schemas/JsonValue" }
+              criteria:
+                description: |
+                  `choice`: an object of option key to description (`null` allowed).
+                  `score`: an array of 2 to 10 level descriptions, lowest first.
+                  `noul`: optional, an object with `true` and/or `false` descriptions.
+        images:
+          type: array
+          description: Refused for now (`unsupported_modality`).
+        include_raw_scores: { type: boolean, default: false }
+
+    SystemOneResponse:
+      type: object
+      required: [model, answers, usage]
+      properties:
+        model: { type: string }
+        answers:
+          type: object
+          description: Question id to answer; empty when `blocked` is set.
+          additionalProperties:
+            type: object
+            required: [type]
+            properties:
+              type: { $ref: "#/components/schemas/QuestionType" }
+              choice: { type: string, description: "`choice`: the most probable option." }
+              score: { type: number, description: "`score`: the expected level index." }
+              noul: { type: number, description: "`noul`: the probability of yes." }
+              legend:
+                type: object
+                description: "`score`: level index to its description."
+                additionalProperties: true
+              probabilities:
+                type: object
+                description: "`choice` and `score`: option key (or level index) to probability; they sum to 1."
+                additionalProperties: { type: number }
+              confidence:
+                type: number
+                description: "`choice` and `score`: 0 when spread like a uniform distribution, 1 when certain."
+              raw_scores: { $ref: "#/components/schemas/RawScores" }
+        blocked: { $ref: "#/components/schemas/Blocked" }
+        usage:
+          type: object
+          properties:
+            input_tokens: { type: integer, description: Prompt tokens of all questions. }
+            output_tokens: { type: integer, const: 0 }
+
+    DecisionsRequest:
+      type: object
+      required: [model]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+          description: Decision model id, or the id of a decision pipeline.
+        input:
+          description: |
+            The content to evaluate: a string, an array of chat messages
+            (`{role, content}`, text content parts joined), or any other JSON value.
+            Required with `questions`.
+        questions:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [id, type, instructions]
+            properties:
+              id: { type: string, minLength: 1 }
+              type: { $ref: "#/components/schemas/QuestionType" }
+              instructions: { $ref: "#/components/schemas/JsonValue" }
+              options:
+                type: array
+                description: "`choice`: the options, in prompt order."
+                items:
+                  type: object
+                  required: [key]
+                  properties:
+                    key: { type: string }
+                    description: { $ref: "#/components/schemas/JsonValue" }
+              levels:
+                type: array
+                description: "`score`: 2 to 10 level descriptions, lowest first."
+              when_true: { $ref: "#/components/schemas/JsonValue" }
+              when_false: { $ref: "#/components/schemas/JsonValue" }
+        prompts:
+          type: array
+          minItems: 1
+          description: Prompts the caller rendered; exclusive with `input` and `questions`.
+          items:
+            type: object
+            required: [id, type]
+            properties:
+              id: { type: string, minLength: 1 }
+              type: { $ref: "#/components/schemas/QuestionType" }
+              option_keys:
+                type: array
+                description: "`choice`: the option keys, in the order the prompt lists them."
+                items: { type: string }
+              levels:
+                type: integer
+                description: "`score`: the number of levels, 2 to 10."
+              prompt:
+                type: string
+                description: Prompt text; special tokens are parsed and no BOS is added.
+              prompt_tokens:
+                type: array
+                description: Prompt token ids, instead of `prompt`.
+                items: { type: integer }
+        include_raw_scores: { type: boolean, default: false }
+
+    OptionProbability:
+      type: object
+      required: [key, probability]
+      properties:
+        key: { type: string }
+        probability: { type: number }
+
+    DecisionsResponse:
+      type: object
+      required: [id, object, created, model, answers, usage]
+      properties:
+        id: { type: string, description: "`dec_<random hex>`" }
+        object: { type: string, const: decision }
+        created: { type: integer, description: Epoch seconds. }
+        model: { type: string }
+        answers:
+          type: array
+          description: In request order; empty when `blocked` is set.
+          items:
+            type: object
+            required: [question_id, type]
+            properties:
+              question_id: { type: string }
+              type: { $ref: "#/components/schemas/QuestionType" }
+              choice: { type: string, description: "`choice`: the most probable option." }
+              score: { type: number, description: "`score`: the expected level index." }
+              mode: { type: integer, description: "`score`: the most probable level index." }
+              confidence:
+                type: number
+                description: "`choice` and `score`: 0 when spread like a uniform distribution, 1 when certain."
+              probabilities:
+                type: array
+                description: "`choice`: in option order. `score`: keys `\"0\"` to `\"n-1\"`, lowest first."
+                items: { $ref: "#/components/schemas/OptionProbability" }
+              probability_true: { type: number, description: "`noul`: the probability of yes." }
+              raw_scores: { $ref: "#/components/schemas/RawScores" }
+        blocked: { $ref: "#/components/schemas/Blocked" }
+        usage:
+          type: object
+          properties:
+            prompt_tokens: { type: integer }
+            completion_tokens: { type: integer, const: 0 }
+            total_tokens: { type: integer }

@@ -17,6 +17,7 @@ package io.gravitee.singularitee.grpc.resolver;
 
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
 import io.gravitee.singularitee.workspace.config.GlinerClassifierConfig;
+import io.gravitee.singularitee.workspace.config.GlinerDecisionConfig;
 import io.gravitee.singularitee.workspace.config.GlinerNerConfig;
 import io.reactivex.rxjava3.core.Single;
 import io.vertx.rxjava3.core.Vertx;
@@ -89,6 +90,8 @@ public final class GlinerModelResolver {
       return resolveClassifier(request, modelName, modelCacheDir);
     } else if (request.hasGlinerNer()) {
       return resolveNer(request, modelName, modelCacheDir);
+    } else if (request.hasGlinerDecision()) {
+      return resolveDecision(request, modelName, modelCacheDir);
     }
     return Single.just(request);
   }
@@ -122,12 +125,31 @@ public final class GlinerModelResolver {
         null,
         null,
         null,
+        null,
+        null,
+        null,
         request.downloadExclude(),
         request.task(),
         request.visible(),
         request.modalities()
       );
     });
+  }
+
+  private Single<ModelLoadRequest> resolveDecision(
+    ModelLoadRequest request,
+    String modelName,
+    Path modelCacheDir
+  ) {
+    GlinerDecisionConfig cfg = request.glinerDecision();
+    String variant = cfg.variant().isBlank() ? "onnx" : cfg.variant();
+    return resolveModelDir(
+      modelName,
+      cfg.modelDir(),
+      variant,
+      modelCacheDir,
+      request.downloadExclude()
+    ).map(resolvedDir -> request.withGlinerDecision(cfg.withModelDir(resolvedDir.toString())));
   }
 
   private Single<ModelLoadRequest> resolveNer(
@@ -156,6 +178,9 @@ public final class GlinerModelResolver {
         null,
         null,
         newCfg,
+        null,
+        null,
+        null,
         null,
         null,
         null,

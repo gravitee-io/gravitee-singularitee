@@ -32,7 +32,8 @@ import java.util.TreeSet;
 /**
  * Creates a vLLM-backed {@link VllmTextGenEngine} from a {@link ModelLoadRequest}.
  *
- * <p>This class and {@link VllmTextGenEngine} are the <strong>only</strong>
+ * <p>This class and {@link VllmTextGenEngine}, with their decision counterparts
+ * {@code VllmDecisionFactory} and {@code VllmDecisionEngine}, are the <strong>only</strong>
  * files permitted to import {@code gravitee-inference-vllm} types.
  *
  * <p>Carries the server-wide distributed defaults so a workspace does not have
@@ -97,8 +98,29 @@ public final class VllmEngineFactory implements ModelEngineFactory {
     var cfg = request.vllmConfig();
     var defaultLora = defaultLora(request.modelName(), cfg, loraDir);
 
-    var vllmConfig = new VllmConfig(
-      request.modelName(),
+    return new VllmTextGenEngine(
+      new BatchEngine(
+        engineConfig(request.modelName(), cfg, resolvedPath, request.memoryCheckPolicy())
+      ),
+      CheckpointModalities.read(resolvedPath, request.modelName()),
+      defaultLora
+    );
+  }
+
+  /**
+   * The engine configuration of a {@code vllm:} block, with the deployment-wide GPU topology
+   * filling what the block leaves unset.
+   *
+   * @param resolvedPath the downloaded weights, or null to let vLLM resolve {@code modelName}
+   */
+  public VllmConfig engineConfig(
+    String modelName,
+    io.gravitee.singularitee.workspace.config.VllmConfig cfg,
+    Path resolvedPath,
+    MemoryCheckPolicyType memoryCheckPolicy
+  ) {
+    return new VllmConfig(
+      modelName,
       resolvedPath,
       cfg.dtype().isEmpty() ? "auto" : cfg.dtype(),
       cfg.maxModelLen(),
@@ -117,7 +139,7 @@ public final class VllmEngineFactory implements ModelEngineFactory {
       cfg.maxLoras(),
       cfg.maxLoraRank(),
       null,
-      toMemoryCheckPolicy(request.memoryCheckPolicy()),
+      toMemoryCheckPolicy(memoryCheckPolicy),
       0L,
       0,
       0,
@@ -137,12 +159,6 @@ public final class VllmEngineFactory implements ModelEngineFactory {
       cfg.distributedExecutorBackend().isEmpty()
         ? distributedDefaults.distributedExecutorBackend()
         : cfg.distributedExecutorBackend()
-    );
-
-    return new VllmTextGenEngine(
-      new BatchEngine(vllmConfig),
-      CheckpointModalities.read(resolvedPath, request.modelName()),
-      defaultLora
     );
   }
 

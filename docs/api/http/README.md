@@ -7,7 +7,8 @@
 OpenAI-compatible client work against Singularitee directly. It is a second Vert.x server next
 to the gRPC one, with its own port, TLS and auth (`http.*`), disabled by default. The layer is a
 translator: it validates the payload against a per-endpoint JSON schema, resolves `model`, builds
-the proto request, drives the local `GraviteeInferenceServiceImpl` or `GraviteeVectorServiceImpl`,
+the proto request, drives the local `GraviteeInferenceServiceImpl`, `GraviteeVectorServiceImpl` or
+`GraviteeDecisionServiceImpl`,
 and renders the result back as OpenAI JSON or SSE. Metrics, tracing and cancel-on-disconnect are
 inherited from the core.
 
@@ -19,7 +20,8 @@ type. This page covers the conventions and points each endpoint at its spec.
 - `OpenAiRoutes`: mounts every route bare and under `/v1`.
 - `ModelOrPipelineResolver`: resolves `model` to an `InferRequest` or an `InferPipelineRequest`.
 - `HandlerSupport`: parsing, schema validation, visibility check, modality check, error mapping.
-- `ChatCompletionsHandler`, `CompletionsHandler`, `ResponsesHandler`, `EmbeddingsHandler`, `ClassifyHandler`, `RerankHandler`, `SimilarityHandler`, `ModelsHandler`.
+- `ChatCompletionsHandler`, `CompletionsHandler`, `ResponsesHandler`, `EmbeddingsHandler`, `ClassifyHandler`, `RerankHandler`, `SimilarityHandler`, `SystemOneHandler`, `DecisionsHandler`, `ModelsHandler`.
+- `DecisionSupport`: decision target resolution (model or pipeline), JSON to protocol values, decision error envelopes.
 - `InferRequestBuilder`, `PipelineRequestBuilder`: JSON to proto.
 - `InferenceResponseFormatter` with `ChatCompletionsFormatter`, `LegacyCompletionsFormatter`, `ResponsesFormatter`: token stream to OpenAI JSON and SSE.
 - `VertxSseWriter`: backpressured SSE writer.
@@ -63,7 +65,9 @@ client = OpenAI(base_url="http://localhost:8080/v1", api_key="sk-local-changeme"
 4. Otherwise `400` with `code: model_not_found`.
 
 `/v1/embeddings`, `/v1/classify`, `/v1/rerank` and `/v1/similarity` take a model id only; the
-service behind them reports a wrong task as `400` `unsupported_model`. Entries published with
+service behind them reports a wrong task as `400` `unsupported_model`. `/v1/systemone` and
+`/v1/decisions` take a decision model id or the id of a pipeline whose task is `decision` (its
+`role: output` step is a `decide` step); `pipeline:<id>` forces the pipeline registry. Entries published with
 `visible: false` never resolve on any route and answer exactly like an undeclared id.
 
 **Validation.** Payloads are checked against `llm-schemas.json`: required fields, types and
@@ -79,17 +83,20 @@ message. Invalid JSON is a `400` as well.
 | 400 | `invalid_request_error` | `invalid_request_error` | Structured output that is malformed or cannot be enforced (`param` is `response_format`, `response_format.json_schema` or `text.format`), see [Chat Completions](#post-v1chatcompletions). |
 | 400 | `invalid_request_error` | `model_not_found` | `model` does not resolve or is hidden. |
 | 400 | `invalid_request_error` | `unsupported_model` | The model exists but serves another task. |
-| 400 | `invalid_request_error` | `unsupported_modality` | Image or audio attached to a target that reads text only (`param` is `messages` or `input`). |
+| 400 | `invalid_request_error` | `unsupported_modality` | Image or audio attached to a target that reads text only (`param` is `messages` or `input`). Decisions refuse every image for now. |
+| 400 | `invalid_request_error` | `unsupported_input` | Decisions only: templated input to a model without a prompt template, or rendered prompts to a model that decides jointly. |
 | 401 | `invalid_request_error` | `invalid_api_key` | Missing or wrong bearer token; `WWW-Authenticate: Bearer` is set. |
 | 404 | `invalid_request_error` | `model_not_found` | `GET /v1/models/{id}` for an unknown or hidden id. |
 | 404 | `invalid_request_error` | `not_found` | Unknown path. |
 | 405 | `invalid_request_error` | `method_not_allowed` | Known path, wrong method. |
+| 500 | `server_error` | `server_error` | Decisions only: the model produced no usable scores. |
 | 500 | `internal_error` | `internal_error` | Unexpected failure. |
 | 503 | `server_error` | `model_not_ready` | Workspace still loading. |
 
 Failures that happen during generation are not HTTP errors: Chat and Completions end the choice
 with `finish_reason: "content_filter"` (guard block) or `"stop"`; the Responses API returns
-`status: "failed"` with `error.code` `previous_response_not_found` or `server_error`.
+`status: "failed"` with `error.code` `previous_response_not_found` or `server_error`. A decision
+pipeline halted by a guard answers `200` with no answers and a `blocked` object.
 
 **Streaming.** `stream: true` switches the response to `text/event-stream`. The stream opens
 with a `: stream-open` comment frame, then `data: <json>\n\n` frames. Chat Completions and
@@ -211,11 +218,75 @@ curl localhost:8080/v1/similarity \
   -d '{"model":"text-embedding","input":["cat"],"candidates":["kitten","truck"]}'
 ```
 
+#### POST /v1/systemone
+Spec: [decision.openapi.yaml](../../../openapi/decision.openapi.yaml).
+The request and response shape of TypeSafe's System One API, as llama.cpp's server also serves
+it: `model`, `state` (a string, or any JSON value given to the template as is), `questions` as
+an object keyed by id, each with `type` (`choice`, `score`, `noul`), `instructions` and
+`criteria` (an object of option to description for `choice`, 2 to 10 levels for `score`,
+optional `true` / `false` descriptions for `noul`). Answers come back keyed by id; `usage` is `input_tokens` and
+`output_tokens` (always 0). Templated input only.
+
+Where it differs from TypeSafe's API: a validation error is `400` with the error object above,
+not `422`; `usage.output_tokens` is always `0`, since nothing is generated; the response `model`
+echoes the id that was asked for rather than a resolved version; `model` may also name a decision
+pipeline. Overload is `503` while models load, not `429` / `529`.
+
+```bash
+curl localhost:8080/v1/systemone \
+  -H 'Authorization: Bearer sk-local-changeme' -H 'content-type: application/json' \
+  -d '{"model":"judge","state":"I was charged twice.","questions":{
+       "route":{"type":"choice","instructions":"Which team?","criteria":{"billing":null,"shipping":null}},
+       "angry":{"type":"noul","instructions":"Is the customer angry?"},
+       "urgency":{"type":"score","instructions":"How urgent?","criteria":["later","today","now"]}}}'
+```
+
+```json
+{"model":"judge","answers":{
+  "route":{"type":"choice","choice":"billing","probabilities":{"billing":0.93,"shipping":0.07},"confidence":0.86},
+  "angry":{"type":"noul","noul":0.64},
+  "urgency":{"type":"score","score":1.7,"legend":{"0":"later","1":"today","2":"now"},
+             "probabilities":{"0":0.08,"1":0.13,"2":0.79},"confidence":0.55}},
+ "usage":{"input_tokens":255,"output_tokens":0}}
+```
+
+#### POST /v1/decisions
+Spec: [decision.openapi.yaml](../../../openapi/decision.openapi.yaml).
+The OpenAI-shaped decision route: the same envelope conventions as the other routes and the
+gRPC message shape in JSON, with ordered arrays instead of keyed objects. Send either `input` (a
+string, any JSON value, or an array of chat messages) with `questions`, or `prompts` the caller
+already rendered (`prompt` text or `prompt_tokens`; `option_keys` for a choice, `levels` for a
+score). Mixing the two is a `400`.
+
+```bash
+curl localhost:8080/v1/decisions \
+  -H 'Authorization: Bearer sk-local-changeme' -H 'content-type: application/json' \
+  -d '{"model":"judge","input":"I was charged twice.","questions":[
+       {"id":"route","type":"choice","instructions":"Which team?","options":[{"key":"billing"},{"key":"shipping"}]},
+       {"id":"angry","type":"noul","instructions":"Is the customer angry?"}]}'
+```
+
+```json
+{"id":"dec_99d4...","object":"decision","created":1791476945,"model":"judge",
+ "answers":[
+   {"question_id":"route","type":"choice","choice":"billing","confidence":0.86,
+    "probabilities":[{"key":"billing","probability":0.93},{"key":"shipping","probability":0.07}]},
+   {"question_id":"angry","type":"noul","probability_true":0.64}],
+ "usage":{"prompt_tokens":180,"completion_tokens":0,"total_tokens":180}}
+```
+
+A score answer carries `score` (expected level), `mode`, `confidence` and `probabilities`.
+`include_raw_scores: true` adds `raw_scores` to each answer on both routes: one array per scoring
+variant, before temperature. When the target is a pipeline halted by a guard, both routes answer
+`200` with empty `answers` and `"blocked": {"code": "content_filter", "message": "..."}`.
+
 #### GET /v1/models, GET /v1/models/{model}
 Spec: [discovery.openapi.yaml](../../../openapi/discovery.openapi.yaml).
 Visible models, then visible pipelines when `http.expose-pipelines` is on. `type` is the task
 slug (`text-generation`, `text-classification`, `token-classification`, `feature-extraction`,
-`reranking`); `input_modalities` appears for entries that read more than text.
+`reranking`, `decision`); `input_modalities` appears for entries that read more than text. A
+`decision` entry also carries `output_modalities: ["decisions"]` and an `architecture` object
+with `input_modalities` and `output_modalities`, the shape llama.cpp's server reports it in.
 
 ```bash
 curl localhost:8080/v1/models -H 'Authorization: Bearer sk-local-changeme'
@@ -261,6 +332,8 @@ BASE_URL=http://localhost:8080/v1 API_KEY=sk-local-changeme uv run --with reques
 - `gravitee.progress` is a vendor extension on the Responses stream and is never an output item,
   so it cannot be replayed back as history. Chat Completions drops progress events.
 - The Responses API keeps reasoning streaming live even when `tools` hold the content back.
+- Decision questions are rendered and answered in request order. Image input to decisions is
+  refused with `unsupported_modality` until a decision backend reads images.
 - Structured output over HTTP is `text`, `json_object` and `json_schema` only; `choice`, `regex`
   and `grammar` are gRPC and workspace YAML only. A constrained generation cut by `max_tokens`
   returns truncated text with `finish_reason: "length"`.
@@ -271,6 +344,7 @@ BASE_URL=http://localhost:8080/v1 API_KEY=sk-local-changeme uv run --with reques
 - [API overview](../README.md)
 - [OpenAPI specifications](../../../openapi/README.md)
 - [gRPC API](../grpc/README.md)
+- [`decide` step](../../reference/steps/decide.md)
 - [Multimodal](../../guides/multimodal/README.md)
 - [Structured output](../../guides/structured-output/README.md)
 - [Engine-managed to-dos](../../guides/todos/README.md)

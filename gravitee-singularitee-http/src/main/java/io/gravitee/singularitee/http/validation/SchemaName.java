@@ -23,7 +23,9 @@ public enum SchemaName {
   EMBEDDINGS("/$defs/embeddings"),
   CLASSIFY("/$defs/classify"),
   SIMILARITY("/$defs/similarity"),
-  RERANK("/$defs/rerank");
+  RERANK("/$defs/rerank"),
+  SYSTEMONE("/$defs/systemone"),
+  DECISIONS("/$defs/decisions");
 
   private final String pointer;
 

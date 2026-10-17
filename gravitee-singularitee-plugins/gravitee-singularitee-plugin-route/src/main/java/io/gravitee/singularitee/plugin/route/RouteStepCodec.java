@@ -40,7 +40,8 @@ public final class RouteStepCodec implements StepConfigCodec<RouteStepConfig> {
     @JsonProperty("strategy") String strategy,
     @JsonProperty("input_field") String inputField,
     @JsonProperty("default_step") String defaultStep,
-    @JsonProperty("rules") List<RuleYaml> rules
+    @JsonProperty("rules") List<RuleYaml> rules,
+    @JsonProperty("min_confidence") double minConfidence
   ) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -68,12 +69,23 @@ public final class RouteStepCodec implements StepConfigCodec<RouteStepConfig> {
         .stream()
         .map(r -> new RouteRule(r.label(), r.sentences(), r.nextStep()))
         .toList();
+    RoutingStrategy strategy = RoutingStrategy.parse(d.strategy());
+    if (
+      strategy == RoutingStrategy.DECISION && (d.inputField() == null || d.inputField().isBlank())
+    ) {
+      throw new IllegalArgumentException(
+        "Step '" +
+          stepId +
+          "': strategy decision needs input_field, the decide answer to route on (<step>.<question>)"
+      );
+    }
     return new RouteStepConfig(
       d.modelId(),
-      RoutingStrategy.parse(d.strategy()),
+      strategy,
       d.inputField(),
       d.defaultStep(),
-      rules
+      rules,
+      d.minConfidence()
     );
   }
 }
