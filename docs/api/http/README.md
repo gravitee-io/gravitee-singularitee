@@ -84,7 +84,7 @@ message. Invalid JSON is a `400` as well.
 | 400 | `invalid_request_error` | `model_not_found` | `model` does not resolve or is hidden. |
 | 400 | `invalid_request_error` | `unsupported_model` | The model exists but serves another task. |
 | 400 | `invalid_request_error` | `unsupported_modality` | Image or audio attached to a target that reads text only (`param` is `messages` or `input`). Decisions refuse every image for now. |
-| 400 | `invalid_request_error` | `unsupported_input` | Decisions only: templated input to a model without a prompt template, or rendered prompts to a model that decides jointly. |
+| 400 | `invalid_request_error` | `unsupported_input` | Decisions only: templated input to a model without a prompt template, or rendered prompts to a model that decides jointly or to a pipeline. |
 | 401 | `invalid_request_error` | `invalid_api_key` | Missing or wrong bearer token; `WWW-Authenticate: Bearer` is set. |
 | 404 | `invalid_request_error` | `model_not_found` | `GET /v1/models/{id}` for an unknown or hidden id. |
 | 404 | `invalid_request_error` | `not_found` | Unknown path. |

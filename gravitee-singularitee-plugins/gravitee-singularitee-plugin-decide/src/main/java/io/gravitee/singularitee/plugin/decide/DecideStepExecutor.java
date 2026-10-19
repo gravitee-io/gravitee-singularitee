@@ -115,7 +115,10 @@ public final class DecideStepExecutor
       });
   }
 
-  /** What to ask, or {@code null} to skip the step (an empty state). */
+  /**
+   * What to ask, or {@code null} to skip the step: an empty state outside a decision call. A
+   * decision call with an empty state fails, as it would against a model.
+   */
   private DecisionInput input(
     String stepId,
     DecideStepConfig cfg,
@@ -136,10 +139,11 @@ public final class DecideStepExecutor
           if (t.questions().isEmpty()) {
             throw new DecisionException(Reason.INVALID_REQUEST, "\"questions\" must not be empty");
           }
-          Object state = state(stepId, cfg, ctx);
+          Object state = callerState(stepId, cfg, ctx);
           yield state == null ? null : new DecisionInput.Templated(state, t.questions());
         }
-        case DecisionInput.Raw r -> r;
+        // Guards only check the pipeline's prompt, which caller-rendered prompts never become.
+        case DecisionInput.Raw r -> throw rawRefused();
       };
     }
     if (caller != null && sentQuestions(caller)) {
@@ -165,8 +169,34 @@ public final class DecideStepExecutor
         .toList();
       return new DecisionInput.Raw(prompts);
     }
-    Object state = state(stepId, cfg, ctx);
+    Object state = caller == null ? state(stepId, cfg, ctx) : callerState(stepId, cfg, ctx);
     return state == null ? null : new DecisionInput.Templated(state, cfg.questions());
+  }
+
+  /**
+   * The state of a step inside a decision call. The caller must send it when the step reads it
+   * (the prompt or the messages): a model would refuse an empty one too.
+   */
+  private Object callerState(String stepId, DecideStepConfig cfg, StepContext ctx) {
+    Object state = state(stepId, cfg, ctx);
+    String field = cfg.inputField();
+    boolean callerSent =
+      field == null ||
+      field.isBlank() ||
+      PipelineContext.KEY_PROMPT.equals(field) ||
+      MESSAGES.equals(field);
+    if (state == null && callerSent) {
+      throw new DecisionException(Reason.INVALID_REQUEST, "\"state\" must be provided");
+    }
+    return state;
+  }
+
+  /** The refusal of caller-rendered prompts sent to a pipeline. */
+  private static DecisionException rawRefused() {
+    return new DecisionException(
+      Reason.UNSUPPORTED_INPUT,
+      "a pipeline renders its prompts from the state its guards check: send a state and questions, not raw prompts"
+    );
   }
 
   private Object state(String stepId, DecideStepConfig cfg, StepContext ctx) {

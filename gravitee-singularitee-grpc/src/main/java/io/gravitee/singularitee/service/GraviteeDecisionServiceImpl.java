@@ -27,6 +27,7 @@ import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.engine.pipeline.PipelineExecutor;
 import io.gravitee.singularitee.inference.api.decision.DecisionException;
 import io.gravitee.singularitee.inference.api.decision.DecisionException.Reason;
+import io.gravitee.singularitee.inference.api.decision.DecisionQuestions;
 import io.gravitee.singularitee.inference.api.decision.DecisionRequest;
 import io.gravitee.singularitee.inference.api.decision.DecisionResult;
 import io.gravitee.singularitee.protocol.DecideBatchRequest;
@@ -59,6 +60,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author GraviteeSource Team
  */
 public class GraviteeDecisionServiceImpl extends GraviteeDecisionServiceGrpcService {
+
+  /** Most states one {@code DecideBatch} call may carry. */
+  static final int MAX_BATCH_STATES = 256;
 
   /** The error code a halting guard ends the pipeline stream with. */
   private static final String BLOCKED = "content_filter";
@@ -95,6 +99,11 @@ public class GraviteeDecisionServiceImpl extends GraviteeDecisionServiceGrpcServ
 
   @Override
   public Future<DecideBatchResponse> decideBatch(DecideBatchRequest request) {
+    try {
+      checkBatch(request);
+    } catch (DecisionException e) {
+      return Future.failedFuture(toStatus(e));
+    }
     var states = new ArrayList<Future<DecideResponse>>(request.getStatesCount());
     for (DecideBatchState state : request.getStatesList()) {
       var input = TemplatedInput.newBuilder()
@@ -121,6 +130,41 @@ public class GraviteeDecisionServiceImpl extends GraviteeDecisionServiceGrpcServ
         DecideBatchResponse.newBuilder().addAllResults(all.<DecideResponse>list()).build()
       )
       .recover(e -> Future.failedFuture(toStatus(e)));
+  }
+
+  /**
+   * Refuses a batch whose states would all fail, before any of them is queued: too many states,
+   * a missing state, or questions no model takes.
+   */
+  private static void checkBatch(DecideBatchRequest request) {
+    int count = request.getStatesCount();
+    if (count == 0) {
+      throw new DecisionException(Reason.INVALID_REQUEST, "\"states\" must not be empty");
+    }
+    if (count > MAX_BATCH_STATES) {
+      throw new DecisionException(
+        Reason.INVALID_REQUEST,
+        "a batch takes at most " + MAX_BATCH_STATES + " states, got " + count
+      );
+    }
+    for (int i = 0; i < count; i++) {
+      DecideBatchState state = request.getStates(i);
+      boolean missing = switch (state.getStateCase()) {
+        case TEXT -> state.getText().isBlank();
+        case JSON, MESSAGES -> false;
+        case STATE_NOT_SET -> true;
+      };
+      if (missing) {
+        throw new DecisionException(
+          Reason.INVALID_REQUEST,
+          "states[" + i + "]: \"state\" must be provided"
+        );
+      }
+    }
+    // A pipeline may declare its own questions; a model always needs the caller's.
+    if (request.hasModelId() || request.getQuestionsCount() > 0) {
+      DecisionQuestions.validate(DecisionMessages.questions(request.getQuestionsList()));
+    }
   }
 
   /**
@@ -188,16 +232,22 @@ public class GraviteeDecisionServiceImpl extends GraviteeDecisionServiceGrpcServ
     if (pipelineExecutor == null) {
       throw DecisionTargetException.unsupported(pipelineId, "cannot run: no pipeline executor");
     }
+    // Guard steps check the pipeline's prompt, which only a state becomes: caller-rendered
+    // prompts would reach the model unchecked.
+    if (request.hasRaw()) {
+      throw new DecisionException(
+        Reason.UNSUPPORTED_INPUT,
+        "a pipeline renders its prompts from the state its guards check: send a state and questions, not raw prompts"
+      );
+    }
     DecisionRequest decision = toEngineRequest(request);
     var pipelineRequest = InferPipelineRequest.newBuilder().setPipelineId(pipelineId);
-    if (request.hasTemplated()) {
-      TemplatedInput input = request.getTemplated();
-      switch (input.getStateCase()) {
-        case TEXT -> pipelineRequest.setPrompt(input.getText());
-        case JSON -> pipelineRequest.setPrompt(DecisionProtoMapper.toJson(input.getJson()));
-        case MESSAGES -> pipelineRequest.setMessages(input.getMessages());
-        case STATE_NOT_SET -> {}
-      }
+    TemplatedInput input = request.getTemplated();
+    switch (input.getStateCase()) {
+      case TEXT -> pipelineRequest.setPrompt(input.getText());
+      case JSON -> pipelineRequest.setPrompt(DecisionProtoMapper.toJson(input.getJson()));
+      case MESSAGES -> pipelineRequest.setMessages(input.getMessages());
+      case STATE_NOT_SET -> {}
     }
 
     var context = new AtomicReference<PipelineContext>();

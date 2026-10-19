@@ -13,13 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.gravitee.singularitee.inference.decision;
+package io.gravitee.singularitee.inference.api.decision;
 
-import io.gravitee.singularitee.inference.api.decision.DecisionException;
 import io.gravitee.singularitee.inference.api.decision.DecisionException.Reason;
-import io.gravitee.singularitee.inference.api.decision.Question;
 import io.gravitee.singularitee.inference.api.decision.Question.Option;
-import io.gravitee.singularitee.inference.api.decision.QuestionKind;
 import java.util.HashSet;
 import java.util.List;
 

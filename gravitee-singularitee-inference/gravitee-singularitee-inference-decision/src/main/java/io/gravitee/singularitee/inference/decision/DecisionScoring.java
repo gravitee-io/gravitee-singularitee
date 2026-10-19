@@ -52,6 +52,11 @@ public final class DecisionScoring {
     boolean noulRating,
     boolean includeRaw
   ) {
+    // A lev noul reads a rating scale whose length is the model's, not the option count.
+    boolean rating = kind == QuestionKind.NOUL && noulRating;
+    if (!rating && scores.getFirst().length != optionKeys.size()) {
+      throw unusable(questionId);
+    }
     double[] probs = probabilities(questionId, scores, temperature);
     List<float[]> raw = includeRaw ? List.copyOf(scores) : List.of();
 
@@ -91,19 +96,14 @@ public final class DecisionScoring {
     double[] probs = new double[n];
     for (int v = 0; v < scores.size(); v++) {
       float[] s = scores.get(v);
-      if (s.length != n) {
-        throw new IllegalStateException("decision result does not match the number of options");
-      }
+      if (s.length != n) throw unusable(questionId);
       float max = Float.NEGATIVE_INFINITY;
       for (float x : s) {
-        if (Float.isNaN(x)) {
-          throw new DecisionException(
-            DecisionException.Reason.EVALUATION_FAILED,
-            "the model could not evaluate the decision (questions." + questionId + ")"
-          );
-        }
+        if (Float.isNaN(x)) throw unusable(questionId);
         max = Math.max(max, x);
       }
+      // All -inf (or any +inf) would make every exp() term NaN.
+      if (!Float.isFinite(max)) throw unusable(questionId);
       double[] p = new double[n];
       double sum = 0;
       for (int i = 0; i < n; i++) {
@@ -115,6 +115,14 @@ public final class DecisionScoring {
       }
     }
     return probs;
+  }
+
+  /** The failure of scores that do not give an answer: wrong count, NaN or no finite best. */
+  static DecisionException unusable(String questionId) {
+    return new DecisionException(
+      DecisionException.Reason.EVALUATION_FAILED,
+      "the model could not evaluate the decision (questions." + questionId + ")"
+    );
   }
 
   private static double noulProbability(double[] probs, List<String> optionKeys, boolean rating) {

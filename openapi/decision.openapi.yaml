@@ -95,7 +95,8 @@ paths:
         both, or neither, is a `400`. Which mode a model accepts depends on its prompt
         source: a model without a template takes prompts only, a model that decides
         all questions jointly (clef) takes questions only; the other mode answers
-        `400` with `code: unsupported_input`.
+        `400` with `code: unsupported_input`. A decision pipeline takes questions only,
+        since its guards check the input and never see rendered prompts.
       requestBody:
         required: true
         content:
@@ -131,7 +132,8 @@ components:
         (`code: invalid_request_error`, the message names it as `questions.<id>: ...`);
         unknown or hidden model (`code: model_not_found`); a model or pipeline that does
         not decide (`code: unsupported_model`); an input mode the model refuses
-        (`code: unsupported_input`); an image (`code: unsupported_modality`).
+        (`code: unsupported_input`, also rendered prompts sent to a pipeline); an image
+        (`code: unsupported_modality`).
       content:
         application/json:
           schema:
@@ -314,6 +316,8 @@ components:
                     description: { $ref: "#/components/schemas/JsonValue" }
               levels:
                 type: array
+                minItems: 2
+                maxItems: 10
                 description: "`score`: 2 to 10 level descriptions, lowest first."
               when_true: { $ref: "#/components/schemas/JsonValue" }
               when_false: { $ref: "#/components/schemas/JsonValue" }
@@ -333,6 +337,8 @@ components:
                 items: { type: string }
               levels:
                 type: integer
+                minimum: 2
+                maximum: 10
                 description: "`score`: the number of levels, 2 to 10."
               prompt:
                 type: string

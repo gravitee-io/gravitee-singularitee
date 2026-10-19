@@ -147,7 +147,7 @@
                 "type": "array",
                 "items": { "type": "object", "required": ["key"], "properties": { "key": { "type": "string" } } }
               },
-              "levels": { "type": "array" }
+              "levels": { "type": "array", "minItems": 2, "maxItems": 10 }
             }
           }
         },
@@ -161,7 +161,7 @@
               "id": { "type": "string", "minLength": 1 },
               "type": { "enum": ["choice", "score", "noul"] },
               "option_keys": { "type": "array", "items": { "type": "string" } },
-              "levels": { "type": "integer" },
+              "levels": { "type": "integer", "minimum": 2, "maximum": 10 },
               "prompt": { "type": "string" },
               "prompt_tokens": { "type": "array", "items": { "type": "integer" } }
             }

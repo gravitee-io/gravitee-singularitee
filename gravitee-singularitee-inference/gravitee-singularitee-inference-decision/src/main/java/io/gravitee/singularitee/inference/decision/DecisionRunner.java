@@ -22,6 +22,7 @@ import io.gravitee.singularitee.inference.api.decision.DecisionException.Reason;
 import io.gravitee.singularitee.inference.api.decision.DecisionFamily;
 import io.gravitee.singularitee.inference.api.decision.DecisionInput;
 import io.gravitee.singularitee.inference.api.decision.DecisionInput.RawPrompt;
+import io.gravitee.singularitee.inference.api.decision.DecisionQuestions;
 import io.gravitee.singularitee.inference.api.decision.DecisionRequest;
 import io.gravitee.singularitee.inference.api.decision.DecisionResult;
 import io.gravitee.singularitee.inference.api.decision.Question;
@@ -231,6 +232,12 @@ public final class DecisionRunner implements AutoCloseable {
     String rendered = render(clef.jointVariables(state, questions));
     BackendPrompt.Clef prompt = clef.jointPrompt(rendered, questions, backend::tokenize);
     float[] scores = backend.score(List.of(prompt)).getFirst();
+    int expected = questions
+      .stream()
+      .mapToInt(q -> q.options().size())
+      .sum();
+    // copyOfRange pads a short result with zeros, which would read as a near-uniform answer.
+    if (scores.length != expected) throw DecisionScoring.unusable(questions.getLast().id());
 
     var answers = new ArrayList<Answer>(questions.size());
     int offset = 0;

@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,6 +66,9 @@ public final class LlamaCppDecisionBackend implements DecisionBackend {
   /** Most options of the families that are not limited by their label codes. */
   private static final int MAX_MARKER_OPTIONS = 255;
 
+  /** How long {@link #close()} waits for running calls. */
+  private static final long CLOSE_WAIT_SECONDS = 10;
+
   static {
     LlamaBackend.init();
   }
@@ -79,6 +83,7 @@ public final class LlamaCppDecisionBackend implements DecisionBackend {
   private final List<String> labelTexts;
   private final int maxOptions;
   private final LayaVocab layaVocab;
+  private volatile boolean closed;
 
   /** Loads the model and its deciders. */
   public LlamaCppDecisionBackend(DecisionModelConfig config) {
@@ -227,6 +232,7 @@ public final class LlamaCppDecisionBackend implements DecisionBackend {
       .stream()
       .map(LlamaCppDecisionBackend::toNative)
       .toList();
+    if (closed) throw new IllegalStateException("the decision model is closed");
     LlamaDecider decider;
     try {
       decider = idle.take();
@@ -235,6 +241,8 @@ public final class LlamaCppDecisionBackend implements DecisionBackend {
       throw new IllegalStateException("interrupted while waiting for a decider", e);
     }
     try {
+      // close() may have started while this call waited: its deciders must stay untouched.
+      if (closed) throw new IllegalStateException("the decision model is closed");
       return decider.score(nativePrompts);
     } finally {
       idle.add(decider);
@@ -258,8 +266,33 @@ public final class LlamaCppDecisionBackend implements DecisionBackend {
     };
   }
 
+  /**
+   * Frees the model once every decider is back, so no call scores on freed memory. Calls that
+   * start afterwards fail. When a call is still running after {@value #CLOSE_WAIT_SECONDS} s,
+   * the native memory is left to the process exit rather than freed under it.
+   */
   @Override
   public void close() {
+    if (closed) return;
+    closed = true;
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(CLOSE_WAIT_SECONDS);
+    int returned = 0;
+    try {
+      while (returned < deciders.size()) {
+        long left = deadline - System.nanoTime();
+        if (left <= 0 || idle.poll(left, TimeUnit.NANOSECONDS) == null) break;
+        returned++;
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    if (returned < deciders.size()) {
+      LOGGER.warn(
+        "Decision model still scoring after {} s: its native memory is not freed",
+        CLOSE_WAIT_SECONDS
+      );
+      return;
+    }
     deciders.forEach(LlamaDecider::close);
     model.free();
     arena.close();

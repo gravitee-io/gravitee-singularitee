@@ -30,6 +30,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +49,9 @@ import org.slf4j.LoggerFactory;
 public final class VllmLabelBackend implements DecisionBackend {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(VllmLabelBackend.class);
+
+  /** How often a waiting caller checks that the scheduler is still there. */
+  private static final long AWAIT_POLL_MS = 500;
 
   /** Most label tokens vLLM reports per request ({@code MAX_LOGPROB_TOKEN_IDS}). */
   static final int MAX_CODES = 128;
@@ -166,7 +170,9 @@ public final class VllmLabelBackend implements DecisionBackend {
 
   @Override
   public List<float[]> score(List<BackendPrompt> prompts) {
-    if (closed) throw new IllegalStateException("the decision model is closed");
+    if (closed || !scheduler.isAlive()) {
+      throw new IllegalStateException("the decision model is closed");
+    }
     var futures = new ArrayList<CompletableFuture<float[]>>(prompts.size());
     for (BackendPrompt prompt : prompts) {
       if (!(prompt instanceof BackendPrompt.Text text)) {
@@ -184,7 +190,7 @@ public final class VllmLabelBackend implements DecisionBackend {
     }
     var scores = new ArrayList<float[]>(futures.size());
     try {
-      for (CompletableFuture<float[]> future : futures) scores.add(future.get());
+      for (CompletableFuture<float[]> future : futures) scores.add(await(future));
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("interrupted while waiting for scores", e);
@@ -196,46 +202,85 @@ public final class VllmLabelBackend implements DecisionBackend {
     return scores;
   }
 
-  /** Adds what is queued, steps, and completes what finished, until closed. */
-  private void run() {
-    var waiting = new HashMap<String, Pending>();
-    while (!closed) {
+  /**
+   * The scores of {@code future}, or a failure once the scheduler is gone: a prompt queued after
+   * its last drain would otherwise wait forever.
+   */
+  private float[] await(CompletableFuture<float[]> future)
+    throws InterruptedException, ExecutionException {
+    while (true) {
       try {
-        Pending first = engine.busy() ? queue.poll() : queue.poll(100, TimeUnit.MILLISECONDS);
-        var added = new ArrayList<Pending>();
-        if (first != null) added.add(first);
-        queue.drainTo(added);
-        for (Pending pending : added) {
-          try {
-            engine.add(pending.requestId(), pending.tokens(), pending.labels());
-            waiting.put(pending.requestId(), pending);
-          } catch (RuntimeException e) {
-            pending.result().completeExceptionally(e);
-          }
+        return future.get(AWAIT_POLL_MS, TimeUnit.MILLISECONDS);
+      } catch (TimeoutException e) {
+        if (!scheduler.isAlive() && !future.isDone()) {
+          throw new IllegalStateException("the decision model is closed");
         }
-        if (!engine.busy()) continue;
-        for (LabelEngine.Scored scored : engine.step()) {
-          Pending pending = waiting.remove(scored.requestId());
-          if (pending != null) complete(pending, scored);
-        }
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        break;
-      } catch (RuntimeException e) {
-        // A failed step loses every request in flight: fail them, keep serving.
-        LOGGER.warn("Decision step failed: {}", e.getMessage());
-        waiting
-          .values()
-          .forEach(p -> {
-            engine.abort(p.requestId());
-            p.result().completeExceptionally(e);
-          });
-        waiting.clear();
       }
     }
-    var closing = new IllegalStateException("the decision model is closed");
-    waiting.values().forEach(p -> p.result().completeExceptionally(closing));
-    queue.forEach(p -> p.result().completeExceptionally(closing));
+  }
+
+  /**
+   * Adds what is queued, steps, and completes what finished, until closed. The thread owns the
+   * engine: it closes it on the way out, so no step is running when the engine goes.
+   */
+  private void run() {
+    var waiting = new HashMap<String, Pending>();
+    try {
+      while (!closed) {
+        try {
+          Pending first = engine.busy() ? queue.poll() : queue.poll(100, TimeUnit.MILLISECONDS);
+          var added = new ArrayList<Pending>();
+          if (first != null) added.add(first);
+          queue.drainTo(added);
+          for (Pending pending : added) {
+            try {
+              engine.add(pending.requestId(), pending.tokens(), pending.labels());
+              waiting.put(pending.requestId(), pending);
+            } catch (RuntimeException e) {
+              pending.result().completeExceptionally(e);
+            }
+          }
+          if (!engine.busy()) continue;
+          for (LabelEngine.Scored scored : engine.step()) {
+            Pending pending = waiting.remove(scored.requestId());
+            if (pending != null) complete(pending, scored);
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          break;
+        } catch (Throwable e) {
+          // A failed step loses every request in flight: fail them, keep serving.
+          LOGGER.warn("Decision step failed: {}", e.getMessage());
+          failAll(waiting, e);
+        }
+      }
+    } finally {
+      var closing = new IllegalStateException("the decision model is closed");
+      failAll(waiting, closing);
+      try {
+        engine.close();
+      } catch (RuntimeException e) {
+        LOGGER.warn("Closing the decision engine failed: {}", e.getMessage());
+      }
+      // Prompts queued while the engine closed; a later one fails in await().
+      failAll(waiting, closing);
+    }
+  }
+
+  /** Fails every request in flight and every queued one, aborting the in-flight ones. */
+  private void failAll(Map<String, Pending> waiting, Throwable cause) {
+    for (Pending p : waiting.values()) {
+      try {
+        engine.abort(p.requestId());
+      } catch (RuntimeException e) {
+        LOGGER.debug("Aborting {} failed: {}", p.requestId(), e.getMessage());
+      }
+      p.result().completeExceptionally(cause);
+    }
+    waiting.clear();
+    var queued = new ArrayList<Pending>();
+    queue.drainTo(queued);
+    queued.forEach(p -> p.result().completeExceptionally(cause));
   }
 
   private static void complete(Pending pending, LabelEngine.Scored scored) {
@@ -255,6 +300,10 @@ public final class VllmLabelBackend implements DecisionBackend {
     pending.result().complete(out);
   }
 
+  /**
+   * Stops the scheduler, which closes the engine once its current step returns. Waits up to 5 s
+   * for that; a step still running past it closes the engine when it ends.
+   */
   @Override
   public void close() {
     if (closed) return;
@@ -264,6 +313,8 @@ public final class VllmLabelBackend implements DecisionBackend {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
-    engine.close();
+    if (scheduler.isAlive()) {
+      LOGGER.warn("A decision step is still running: the engine closes when it ends");
+    }
   }
 }

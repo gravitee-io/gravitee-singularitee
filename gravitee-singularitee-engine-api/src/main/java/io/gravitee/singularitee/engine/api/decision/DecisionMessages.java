@@ -23,6 +23,7 @@ import io.gravitee.singularitee.inference.api.decision.Answer;
 import io.gravitee.singularitee.inference.api.decision.DecisionException;
 import io.gravitee.singularitee.inference.api.decision.DecisionException.Reason;
 import io.gravitee.singularitee.inference.api.decision.DecisionInput;
+import io.gravitee.singularitee.inference.api.decision.DecisionQuestions;
 import io.gravitee.singularitee.inference.api.decision.DecisionRequest;
 import io.gravitee.singularitee.inference.api.decision.DecisionResult;
 import io.gravitee.singularitee.inference.api.decision.Question;
@@ -90,9 +91,17 @@ public final class DecisionMessages {
       case MESSAGES -> messages(input.getMessages().getMessagesList());
       case STATE_NOT_SET -> null;
     };
-    var questions = new ArrayList<Question>(input.getQuestionsCount());
-    for (DecisionQuestion q : input.getQuestionsList()) questions.add(question(q));
-    return new DecisionRequest(new DecisionInput.Templated(state, questions), includeRawScores);
+    return new DecisionRequest(
+      new DecisionInput.Templated(state, questions(input.getQuestionsList())),
+      includeRawScores
+    );
+  }
+
+  /** The engine questions of protocol questions, in order. */
+  public static List<Question> questions(List<DecisionQuestion> questions) {
+    var out = new ArrayList<Question>(questions.size());
+    for (DecisionQuestion q : questions) out.add(question(q));
+    return out;
   }
 
   /** The engine request of a raw input. */
@@ -108,7 +117,10 @@ public final class DecisionMessages {
         }
         case SCORE -> {
           kind = QuestionKind.SCORE;
-          keys = levelKeys(p.getScore().getLevels());
+          // The count sizes the key list: bound it before allocating.
+          int levels = p.getScore().getLevels();
+          DecisionQuestions.checkCount(p.getQuestionId(), kind, levels);
+          keys = levelKeys(levels);
         }
         case NOUL -> {
           kind = QuestionKind.NOUL;
@@ -162,7 +174,7 @@ public final class DecisionMessages {
   }
 
   private static List<String> levelKeys(int levels) {
-    var keys = new ArrayList<String>(Math.max(levels, 0));
+    var keys = new ArrayList<String>(levels);
     for (int i = 0; i < levels; i++) keys.add(String.valueOf(i));
     return keys;
   }

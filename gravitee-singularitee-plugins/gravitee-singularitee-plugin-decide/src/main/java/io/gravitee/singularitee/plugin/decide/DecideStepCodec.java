@@ -17,12 +17,15 @@ package io.gravitee.singularitee.plugin.decide;
 
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
+import io.gravitee.singularitee.inference.api.decision.DecisionQuestions;
 import io.gravitee.singularitee.inference.api.decision.Question;
 import io.gravitee.singularitee.inference.api.decision.QuestionKind;
 import io.gravitee.singularitee.plugin.decide.DecideStepConfig.PromptDef;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Parses the {@code config:} block of a {@code decide} step.
@@ -47,6 +50,9 @@ public final class DecideStepCodec implements StepConfigCodec<DecideStepConfig> 
 
   /** The {@code questions:} value that takes the caller's questions. */
   static final String FROM_REQUEST = "request";
+
+  /** What a template id looks like, as opposed to inline Jinja. */
+  private static final Pattern TEMPLATE_ID = Pattern.compile("[\\w.-]+");
 
   @Override
   public DecideStepConfig parse(String stepId, Map<String, Object> raw, StepCodecContext ctx) {
@@ -136,20 +142,46 @@ public final class DecideStepCodec implements StepConfigCodec<DecideStepConfig> 
       if (template.isBlank()) throw invalid(stepId, "prompts." + id + ".template is required");
       QuestionKind kind = kind(stepId, "prompts." + id, p);
       List<String> keys = switch (kind) {
-        case CHOICE -> p.get("choice") instanceof List<?> l
-          ? l.stream().map(String::valueOf).toList()
-          : List.of();
+        case CHOICE -> promptChoiceKeys(stepId, id, p.get("choice"));
         case SCORE -> {
-          int levels = p.get("score") instanceof Number n ? n.intValue() : 0;
+          long levels = p.get("score") instanceof Number n ? n.longValue() : 0;
+          if (levels < 2 || levels > DecisionQuestions.MAX_SCORE_LEVELS) {
+            throw invalid(stepId, "prompts." + id + ".score must be a number of levels, 2 to 10");
+          }
           var k = new ArrayList<String>();
           for (int i = 0; i < levels; i++) k.add(String.valueOf(i));
           yield k;
         }
         case NOUL -> List.of();
       };
-      out.add(new PromptDef(id, kind, keys, ctx.templates().getOrDefault(template, template)));
+      out.add(new PromptDef(id, kind, keys, template(stepId, id, template, ctx)));
     });
     return out;
+  }
+
+  /** The option keys of a prompt's choice: a list of distinct, non-empty keys. */
+  private static List<String> promptChoiceKeys(String stepId, String id, Object value) {
+    if (!(value instanceof List<?> list) || list.isEmpty()) {
+      throw invalid(stepId, "prompts." + id + ".choice must list the option keys");
+    }
+    var keys = list.stream().map(DecideStepCodec::string).toList();
+    if (keys.stream().anyMatch(String::isEmpty) || new HashSet<>(keys).size() != keys.size()) {
+      throw invalid(stepId, "prompts." + id + ".choice keys must be unique and not empty");
+    }
+    return keys;
+  }
+
+  /**
+   * The Jinja source of a prompt: a {@code templates:} entry, or inline Jinja. A bare name that
+   * is no template is a misspelt id, not a prompt.
+   */
+  private static String template(String stepId, String id, String value, StepCodecContext ctx) {
+    String declared = ctx.templates().get(value);
+    if (declared != null) return declared;
+    if (TEMPLATE_ID.matcher(value).matches()) {
+      throw invalid(stepId, "prompts." + id + ".template names no template: '" + value + "'");
+    }
+    return value;
   }
 
   private static QuestionKind kind(String stepId, String path, Map<?, ?> q) {

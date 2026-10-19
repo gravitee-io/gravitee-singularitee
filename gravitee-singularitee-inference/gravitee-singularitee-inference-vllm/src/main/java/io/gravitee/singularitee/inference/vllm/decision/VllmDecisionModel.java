@@ -21,6 +21,7 @@ import io.gravitee.singularitee.inference.api.decision.DecisionException;
 import io.gravitee.singularitee.inference.api.decision.DecisionException.Reason;
 import io.gravitee.singularitee.inference.api.decision.DecisionFamily;
 import io.gravitee.singularitee.inference.api.decision.DecisionInput;
+import io.gravitee.singularitee.inference.api.decision.DecisionQuestions;
 import io.gravitee.singularitee.inference.api.decision.DecisionRequest;
 import io.gravitee.singularitee.inference.api.decision.DecisionResult;
 import io.gravitee.singularitee.inference.api.decision.Question;
@@ -178,8 +179,10 @@ public final class VllmDecisionModel implements AutoCloseable {
   /** The System One body of a templated request. */
   static Map<String, Object> body(DecisionInput.Templated input) {
     if (input.state() == null) {
-      throw new DecisionException(Reason.INVALID_REQUEST, "state is required");
+      throw new DecisionException(Reason.INVALID_REQUEST, "\"state\" must be provided");
     }
+    // Checked here: keyed by id below, a duplicate would silently replace its first occurrence.
+    DecisionQuestions.validate(input.questions());
     Map<String, Object> questions = new LinkedHashMap<>();
     for (Question question : input.questions()) {
       questions.put(question.id(), question(question));
@@ -258,7 +261,7 @@ public final class VllmDecisionModel implements AutoCloseable {
     return switch (question) {
       case Question.Choice choice -> new Answer.Choice(
         id,
-        string(raw.get("choice")),
+        choice(choice, raw.get("choice")),
         probabilities(choice.options(), raw.get("probabilities")),
         number(raw.get("confidence")),
         List.of()
@@ -276,6 +279,18 @@ public final class VllmDecisionModel implements AutoCloseable {
       }
       case Question.Noul noul -> new Answer.Noul(id, number(raw.get("noul")), List.of());
     };
+  }
+
+  /** The runtime's choice, which must be one of the question's option keys. */
+  private static String choice(Question.Choice question, Object raw) {
+    String choice = string(raw);
+    for (Question.Option option : question.options()) {
+      if (option.key().equals(choice)) return choice;
+    }
+    throw new DecisionException(
+      Reason.EVALUATION_FAILED,
+      "questions." + question.id() + ": the model chose '" + choice + "', which is not an option"
+    );
   }
 
   /** One probability per option, in option order; an option the model left out has 0. */

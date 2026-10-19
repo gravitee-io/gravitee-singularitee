@@ -77,7 +77,7 @@ On a prior decision (`examples/decision/qwen3-0.6b-triage.yaml`):
 | `model_id` | string | required for `classifier` and `embedding_knn` | Logical id of the classifier or embedding model. Unused by `llm_structured` and `decision`. |
 | `strategy` | string | `classifier` | `classifier`, `embedding_knn`, `llm_structured` or `decision`. Unknown values fall back to `classifier`. |
 | `input_field` | string | `prompt` | Context key holding the text to route on. Blank text resolves to the empty label and takes `default_step`. Required for `decision` (the load fails without it). |
-| `min_confidence` | float | `0` (off) | `decision` only: below this `<input_field>.confidence`, take `default_step`. A missing or unparsable confidence counts as `0`. |
+| `min_confidence` | float | `0` (off) | `decision` only: below this `<input_field>.confidence`, take `default_step`, which it requires (the load fails without one). A missing or unparsable confidence counts as `0`. |
 | `default_step` | string | unset | Step when no rule matches. Unset: the pipeline ends. |
 | `rules` | list | required | Ordered list of `{label, next_step, sentences}`. |
 | `rules[].label` | string | required | Label to match. For `embedding_knn` without `sentences`, it is also the reference text. |

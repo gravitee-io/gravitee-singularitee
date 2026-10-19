@@ -60,6 +60,7 @@ import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.BodyHandler;
 import io.vertx.grpc.common.GrpcStatus;
 import io.vertx.grpc.server.StatusException;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -305,6 +306,21 @@ class DecisionRoutesTest {
     assertThat(raw.getPrompts(0).getText()).isEqualTo("Answer: (");
     assertThat(raw.getPrompts(1).getScore().getLevels()).isEqualTo(3);
     assertThat(raw.getPrompts(1).getTokens().getIdsList()).containsExactly(1, 2, 3);
+  }
+
+  @Test
+  void decisions_refuses_a_score_level_count_out_of_range() throws Exception {
+    for (String levels : List.of("2147483647", "11", "1")) {
+      Resp r = post(
+        "/v1/decisions",
+        """
+        {"model": "decider", "prompts": [{"id": "urgency", "type": "score", "levels": %s, "prompt": "x"}]}
+        """.formatted(levels)
+      );
+
+      assertThat(r.status()).as("levels = %s", levels).isEqualTo(400);
+    }
+    assertThat(sent.get()).isNull();
   }
 
   @Test

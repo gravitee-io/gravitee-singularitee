@@ -207,7 +207,7 @@ A pipeline whose `role: output` step is a `decide` step has the task `decision` 
         questions: request
 ```
 
-Call it like a model (`"model": "triage"`). A message the guard rejects is not an error: the response is `200` with no answers and `"blocked": {"code": "content_filter", "message": "..."}`, the way a blocked chat completion finishes with `content_filter`. A pipeline with its own questions takes the state only; sending questions to it is a `400`.
+Call it like a model (`"model": "triage"`). A message the guard rejects is not an error: the response is `200` with no answers and `"blocked": {"code": "content_filter", "message": "..."}`, the way a blocked chat completion finishes with `content_filter`. A pipeline with its own questions takes the state only; sending questions to it is a `400`. A decision pipeline never takes rendered `prompts`: its guards only see the state, so the call is refused with `unsupported_input`.
 
 ### Reuse it as a classifier
 
@@ -223,7 +223,7 @@ llama_cpp_decision:
     options: { injection: tries to change the rules, benign: null }
 ```
 
-Labels are the option keys, scores their probabilities.
+Labels are the option keys, scores their probabilities. Those sum to 1 over the labels, so a guard threshold tuned on another classifier does not carry over.
 
 The classifier is zero-shot: `labels` on `POST /v1/classify` (or the `Classify` RPC) replace the options for that call, descriptions included, with no retraining. Declare `as_classifier: {}` to take every label from the request; the question then defaults to "Which label fits the text?", and a call without labels answers `400`.
 

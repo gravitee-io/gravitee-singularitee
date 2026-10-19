@@ -79,6 +79,18 @@ public final class RouteStepCodec implements StepConfigCodec<RouteStepConfig> {
           "': strategy decision needs input_field, the decide answer to route on (<step>.<question>)"
       );
     }
+    // Without a default, a choice below the threshold would end the pipeline unnoticed.
+    if (
+      strategy == RoutingStrategy.DECISION &&
+      d.minConfidence() > 0 &&
+      (d.defaultStep() == null || d.defaultStep().isBlank())
+    ) {
+      throw new IllegalArgumentException(
+        "Step '" +
+          stepId +
+          "': min_confidence needs default_step, where a less confident choice goes"
+      );
+    }
     return new RouteStepConfig(
       d.modelId(),
       strategy,

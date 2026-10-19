@@ -128,7 +128,9 @@ Template variables: `id`, `type`, `instructions`, `state`, `options` (each with 
 With `as_classifier`, `rxClassify(text)` asks that question: labels are the option keys and
 scores their probabilities, so [`classify`](../steps/classify.md), [`guard`](../steps/guard.md)
 and [`route`](../steps/route.md) with `strategy: classifier` take the model like any classifier.
-The model still reports task `decision`.
+The model still reports task `decision`. The scores are a softmax over the labels: they sum to
+1, and a label scores lower as labels are added, so tune a `guard` threshold on this model rather
+than reusing one from a classifier that scores each label on its own.
 
 The classifier is zero-shot: labels a classify call sends (`labels` on `/v1/classify`, the
 `Classify` and `ClassifyBatch` RPCs) replace `options` for that call, each description read as

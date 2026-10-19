@@ -242,6 +242,50 @@ class VllmDecisionModelTest {
   }
 
   @Test
+  void invalid_questions_never_reach_the_runtime() {
+    var model = model(body -> Map.of());
+    var duplicate = new Question.Choice(
+      "intent",
+      "Which?",
+      List.of(new Question.Option("x", null), new Question.Option("y", null))
+    );
+    var oneLevel = new Question.Score("urgency", "How urgent?", List.of("only"));
+    var repeatedKey = new Question.Choice(
+      "intent",
+      "Which?",
+      List.of(new Question.Option("a", null), new Question.Option("a", null))
+    );
+
+    for (var request : List.of(
+      templated("x", INTENT, duplicate),
+      templated("x", oneLevel),
+      templated("x", repeatedKey),
+      templated("x")
+    )) {
+      assertThatThrownBy(() -> model.decide(request))
+        .extracting(e -> ((DecisionException) e).reason())
+        .isEqualTo(Reason.INVALID_REQUEST);
+    }
+    assertThat(sent.get()).isNull();
+  }
+
+  @Test
+  void a_choice_outside_the_options_fails_the_request() {
+    var model = model(body ->
+      Map.of("answers", Map.of("intent", Map.of("type", "choice", "choice", "x")))
+    );
+    assertThatThrownBy(() -> model.decide(templated("x", INTENT)))
+      .hasMessageContaining("questions.intent")
+      .extracting(e -> ((DecisionException) e).reason())
+      .isEqualTo(Reason.EVALUATION_FAILED);
+
+    var missing = model(body -> Map.of("answers", Map.of("intent", Map.of("type", "choice"))));
+    assertThatThrownBy(() -> missing.decide(templated("x", INTENT)))
+      .extracting(e -> ((DecisionException) e).reason())
+      .isEqualTo(Reason.EVALUATION_FAILED);
+  }
+
+  @Test
   void runtime_refusals_keep_their_blame() {
     var tooLarge = model(body -> {
       throw VllmDecisionModel.refused("request_too_large", "too big", null);

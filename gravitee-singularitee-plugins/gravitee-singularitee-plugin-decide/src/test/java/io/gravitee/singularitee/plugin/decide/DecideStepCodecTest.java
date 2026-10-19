@@ -111,12 +111,45 @@ class DecideStepCodecTest {
   void a_score_prompt_names_its_levels() {
     var cfg = codec.parse(
       "judge",
-      Map.of("model_id", "raw", "prompts", Map.of("u", Map.of("score", 3, "template", "inline"))),
+      Map.of(
+        "model_id",
+        "raw",
+        "prompts",
+        Map.of("u", Map.of("score", 3, "template", "Urgency of {{ prompt }}: "))
+      ),
       ctx
     );
 
     assertThat(cfg.prompts().getFirst().optionKeys()).containsExactly("0", "1", "2");
-    assertThat(cfg.prompts().getFirst().template()).isEqualTo("inline");
+    assertThat(cfg.prompts().getFirst().template()).isEqualTo("Urgency of {{ prompt }}: ");
+  }
+
+  @Test
+  void a_prompt_with_the_questions_syntax_or_a_misspelt_template_is_refused_at_load() {
+    record Case(Map<String, Object> prompt, String error) {}
+    for (var c : List.of(
+      new Case(
+        Map.of("choice", Map.of("billing", "money"), "template", "judge-route"),
+        "prompts.p.choice must list the option keys"
+      ),
+      new Case(
+        Map.of("choice", List.of("a", "a"), "template", "judge-route"),
+        "prompts.p.choice keys must be unique"
+      ),
+      new Case(
+        Map.of("score", List.of("low", "high"), "template", "judge-route"),
+        "prompts.p.score must be a number of levels"
+      ),
+      new Case(Map.of("score", 11, "template", "judge-route"), "2 to 10"),
+      new Case(
+        Map.of("noul", Map.of(), "template", "judge-rout"),
+        "prompts.p.template names no template: 'judge-rout'"
+      )
+    )) {
+      assertThatThrownBy(() ->
+        codec.parse("judge", Map.of("model_id", "raw", "prompts", Map.of("p", c.prompt())), ctx)
+      ).hasMessageContaining(c.error());
+    }
   }
 
   @Test

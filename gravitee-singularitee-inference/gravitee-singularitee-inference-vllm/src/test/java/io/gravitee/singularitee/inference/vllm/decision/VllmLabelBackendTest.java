@@ -42,7 +42,7 @@ import org.junit.jupiter.api.Test;
 class VllmLabelBackendTest {
 
   /** Tokens: one per character, {@code 'A'} is 65; label {@code t} scores {@code -t / 100}. */
-  private static final class FakeEngine implements LabelEngine {
+  private static class FakeEngine implements LabelEngine {
 
     final Map<String, int[]> queued = new LinkedHashMap<>();
     final List<Integer> batchSizes = new CopyOnWriteArrayList<>();
@@ -169,6 +169,59 @@ class VllmLabelBackendTest {
 
       assertThat(engine.batchSizes.stream().mapToInt(Integer::intValue).sum()).isEqualTo(4);
       assertThat(engine.batchSizes.size()).isLessThan(4);
+    }
+  }
+
+  @Test
+  void closing_waits_for_the_running_step_before_closing_the_engine() throws Exception {
+    var engine = new FakeEngine();
+    var backend = new VllmLabelBackend(engine, List.of("A", "B"));
+    try (var pool = Executors.newFixedThreadPool(2)) {
+      var call = pool.submit(() ->
+        backend.score(List.of(new BackendPrompt.Text(new int[] { 1 }, 2)))
+      );
+      while (!engine.busy()) Thread.sleep(10);
+      var closing = pool.submit(backend::close);
+      Thread.sleep(200);
+      assertThat(engine.closed).as("closed under a running step").isFalse();
+
+      engine.release.countDown();
+      closing.get(5, TimeUnit.SECONDS);
+
+      assertThat(engine.closed).isTrue();
+      assertThat(call.get(5, TimeUnit.SECONDS)).hasSize(1);
+    }
+    assertThatThrownBy(() ->
+      backend.score(List.of(new BackendPrompt.Text(new int[] { 1 }, 2)))
+    ).hasMessageContaining("closed");
+  }
+
+  @Test
+  void a_failing_abort_still_fails_the_callers_and_keeps_serving() throws Exception {
+    var engine = new FakeEngine() {
+      private boolean failed;
+
+      @Override
+      public List<Scored> step() {
+        if (!failed) {
+          failed = true;
+          throw new IllegalStateException("device lost");
+        }
+        return super.step();
+      }
+
+      @Override
+      public synchronized void abort(String requestId) {
+        super.abort(requestId);
+        throw new IllegalStateException("abort failed");
+      }
+    };
+    engine.release.countDown();
+    try (var backend = new VllmLabelBackend(engine, List.of("A", "B"))) {
+      assertThatThrownBy(() ->
+        backend.score(List.of(new BackendPrompt.Text(new int[] { 1 }, 2)))
+      ).hasMessageContaining("device lost");
+      assertThat(backend.score(List.of(new BackendPrompt.Text(new int[] { 1 }, 2)))).hasSize(1);
     }
   }
 

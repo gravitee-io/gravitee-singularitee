@@ -19,11 +19,14 @@ import io.gravitee.singularitee.client.SingulariteeClient;
 import io.gravitee.singularitee.engine.api.DecisionEngine;
 import io.gravitee.singularitee.engine.api.decision.DecisionMessages;
 import io.gravitee.singularitee.inference.api.decision.DecisionCapabilities;
+import io.gravitee.singularitee.inference.api.decision.DecisionException;
+import io.gravitee.singularitee.inference.api.decision.DecisionException.Reason;
 import io.gravitee.singularitee.inference.api.decision.DecisionFamily;
 import io.gravitee.singularitee.inference.api.decision.DecisionRequest;
 import io.gravitee.singularitee.inference.api.decision.DecisionResult;
 import io.gravitee.singularitee.protocol.DecisionInfo;
 import io.reactivex.rxjava3.core.Single;
+import io.vertx.grpc.client.InvalidStatusException;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
@@ -31,7 +34,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * A decision model served by another Singularitee: calls travel over gRPC {@code Decide}, the
- * answers come back typed. The remote validates the questions against its model.
+ * answers come back typed. The remote validates the questions against its model; its refusals
+ * come back as the matching {@link DecisionException}.
  *
  * <p>{@link #capabilities()} reports what the remote's {@code GetModel} said; until that answers
  * it reports a permissive placeholder ({@code custom}, both input modes), and the remote remains
@@ -81,7 +85,41 @@ public final class RemoteDecisionEngine implements DecisionEngine {
 
   @Override
   public Single<DecisionResult> rxDecide(DecisionRequest request) {
-    return client.decide(DecisionMessages.request(modelId, request)).map(DecisionMessages::result);
+    return client
+      .decide(DecisionMessages.request(modelId, request))
+      .map(DecisionMessages::result)
+      .onErrorResumeNext(e -> Single.error(domainError(modelId, e)));
+  }
+
+  /**
+   * The decision failure behind a remote's gRPC status, so a request the remote refuses stays
+   * the caller's fault here too. The client receives no status message, only the code.
+   */
+  static Throwable domainError(String modelId, Throwable error) {
+    for (Throwable t = error; t != null; t = t.getCause()) {
+      if (t instanceof InvalidStatusException status) {
+        String remote = "the remote model '" + modelId + "' ";
+        return switch (status.actualStatus()) {
+          case INVALID_ARGUMENT -> new DecisionException(
+            Reason.INVALID_REQUEST,
+            remote + "refused the request as invalid",
+            error
+          );
+          case FAILED_PRECONDITION -> new DecisionException(
+            Reason.UNSUPPORTED_INPUT,
+            remote + "does not take this input",
+            error
+          );
+          // The model exists here: a remote without it is a deployment fault, not the caller's.
+          default -> new DecisionException(
+            Reason.EVALUATION_FAILED,
+            remote + "failed with " + status.actualStatus(),
+            error
+          );
+        };
+      }
+    }
+    return error;
   }
 
   private void probe() {

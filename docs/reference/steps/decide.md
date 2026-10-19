@@ -86,15 +86,15 @@ config:
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
 | `model_id` | string | required | Logical id of a decision model. Missing fails the load. |
-| `input_field` | string | `prompt` | Context key holding the state. `messages` passes the chat messages as a list of `{role, content}`. An empty value skips the step with a warning. |
+| `input_field` | string | `prompt` | Context key holding the state. `messages` passes the chat messages as a list of `{role, content}`. An empty value skips the step with a warning; in a decision call, an empty `prompt` or `messages` fails it with `"state" must be provided`, as a model does. |
 | `output_field` | string | the step id | Prefix of the context keys written. |
 | `questions` | map, or `request` | unset | Id to question, in declaration order; or `request` to take the caller's. Exactly one of `questions` and `prompts`. |
 | `questions.<id>.instructions` | any | required | The question; a string, map or list reaches the template as is. |
 | `questions.<id>.choice` | map or list | | Option key to description (`null` allowed), or a list of bare keys. At least one option. |
 | `questions.<id>.score` | list | | 2 to 10 level descriptions, lowest first. |
 | `questions.<id>.noul` | map | | Yes or no; optional `true` and `false` descriptions. |
-| `prompts` | map | unset | Id to a prompt the step renders. Each sets exactly one of `choice` (list of option keys), `score` (number of levels) or `noul` (`{}`), and `template`. |
-| `prompts.<id>.template` | string | required | A `templates:` id, or inline Jinja rendered against the pipeline context (`{{ prompt }}`, `{{ messages }}`, step outputs). |
+| `prompts` | map | unset | Id to a prompt the step renders. Each sets exactly one of `choice` (list of distinct option keys), `score` (number of levels, 2 to 10) or `noul` (`{}`), and `template`. |
+| `prompts.<id>.template` | string | required | A `templates:` id, or inline Jinja rendered against the pipeline context (`{{ prompt }}`, `{{ messages }}`, step outputs). A bare name that is no `templates:` id fails the load as a misspelt id. |
 
 Each question sets exactly one of `choice`, `score`, `noul`; anything else fails the load.
 
@@ -117,14 +117,18 @@ read as `{{ classify['team.confidence'] }}`.
 
 ## Notes
 
-- **Validation happens at run time.** The codec checks the shape of each question; option
-  limits, score levels and duplicate ids are checked by the model when the step runs. A failure
+- **Validation happens at load and at run time.** The codec checks the shape of each question
+  and prompt, including the option keys and level count of `prompts:`; option limits and
+  duplicate ids are checked by the model when the step runs. A failure
   ends the pipeline (logged), and a decision call that targets the pipeline returns the error.
 - **Fixed questions refuse the caller's.** A step with `questions:` or `prompts:` fails a
   decision call that also sends questions (`this pipeline declares its own questions; send the
   state only`); a call with the state alone is answered with the step's questions.
 - **`questions: request` outside a decision call** fails the step: there are no questions to
   answer. A call with an empty question list fails with `"questions" must not be empty`.
+- **A decision pipeline takes a state, not rendered prompts.** Guards check the pipeline's
+  prompt, which only a state becomes; a call with `prompts` (gRPC `RawInput`) is refused with
+  `unsupported_input` before the pipeline runs.
 - **The state is what the pipeline made of the input.** A guard that redacts `prompt` before the
   step changes what the model sees. A JSON state sent to a decision pipeline reaches the step as
   its JSON text.

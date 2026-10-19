@@ -167,6 +167,25 @@ class DecisionRunnerTest {
         .extracting(e -> ((DecisionException) e).reason())
         .isEqualTo(DecisionException.Reason.EVALUATION_FAILED);
     }
+
+    @Test
+    void scores_without_a_finite_best_or_of_the_wrong_count_fail_the_evaluation() {
+      var backend = labelled(DecisionFamily.CUSTOM);
+      var runner = runner(backend, new PromptSource.ModelTemplate());
+      for (float[] scores : List.of(
+        new float[] { Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY },
+        new float[] { Float.POSITIVE_INFINITY, 0f, 0f },
+        new float[] { 1f, 0f },
+        new float[] { 1f, 0f, 0f, 0f }
+      )) {
+        backend.scorer = p -> scores;
+
+        assertThatThrownBy(() -> decide(runner, "s", ROUTE))
+          .isInstanceOf(DecisionException.class)
+          .extracting(e -> ((DecisionException) e).reason())
+          .isEqualTo(DecisionException.Reason.EVALUATION_FAILED);
+      }
+    }
   }
 
   @Nested
@@ -368,6 +387,14 @@ class DecisionRunnerTest {
         offset(1e-5)
       );
       assertThat(result.inputTokens()).isEqualTo(prompt.tokens().length);
+
+      // One score short: the last question would be read from padding.
+      backend.scorer = p -> new float[] { 1f, 0f, 0f };
+      assertThatThrownBy(() ->
+        decide(runner(backend, new PromptSource.ModelTemplate()), "s", choice, ANGRY)
+      )
+        .extracting(e -> ((DecisionException) e).reason())
+        .isEqualTo(DecisionException.Reason.EVALUATION_FAILED);
     }
 
     @Test

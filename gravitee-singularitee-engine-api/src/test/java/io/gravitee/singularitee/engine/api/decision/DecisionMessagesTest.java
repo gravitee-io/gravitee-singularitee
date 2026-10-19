@@ -26,6 +26,9 @@ import io.gravitee.singularitee.inference.api.decision.DecisionResult;
 import io.gravitee.singularitee.inference.api.decision.Question;
 import io.gravitee.singularitee.inference.api.decision.QuestionKind;
 import io.gravitee.singularitee.protocol.MediaContent;
+import io.gravitee.singularitee.protocol.RawInput;
+import io.gravitee.singularitee.protocol.RawPrompt;
+import io.gravitee.singularitee.protocol.RawScore;
 import io.gravitee.singularitee.protocol.TemplatedInput;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -143,5 +146,26 @@ class DecisionMessagesTest {
       .isInstanceOf(DecisionException.class)
       .extracting(e -> ((DecisionException) e).reason())
       .isEqualTo(DecisionException.Reason.UNSUPPORTED_MODALITY);
+  }
+
+  @Test
+  void a_score_level_count_out_of_range_is_refused_before_anything_is_allocated() {
+    for (int levels : List.of(Integer.MAX_VALUE, 100_000_000, 11, 1, 0, -1, Integer.MIN_VALUE)) {
+      var input = RawInput.newBuilder()
+        .addPrompts(
+          RawPrompt.newBuilder()
+            .setQuestionId("urgency")
+            .setScore(RawScore.newBuilder().setLevels(levels))
+            .setText("Urgency: ")
+        )
+        .build();
+
+      assertThatThrownBy(() -> DecisionMessages.raw(input, false))
+        .as("levels = %d", levels)
+        .isInstanceOf(DecisionException.class)
+        .hasMessageContaining("urgency")
+        .extracting(e -> ((DecisionException) e).reason())
+        .isEqualTo(DecisionException.Reason.INVALID_REQUEST);
+    }
   }
 }

@@ -203,13 +203,15 @@ Which of the two a model accepts is in `GetModelResponse.decision`.
 
 `usage.prompt_tokens` counts every prompt token evaluated; nothing is generated. Questions are
 rendered and answered in request order. `DecideBatch` asks the same questions about each state;
-results come back in input order and the first failure fails the call.
+results come back in input order and the first failure fails the call. A batch takes at most 256
+states; too many states, a missing state or a malformed question refuses the whole batch with
+`INVALID_ARGUMENT` before any state runs.
 
 | Status | When |
 | --- | --- |
 | `NOT_FOUND` | Unknown model or pipeline id. |
 | `INVALID_ARGUMENT` | Malformed question or prompt; the message names it (`questions.<id>: ...`). |
-| `FAILED_PRECONDITION` | Not a decision target, an input mode the model's prompt source refuses, or media (images are not read yet). |
+| `FAILED_PRECONDITION` | Not a decision target, an input mode the model's prompt source refuses, `raw` input to a pipeline, or media (images are not read yet). |
 | `INTERNAL` | The model produced no usable scores (a joint head that could not use the decision order). |
 | `UNAVAILABLE` | Workspace still loading. |
 
