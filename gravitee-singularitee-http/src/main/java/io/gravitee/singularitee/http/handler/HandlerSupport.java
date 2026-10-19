@@ -24,6 +24,8 @@ import io.gravitee.singularitee.http.resolve.RequestModalities;
 import io.gravitee.singularitee.http.validation.PayloadValidator;
 import io.gravitee.singularitee.http.validation.SchemaName;
 import io.vertx.ext.web.RoutingContext;
+import io.vertx.grpc.common.GrpcStatus;
+import io.vertx.grpc.server.StatusException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -199,10 +201,15 @@ public final class HandlerSupport {
 
   /**
    * Maps a service {@code Future} failure to an OpenAI error envelope and status: unknown model
-   * to 400 {@code model_not_found}, wrong model kind to 400 {@code unsupported_model}, anything
-   * else to 500 {@code internal_error}.
+   * to 400 {@code model_not_found}, wrong model kind to 400 {@code unsupported_model}, an
+   * {@code INVALID_ARGUMENT} status (labels a decision classifier cannot take) to 400
+   * {@code invalid_request_error}, anything else to 500 {@code internal_error}.
    */
   public static void mapServiceError(RoutingContext rc, Throwable err) {
+    if (err instanceof StatusException s && s.status() == GrpcStatus.INVALID_ARGUMENT) {
+      badRequest(rc, s.message(), null);
+      return;
+    }
     String msg = err.getMessage() == null ? "Internal error" : err.getMessage();
     if (msg.startsWith("Model not found")) {
       JsonResponses.writeError(rc, 400, msg, "invalid_request_error", "model", "model_not_found");

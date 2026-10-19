@@ -1,0 +1,140 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Qwen3-0.6B decision pipelines: guard, decide, route
+#
+# Standalone workspace. Run it with:
+#   ./run-server.sh --workspace examples/decision/qwen3-0.6b-triage.yaml
+#
+# `triage` is a decision endpoint built as a pipeline: a regex guard rejects a
+# message carrying a card number before the model sees it, then a decide step
+# answers the caller's questions. Call it like a decision model:
+#
+#   curl -s localhost:8080/v1/decisions -H 'Content-Type: application/json' -d '{
+#     "model": "triage",
+#     "input": "I was charged twice for my order and nobody has replied.",
+#     "questions": [
+#       {"id": "team", "type": "choice", "instructions": "Which team should handle this?",
+#        "options": [{"key": "billing"}, {"key": "shipping"}, {"key": "technical"}]}
+#     ]
+#   }' | jq
+#
+# A message with a card number answers 200 with "blocked" and no answers.
+#
+# `support` is a generation pipeline routed by a decision: one forward pass
+# picks the team, low confidence falls back to a generalist reply.
+#
+#   curl -s localhost:8080/v1/chat/completions -H 'Content-Type: application/json' -d '{
+#     "model": "support",
+#     "messages": [{"role": "user", "content": "My parcel never arrived."}]
+#   }' | jq -r '.choices[0].message.content'
+
+workspace:
+  name: qwen3-0.6b-triage
+
+  models:
+    - id: judge
+      name: Qwen/Qwen3-0.6B-GGUF
+      type: llama_cpp_decision
+      visible: false
+      memory_check: warn
+      llama_cpp_decision:
+        path: Qwen3-0.6B-Q8_0.gguf
+        family: custom
+        debias: reverse
+        prompt:
+          template: chat
+        n_ctx: 4096
+        n_seq_max: 8
+        n_parallel: 2
+        n_gpu_layers: 999
+
+    - id: llm
+      name: Qwen/Qwen3-0.6B-GGUF
+      type: llama_cpp
+      visible: false
+      memory_check: warn
+      llama_cpp:
+        path: Qwen3-0.6B-Q8_0.gguf
+        n_ctx: 4096
+        n_seq_max: 2
+        n_gpu_layers: 999
+
+  pipelines:
+    - id: triage
+      entry: secrets
+      steps:
+        - id: secrets
+          type: regex_guard
+          next_step: decide
+          config:
+            action: reject
+            patterns:
+              - name: CREDIT CARD
+                pattern: "\\b(?:\\d[ -]?){13,16}\\b"
+            message: "Blocked: the message carries a card number."
+        - id: decide
+          type: decide
+          role: output
+          config:
+            model_id: judge
+            questions: request
+
+    - id: support
+      entry: classify
+      steps:
+        - id: classify
+          type: decide
+          next_step: route
+          config:
+            model_id: judge
+            questions:
+              team:
+                instructions: Which team should handle this customer message?
+                choice:
+                  billing: payments, invoices, refunds
+                  shipping: parcels, delivery, tracking
+        - id: route
+          type: route
+          config:
+            strategy: decision
+            input_field: classify.team
+            min_confidence: 0.3
+            default_step: generalist
+            rules:
+              - { label: billing, next_step: billing }
+              - { label: shipping, next_step: shipping }
+        - id: billing
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            system: You are the billing team. Answer in one sentence.
+            context: { enable_thinking: false }
+        - id: shipping
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            system: You are the shipping team. Answer in one sentence.
+            context: { enable_thinking: false }
+        - id: generalist
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            system: You are a support agent. Answer in one sentence.
+            context: { enable_thinking: false }

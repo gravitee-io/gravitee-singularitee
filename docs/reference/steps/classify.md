@@ -4,7 +4,7 @@
 
 ## Overview
 
-`ClassifyStepExecutor` binds to a `ClassifierEngine` (`onnx_classifier`, `gliner_classifier`, `gliner_ner`, `regex`, `composite_classifier`, `remote_classifier`). It classifies the text in `input_field` and stores `topLabel()` under `output_field` and `topScore()` under `<output_field>.score`. The step never branches; pair it with [`route`](./route.md), [`break`](./break.md) or [`loop`](./loop.md) to act on the result.
+`ClassifyStepExecutor` binds to a `ClassifierEngine` (`onnx_classifier`, `gliner_classifier`, `gliner_ner`, `regex`, `composite_classifier`, `remote_classifier`, or a decision model with `as_classifier`). It classifies the text in `input_field` and stores `topLabel()` under `output_field` and `topScore()` under `<output_field>.score`. The step never branches; pair it with [`route`](./route.md), [`break`](./break.md) or [`loop`](./loop.md) to act on the result.
 
 ## Usage
 

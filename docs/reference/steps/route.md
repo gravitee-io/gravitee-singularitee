@@ -1,6 +1,6 @@
 # `route`
 
-> Resolves a label for the input with a classifier, embedding similarity or a prior LLM verdict, and jumps to the rule whose `label` matches.
+> Resolves a label for the input with a classifier, embedding similarity, a prior LLM verdict or a prior decision, and jumps to the rule whose `label` matches.
 
 ## Overview
 
@@ -11,6 +11,7 @@
 | `classifier` (default) | `ClassifierEngine` | The classifier's top label, compared exactly with each rule's `label`. |
 | `embedding_knn` | `EmbeddingEngine` | Every rule's `sentences` (or its `label` when none) is embedded; the rule holding the reference with the highest cosine similarity to the embedded input wins. References are computed at workspace load (`rxWarmupEmbeddings`) and cached per `pipeline:step`. |
 | `llm_structured` | none | The input text itself is the verdict: trimmed, surrounding quotes removed, lower-cased, then matched with `contains` against each rule's lower-cased `label`, in rule order. Point `input_field` at the output of a `role: internal` infer step. |
+| `decision` | none | The choice a [`decide`](./decide.md) step wrote, compared exactly with each rule's `label`. Point `input_field` at `<decide step>.<question>`. With `min_confidence`, a choice whose `<input_field>.confidence` is lower resolves the empty label and takes `default_step`. |
 
 ## Usage
 
@@ -54,13 +55,29 @@ Zero-shot classifier (`examples/pipelines/gliner-router.yaml`):
         next_step: respond_cooking
 ```
 
+On a prior decision (`examples/decision/qwen3-0.6b-triage.yaml`):
+
+```yaml
+- id: route
+  type: route
+  config:
+    strategy: decision
+    input_field: classify.team      # written by the decide step `classify`
+    min_confidence: 0.3
+    default_step: generalist
+    rules:
+      - { label: billing, next_step: billing }
+      - { label: shipping, next_step: shipping }
+```
+
 ## Options
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `model_id` | string | required for `classifier` and `embedding_knn` | Logical id of the classifier or embedding model. Unused by `llm_structured`. |
-| `strategy` | string | `classifier` | `classifier`, `embedding_knn` or `llm_structured`. Unknown values fall back to `classifier`. |
-| `input_field` | string | `prompt` | Context key holding the text to route on. Blank text resolves to the empty label and takes `default_step`. |
+| `model_id` | string | required for `classifier` and `embedding_knn` | Logical id of the classifier or embedding model. Unused by `llm_structured` and `decision`. |
+| `strategy` | string | `classifier` | `classifier`, `embedding_knn`, `llm_structured` or `decision`. Unknown values fall back to `classifier`. |
+| `input_field` | string | `prompt` | Context key holding the text to route on. Blank text resolves to the empty label and takes `default_step`. Required for `decision` (the load fails without it). |
+| `min_confidence` | float | `0` (off) | `decision` only: below this `<input_field>.confidence`, take `default_step`, which it requires (the load fails without one). A missing or unparsable confidence counts as `0`. |
 | `default_step` | string | unset | Step when no rule matches. Unset: the pipeline ends. |
 | `rules` | list | required | Ordered list of `{label, next_step, sentences}`. |
 | `rules[].label` | string | required | Label to match. For `embedding_knn` without `sentences`, it is also the reference text. |
@@ -69,7 +86,7 @@ Zero-shot classifier (`examples/pipelines/gliner-router.yaml`):
 
 ## Context fields
 
-Reads: `input_field` (default `prompt`).
+Reads: `input_field` (default `prompt`); `decision` with `min_confidence` also reads `<input_field>.confidence`.
 
 Writes:
 
@@ -83,10 +100,11 @@ Writes:
 - `classifier` compares labels exactly; the rule label must be spelled as the model reports it (GLiNER labels are the workspace-declared names).
 - `embedding_knn` picks the single nearest reference, so one strong sentence outweighs many weak ones; there is no score threshold.
 - A missing or wrongly typed model logs a warning and resolves the empty label, so the pipeline silently takes `default_step`. Check the log when every request lands on the default branch.
+- `decision` reads the context only; route on a `choice` question. A `score` or `noul` answer is a number and matches no label.
 - Reference embeddings live in the node cache `ai-route-embeddings` when a cache manager is wired, so several nodes share the warm-up.
 
 ## See also
 
 - [Routing guide](../../guides/routing/README.md)
-- [`classify`](./classify.md), [`embed`](./embed.md)
+- [`classify`](./classify.md), [`embed`](./embed.md), [`decide`](./decide.md)
 - [Context fields](../context-fields.md)

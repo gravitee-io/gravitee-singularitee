@@ -17,6 +17,8 @@ package io.gravitee.singularitee.http.handler;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.gravitee.singularitee.engine.api.DecisionEngine;
+import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.gravitee.singularitee.http.json.JsonResponses;
 import io.gravitee.singularitee.http.json.Utils;
 import io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver;
@@ -162,6 +164,15 @@ public final class ModelsHandler {
     if (!TEXT_ONLY.equals(inputModalities)) {
       ArrayNode modalities = node.putArray("input_modalities");
       inputModalities.forEach(modalities::add);
+    }
+    if (ModelTasks.DECISION.equals(task)) {
+      // A decision model produces answers, not text. Also under `architecture`, the shape
+      // llama-server reports it in, so a client probing for "decisions" there finds it here.
+      node.putArray("output_modalities").add(DecisionEngine.OUTPUT_MODALITY);
+      ObjectNode architecture = node.putObject("architecture");
+      ArrayNode in = architecture.putArray("input_modalities");
+      inputModalities.forEach(in::add);
+      architecture.putArray("output_modalities").add(DecisionEngine.OUTPUT_MODALITY);
     }
     return node;
   }

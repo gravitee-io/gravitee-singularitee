@@ -38,7 +38,8 @@ public record RouteStepConfig(
   RoutingStrategy strategy,
   String inputField,
   String defaultStepId,
-  List<RouteRule> rules
+  List<RouteRule> rules,
+  double minConfidence
 ) implements ModelBoundConfig, BranchingConfig {
   public RouteStepConfig {
     modelId = modelId == null ? "" : modelId;

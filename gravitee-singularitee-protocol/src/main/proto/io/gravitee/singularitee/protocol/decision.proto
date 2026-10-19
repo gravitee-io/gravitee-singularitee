@@ -1,0 +1,255 @@
+//
+// Copyright © 2015 The Gravitee team (http://gravitee.io)
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+// Singularitee decision protocol.
+//
+// A decision model answers typed questions (choice, score, noul) about a state in
+// one forward pass, without generating tokens. The server either renders the prompt
+// itself (templated input) or scores prompts the caller already rendered (raw input);
+// which of the two a model accepts depends on its prompt source, see DecisionInfo.
+
+syntax = "proto3";
+
+package io.gravitee.singularitee.protocol;
+
+import "google/protobuf/struct.proto";
+import "io/gravitee/singularitee/protocol/inference.proto";
+
+option java_package = "io.gravitee.singularitee.protocol";
+option java_outer_classname = "DecisionProto";
+option java_multiple_files = true;
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service GraviteeDecisionService {
+  // Answers typed questions about one state with a decision model or a pipeline
+  // whose output step is a decide step.
+  rpc Decide      (DecideRequest)      returns (DecideResponse);
+
+  // Same questions over several states. States are independent; results are
+  // returned in input order.
+  rpc DecideBatch (DecideBatchRequest) returns (DecideBatchResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Requests
+// ---------------------------------------------------------------------------
+
+message DecideRequest {
+  oneof target {
+    // A published decision model (llama_cpp_decision, remote_decision).
+    string model_id    = 1;
+    // A published pipeline whose role: output step is a decide step.
+    string pipeline_id = 2;
+  }
+
+  oneof input {
+    // The server renders the prompt from the model's prompt source.
+    TemplatedInput templated = 3;
+    // The caller already rendered; the server only scores and post-processes.
+    RawInput       raw       = 4;
+  }
+
+  // Return per-variant raw scores alongside each answer.
+  bool include_raw_scores = 5;
+}
+
+message TemplatedInput {
+  // The content to evaluate. A json value that is not a string reaches the
+  // template as a JSON value.
+  oneof state {
+    string                text     = 1;
+    google.protobuf.Value json     = 2;
+    ChatMessageList       messages = 3;
+  }
+
+  // Placed before the state in the prompt, in order.
+  repeated MediaContent images = 4;
+
+  // Question ids must be unique. Rendered and answered in request order. May be
+  // empty for a pipeline whose decide step declares its own questions.
+  repeated DecisionQuestion questions = 5;
+}
+
+message DecisionQuestion {
+  string id = 1;
+  // A string, an object or an array, given to the template as is.
+  google.protobuf.Value instructions = 2;
+
+  oneof kind {
+    ChoiceQuestion choice = 3;
+    ScoreQuestion  score  = 4;
+    NoulQuestion   noul   = 5;
+  }
+}
+
+message ChoiceQuestion {
+  // The order the options appear in the prompt, except for families trained on
+  // sorted options (clef), which sort them by key.
+  repeated DecisionOption options = 1;
+}
+
+message DecisionOption {
+  string                key         = 1;
+  // Unset reads as null.
+  google.protobuf.Value description = 2;
+}
+
+message ScoreQuestion {
+  // 2 to 10 level descriptions, lowest first. Level i has key "i".
+  repeated google.protobuf.Value levels = 1;
+}
+
+message NoulQuestion {
+  optional google.protobuf.Value when_true  = 1;
+  optional google.protobuf.Value when_false = 2;
+}
+
+message RawInput {
+  repeated RawPrompt prompts = 1;
+}
+
+message RawPrompt {
+  string question_id = 1;
+
+  // Selects the answer shape.
+  oneof kind {
+    RawChoice choice = 2;
+    RawScore  score  = 3;
+    RawNoul   noul   = 4;
+  }
+
+  oneof body {
+    // Special tokens are parsed and no BOS is added, as a rendered template expects.
+    string    text   = 5;
+    TokenList tokens = 6;
+  }
+}
+
+// Option keys, in the order the prompt lists them.
+message RawChoice { repeated string option_keys = 1; }
+// Number of levels, 2 to 10.
+message RawScore  { int32 levels = 1; }
+message RawNoul   {}
+
+message TokenList { repeated int32 ids = 1; }
+
+message DecideBatchRequest {
+  oneof target {
+    string model_id    = 1;
+    string pipeline_id = 2;
+  }
+  repeated DecideBatchState states             = 3;
+  repeated DecisionQuestion questions          = 4;
+  bool                      include_raw_scores = 5;
+}
+
+message DecideBatchState {
+  oneof state {
+    string                text     = 1;
+    google.protobuf.Value json     = 2;
+    ChatMessageList       messages = 3;
+  }
+  repeated MediaContent images = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Responses
+// ---------------------------------------------------------------------------
+
+message DecideResponse {
+  // The target id, model or pipeline.
+  string                  model_id = 1;
+  // In request order; empty when blocked.
+  repeated DecisionAnswer answers  = 2;
+  // Output tokens are always 0: nothing is generated.
+  TokenUsage              usage    = 3;
+  // Set when a pipeline halted before deciding (a guard reject). Not an RPC
+  // error, the same way a blocked chat completion finishes with content_filter.
+  DecisionBlocked         blocked  = 4;
+}
+
+message DecisionBlocked {
+  // "content_filter".
+  string code    = 1;
+  // The halting step's rendered message.
+  string message = 2;
+  string step_id = 3;
+}
+
+message DecisionAnswer {
+  string question_id = 1;
+
+  oneof result {
+    ChoiceAnswer choice = 2;
+    ScoreAnswer  score  = 3;
+    NoulAnswer   noul   = 4;
+  }
+
+  // Only with include_raw_scores: one entry per variant, before temperature.
+  repeated RawScores raw_scores = 10;
+}
+
+message ChoiceAnswer {
+  string                     choice        = 1;
+  // In option order, sums to 1.
+  repeated OptionProbability probabilities = 2;
+  // 0 when every option is equally likely, 1 when one is certain.
+  double                     confidence    = 3;
+}
+
+message ScoreAnswer {
+  // Expected level index, weighted by probability.
+  double                     score         = 1;
+  // Most probable level index.
+  int32                      mode          = 2;
+  // Keys "0".."n-1", lowest first.
+  repeated OptionProbability probabilities = 3;
+  double                     confidence    = 4;
+}
+
+message NoulAnswer {
+  double probability_true = 1;
+}
+
+message OptionProbability {
+  string key         = 1;
+  double probability = 2;
+}
+
+message RawScores { repeated float values = 1; }
+
+message DecideBatchResponse { repeated DecideResponse results = 1; }
+
+// ---------------------------------------------------------------------------
+// Discovery
+// ---------------------------------------------------------------------------
+
+// What a decision model accepts, reported on GetModelResponse.decision.
+message DecisionInfo {
+  // openjev, lev, nimble, kev, laya, clef or custom.
+  string family      = 1;
+  // Most options a choice question may have.
+  int32  max_options = 2;
+  // Whether the questions of a request are decided together (clef).
+  bool   joint       = 3;
+  // Whether the server renders prompts for this model (TemplatedInput).
+  bool   templated   = 4;
+  // Whether the model scores caller-rendered prompts (RawInput).
+  bool   raw         = 5;
+}

@@ -157,7 +157,7 @@ components:
               items: { type: string }
         labels:
           type: array
-          description: Zero-shot labels (GLiNER models); replace the model's default labels for this request. Omit for fixed-label models.
+          description: Zero-shot labels (GLiNER models and decision models published with as_classifier); replace the model's default labels for this request. A decision model reads each description as the option's meaning. Omit for fixed-label models. Duplicate names, or more labels than a decision model supports, answer 400 invalid_request_error.
           items:
             type: object
             required: [name]

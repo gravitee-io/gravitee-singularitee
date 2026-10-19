@@ -257,6 +257,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
       case CLASSIFIER -> rxClassifierRoute(cfg, text, stepId);
       case EMBEDDING_KNN -> rxEmbeddingKnnRoute(cfg, text, stepId, ctx);
       case LLM_STRUCTURED -> rxLlmStructuredRoute(cfg, text, stepId);
+      case DECISION -> Single.just(decisionRoute(cfg, text, stepId, ctx));
     };
   }
 
@@ -281,6 +282,37 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
       return Single.just("");
     }
     return ce.rxClassify(new ClassifyRequest(text)).map(r -> r.topLabel());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Decision strategy (a decide step already chose; low confidence falls through)
+  // ---------------------------------------------------------------------------
+
+  private static String decisionRoute(
+    RouteStepConfig cfg,
+    String choice,
+    String stepId,
+    StepContext ctx
+  ) {
+    if (cfg.minConfidence() <= 0) return choice;
+    String raw = ctx.pipelineContext().get(cfg.inputField() + ".confidence");
+    double confidence;
+    try {
+      confidence = raw == null ? 0 : Double.parseDouble(raw);
+    } catch (NumberFormatException e) {
+      confidence = 0;
+    }
+    if (confidence < cfg.minConfidence()) {
+      LOGGER.debug(
+        "RouteStep '{}': choice '{}' at confidence {} is below {}",
+        stepId,
+        choice,
+        confidence,
+        cfg.minConfidence()
+      );
+      return "";
+    }
+    return choice;
   }
 
   // ---------------------------------------------------------------------------

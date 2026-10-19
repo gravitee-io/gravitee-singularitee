@@ -52,7 +52,7 @@ LABEL maintainer="contact@graviteesource.com"
 LABEL org.opencontainers.image.source="https://github.com/gravitee-io/gravitee-singularitee"
 LABEL org.opencontainers.image.description="Prebuilt llama.cpp CUDA shared libraries for Singularitee CUDA image"
 
-ARG LLAMACPP_VERSION=v0.4.0
+ARG LLAMACPP_VERSION=v0.6.0
 # Volta to Blackwell + a PTX fallback (90-virtual) for forward JIT. CUDA 12.9 nvcc targets the
 # full sm_70…sm_121 range. nvcc does one pass per arch, so for faster builds you can trim this
 # to just the GPU(s) you deploy (e.g. "89-real;90-virtual" for Ada / RTX 4000 Ada).

@@ -52,6 +52,7 @@
                 <include>io.gravitee.singularitee:gravitee-singularitee-plugin-loop:zip</include>
                 <include>io.gravitee.singularitee:gravitee-singularitee-plugin-sub-pipeline:zip</include>
                 <include>io.gravitee.singularitee:gravitee-singularitee-plugin-todo:zip</include>
+                <include>io.gravitee.singularitee:gravitee-singularitee-plugin-decide:zip</include>
                 <include>io.gravitee.singularitee:gravitee-singularitee-plugin-infer:zip</include>
             </includes>
             <excludes>
@@ -66,6 +67,7 @@
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-loop:jar</exclude>
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-sub-pipeline:jar</exclude>
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-todo:jar</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-decide:jar</exclude>
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-infer:jar</exclude>
             </excludes>
             <useTransitiveDependencies>false</useTransitiveDependencies>
@@ -87,6 +89,7 @@
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-loop:*</exclude>
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-sub-pipeline:*</exclude>
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-todo:*</exclude>
+                <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-decide:*</exclude>
                 <exclude>io.gravitee.singularitee:gravitee-singularitee-plugin-infer:*</exclude>
                 <exclude>io.gravitee.llama.cpp:llamaj.cpp</exclude>
                 <exclude>io.gravitee.singularitee.inference:gravitee-singularitee-inference-llama-cpp</exclude>

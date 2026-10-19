@@ -13,6 +13,7 @@ both under `/v1` and bare. The specs document the `/v1` form. Semantics shared b
 | [text-generation.openapi.yaml](./text-generation.openapi.yaml) | `/v1/chat/completions`, `/v1/completions`, `/v1/responses` |
 | [embeddings.openapi.yaml](./embeddings.openapi.yaml) | `/v1/embeddings`, `/v1/rerank`, `/v1/similarity` |
 | [classification.openapi.yaml](./classification.openapi.yaml) | `/v1/classify` |
+| [decision.openapi.yaml](./decision.openapi.yaml) | `/v1/systemone`, `/v1/decisions` |
 | [discovery.openapi.yaml](./discovery.openapi.yaml) | `/v1/models`, `/v1/models/{model}`, `/health` |
 
 ## Usage

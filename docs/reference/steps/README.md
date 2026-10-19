@@ -11,7 +11,7 @@ A pipeline is `entry` plus a list of `steps`. `PipelineExecutor` walks the graph
 | [`infer`](./infer.md) | `InferStepExecutor` | Streams a generation from a text-generation model. | yes (`TextGenEngine`) | `next_step`, or terminal. |
 | [`classify`](./classify.md) | `ClassifyStepExecutor` | Writes the top label and score of a classifier. | yes (`ClassifierEngine`) | `next_step`, or terminal. |
 | [`embed`](./embed.md) | `EmbedStepExecutor` | Writes an embedding vector. | yes (`EmbeddingEngine`) | `next_step`, or terminal. |
-| [`route`](./route.md) | `RouteStepExecutor` | Dispatches to the step named by the matching rule. | classifier or embedding (`llm_structured` uses none) | The rule's `next_step`, else `default_step`, else terminal. |
+| [`route`](./route.md) | `RouteStepExecutor` | Dispatches to the step named by the matching rule. | classifier or embedding (`llm_structured` and `decision` use none) | The rule's `next_step`, else `default_step`, else terminal. |
 | [`guard`](./guard.md) | `GuardStepExecutor` | Classifier-based reject / warn / redact. | yes (`ClassifierEngine`) | `next_step`; `reject` halts the pipeline. |
 | [`llm_guard`](./llm_guard.md) | `LlmGuardStepExecutor` | LLM-as-judge verdict, reject or warn. | yes (`TextGenEngine`) | `next_step`; `reject` halts the pipeline. |
 | [`loop`](./loop.md) | `LoopStepExecutor` | Bounded back-edge on a condition. | no | `next_step` on exit, `loopback_step` on retry, `fallback_step` when exhausted. |
@@ -19,6 +19,7 @@ A pipeline is `entry` plus a list of `steps`. `PipelineExecutor` walks the graph
 | [`sub_pipeline`](./sub_pipeline.md) | `SubPipelineStepExecutor` | Runs another pipeline, locally or on a remote server. | no (delegates) | `next_step`, or terminal. A non-`STOP` sub-result halts the parent. |
 | [`regex_guard`](./regex_guard.md) | `RegexGuardStepExecutor` | Model-free pattern reject / warn / redact. Deprecated in favour of a `regex` model behind `guard`. | no | `next_step`; `reject` halts the pipeline. |
 | [`tool_select`](./tool_select.md) | `ToolSelectStepExecutor` | Shortlists the request's tools with a zero-shot classifier. | yes (`ClassifierEngine`) | `next_step`, or terminal. |
+| [`decide`](./decide.md) | `DecideStepExecutor` | Answers typed questions (choice, score, noul) with a decision model. | yes (`DecisionEngine`) | `next_step`, or terminal. |
 | [`todo`](./todo.md) | `TodoStepExecutor` | Executes the server-owned plan tools called by the previous `infer` step. | no | `handled_step` after a plan call; `next_step` otherwise; halts on `ask_user` or client tool calls. |
 
 ## Key types
@@ -38,7 +39,7 @@ Every step has the same envelope:
 ```yaml
 steps:
   - id: toxicity_guard        # [A-Za-z_][A-Za-z0-9_]*: it is also a Jinja identifier
-    type: guard               # one of the twelve slugs above
+    type: guard               # one of the thirteen slugs above
     next_step: generate       # edge to follow; omit for a terminal step
     config:                   # type-specific block, see the page for the type
       model_id: toxicity
@@ -61,7 +62,7 @@ Step order in the list has no execution meaning. Execution is defined by `entry`
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
 | `id` | string | required | Step id. Must match `[A-Za-z_][A-Za-z0-9_]*` (the loader rejects anything else) because it prefixes the step's context fields (`<id>.output`) and is a Jinja identifier (`{{ generate.output }}`). |
-| `type` | string | required | One of `infer`, `classify`, `embed`, `route`, `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`, or any type an installed plugin provides. Case-insensitive. |
+| `type` | string | required | One of `infer`, `classify`, `embed`, `route`, `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`, `decide`, or any type an installed plugin provides. Case-insensitive. |
 | `role` | string | `output` | `infer` steps only: `output`, `thinking` or `internal`. Unknown values fall back to `output`. Other step types ignore it. |
 | `next_step` | string | unset | Linear edge, stored in `Pipeline.edges`. Unset makes the step terminal. `loop` reads it as its exit edge. |
 | `config` | object | per type | The type-specific block. Unknown keys are ignored (`@JsonIgnoreProperties(ignoreUnknown = true)`), so a typo silently drops the option. |

@@ -23,10 +23,14 @@ built in-process with no engine at all. The type string is parsed case-insensiti
 | [`gliner_ner`](./gliner_ner.md) | zero-shot entity extraction | gliner4j (ONNX Runtime) | `token-classification` | any (CPU); CUDA via `GRAVITEE_GLINER_EXECUTION_PROVIDER` |
 | [`llama_cpp_embedding`](./llama_cpp_embedding.md) | embedding | llama.cpp | `feature-extraction` | as `llama_cpp` |
 | [`llama_cpp_reranker`](./llama_cpp_reranker.md) | reranker | llama.cpp | `reranking` | as `llama_cpp` |
+| [`llama_cpp_decision`](./llama_cpp_decision.md) | decision model | llama.cpp | `decision` | as `llama_cpp` |
+| [`vllm_decision`](./vllm_decision.md) | decision model: vLLM Semantic Router, or any vLLM model (`family: custom`) | vllm_srun / vLLM (vLLM4j) | `decision` | as `vllm`; runtime models also CPU, MPS, ROCm |
+| [`gliner_decision`](./gliner_decision.md) | decision model: a GLiNER2 bundle (GLiNER2.5-Decide) | gliner4j (llama.cpp or ONNX Runtime) | `decision` | as `gliner_classifier` |
 | [`remote_llm`](./remote_llm.md) | proxy | gRPC | `text-generation` | any JVM |
 | [`remote_classifier`](./remote_classifier.md) | proxy | gRPC | `text-classification` unless declared | any JVM |
 | [`remote_embedding`](./remote_embedding.md) | proxy | gRPC | `feature-extraction` | any JVM |
 | [`remote_reranker`](./remote_reranker.md) | proxy | gRPC | `reranking` | any JVM |
+| [`remote_decision`](./remote_decision.md) | proxy | gRPC | `decision` | any JVM |
 | [`regex`](./regex.md) | token classifier | pure Java | `token-classification` | any JVM |
 | [`composite_classifier`](./composite_classifier.md) | classifier union | pure Java | widest task of its members | any JVM |
 
@@ -46,7 +50,7 @@ These keys belong to `WorkspaceDefinition.ModelDefinition` and apply to every ty
 | `name` | string | unset | HuggingFace repository id (`Qwen/Qwen3-0.6B-GGUF`) or a local path. Display name for remote and pure-Java types (falls back to `id`). |
 | `type` | string | unset | One of the slugs above, case-insensitive. Unknown or blank: the model is skipped with a WARN, the workspace still loads. |
 | `server` | string | `default` | `remote_*` only: id of an endpoint in the `remote:` block. Ignored by other types. |
-| `task` | string | unset (engine decides) | One of `text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`. Any other value fails the workspace. |
+| `task` | string | unset (engine decides) | One of `text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`, `decision`. Any other value fails the workspace. |
 | `visible` | boolean | `true` | `false` hides the model from the listings and from HTTP resolution; it stays callable from pipelines and over gRPC. |
 | `modalities` | list of string | unset (detected) | Subset of `text`, `image`, `audio`. Any other value fails the workspace. Declare only where detection cannot run. |
 | `memory_check` | string | `warn` | Pre-load fit check: `fail` aborts the load, `warn` logs and continues, `disabled` skips it. Unknown values fall back to `warn`. Used by the llama.cpp and vLLM engines. |

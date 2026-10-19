@@ -88,4 +88,43 @@ class RouteStepCodecTest {
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessageContaining("intent_router");
   }
+
+  @Test
+  void a_decision_threshold_needs_somewhere_to_send_a_less_confident_choice() {
+    var rules = List.of(Map.of("label", "billing", "next_step", "billing"));
+    assertThatThrownBy(() ->
+      codec.parse(
+        "route",
+        Map.of(
+          "strategy",
+          "decision",
+          "input_field",
+          "classify.team",
+          "min_confidence",
+          0.3,
+          "rules",
+          rules
+        ),
+        ctx
+      )
+    ).hasMessageContaining("min_confidence needs default_step");
+
+    var cfg = codec.parse(
+      "route",
+      Map.of(
+        "strategy",
+        "decision",
+        "input_field",
+        "classify.team",
+        "min_confidence",
+        0.3,
+        "default_step",
+        "generalist",
+        "rules",
+        rules
+      ),
+      ctx
+    );
+    assertThat(cfg.defaultStepId()).isEqualTo("generalist");
+  }
 }

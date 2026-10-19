@@ -44,6 +44,7 @@
         <module>gravitee-singularitee-plugin-loop</module>
         <module>gravitee-singularitee-plugin-sub-pipeline</module>
         <module>gravitee-singularitee-plugin-todo</module>
+        <module>gravitee-singularitee-plugin-decide</module>
         <module>gravitee-singularitee-plugin-infer</module>
     </modules>
 

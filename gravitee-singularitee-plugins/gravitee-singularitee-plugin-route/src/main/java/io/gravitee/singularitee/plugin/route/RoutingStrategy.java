@@ -29,7 +29,9 @@ public enum RoutingStrategy {
   /** Nearest reference embedding by cosine similarity. */
   EMBEDDING_KNN,
   /** The input text (typically a prior judge step's output) is matched against rule labels. */
-  LLM_STRUCTURED;
+  LLM_STRUCTURED,
+  /** A {@code decide} step's choice, read from the context; low confidence takes the default. */
+  DECISION;
 
   /** Parses the YAML spelling; unset or unknown is {@link #CLASSIFIER}. */
   public static RoutingStrategy parse(String value) {
@@ -37,6 +39,7 @@ public enum RoutingStrategy {
     return switch (value.toLowerCase(Locale.ROOT)) {
       case "embedding_knn" -> EMBEDDING_KNN;
       case "llm_structured" -> LLM_STRUCTURED;
+      case "decision" -> DECISION;
       default -> CLASSIFIER;
     };
   }

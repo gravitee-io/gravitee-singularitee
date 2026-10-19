@@ -26,6 +26,7 @@ import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepTypes;
 import io.gravitee.singularitee.protocol.*;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition.*;
+import io.gravitee.singularitee.workspace.config.LlamaCppDecisionConfig;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -128,12 +129,12 @@ public final class YamlWorkspaceLoader {
       LOGGER.info("Templates base path: {}", templatesBasePath);
     }
 
-    var modelSplit = parseModels(root);
-
     // Build template registry: id to resolved content string.
     // Templates declared in the root (or merged from includes) are resolved here
-    // once, before pipelines are parsed, so template_id references resolve correctly.
+    // once, before models and pipelines are parsed, so template references resolve correctly.
     Map<String, String> templateRegistry = buildTemplateRegistry(root, basePath, templatesBasePath);
+
+    var modelSplit = parseModels(root, templateRegistry);
 
     // Named workspace sections travel to the codecs as raw maps: a codec is plugin code and
     // knows nothing of this module's records. Building the typed registries first keeps
@@ -211,7 +212,10 @@ public final class YamlWorkspaceLoader {
     List<ClientLocalModelData> clientLocal
   ) {}
 
-  private static ModelSplit parseModels(WorkspaceDefinition.WorkspaceRoot root) {
+  private static ModelSplit parseModels(
+    WorkspaceDefinition.WorkspaceRoot root,
+    Map<String, String> templateRegistry
+  ) {
     if (root.models() == null) return new ModelSplit(List.of(), List.of(), List.of());
 
     List<ModelLoadRequest> local = new ArrayList<>();
@@ -237,7 +241,7 @@ public final class YamlWorkspaceLoader {
           clientLocal.add(new ClientLocalModelData(m));
           LOGGER.info("Client-local model declared: id='{}', type='{}'", m.id(), m.type());
         } else {
-          local.add(toModelLoadRequest(m));
+          local.add(withDecisionTemplate(toModelLoadRequest(m), templateRegistry));
         }
       } catch (Exception e) {
         LOGGER.warn("Skipping model '{}': {}", m.name(), e.getMessage());
@@ -254,6 +258,55 @@ public final class YamlWorkspaceLoader {
         .stream()
         .filter(t -> t != null && !t.isBlank())
         .toList();
+  }
+
+  /**
+   * Materialises a decision model's {@code prompt.template} when it names a {@code templates:}
+   * entry rather than one of the built-in sources, so the engine never sees the id.
+   */
+  private static ModelLoadRequest withDecisionTemplate(
+    ModelLoadRequest request,
+    Map<String, String> templateRegistry
+  ) {
+    if (request.hasVllmDecision() && request.vllmDecision().custom()) {
+      var config = request.vllmDecision();
+      String source = config.promptSource();
+      if (
+        List.of(LlamaCppDecisionConfig.SOURCE_CHAT, LlamaCppDecisionConfig.SOURCE_NONE).contains(
+          source
+        )
+      ) {
+        return request;
+      }
+      String content = templateRegistry.get(source);
+      if (content == null) {
+        throw new IllegalArgumentException(
+          "vllm_decision.prompt.template '" + source + "' is neither chat, none nor a templates: id"
+        );
+      }
+      return request.withVllmDecision(config.withTemplate(content));
+    }
+    if (!request.hasLlamaCppDecision()) return request;
+    var config = request.llamaCppDecision();
+    String source = config.promptSource();
+    if (
+      List.of(
+        LlamaCppDecisionConfig.SOURCE_MODEL,
+        LlamaCppDecisionConfig.SOURCE_CHAT,
+        LlamaCppDecisionConfig.SOURCE_NONE
+      ).contains(source)
+    ) {
+      return request;
+    }
+    String content = templateRegistry.get(source);
+    if (content == null) {
+      throw new IllegalArgumentException(
+        "llama_cpp_decision.prompt.template '" +
+          source +
+          "' is neither model, chat, none nor a templates: id"
+      );
+    }
+    return request.withLlamaCppDecision(config.withTemplate(content));
   }
 
   private static ModelLoadRequest toModelLoadRequest(ModelDefinition m) {
@@ -298,6 +351,9 @@ public final class YamlWorkspaceLoader {
   private static String resolveModelPath(ModelDefinition m) {
     if (m.llamaCpp() != null && m.llamaCpp().path() != null) {
       return m.llamaCpp().path();
+    }
+    if (m.llamaCppDecision() != null && m.llamaCppDecision().path() != null) {
+      return m.llamaCppDecision().path();
     }
     return null;
   }

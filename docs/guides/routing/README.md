@@ -1,16 +1,17 @@
 # Routing
 
-> How to branch a pipeline with a `route` step: on a classifier's top label, on embedding similarity to reference sentences, or on the text an earlier LLM step produced.
+> How to branch a pipeline with a `route` step: on a classifier's top label, on embedding similarity to reference sentences, on the text an earlier LLM step produced, or on a decide step's choice.
 
 ## Overview
 
-A `route` step reads a context field (`prompt` by default), resolves it to a label with one of three strategies, and continues at the step named by the matching rule. No rule matching means `default_step`, or the pipeline ends if none is set.
+A `route` step reads a context field (`prompt` by default), resolves it to a label with one of four strategies, and continues at the step named by the matching rule. No rule matching means `default_step`, or the pipeline ends if none is set.
 
 | Strategy | `model_id` | Resolves the label by | Match |
 | --- | --- | --- | --- |
 | `classifier` (default) | a classifier model | the model's top label | exact string equality |
 | `embedding_knn` | an embedding model | the single reference sentence nearest by cosine similarity | exact, on the winning rule's label |
 | `llm_structured` | none | the input text itself, normalised | case-insensitive `contains`, first rule wins |
+| `decision` | none | a `decide` step's choice, read from the context; below `min_confidence` it resolves to nothing | exact string equality |
 
 ## Key types
 
@@ -158,19 +159,51 @@ Let an internal infer step emit the label, then match its output. The route step
         next_step: respond_cooking
 ```
 
+### Route on a decision
+
+A `decide` step picks the option with probabilities in one forward pass, no tokens generated; the route step reads its choice from the context and makes no model call. From `examples/decision/qwen3-0.6b-triage.yaml`:
+
+```yaml
+- id: classify
+  type: decide
+  next_step: route
+  config:
+    model_id: judge
+    questions:
+      team:
+        instructions: Which team should handle this customer message?
+        choice:
+          billing: payments, invoices, refunds
+          shipping: parcels, delivery, tracking
+
+- id: route
+  type: route
+  config:
+    strategy: decision
+    input_field: classify.team        # <decide step id>.<question id>
+    min_confidence: 0.3               # reads classify.team.confidence
+    default_step: generalist
+    rules:
+      - { label: billing, next_step: billing }
+      - { label: shipping, next_step: shipping }
+```
+
+A message with no clear team lands below `min_confidence` and takes `generalist`. See [Decisions](../decisions/README.md).
+
 ## Options
 
 Keys used in this guide. Full list: [route step reference](../../reference/steps/route.md).
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `model_id` | string | unset | Classifier (`classifier`) or embedding model (`embedding_knn`); unused by `llm_structured`. |
-| `strategy` | string | `classifier` | `classifier`, `embedding_knn`, `llm_structured`. |
+| `model_id` | string | unset | Classifier (`classifier`) or embedding model (`embedding_knn`); unused by `llm_structured` and `decision`. |
+| `strategy` | string | `classifier` | `classifier`, `embedding_knn`, `llm_structured`, `decision`. |
 | `input_field` | string | `prompt` | Context field to route on. |
 | `default_step` | string | unset | Step taken when no rule matches; without it the pipeline ends at the route step. |
 | `rules[].label` | string | required | Label to match. |
 | `rules[].next_step` | string | required | Step to continue at. |
 | `rules[].sentences` | list | `[label]` | `embedding_knn` only: reference texts for this rule. |
+| `min_confidence` | float | `0` | `decision` only: below this `<input_field>.confidence`, the choice is dropped and `default_step` wins. |
 
 ## Notes
 
@@ -185,5 +218,6 @@ Keys used in this guide. Full list: [route step reference](../../reference/steps
 - [Classification](../classification/README.md): the models behind `classifier`.
 - [Embeddings and reranking](../embeddings-and-reranking/README.md): the models behind `embedding_knn`.
 - [Loops and chain-of-thought](../loops-and-cot/README.md): internal infer steps feeding `llm_structured`.
+- [Decisions](../decisions/README.md): the `decide` step behind `decision`.
 - [Pipelines](../../concepts/pipelines/README.md) and [Workspaces](../../workspaces/README.md).
 - [HTTP API](../../api/http/README.md), [gRPC API](../../api/grpc/README.md), [Java client](../../api/java-client/README.md).

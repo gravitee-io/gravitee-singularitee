@@ -133,6 +133,12 @@
         </dependency>
         <dependency>
             <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-plugin-decide</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
             <artifactId>gravitee-singularitee-plugin-infer</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
@@ -210,6 +216,13 @@
         <dependency>
             <groupId>io.gravitee.singularitee</groupId>
             <artifactId>gravitee-singularitee-plugin-todo</artifactId>
+            <version>${project.version}</version>
+            <type>zip</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-plugin-decide</artifactId>
             <version>${project.version}</version>
             <type>zip</type>
             <scope>test</scope>

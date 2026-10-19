@@ -1,0 +1,58 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# vLLM Semantic Router Decision-2.0-Kai-0.6B
+#
+# Standalone workspace. Needs vllm-srun in the venv (scripts/setup-venv.sh -r).
+# Run it with:
+#   ./run-server.sh --workspace examples/vllm/decision-2.0-kai-0.6b.yaml
+#
+# A purpose-built decision model: its own runtime (vllm_srun) renders the prompt
+# and scores every question in one forward pass, in-process in the embedded
+# CPython. The runtime downloads the pinned revision, checks its files and its
+# golden answers before the model is published. Runs on CPU, CUDA or MPS.
+#
+#   curl -s localhost:8080/v1/decisions -H 'Content-Type: application/json' -d '{
+#     "model": "kai",
+#     "input": {"request": "I was charged twice for my order and nobody has replied."},
+#     "questions": [
+#       {"id": "route", "type": "choice", "instructions": "Which team should handle this?",
+#        "options": [{"key": "billing"}, {"key": "shipping"}, {"key": "technical"}]},
+#       {"id": "angry", "type": "noul", "instructions": "Is the customer angry?"},
+#       {"id": "urgency", "type": "score", "instructions": "How urgent is this?",
+#        "levels": ["can wait", "this week", "today", "right now"]}
+#     ]
+#   }' | jq
+#
+# as_classifier also publishes it as a classifier: POST /v1/classify
+# with "model": "kai" asks the intent question below.
+
+workspace:
+  name: decision-2.0-kai-0.6b
+
+  models:
+    - id: kai
+      name: vllm-sr/Decision-2.0-Kai-0.6B
+      type: vllm_decision
+      memory_check: warn
+      vllm_decision:
+        device: auto
+        as_classifier:
+          instructions: What does the user want?
+          options:
+            billing: Payment, invoice or refund issue
+            account: Login or access issue
+            other: Anything else

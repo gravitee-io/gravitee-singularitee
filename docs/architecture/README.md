@@ -6,7 +6,7 @@
 
 Singularitee is a [gravitee-node](https://github.com/gravitee-io/gravitee-node) container (Spring 6, Vert.x 5, RxJava 3). It hosts models in-process through engine factories and exposes them through two fronts over the same registries:
 
-- the **gRPC API** (primary, port 9090): four services over Vert.x's HTTP/2 server;
+- the **gRPC API** (primary, port 9090): five services over Vert.x's HTTP/2 server;
 - the **HTTP API** (opt-in, port 8080): an OpenAI-compatible JSON API on a second Vert.x server.
 
 A pipeline is a directed graph of steps that the engine walks reactively. The same pipeline definition can run on the server, or on a client that proxies each model call back over gRPC.
@@ -23,12 +23,12 @@ A pipeline is a directed graph of steps that the engine walks reactively. The sa
 | Module (`gravitee-singularitee-*`) | Role |
 | --- | --- |
 | `protocol` | `.proto` contract and generated Vert.x gRPC stubs. Source of truth for the wire. |
-| `engine-api` | The contracts a step plugin compiles against: the step SPI (`StepExecutor`, `StepConfigCodec`), the pipeline/step model, `PipelineContext`/`StepContext`, the engine model interfaces, the registries and template rendering. |
+| `engine-api` | The contracts a step plugin compiles against: the step SPI (`StepExecutor`, `StepConfigCodec`), the pipeline/step model, `PipelineContext`/`StepContext`, the engine model interfaces (`TextGenEngine`, `ClassifierEngine`, `EmbeddingEngine`, `RerankerEngine`, `DecisionEngine`), the registries, template rendering and `DecisionMessages` (decision calls between protocol and engine, both ways). |
 | `engine` | The runtime that wires and executes those contracts: `StepExecutorFactory`, `StepDispatcher` (the decorator chain), the platform decorators, `PipelineExecutor` (reactive DAG walker) and `ConversationStore`. Depends on `engine-api`; holds no step executors (those are plugins). |
 | `plugin-api` | The step plugin SPI (`StepExecutorPlugin`, `StepDecoratorPlugin`, `StepExecutorServices`) and the plugin assembly with its license gate. |
-| `plugins` | One module per core step: the twelve OSS steps, always shipped. Further steps can live in their own plugin repositories, loaded the same way. |
+| `plugins` | One module per core step: the thirteen OSS steps, always shipped. Further steps can live in their own plugin repositories, loaded the same way. |
 | `engine-remote` | `Remote*Engine` proxies for `remote_*` model types and `ClientPipelineExecutor`. |
-| `inference` | Vendored engines (`-api`, `-llama-cpp`, `-vllm`, `-onnx`, `-math`) behind `EngineAdapter` and `AbstractBatchEngine`. |
+| `inference` | Vendored engines (`-api`, `-llama-cpp`, `-vllm`, `-onnx`, `-math`) behind `EngineAdapter` and `AbstractBatchEngine`, plus `-decision`: engine-agnostic decision models (per-family prompt layout, scoring, answers) over a `DecisionBackend` an engine implements. `-vllm` also maps decisions onto vLLM Semantic Router's runtime, which scores them itself. |
 | `workspace` | `YamlWorkspaceLoader`: YAML to model load requests and the Java pipeline model; step configs are parsed by the plugins' codecs. `ModelType` lives here. |
 | `grpc` | gRPC service implementations, engine-adapter factories, HuggingFace resolvers. |
 | `http` | OpenAI-compatible HTTP API. Pure translation, no inference logic. |
@@ -53,7 +53,7 @@ node never reports ready with a safety step silently absent.
 | Mode | Invocation | Where the DAG runs | Where models live |
 | --- | --- | --- | --- |
 | Server-side pipeline | `InferPipeline` RPC, or HTTP with a pipeline id as `model` | Server | Server |
-| Direct model | `Infer`, `Classify`, `Embed`, `Rank` RPCs, or HTTP with a model id | n/a | Server |
+| Direct model | `Infer`, `Classify`, `Embed`, `Rank`, `Decide` RPCs, or HTTP with a model id | n/a | Server |
 | Client-side pipeline | `ClientPipelineExecutor` with a workspace declaring `remote:` endpoints | Client process | One or more remote servers |
 
 In client-side mode the workspace declares `remote_*` models bound to named endpoints. `ClientPipelineExecutor` walks the DAG locally and each model call travels over gRPC to the server that hosts it. A multi-server client points different models at different endpoints inside one DAG (`examples/modular/client-safety-vllm.yaml`).
@@ -75,7 +75,7 @@ A pipeline is an `entry` step plus a list of `steps`. Linear steps follow their 
 | `infer` | Stream text generation from a text-generation model | [infer](../reference/steps/infer.md) |
 | `classify` | Classifier label and score into the context | [classify](../reference/steps/classify.md) |
 | `embed` | Embedding vector into the context | [embed](../reference/steps/embed.md) |
-| `route` | Dispatch to a named step by classifier label, embedding similarity or LLM answer | [route](../reference/steps/route.md) |
+| `route` | Dispatch to a named step by classifier label, embedding similarity, LLM answer or a prior decision | [route](../reference/steps/route.md) |
 | `guard` | Classifier-based input guard: reject, warn or redact | [guard](../reference/steps/guard.md) |
 | `llm_guard` | LLM-as-judge guard: safe iff the first token equals `safe_token` | [llm_guard](../reference/steps/llm_guard.md) |
 | `regex_guard` | Model-free pattern guard with entity redaction | [regex_guard](../reference/steps/regex_guard.md) |
@@ -84,6 +84,7 @@ A pipeline is an `entry` step plus a list of `steps`. Linear steps follow their 
 | `sub_pipeline` | Invoke another pipeline, locally or on a remote server | [sub_pipeline](../reference/steps/sub_pipeline.md) |
 | `tool_select` | Shortlist the caller's tools with a zero-shot classifier | [tool_select](../reference/steps/tool_select.md) |
 | `todo` | Execute server-owned plan tools and stream progress | [todo](../reference/steps/todo.md) |
+| `decide` | Typed questions (choice, score, noul) answered by a decision model, answers into the context | [decide](../reference/steps/decide.md) |
 
 A caller can constrain decoding per request with `structured_output` (JSON Schema, JSON object, choice, regex, grammar); on a pipeline the format applies to the `role: output` step only. See [Structured output](../guides/structured-output/README.md).
 
@@ -136,7 +137,9 @@ workspace:
 
 Models carry a stable **logical id** (`llm`, `pii`, `router`), so several model files can share an id and a server includes exactly one: the same pipeline then runs unchanged on any backend.
 
-**Publication.** `task` is the slug advertised on `/v1/models` (`text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`); a model defaults to what its engine reports, a pipeline to the model behind its `role: output` step. `visible: false` hides an entry from listings and HTTP resolution while leaving it callable as a dependency and over gRPC. `modalities` (`text`, `image`, `audio`) is detected from the loaded model, not declared; a pipeline accepts the union of its model-bound steps, and the HTTP layer refuses media the target cannot read with `unsupported_modality`.
+**Publication.** `task` is the slug advertised on `/v1/models` (`text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`, `decision`); a model defaults to what its engine reports, a pipeline to the model behind its `role: output` step. `visible: false` hides an entry from listings and HTTP resolution while leaving it callable as a dependency and over gRPC. `modalities` (`text`, `image`, `audio`) is detected from the loaded model, not declared; a pipeline accepts the union of its model-bound steps, and the HTTP layer refuses media the target cannot read with `unsupported_modality`.
+
+A pipeline whose output step is a `decide` step reports `decision` and is called like a decision model: the decision service runs it with the caller's state and questions on the context, and answers with the decide step's typed result (or `blocked` when a guard halts it).
 
 Model types, step keys and templates are each documented in the [reference](../README.md#reference); the format end to end is in [Workspaces](../workspaces/README.md).
 
