@@ -204,7 +204,7 @@ Disposing the `Flowable` subscription cancels the RPC, which cancels generation 
 | Idle timeout | `0` | Disabled: streams may sit quiet between tokens. |
 | HTTP/2 keep-alive | 30 s (`-1` disables) | Periodic pings keep NATs and load balancers from dropping idle connections. |
 | Retry backoff | Fibonacci x 200 ms, capped at 5 s | Only on `ConnectException`, `StreamResetException` and gRPC `UNAVAILABLE` (a server still loading). Each retry sends the request again. |
-| Overall retry timeout | 10 s | Hard cap across all attempts; surfaces as `TimeoutException`. |
+| Overall retry timeout | 10 s | Hard cap across all attempts; surfaces as `TimeoutException` naming the server (`no answer from <host>:<port> within 10000 ms: the server is unreachable or still loading`). |
 | `ssl` | `false` | TLS with ALPN HTTP/2 negotiation. |
 | `tls` (`ClientTlsOptions`) | `null` | Trust and key material; `null` means the JVM default trust store. `trustAll` disables verification; `verifyHostname` defaults to true through the factories. |
 | `username` / `password` | `null` | Basic auth metadata on every call. |

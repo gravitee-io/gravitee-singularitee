@@ -41,13 +41,11 @@ import io.gravitee.singularitee.inference.llama.cpp.LlamaBackend;
 import io.gravitee.singularitee.inference.llama.cpp.LlamaMemoryEstimator;
 import java.lang.foreign.Arena;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,7 +74,7 @@ public final class LlamaCppDecisionBackend implements DecisionBackend {
   private final Arena arena;
   private final LlamaModel model;
   private final List<LlamaDecider> deciders;
-  private final BlockingQueue<LlamaDecider> idle;
+  private final DeciderPool<LlamaDecider> pool;
   private final DecisionFamily family;
   private final String decisionTemplate;
   private final String chatTemplate;
@@ -118,7 +116,7 @@ public final class LlamaCppDecisionBackend implements DecisionBackend {
       throw e;
     }
     this.deciders = List.copyOf(created);
-    this.idle = new ArrayBlockingQueue<>(deciders.size(), false, deciders);
+    this.pool = new DeciderPool<>(deciders);
 
     LlamaDecider first = deciders.getFirst();
     this.family = DecisionFamily.valueOf(first.type().name());
@@ -232,20 +230,11 @@ public final class LlamaCppDecisionBackend implements DecisionBackend {
       .stream()
       .map(LlamaCppDecisionBackend::toNative)
       .toList();
-    if (closed) throw new IllegalStateException("the decision model is closed");
-    LlamaDecider decider;
+    LlamaDecider decider = pool.acquire();
     try {
-      decider = idle.take();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException("interrupted while waiting for a decider", e);
-    }
-    try {
-      // close() may have started while this call waited: its deciders must stay untouched.
-      if (closed) throw new IllegalStateException("the decision model is closed");
       return decider.score(nativePrompts);
     } finally {
-      idle.add(decider);
+      pool.release(decider);
     }
   }
 
@@ -267,26 +256,16 @@ public final class LlamaCppDecisionBackend implements DecisionBackend {
   }
 
   /**
-   * Frees the model once every decider is back, so no call scores on freed memory. Calls that
-   * start afterwards fail. When a call is still running after {@value #CLOSE_WAIT_SECONDS} s,
-   * the native memory is left to the process exit rather than freed under it.
+   * Frees the model once every decider is back, so no call scores on freed memory. Calls waiting
+   * for a decider, and calls that start afterwards, fail. When a call is still running after
+   * {@value #CLOSE_WAIT_SECONDS} s, the native memory is left to the process exit rather than
+   * freed under it.
    */
   @Override
   public void close() {
     if (closed) return;
     closed = true;
-    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(CLOSE_WAIT_SECONDS);
-    int returned = 0;
-    try {
-      while (returned < deciders.size()) {
-        long left = deadline - System.nanoTime();
-        if (left <= 0 || idle.poll(left, TimeUnit.NANOSECONDS) == null) break;
-        returned++;
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
-    if (returned < deciders.size()) {
+    if (!pool.close(Duration.ofSeconds(CLOSE_WAIT_SECONDS))) {
       LOGGER.warn(
         "Decision model still scoring after {} s: its native memory is not freed",
         CLOSE_WAIT_SECONDS

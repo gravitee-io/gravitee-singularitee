@@ -203,7 +203,8 @@ Which of the two a model accepts is in `GetModelResponse.decision`.
 
 `usage.prompt_tokens` counts every prompt token evaluated; nothing is generated. Questions are
 rendered and answered in request order. `DecideBatch` asks the same questions about each state;
-results come back in input order and the first failure fails the call. A batch takes at most 256
+results come back in input order and the first failure fails the call. At most 16 states run at
+once, and none starts after a failure. A batch takes at most 256
 states; too many states, a missing state or a malformed question refuses the whole batch with
 `INVALID_ARGUMENT` before any state runs.
 

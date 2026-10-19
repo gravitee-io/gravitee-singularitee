@@ -32,6 +32,7 @@ import io.vertx.grpc.common.GrpcErrorException;
 import io.vertx.grpc.common.GrpcStatus;
 import java.net.ConnectException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -121,6 +122,7 @@ public final class SingulariteeClient implements AutoCloseable {
   private final GraviteeVectorServiceGrpcClient vectorStub;
   private final GraviteeDecisionServiceGrpcClient decisionStub;
   private final boolean ownsVertx;
+  private final String endpoint;
 
   /**
    * Creates a new client connected to Singularitee at the given host and port,
@@ -452,6 +454,7 @@ public final class SingulariteeClient implements AutoCloseable {
     this.grpcClient = (username != null)
       ? new BasicAuthGrpcClient(client, username, password)
       : client;
+    this.endpoint = host + ":" + port;
     var address = SocketAddress.inetSocketAddress(port, host);
     this.modelStub = GraviteeModelServiceGrpcClient.create(grpcClient, address);
     this.pipelineStub = GraviteePipelineServiceGrpcClient.create(grpcClient, address);
@@ -471,7 +474,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the model metadata
    */
   public Single<GetModelResponse> getModel(String modelId) {
-    return unaryCall(() ->
+    return unaryCall(endpoint, () ->
       modelStub.getModel(GetModelRequest.newBuilder().setModelId(modelId).build())
     );
   }
@@ -482,7 +485,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the list of model metadata
    */
   public Single<ListModelsResponse> listModels() {
-    return unaryCall(() -> modelStub.listModels(ListModelsRequest.getDefaultInstance()));
+    return unaryCall(endpoint, () -> modelStub.listModels(ListModelsRequest.getDefaultInstance()));
   }
 
   // =========================================================================
@@ -496,7 +499,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the pipeline definition and status
    */
   public Single<GetPipelineResponse> getPipeline(String pipelineId) {
-    return unaryCall(() ->
+    return unaryCall(endpoint, () ->
       pipelineStub.getPipeline(GetPipelineRequest.newBuilder().setPipelineId(pipelineId).build())
     );
   }
@@ -507,7 +510,9 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the list of pipeline metadata
    */
   public Single<ListPipelinesResponse> listPipelines() {
-    return unaryCall(() -> pipelineStub.listPipelines(ListPipelinesRequest.getDefaultInstance()));
+    return unaryCall(endpoint, () ->
+      pipelineStub.listPipelines(ListPipelinesRequest.getDefaultInstance())
+    );
   }
 
   // =========================================================================
@@ -549,7 +554,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the classification results
    */
   public Single<ClassifyResponse> classify(ClassifyRequest request) {
-    return unaryCall(() -> inferenceStub.classify(request));
+    return unaryCall(endpoint, () -> inferenceStub.classify(request));
   }
 
   /**
@@ -560,7 +565,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the batch classification results
    */
   public Single<ClassifyBatchResponse> classifyBatch(ClassifyBatchRequest request) {
-    return unaryCall(() -> inferenceStub.classifyBatch(request));
+    return unaryCall(endpoint, () -> inferenceStub.classifyBatch(request));
   }
 
   // =========================================================================
@@ -574,7 +579,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the embedding vector
    */
   public Single<EmbedResponse> embed(EmbedRequest request) {
-    return unaryCall(() -> vectorStub.embed(request));
+    return unaryCall(endpoint, () -> vectorStub.embed(request));
   }
 
   /**
@@ -584,7 +589,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the embedding vectors
    */
   public Single<EmbedBatchResponse> embedBatch(EmbedBatchRequest request) {
-    return unaryCall(() -> vectorStub.embedBatch(request));
+    return unaryCall(endpoint, () -> vectorStub.embedBatch(request));
   }
 
   /**
@@ -594,7 +599,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the similarity score
    */
   public Single<CosineSimilarityResponse> cosineSimilarity(CosineSimilarityRequest request) {
-    return unaryCall(() -> vectorStub.cosineSimilarity(request));
+    return unaryCall(endpoint, () -> vectorStub.cosineSimilarity(request));
   }
 
   /**
@@ -604,7 +609,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the ranked results
    */
   public Single<RankResponse> rank(RankRequest request) {
-    return unaryCall(() -> vectorStub.rank(request));
+    return unaryCall(endpoint, () -> vectorStub.rank(request));
   }
 
   /**
@@ -615,7 +620,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the similarity scores and token usage
    */
   public Single<TextSimilarityResponse> textSimilarity(TextSimilarityRequest request) {
-    return unaryCall(() -> vectorStub.textSimilarity(request));
+    return unaryCall(endpoint, () -> vectorStub.textSimilarity(request));
   }
 
   /**
@@ -626,7 +631,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the ranked results and token usage
    */
   public Single<TextRerankResponse> textRerank(TextRerankRequest request) {
-    return unaryCall(() -> vectorStub.textRerank(request));
+    return unaryCall(endpoint, () -> vectorStub.textRerank(request));
   }
 
   // =========================================================================
@@ -641,7 +646,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the answers, in request order
    */
   public Single<DecideResponse> decide(DecideRequest request) {
-    return unaryCall(() -> decisionStub.decide(request));
+    return unaryCall(endpoint, () -> decisionStub.decide(request));
   }
 
   /**
@@ -651,7 +656,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits one response per state
    */
   public Single<DecideBatchResponse> decideBatch(DecideBatchRequest request) {
-    return unaryCall(() -> decisionStub.decideBatch(request));
+    return unaryCall(endpoint, () -> decisionStub.decideBatch(request));
   }
 
   // =========================================================================
@@ -714,14 +719,30 @@ public final class SingulariteeClient implements AutoCloseable {
   }
 
   /**
-   * A unary RPC with the retry policy and the overall timeout. {@code call} starts the RPC and
-   * runs again on every attempt: a retry re-sends the request rather than re-reading the failed
-   * result of the first one.
+   * A unary RPC to {@code endpoint} with the retry policy and the overall timeout. {@code call}
+   * starts the RPC and runs again on every attempt: a retry re-sends the request rather than
+   * re-reading the failed result of the first one.
    */
-  static <T> Single<T> unaryCall(Supplier<Future<T>> call) {
+  static <T> Single<T> unaryCall(String endpoint, Supplier<Future<T>> call) {
+    return unaryCall(endpoint, call, OVERALL_RETRY_TIMEOUT_MS);
+  }
+
+  static <T> Single<T> unaryCall(String endpoint, Supplier<Future<T>> call, long timeoutMs) {
     return Single.defer(() -> Single.fromCompletionStage(call.get().toCompletionStage()))
       .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+      .timeout(
+        timeoutMs,
+        TimeUnit.MILLISECONDS,
+        Single.error(() ->
+          new TimeoutException(
+            "no answer from " +
+              endpoint +
+              " within " +
+              timeoutMs +
+              " ms: the server is unreachable or still loading"
+          )
+        )
+      );
   }
 
   /**

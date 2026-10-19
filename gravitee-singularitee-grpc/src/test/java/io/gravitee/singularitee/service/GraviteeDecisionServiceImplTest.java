@@ -26,6 +26,7 @@ import com.google.protobuf.Value;
 import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.singularitee.engine.api.ChatRole;
 import io.gravitee.singularitee.engine.api.ChatTurn;
+import io.gravitee.singularitee.engine.api.DecisionEngine;
 import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
@@ -35,8 +36,12 @@ import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry.PipelineEntry;
 import io.gravitee.singularitee.engine.pipeline.PipelineExecutor;
 import io.gravitee.singularitee.inference.api.decision.Answer;
+import io.gravitee.singularitee.inference.api.decision.DecisionCapabilities;
 import io.gravitee.singularitee.inference.api.decision.DecisionException;
 import io.gravitee.singularitee.inference.api.decision.DecisionException.Reason;
+import io.gravitee.singularitee.inference.api.decision.DecisionFamily;
+import io.gravitee.singularitee.inference.api.decision.DecisionInput;
+import io.gravitee.singularitee.inference.api.decision.DecisionRequest;
 import io.gravitee.singularitee.inference.api.decision.DecisionResult;
 import io.gravitee.singularitee.protocol.DecideBatchRequest;
 import io.gravitee.singularitee.protocol.DecideBatchState;
@@ -49,6 +54,7 @@ import io.gravitee.singularitee.protocol.RawNoul;
 import io.gravitee.singularitee.protocol.RawPrompt;
 import io.gravitee.singularitee.protocol.TemplatedInput;
 import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Single;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.grpc.common.GrpcStatus;
@@ -61,6 +67,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,6 +83,7 @@ class GraviteeDecisionServiceImplTest {
   private final AtomicReference<InferPipelineRequest> ran = new AtomicReference<>();
   private PipelineExecutor executor;
   private GraviteeDecisionServiceImpl service;
+  private final ScoringEngine judge = new ScoringEngine();
 
   @BeforeAll
   static void startVertx() {
@@ -121,9 +129,11 @@ class GraviteeDecisionServiceImplTest {
       );
       return Completable.complete();
     });
+    var models = new ModelRegistry();
+    models.register("judge", "Judge", judge, token -> {});
     service = new GraviteeDecisionServiceImpl(
       vertx,
-      new ModelRegistry(),
+      models,
       pipelines,
       executor,
       mock(Tracer.class),
@@ -207,6 +217,86 @@ class GraviteeDecisionServiceImplTest {
         .isEqualTo(GrpcStatus.INVALID_ARGUMENT);
     }
     verifyNoInteractions(executor);
+  }
+
+  @Test
+  void a_batch_answers_in_order_with_a_bounded_number_of_states_in_flight() throws Exception {
+    var batch = batch(40, -1);
+
+    var response = await(service.decideBatch(batch));
+
+    assertThat(response.getResultsList())
+      .extracting(r -> r.getAnswers(0).getNoul().getProbabilityTrue())
+      .containsExactlyElementsOf(
+        IntStream.range(0, 40)
+          .mapToObj(i -> i / 100.0)
+          .toList()
+      );
+    assertThat(judge.started).hasValue(40);
+    assertThat(judge.maxInFlight.get())
+      .isLessThanOrEqualTo(GraviteeDecisionServiceImpl.MAX_BATCH_IN_FLIGHT)
+      .isGreaterThan(1);
+  }
+
+  @Test
+  void a_failing_state_fails_the_batch_and_starts_no_further_state() {
+    assertThatThrownBy(() -> await(service.decideBatch(batch(200, 3))))
+      .isInstanceOf(StatusException.class)
+      .extracting(e -> ((StatusException) e).message())
+      .isEqualTo("state 3 failed");
+    assertThat(judge.started.get()).isLessThan(200);
+  }
+
+  /** {@code states} numbered states for the judge; the one at {@code failing} fails. */
+  private static DecideBatchRequest batch(int states, int failing) {
+    var request = DecideBatchRequest.newBuilder()
+      .setModelId("judge")
+      .addQuestions(
+        DecisionQuestion.newBuilder()
+          .setId("q")
+          .setInstructions(Value.newBuilder().setStringValue("?"))
+          .setNoul(NoulQuestion.getDefaultInstance())
+      );
+    for (int i = 0; i < states; i++) {
+      request.addStates(DecideBatchState.newBuilder().setText(i == failing ? "fail " + i : "" + i));
+    }
+    return request.build();
+  }
+
+  /** Answers state {@code i} with {@code i / 100} after a short delay, counting what runs at once. */
+  private static final class ScoringEngine implements DecisionEngine {
+
+    final AtomicInteger started = new AtomicInteger();
+    final AtomicInteger inFlight = new AtomicInteger();
+    final AtomicInteger maxInFlight = new AtomicInteger();
+
+    @Override
+    public DecisionCapabilities capabilities() {
+      return new DecisionCapabilities(DecisionFamily.CUSTOM, 26, true, true);
+    }
+
+    @Override
+    public Single<DecisionResult> rxDecide(DecisionRequest request) {
+      return Single.defer(() -> {
+        started.incrementAndGet();
+        maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+        String state = (String) ((DecisionInput.Templated) request.input()).state();
+        Single<DecisionResult> answer = state.startsWith("fail")
+          ? Single.error(new DecisionException(Reason.EVALUATION_FAILED, "state 3 failed"))
+          : Single.just(
+            new DecisionResult(
+              List.of(new Answer.Noul("q", Integer.parseInt(state) / 100.0, List.of())),
+              1
+            )
+          );
+        return answer
+          .delay(20, TimeUnit.MILLISECONDS, true)
+          .doOnEvent((result, error) -> inFlight.decrementAndGet());
+      });
+    }
+
+    @Override
+    public void close() {}
   }
 
   private static <T> T await(Future<T> future) throws Exception {

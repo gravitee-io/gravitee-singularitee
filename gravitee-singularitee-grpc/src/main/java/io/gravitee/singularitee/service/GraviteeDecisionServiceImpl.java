@@ -46,7 +46,10 @@ import io.vertx.core.Vertx;
 import io.vertx.grpc.common.GrpcStatus;
 import io.vertx.grpc.server.StatusException;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
  * gRPC {@code GraviteeDecisionService}: answers typed questions with a decision model, or with a
@@ -63,6 +66,9 @@ public class GraviteeDecisionServiceImpl extends GraviteeDecisionServiceGrpcServ
 
   /** Most states one {@code DecideBatch} call may carry. */
   static final int MAX_BATCH_STATES = 256;
+
+  /** Most states of one batch running at once; enough to fill an engine's concurrent batch. */
+  static final int MAX_BATCH_IN_FLIGHT = 16;
 
   /** The error code a halting guard ends the pipeline stream with. */
   private static final String BLOCKED = "content_filter";
@@ -104,7 +110,7 @@ public class GraviteeDecisionServiceImpl extends GraviteeDecisionServiceGrpcServ
     } catch (DecisionException e) {
       return Future.failedFuture(toStatus(e));
     }
-    var states = new ArrayList<Future<DecideResponse>>(request.getStatesCount());
+    var singles = new ArrayList<DecideRequest>(request.getStatesCount());
     for (DecideBatchState state : request.getStatesList()) {
       var input = TemplatedInput.newBuilder()
         .addAllQuestions(request.getQuestionsList())
@@ -123,13 +129,51 @@ public class GraviteeDecisionServiceImpl extends GraviteeDecisionServiceGrpcServ
         case PIPELINE_ID -> single.setPipelineId(request.getPipelineId());
         case TARGET_NOT_SET -> {}
       }
-      states.add(execute(single.build()));
+      singles.add(single.build());
     }
-    return Future.all(states)
-      .map(all ->
-        DecideBatchResponse.newBuilder().addAllResults(all.<DecideResponse>list()).build()
-      )
-      .recover(e -> Future.failedFuture(toStatus(e)));
+    return new BatchRun(singles).start().recover(e -> Future.failedFuture(toStatus(e)));
+  }
+
+  /**
+   * The states of one batch, at most {@value #MAX_BATCH_IN_FLIGHT} in flight. The first failure
+   * fails the batch and starts no further state, so the work it would discard stays bounded.
+   */
+  private final class BatchRun {
+
+    private final List<DecideRequest> states;
+    private final AtomicReferenceArray<DecideResponse> results;
+    private final AtomicInteger next = new AtomicInteger();
+    private final AtomicInteger answered = new AtomicInteger();
+    private final Promise<DecideBatchResponse> done = Promise.promise();
+
+    BatchRun(List<DecideRequest> states) {
+      this.states = states;
+      this.results = new AtomicReferenceArray<>(states.size());
+    }
+
+    Future<DecideBatchResponse> start() {
+      for (int i = 0; i < Math.min(MAX_BATCH_IN_FLIGHT, states.size()); i++) startNext();
+      return done.future();
+    }
+
+    private void startNext() {
+      int i = next.getAndIncrement();
+      if (i >= states.size() || done.future().isComplete()) return;
+      execute(states.get(i)).onComplete(ar -> {
+        if (ar.failed()) {
+          done.tryFail(ar.cause());
+          return;
+        }
+        results.set(i, ar.result());
+        if (answered.incrementAndGet() < states.size()) {
+          startNext();
+          return;
+        }
+        var response = DecideBatchResponse.newBuilder();
+        for (int k = 0; k < states.size(); k++) response.addResults(results.get(k));
+        done.tryComplete(response.build());
+      });
+    }
   }
 
   /**
