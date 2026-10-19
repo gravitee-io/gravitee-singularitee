@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.7.0...1.8.0) (2026-10-19)
+
+
+### Features
+
+* decision models ([#13](https://github.com/gravitee-io/gravitee-singularitee/issues/13)) ([5f91142](https://github.com/gravitee-io/gravitee-singularitee/commit/5f91142829ec06590fdf76438af4776ba5afc452))
+
 # [1.7.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.6.1...1.7.0) (2026-09-30)
 
 
