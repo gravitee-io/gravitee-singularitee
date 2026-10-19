@@ -83,7 +83,7 @@
 
         <!-- Skip gravitee arch-rules check: Singularitee uses SLF4J directly, not NodeLoggerFactory -->
         <gravitee.archrules.skip>true</gravitee.archrules.skip>
-        <gravitee-kubernetes-client.version>4.0.0-alpha.1</gravitee-kubernetes-client.version>
+        <gravitee-kubernetes-client.version>4.0.1</gravitee-kubernetes-client.version>
 
         <!-- Micrometer: inference metrics (token counters, model-call timers). Not managed by
              gravitee-bom; pinned to the version gravitee-node/Vert.x resolve (bundled in the
