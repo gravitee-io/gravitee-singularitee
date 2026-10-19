@@ -16,15 +16,18 @@
 package io.gravitee.singularitee.client;
 
 import io.gravitee.singularitee.protocol.*;
+import io.reactivex.rxjava3.core.BackpressureStrategy;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.functions.Function;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.StreamResetException;
 import io.vertx.core.net.SocketAddress;
 import io.vertx.core.streams.ReadStream;
 import io.vertx.grpc.client.GrpcClient;
+import io.vertx.grpc.client.InvalidStatusException;
 import io.vertx.grpc.common.GrpcErrorException;
 import io.vertx.grpc.common.GrpcStatus;
 import java.net.ConnectException;
@@ -468,13 +471,9 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the model metadata
    */
   public Single<GetModelResponse> getModel(String modelId) {
-    return Single.fromCompletionStage(
-      modelStub
-        .getModel(GetModelRequest.newBuilder().setModelId(modelId).build())
-        .toCompletionStage()
-    )
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() ->
+      modelStub.getModel(GetModelRequest.newBuilder().setModelId(modelId).build())
+    );
   }
 
   /**
@@ -483,11 +482,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the list of model metadata
    */
   public Single<ListModelsResponse> listModels() {
-    return Single.fromCompletionStage(
-      modelStub.listModels(ListModelsRequest.getDefaultInstance()).toCompletionStage()
-    )
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> modelStub.listModels(ListModelsRequest.getDefaultInstance()));
   }
 
   // =========================================================================
@@ -501,13 +496,9 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the pipeline definition and status
    */
   public Single<GetPipelineResponse> getPipeline(String pipelineId) {
-    return Single.fromCompletionStage(
-      pipelineStub
-        .getPipeline(GetPipelineRequest.newBuilder().setPipelineId(pipelineId).build())
-        .toCompletionStage()
-    )
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() ->
+      pipelineStub.getPipeline(GetPipelineRequest.newBuilder().setPipelineId(pipelineId).build())
+    );
   }
 
   /**
@@ -516,11 +507,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the list of pipeline metadata
    */
   public Single<ListPipelinesResponse> listPipelines() {
-    return Single.fromCompletionStage(
-      pipelineStub.listPipelines(ListPipelinesRequest.getDefaultInstance()).toCompletionStage()
-    )
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> pipelineStub.listPipelines(ListPipelinesRequest.getDefaultInstance()));
   }
 
   // =========================================================================
@@ -562,9 +549,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the classification results
    */
   public Single<ClassifyResponse> classify(ClassifyRequest request) {
-    return Single.fromCompletionStage(inferenceStub.classify(request).toCompletionStage())
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> inferenceStub.classify(request));
   }
 
   /**
@@ -575,9 +560,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the batch classification results
    */
   public Single<ClassifyBatchResponse> classifyBatch(ClassifyBatchRequest request) {
-    return Single.fromCompletionStage(inferenceStub.classifyBatch(request).toCompletionStage())
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> inferenceStub.classifyBatch(request));
   }
 
   // =========================================================================
@@ -591,9 +574,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the embedding vector
    */
   public Single<EmbedResponse> embed(EmbedRequest request) {
-    return Single.fromCompletionStage(vectorStub.embed(request).toCompletionStage())
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> vectorStub.embed(request));
   }
 
   /**
@@ -603,9 +584,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the embedding vectors
    */
   public Single<EmbedBatchResponse> embedBatch(EmbedBatchRequest request) {
-    return Single.fromCompletionStage(vectorStub.embedBatch(request).toCompletionStage())
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> vectorStub.embedBatch(request));
   }
 
   /**
@@ -615,9 +594,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the similarity score
    */
   public Single<CosineSimilarityResponse> cosineSimilarity(CosineSimilarityRequest request) {
-    return Single.fromCompletionStage(vectorStub.cosineSimilarity(request).toCompletionStage())
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> vectorStub.cosineSimilarity(request));
   }
 
   /**
@@ -627,9 +604,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the ranked results
    */
   public Single<RankResponse> rank(RankRequest request) {
-    return Single.fromCompletionStage(vectorStub.rank(request).toCompletionStage())
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> vectorStub.rank(request));
   }
 
   /**
@@ -640,9 +615,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the similarity scores and token usage
    */
   public Single<TextSimilarityResponse> textSimilarity(TextSimilarityRequest request) {
-    return Single.fromCompletionStage(vectorStub.textSimilarity(request).toCompletionStage())
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> vectorStub.textSimilarity(request));
   }
 
   /**
@@ -653,9 +626,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the ranked results and token usage
    */
   public Single<TextRerankResponse> textRerank(TextRerankRequest request) {
-    return Single.fromCompletionStage(vectorStub.textRerank(request).toCompletionStage())
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> vectorStub.textRerank(request));
   }
 
   // =========================================================================
@@ -670,9 +641,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits the answers, in request order
    */
   public Single<DecideResponse> decide(DecideRequest request) {
-    return Single.fromCompletionStage(decisionStub.decide(request).toCompletionStage())
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> decisionStub.decide(request));
   }
 
   /**
@@ -682,9 +651,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a {@link Single} that emits one response per state
    */
   public Single<DecideBatchResponse> decideBatch(DecideBatchRequest request) {
-    return Single.fromCompletionStage(decisionStub.decideBatch(request).toCompletionStage())
-      .retryWhen(retryPolicy())
-      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    return unaryCall(() -> decisionStub.decideBatch(request));
   }
 
   // =========================================================================
@@ -716,7 +683,8 @@ public final class SingulariteeClient implements AutoCloseable {
    *   <li>TCP connection refused / network unreachable ({@link ConnectException})</li>
    *   <li>HTTP/2 stream reset ({@link StreamResetException}): a GOAWAY or RST_STREAM
    *       sent by the server, which happens on graceful server restart</li>
-   *   <li>{@link GrpcErrorException} with status {@code UNAVAILABLE}: the only gRPC-level
+   *   <li>{@link GrpcErrorException} or {@link InvalidStatusException} with status
+   *       {@code UNAVAILABLE}: the only gRPC-level
    *       status that is unambiguously transient (connection-level, not request-level)</li>
    * </ul>
    *
@@ -733,12 +701,27 @@ public final class SingulariteeClient implements AutoCloseable {
     if (t instanceof GrpcErrorException gee) {
       return gee.status() == GrpcStatus.UNAVAILABLE;
     }
+    // How the unary client reports a status other than OK.
+    if (t instanceof InvalidStatusException ise) {
+      return ise.actualStatus() == GrpcStatus.UNAVAILABLE;
+    }
     // Unwrap one level: Vert.x sometimes wraps the real cause in a VertxException
     Throwable cause = t.getCause();
     if (cause != null && cause != t) {
       return isRetryable(cause);
     }
     return false;
+  }
+
+  /**
+   * A unary RPC with the retry policy and the overall timeout. {@code call} starts the RPC and
+   * runs again on every attempt: a retry re-sends the request rather than re-reading the failed
+   * result of the first one.
+   */
+  static <T> Single<T> unaryCall(Supplier<Future<T>> call) {
+    return Single.defer(() -> Single.fromCompletionStage(call.get().toCompletionStage()))
+      .retryWhen(retryPolicy())
+      .timeout(OVERALL_RETRY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
   }
 
   /**
@@ -778,7 +761,7 @@ public final class SingulariteeClient implements AutoCloseable {
    *
    * <p>Retry semantics:
    * <ul>
-   *   <li>Only the connection-establishment phase (i.e. the {@link io.vertx.core.Future}
+   *   <li>Only the connection-establishment phase (i.e. the {@link Future}
    *       itself) is retried. Once the first {@link InferResponse} item has been
    *       emitted the stream is considered live and will not be retried; re-issuing
    *       the full request mid-stream is not idempotent.</li>
@@ -792,7 +775,7 @@ public final class SingulariteeClient implements AutoCloseable {
    * @return a backpressure-aware stream of {@link InferResponse} items
    */
   private Flowable<InferResponse> streamingCall(
-    Supplier<io.vertx.core.Future<ReadStream<InferResponse>>> futureSupplier
+    Supplier<Future<ReadStream<InferResponse>>> futureSupplier
   ) {
     // hasReceivedItem gates retry: once the server has started sending tokens
     // we must not re-issue the request.
@@ -800,7 +783,7 @@ public final class SingulariteeClient implements AutoCloseable {
 
     Flowable<InferResponse> attempt = Flowable.create(
       emitter -> {
-        io.vertx.core.Future<ReadStream<InferResponse>> future = futureSupplier.get();
+        Future<ReadStream<InferResponse>> future = futureSupplier.get();
         LOGGER.info(
           "streamingCall: setting up future.onComplete on thread '{}'",
           Thread.currentThread().getName()
@@ -831,7 +814,7 @@ public final class SingulariteeClient implements AutoCloseable {
           });
         });
       },
-      io.reactivex.rxjava3.core.BackpressureStrategy.BUFFER
+      BackpressureStrategy.BUFFER
     );
 
     // Fibonacci state for streaming retries (independent from any concurrent unary retry).
