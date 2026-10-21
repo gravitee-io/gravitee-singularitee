@@ -93,6 +93,12 @@ class HttpApiGuardedRouterTest {
   }
 
   @Test
+  void unauthenticated_oversized_body_is_refused_by_auth_not_read() throws Exception {
+    var body = Buffer.buffer("x".repeat((int) MAX_BODY + 1));
+    assertThat(post(null, "application/json", body)).isEqualTo(401);
+  }
+
+  @Test
   void multipart_uploads_are_not_handled() throws Exception {
     var boundary = "b0undary";
     var body = Buffer.buffer(
