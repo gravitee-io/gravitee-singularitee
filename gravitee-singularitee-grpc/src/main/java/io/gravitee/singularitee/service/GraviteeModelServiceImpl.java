@@ -529,6 +529,7 @@ public class GraviteeModelServiceImpl
       case "tool_calls" -> FinishReason.FINISH_REASON_TOOL_CALLS;
       case "cancelled" -> FinishReason.FINISH_REASON_CANCELLED;
       case "stalled" -> FinishReason.FINISH_REASON_STALLED;
+      case "start_failed" -> FinishReason.FINISH_REASON_START_FAILED;
       default -> FinishReason.FINISH_REASON_UNSPECIFIED;
     };
   }

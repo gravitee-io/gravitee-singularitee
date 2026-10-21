@@ -806,8 +806,9 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
         startSequence(next.seqId(), next.request(), next.cacheKey());
       } catch (RuntimeException e) {
         // No caller to throw to: end the queued request so it does not hang.
+        LOGGER.error("Queued sequence {} failed to start", next.seqId(), e);
         deferredFinals.add(
-          new InferenceToken<>(next.seqId(), null, 0, true, "stalled", 0, 0, 0, 0, null)
+          new InferenceToken<>(next.seqId(), null, 0, true, "start_failed", 0, 0, 0, 0, null)
         );
         hasWork.signalAll();
       }

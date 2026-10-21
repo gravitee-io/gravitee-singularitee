@@ -132,7 +132,7 @@ generation rather than only to its text:
 
 | Field | Meaning |
 | --- | --- |
-| `<step>.finish_reason` | `stop`, `length`, `tool_calls`, `guard_blocked`, `break_condition`, `cancelled`, `stalled`, ... |
+| `<step>.finish_reason` | `stop`, `length`, `tool_calls`, `guard_blocked`, `break_condition`, `cancelled`, `stalled`, `start_failed`, ... |
 | `<step>.tool_parse_failed` | `true` only when the model attempted a tool call and extraction found none. Gate repair loops on this field. |
 | `<step>.tool_parse_ok`, `<step>.tool_call_count`, `<step>.parse_error`, `<step>.attempted_tool` | Extraction outcome, error text and the tool name the model tried. |
 | `<step>.thinking_unclosed` | The whole generation was reasoning: no answer, no tool call. |

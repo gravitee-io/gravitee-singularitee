@@ -421,6 +421,10 @@ enum FinishReason {
   // OpenAI surface (OpenAI defines no error value) but is kept distinct here
   // so pipelines and metrics can observe the truncation.
   FINISH_REASON_STALLED         = 10;
+  // A queued sequence could not start once a slot freed up: no output was
+  // generated. Maps to "stop" on the OpenAI surface; kept apart from STALLED so
+  // a start failure is not mistaken for a backend stall.
+  FINISH_REASON_START_FAILED    = 11;
 }
 
 // Semantic role of an infer step's output in a pipeline.

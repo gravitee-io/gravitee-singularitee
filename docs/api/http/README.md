@@ -117,7 +117,7 @@ returns `503` `model_not_ready` until the workspace has loaded; poll `/v1/models
 
 **Finish reasons.** The closed set is `stop`, `length`, `tool_calls`, `content_filter`.
 `FINISH_REASON_GUARD_BLOCKED` maps to `content_filter`; `BREAK_CONDITION`, `MAX_ITERATIONS`,
-`CANCELLED` and `STALLED` map to `stop`.
+`CANCELLED`, `STALLED` and `START_FAILED` map to `stop`.
 
 **Modalities.** `/v1/models` reports `input_modalities` for entries that read more than text.
 A request attaching `image_url` or `input_audio` parts to a target that does not accept them is
