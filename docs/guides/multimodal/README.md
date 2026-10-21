@@ -10,7 +10,9 @@ Media rides on the normal chat flow. A `ChatTurn` carries a list of `MediaAttach
 callers fill `media` directly. On llama.cpp, `mmproj_path` loads an mtmd context: the engine
 injects the model's media marker once per attachment and `mtmd_tokenize` replaces each marker
 with vision or audio tokens. Pipelines do not change; a workspace binds the logical `llm` id
-to a multimodal model file.
+to a multimodal model file. An `infer` step places the markers itself: in the caller's turn that
+carries the attachment, or, when the step declares `prompt.messages`, at the head of its last
+user message.
 
 What an entry accepts is detected, not declared, and published on `GET /v1/models` as
 `input_modalities`. HTTP refuses media the target cannot read with `400 unsupported_modality`; gRPC `Infer` and
@@ -20,11 +22,13 @@ What an entry accepts is detected, not declared, and published on `GET /v1/model
 
 | Type | Where | Purpose |
 | --- | --- | --- |
-| `MediaAttachment`, `MediaAttachmentType` | `engine` | `(type, base64 data)`; types `IMAGE_JPEG`, `IMAGE_PNG`, `IMAGE_GIF`, `IMAGE_BMP`, `AUDIO_WAV`, `APPLICATION_OCTET_STREAM`. |
+| `MediaAttachment`, `MediaAttachmentType` | `engine-api` | `(type, base64 data)`; types `IMAGE_JPEG`, `IMAGE_PNG`, `IMAGE_GIF`, `IMAGE_BMP`, `AUDIO_WAV`, `APPLICATION_OCTET_STREAM`. |
 | `MediaContent`, `MediaType` | `protocol` (`inference.proto`) | Wire form on `ChatMessage.media`. |
 | `PipelineRequestBuilder.applyContent` | `http` | Parses OpenAI content-part arrays. |
 | `HandlerSupport.requireSupportedModalities` | `http` | The `unsupported_modality` pre-flight on `/v1/chat/completions` and `/v1/responses`. |
 | `Modalities.attached` | `engine-api` | The same pre-flight on gRPC `Infer` and `InferPipeline`, over `ChatMessage.media`. |
+| `ChatTurns` | `engine-api` | `ChatMessage` to `ChatTurn`, media included, for both `Infer` and `InferPipeline`. |
+| `PromptAssembler` | `plugin-infer` | Places one marker per attachment in a pipeline step's rendered prompt. |
 | `LlamaCppTextGenEngine`, `CheckpointModalities` | `grpc` | Modality detection: the projector for llama.cpp, `config.json` for vLLM. |
 
 ## Usage
@@ -140,12 +144,14 @@ Full tables: [`llama_cpp`](../../reference/models/llama_cpp.md),
 
 ## Notes
 
-- No `mmproj_path` means the model reports `["text"]` and HTTP refuses media before the engine
-  sees it. Past that gate (gRPC, or a pipeline step) attachments are dropped without error: if
-  a VLM answers as though it saw nothing, check `mmproj_path`.
-- Marker count must equal attachment count: the engine prepends one marker per attachment, so
+- No `mmproj_path` means the model reports `["text"]`, and HTTP and gRPC refuse media with
+  `unsupported_modality` before the engine sees it: if a VLM refuses an image, check
+  `mmproj_path`.
+- Marker count must equal attachment count: the renderer prepends one marker per attachment, so
   a prompt template that already contains the marker desynchronises tokenisation. Keep the
-  model's own chat template for multimodal models.
+  model's own chat template for multimodal models. An `infer` step whose prompt cannot place
+  them (a `prompt.template*` raw template, step messages with no user message, or a history trim
+  that drops a turn carrying an attachment) fails with `cannot place the attached media`.
 - llama.cpp media failures are hard errors (`Failed to load media`); the request fails.
 - vLLM forwards media through its `EngineAdapter` as multimodal data with no marker injection.
   Image tokens count against `max_model_len`. Verified end to end on llama.cpp only; the vLLM

@@ -135,6 +135,15 @@ public non-sealed interface TextGenEngine extends ModelEngine {
   }
 
   /**
+   * The literal placeholder a rendered prompt must carry once per attached image or audio clip, or
+   * {@code null} when this engine places media without one. Whoever renders the prompt puts it in
+   * the turn that carries the attachment, so the engine pairs each placeholder with its media.
+   */
+  default String mediaMarker() {
+    return null;
+  }
+
+  /**
    * The literal text of every token this model parses as special (control / user-defined),
    * {@code <|im_start|>}, {@code <|channel|>}, {@code <start_of_turn>}, and so on.
    *

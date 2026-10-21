@@ -70,14 +70,13 @@ public final class LlamaCppTextGenEngine
   }
 
   /**
-   * On the direct-model path the prompt is pre-rendered from message text via Jinja4j, which drops
-   * the media placeholders. For a multimodal model we inject the marker the model's own mtmd context
-   * expects (from {@code mtmd_get_marker}) once per attachment before rendering, so the rendered
-   * prompt carries the same marker count as the bitmaps attached downstream (otherwise
-   * {@code mtmd_tokenize} fails: markers 0 != bitmaps N).
+   * The marker the model's own mtmd context expects (from {@code mtmd_get_marker}). Prompts are
+   * rendered from message text, which carries no media placeholder, so the renderer (this engine on
+   * the direct-model path, the infer step in a pipeline) inserts it once per attachment; otherwise
+   * {@code mtmd_tokenize} fails with markers 0 != bitmaps N.
    */
   @Override
-  protected String mediaMarker() {
+  public String mediaMarker() {
     return delegate.isMultimodal() ? delegate.mediaMarker() : null;
   }
 
