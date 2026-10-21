@@ -19,11 +19,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import io.gravitee.singularitee.engine.api.ChatRole;
 import io.gravitee.singularitee.engine.api.ChatTurn;
@@ -57,7 +60,8 @@ class GuardStepExecutorTest {
 
   @BeforeEach
   void setUp() {
-    engine = mock(ClassifierEngine.class);
+    // Real default methods, so rxClassifyBatch scores each text through the rxClassify stub.
+    engine = mock(ClassifierEngine.class, withSettings().defaultAnswer(CALLS_REAL_METHODS));
     when(engine.task()).thenReturn(ModelTasks.TEXT_CLASSIFICATION);
     // "toxic" scores high only on texts containing BAD.
     when(engine.rxClassify(any())).thenAnswer(inv -> {
@@ -122,7 +126,7 @@ class GuardStepExecutorTest {
       HOSTILE_EARLIER_TURN
     );
     assertThat(pctx.isHalted()).isTrue();
-    verify(engine, times(3)).rxClassify(any());
+    verify(engine, times(1)).rxClassifyBatch(argThat(batch -> batch.size() == 3));
   }
 
   @Test
@@ -132,7 +136,7 @@ class GuardStepExecutorTest {
       HOSTILE_EARLIER_TURN
     );
     assertThat(pctx.isHalted()).isFalse();
-    verify(engine, times(1)).rxClassify(any());
+    verify(engine, times(1)).rxClassifyBatch(argThat(batch -> batch.size() == 1));
   }
 
   @Test
