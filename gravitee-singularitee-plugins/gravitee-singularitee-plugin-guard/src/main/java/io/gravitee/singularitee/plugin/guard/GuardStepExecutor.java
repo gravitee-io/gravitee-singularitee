@@ -34,7 +34,6 @@ import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardOnEmpty;
 import io.gravitee.singularitee.plugin.guard.GuardStepConfig.GuardTrigger;
 import io.gravitee.singularitee.protocol.FinishReason;
-import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Maybe;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -90,10 +89,15 @@ public final class GuardStepExecutor
 
     if (targets.isEmpty()) return onEmpty(stepId, cfg, ctx, stepScribe);
 
-    // One classification per target, so a long benign turn cannot dilute a short hostile one.
-    return Flowable.fromIterable(targets)
-      .concatMapSingle(t -> engine.rxClassify(new ClassifyRequest(t.text())))
-      .toList()
+    // One classification per target, so a long benign turn cannot dilute a short hostile one, in
+    // a single batch call so a batching engine scores the whole conversation at once.
+    return engine
+      .rxClassifyBatch(
+        targets
+          .stream()
+          .map(t -> new ClassifyRequest(t.text()))
+          .toList()
+      )
       .flatMapMaybe(results -> {
         List<GuardTrigger> triggers = cfg.triggers();
 
