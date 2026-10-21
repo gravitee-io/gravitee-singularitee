@@ -158,7 +158,7 @@ Keys used in this guide. Full lists: [guard](../../reference/steps/guard.md), [l
 - Only token-level engines redact by span; a sequence classifier under `action: redact` replaces the whole input with `************`.
 - Overlapping or adjacent spans are merged; the merged span keeps the label of its highest-scoring member.
 - `guard` and `regex_guard` inspect the whole caller-supplied conversation by default (`scope: conversation`: user, assistant and tool turns, each on its own), so content placed in an earlier turn or a tool result cannot slip past. Narrow it with `scope: user_turns` or `scope: last_user`.
-- With nothing to inspect (an image-only message, a blank field) a `reject` or `redact` guard halts by default (`on_empty: reject`); `warn` guards skip. Set `on_empty: skip` where an empty input is legitimate.
+- With nothing to inspect (an image-only message, a blank field) a `reject` guard halts by default (`on_empty: reject`); `warn` and `redact` guards skip. Set `on_empty: skip` where an empty input is legitimate.
 - Redaction rewrites every matching turn and keeps `prompt` equal to the last user turn, so `{{ prompt }}`, `{{ messages }}` and `{{ history }}` are clean downstream.
 - Variables available to `message` and later steps: `guard` publishes `<step_id>.label`, `.score`, `.labels`, `.scores`, `.details`; `llm_guard` publishes `<step_id>.verdict` (first line) and `.verdict_full`; `regex_guard` publishes `<step_id>.triggered`, `.match`, `.pattern`, `.entity_type` (or `.entity_types` on redact). Every verdict is also appended to `verdicts`.
 - The LLM judge runs with thinking stripped, so reasoning tokens cannot reach the `safe_token` check.

@@ -233,6 +233,10 @@ public final class GuardStepExecutor
   ) {
     if (cfg.onEmpty() == GuardOnEmpty.SKIP) {
       LOGGER.debug("GuardStep '{}': nothing to inspect, skipping (on_empty: skip)", stepId);
+      if (cfg.action() == GuardAction.REDACT) {
+        // Nothing to redact: the output is the empty input, so later steps still find it set.
+        ctx.pipelineContext().set(resolveOutputField(cfg.outputField(), stepId, ".redacted"), "");
+      }
       return ctx.rxNextStep(stepId);
     }
     LOGGER.info("GuardStep '{}': nothing to inspect, rejecting (on_empty: reject)", stepId);

@@ -30,11 +30,12 @@ public enum GuardOnEmpty {
   SKIP;
 
   /**
-   * Parses the YAML spelling; unset is {@link #SKIP} for a {@code warn} guard, which never blocks,
-   * and {@link #REJECT} otherwise. An unknown value is refused.
+   * Parses the YAML spelling; unset is {@link #REJECT} for a {@code reject} guard and {@link #SKIP}
+   * for {@code warn} and {@code redact}, which transform or report but never gate. An unknown value
+   * is refused.
    */
   public static GuardOnEmpty parse(String value, GuardAction action) {
-    if (value == null || value.isBlank()) return action == GuardAction.WARN ? SKIP : REJECT;
+    if (value == null || value.isBlank()) return action == GuardAction.REJECT ? REJECT : SKIP;
     return switch (value.trim().toLowerCase(Locale.ENGLISH)) {
       case "reject" -> REJECT;
       case "skip" -> SKIP;

@@ -191,6 +191,27 @@ class GuardStepExecutorTest {
   }
 
   @Test
+  void a_redact_guard_passes_empty_input_and_still_sets_its_output() {
+    var imageOnly = List.of(new ChatTurn(ChatRole.USER, ""));
+    var cfg = new GuardStepConfig(
+      "tox",
+      "",
+      "",
+      GuardAction.REDACT,
+      List.of(new GuardTrigger("toxic", 0.5f)),
+      "",
+      false,
+      GuardScope.CONVERSATION,
+      GuardOnEmpty.parse(null, GuardAction.REDACT)
+    );
+
+    var pctx = run(cfg, imageOnly);
+
+    assertThat(pctx.isHalted()).isFalse();
+    assertThat(pctx.get("g.redacted")).isEmpty();
+  }
+
+  @Test
   void a_guard_whose_model_is_not_loaded_fails_the_request() {
     var pctx = context(HOSTILE_EARLIER_TURN);
     var cfg = cfg(GuardAction.REJECT, GuardScope.CONVERSATION, GuardOnEmpty.REJECT);
