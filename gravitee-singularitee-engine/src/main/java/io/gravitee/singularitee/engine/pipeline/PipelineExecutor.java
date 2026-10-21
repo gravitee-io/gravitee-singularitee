@@ -37,6 +37,7 @@ import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepTypes;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.engine.api.registry.PipelineRegistry.PipelineEntry;
 import io.gravitee.singularitee.engine.api.tools.ServerToolNames;
 import io.gravitee.singularitee.engine.api.tools.TodoTools;
 import io.gravitee.singularitee.engine.pipeline.executor.StepDispatcher;
@@ -165,44 +166,41 @@ public class PipelineExecutor implements PipelineExecutorCallback {
     WriteStream<InferResponse> response,
     Context callerContext
   ) {
-    var unsupported = request.hasMessages()
-      ? pipelineRegistry
-        .get(request.getPipelineId())
-        .flatMap(entry -> {
-          var accepted = entry.pipeline().inputModalities().isEmpty()
-            ? Modalities.TEXT_ONLY
-            : entry.pipeline().inputModalities();
-          return Modalities.firstUnsupported(
-            Modalities.attached(request.getMessages().getMessagesList()),
-            accepted
-          ).map(m -> "pipeline `" + request.getPipelineId() + "` does not accept " + m + " input");
-        })
-      : Optional.<String>empty();
-    if (unsupported.isPresent()) {
-      LOGGER.warn("InferPipeline: {}", unsupported.get());
-      return Completable.fromAction(() ->
-        response.end(TokenStreamWriter.failed("unsupported_modality", unsupported.get()))
-      );
+    var entry = pipelineRegistry.get(request.getPipelineId());
+    if (entry.isEmpty()) {
+      return executePipeline(request, response, callerContext);
+    }
+    PipelineModel pipeline = entry.get().pipeline();
+
+    if (request.hasMessages()) {
+      var accepted = pipeline.inputModalities().isEmpty()
+        ? Modalities.TEXT_ONLY
+        : pipeline.inputModalities();
+      var unsupported = Modalities.firstUnsupported(
+        Modalities.attached(request.getMessages().getMessagesList()),
+        accepted
+      ).map(m -> "pipeline `" + request.getPipelineId() + "` does not accept " + m + " input");
+      if (unsupported.isPresent()) {
+        LOGGER.warn("InferPipeline: {}", unsupported.get());
+        return Completable.fromAction(() ->
+          response.end(TokenStreamWriter.failed("unsupported_modality", unsupported.get()))
+        );
+      }
     }
 
-    var sanitized = pipelineRegistry
-      .get(request.getPipelineId())
-      .map(entry -> {
-        var dropped = CallerContext.reservedKeys(
-          entry.pipeline(),
-          request.getContextMap().keySet()
-        );
-        if (dropped.isEmpty()) {
-          return request;
-        }
-        LOGGER.debug(
-          "Pipeline '{}': ignoring caller context key(s) the pipeline writes itself: {}",
-          request.getPipelineId(),
-          dropped
-        );
-        return CallerContext.withoutReservedKeys(entry.pipeline(), request);
-      })
-      .orElse(request);
+    var dropped = CallerContext.reservedKeys(
+      pipeline,
+      id -> pipelineRegistry.get(id).map(PipelineEntry::pipeline),
+      request.getContextMap().keySet()
+    );
+    if (!dropped.isEmpty()) {
+      LOGGER.debug(
+        "Pipeline '{}': ignoring caller context key(s) the pipeline writes itself: {}",
+        request.getPipelineId(),
+        dropped
+      );
+    }
+    var sanitized = CallerContext.without(request, dropped);
     return executePipeline(sanitized, response, callerContext);
   }
 

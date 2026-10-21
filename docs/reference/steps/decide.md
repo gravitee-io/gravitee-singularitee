@@ -135,8 +135,7 @@ read as `{{ classify['team.confidence'] }}`.
 - **A decision endpoint** is a pipeline whose `role: output` step is a `decide` step: it inherits
   task `decision` and accepts decision calls. A guard that halts it answers with `blocked`, not an
   error.
-- A missing or wrongly typed model logs a warning and follows `next_step`, as for every
-  model-bound step.
+- A missing or wrongly typed model fails the request, as for every model-bound step.
 
 ## See also
 

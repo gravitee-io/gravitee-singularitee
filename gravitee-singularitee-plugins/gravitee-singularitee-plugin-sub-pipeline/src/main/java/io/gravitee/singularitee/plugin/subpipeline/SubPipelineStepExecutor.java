@@ -78,9 +78,14 @@ public final class SubPipelineStepExecutor implements StepExecutor<SubPipelineSt
     );
 
     String remoteId = cfg.remoteId();
-    PipelineExecutorCallback callback = resolveCallback(stepId, cfg.pipelineId(), remoteId);
-    if (callback == null) {
-      return ctx.rxNextStep(stepId);
+    // A sub-pipeline that cannot run fails the request rather than being skipped: it may be the
+    // guard pipeline, and skipping it would let the request through unchecked.
+    PipelineExecutorCallback callback;
+    try {
+      callback = resolveCallback(stepId, cfg.pipelineId(), remoteId);
+    } catch (IllegalStateException unavailable) {
+      LOGGER.warn(unavailable.getMessage());
+      return Maybe.error(unavailable);
     }
 
     // Build the sub-pipeline request
@@ -192,38 +197,29 @@ public final class SubPipelineStepExecutor implements StepExecutor<SubPipelineSt
     );
   }
 
+  /** The executor for the target, or an {@link IllegalStateException} naming why there is none. */
   private PipelineExecutorCallback resolveCallback(
     String stepId,
     String pipelineId,
     String remoteId
   ) {
+    String step = "Step '" + stepId + "': sub-pipeline '" + pipelineId + "' ";
     if (!remoteId.isBlank()) {
       var cb = callbacks.remote(remoteId);
       if (cb == null) {
-        LOGGER.warn("SubPipelineStep '{}': remote '{}' not configured, skipping", stepId, remoteId);
-        return null;
+        throw new IllegalStateException(
+          step + "names remote '" + remoteId + "', which is not configured"
+        );
       }
       return cb;
     }
-
-    if (execContext.pipelineRegistry().get(pipelineId).isPresent()) {
-      if (callbacks.local() == null) {
-        LOGGER.warn(
-          "SubPipelineStep '{}': local pipeline '{}' found but no local callback, skipping",
-          stepId,
-          pipelineId
-        );
-        return null;
-      }
-      return callbacks.local();
+    if (execContext.pipelineRegistry().get(pipelineId).isEmpty()) {
+      throw new IllegalStateException(step + "is not loaded and no remote_id is set");
     }
-
-    LOGGER.warn(
-      "SubPipelineStep '{}': pipeline '{}' not found locally and no remote_id set, skipping",
-      stepId,
-      pipelineId
-    );
-    return null;
+    if (callbacks.local() == null) {
+      throw new IllegalStateException(step + "is loaded but no local executor is registered");
+    }
+    return callbacks.local();
   }
 
   private static ChatMessageList prependOrReplaceSystem(

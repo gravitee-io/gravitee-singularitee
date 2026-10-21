@@ -106,9 +106,9 @@ Full table: [`sub_pipeline`](../../reference/steps/sub_pipeline.md).
 - Halt propagation: a child `COMPLETED` with any reason other than `STOP` or `UNSPECIFIED`
   halts the parent with that reason; a child `FAILED` event halts the parent with
   `GUARD_BLOCKED` and the child's error message.
-- Missing targets skip rather than fail: an unknown `server` id, or a `pipeline_id` that is
-  neither local nor remote, logs a warning and the walk continues along `next_step` with
-  `output_field` unset.
+- Missing targets fail the request rather than skip: an unknown `server` id, or a `pipeline_id`
+  that is neither local nor remote. The child may be the guard pipeline, and skipping it would
+  let the request through unchecked.
 - Streaming passes through, so a child `role: output` step streams to the end client while
   the parent is mid-graph. Put `role: internal` on child steps whose text must stay hidden.
 - Remote execution is non-blocking; if the connection drops before a terminal event the
