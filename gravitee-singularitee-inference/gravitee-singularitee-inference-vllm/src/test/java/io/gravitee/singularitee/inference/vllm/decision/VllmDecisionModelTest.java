@@ -298,9 +298,8 @@ class VllmDecisionModelTest {
       throw new IllegalStateException("device lost");
     });
     assertThatThrownBy(() -> crashed.decide(templated("x", UPSET)))
-      .hasMessage("device lost")
-      .extracting(e -> ((DecisionException) e).reason())
-      .isEqualTo(Reason.EVALUATION_FAILED);
+      .isExactlyInstanceOf(IllegalStateException.class)
+      .hasMessage("device lost");
   }
 
   @Test

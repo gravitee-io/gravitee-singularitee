@@ -222,7 +222,7 @@ states; too many states, a missing state or a malformed question refuses the who
 | `NOT_FOUND` | Unknown model or pipeline id. |
 | `INVALID_ARGUMENT` | Malformed question or prompt; the message names it (`questions.<id>: ...`). |
 | `FAILED_PRECONDITION` | Not a decision target, an input mode the model's prompt source refuses, `raw` input to a pipeline, or media (images are not read yet). |
-| `INTERNAL` | The model produced no usable scores (a joint head that could not use the decision order). |
+| `INTERNAL` | The model produced no usable scores (a joint head that could not use the decision order), or an engine failure, reported as `Internal error (ref 1a2b3c4d)`. |
 | `UNAVAILABLE` | Workspace still loading. |
 
 ### GraviteeModelService

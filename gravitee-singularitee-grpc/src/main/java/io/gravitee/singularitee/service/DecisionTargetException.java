@@ -17,12 +17,12 @@ package io.gravitee.singularitee.service;
 
 /**
  * A decision call whose target cannot serve it: an unknown id, or a model or pipeline that does
- * not decide.
+ * not decide. An {@link IllegalArgumentException}, so its message reaches the caller.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public final class DecisionTargetException extends RuntimeException {
+public final class DecisionTargetException extends IllegalArgumentException {
 
   private final boolean notFound;
 
