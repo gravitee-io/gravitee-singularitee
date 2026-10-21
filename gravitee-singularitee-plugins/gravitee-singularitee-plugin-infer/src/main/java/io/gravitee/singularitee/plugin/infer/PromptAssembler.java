@@ -28,6 +28,7 @@ import io.gravitee.singularitee.engine.api.pipeline.executor.ChatWindowTrimmer;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateContextHelper;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateRenderer;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TokenCounter;
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.gravitee.singularitee.inference.api.template.ChatTemplateRenderer;
 import io.gravitee.singularitee.protocol.ToolDefinition;
 import java.util.ArrayList;
@@ -373,7 +374,7 @@ final class PromptAssembler {
       placed++;
     }
     if (placed != attached) {
-      throw new IllegalArgumentException(
+      throw ClientFacingException.invalid(
         "Step '" +
           stepId +
           "' cannot place the attached media: " +

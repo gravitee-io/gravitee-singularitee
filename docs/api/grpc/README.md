@@ -54,8 +54,8 @@ Build truststores with `keytool -importcert`; `scripts/gen-dev-certs.sh` produce
 | --- | --- | --- |
 | `NOT_FOUND` (5) | Unknown model or pipeline id. | `Model not found: <id>`, `Pipeline not found: <id>` |
 | `INVALID_ARGUMENT` (3) | Target of the wrong kind, or a rejected argument. | `Model '<id>' is not an embedding model`, `Model <id> is not a classifier`, `Model '<id>' is neither an embedding nor a reranker model`, `Vectors must have the same length` |
-| `INTERNAL` (13) | Engine, native or I/O failure. | `Internal error (ref 1a2b3c4d)`; the server log carries the full error under the same ref. |
-| `UNKNOWN` (2) | Any other failure the server reports to the caller as is. | its own message |
+| `RESOURCE_EXHAUSTED` (8) | A slow client fell too far behind the stream buffer. | the buffer's message |
+| `INTERNAL` (13) | Any other failure: engine, native, I/O, or an error the server did not write for the caller. | `Internal error (ref 1a2b3c4d)`; the server log carries the full error under the same ref. |
 
 Streaming RPCs
 behave differently: an `Infer` against an unknown id or a non-text-generation model ends the

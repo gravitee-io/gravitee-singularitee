@@ -33,6 +33,7 @@ import io.gravitee.singularitee.grpc.resolver.GgufModelResolver;
 import io.gravitee.singularitee.grpc.resolver.GlinerModelResolver;
 import io.gravitee.singularitee.grpc.resolver.OnnxModelResolver;
 import io.gravitee.singularitee.grpc.resolver.VllmModelResolver;
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.gravitee.singularitee.protocol.*;
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
 import io.reactivex.rxjava3.core.Single;
@@ -130,7 +131,9 @@ public class GraviteeModelServiceImpl
     var modelType = resolveModelType(request);
     var factory = factories.get(modelType);
     if (factory == null) {
-      return Future.failedFuture("Unsupported model type: " + modelType);
+      return Future.failedFuture(
+        ClientFacingException.invalid("Unsupported model type: " + modelType)
+      );
     }
 
     String requestedId = request.modelId() != null ? request.modelId() : "";
@@ -225,7 +228,7 @@ public class GraviteeModelServiceImpl
   public Future<GetModelResponse> getModel(GetModelRequest request) {
     var entryOpt = registry.get(request.getModelId());
     if (entryOpt.isEmpty()) {
-      return Future.failedFuture("Model not found: " + request.getModelId());
+      return Future.failedFuture(ClientFacingException.modelNotFound(request.getModelId()));
     }
     var entry = entryOpt.get();
     var builder = GetModelResponse.newBuilder()

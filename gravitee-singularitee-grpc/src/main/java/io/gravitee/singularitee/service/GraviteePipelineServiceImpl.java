@@ -17,6 +17,7 @@ package io.gravitee.singularitee.service;
 
 import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.gravitee.singularitee.protocol.*;
 import io.vertx.core.Completable;
 import io.vertx.core.Future;
@@ -52,7 +53,7 @@ public class GraviteePipelineServiceImpl extends GraviteePipelineServiceGrpcServ
   public Future<GetPipelineResponse> getPipeline(GetPipelineRequest request) {
     var entryOpt = registry.get(request.getPipelineId());
     if (entryOpt.isEmpty()) {
-      return Future.failedFuture("Pipeline not found: " + request.getPipelineId());
+      return Future.failedFuture(ClientFacingException.pipelineNotFound(request.getPipelineId()));
     }
     var entry = entryOpt.get();
     return Future.succeededFuture(

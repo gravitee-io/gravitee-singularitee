@@ -22,6 +22,7 @@ import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TokenStreamWriter;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.pipeline.PipelineExecutor;
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.gravitee.singularitee.inference.api.decision.DecisionException;
 import io.gravitee.singularitee.protocol.*;
 import io.gravitee.singularitee.protocol.ClassifyRequest;
@@ -333,7 +334,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
     var entryOpt = registry.get(request.getModelId());
     if (entryOpt.isEmpty()) {
       LOGGER.warn("Classify: model not found: {}", request.getModelId());
-      return Future.failedFuture("Model not found: " + request.getModelId());
+      return Future.failedFuture(ClientFacingException.modelNotFound(request.getModelId()));
     }
 
     var entry = entryOpt.get();
@@ -343,7 +344,11 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
         request.getModelId(),
         entry.engine().getClass().getSimpleName()
       );
-      return Future.failedFuture("Model " + request.getModelId() + " is not a classifier");
+      return Future.failedFuture(
+        ClientFacingException.unsupportedModel(
+          "Model " + request.getModelId() + " is not a classifier"
+        )
+      );
     }
 
     var labels = request
@@ -405,7 +410,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
     var entryOpt = registry.get(request.getModelId());
     if (entryOpt.isEmpty()) {
       LOGGER.warn("ClassifyBatch: model not found: {}", request.getModelId());
-      return Future.failedFuture("Model not found: " + request.getModelId());
+      return Future.failedFuture(ClientFacingException.modelNotFound(request.getModelId()));
     }
 
     var entry = entryOpt.get();
@@ -415,7 +420,11 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
         request.getModelId(),
         entry.engine().getClass().getSimpleName()
       );
-      return Future.failedFuture("Model " + request.getModelId() + " is not a classifier");
+      return Future.failedFuture(
+        ClientFacingException.unsupportedModel(
+          "Model " + request.getModelId() + " is not a classifier"
+        )
+      );
     }
 
     var requests = request

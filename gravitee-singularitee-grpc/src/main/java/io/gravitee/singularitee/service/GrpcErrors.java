@@ -16,8 +16,7 @@
 package io.gravitee.singularitee.service;
 
 import io.gravitee.singularitee.engine.api.ClientErrors;
-import io.gravitee.singularitee.engine.api.ClientErrors.SanitizedError;
-import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.reactivex.rxjava3.exceptions.MissingBackpressureException;
 import io.vertx.core.Completable;
 import io.vertx.grpc.common.GrpcStatus;
@@ -49,33 +48,17 @@ final class GrpcErrors {
       return status;
     }
     String message = ClientErrors.message(error, "Internal error");
-    return new StatusException(statusOf(error, message), message);
+    return new StatusException(statusOf(error), message);
   }
 
-  private static GrpcStatus statusOf(Throwable error, String message) {
-    if (error instanceof SanitizedError || !ClientErrors.isClientFacing(error)) {
-      return GrpcStatus.INTERNAL;
-    }
-    if (error instanceof MissingBackpressureException) {
-      return GrpcStatus.RESOURCE_EXHAUSTED;
-    }
-    if (
-      error instanceof IllegalArgumentException ||
-      error instanceof UnsupportedStructuredOutputException
-    ) {
-      return GrpcStatus.INVALID_ARGUMENT;
-    }
-    if (message.startsWith("Model not found") || message.startsWith("Pipeline not found")) {
-      return GrpcStatus.NOT_FOUND;
-    }
-    if (
-      message.contains(" is not a ") ||
-      message.contains(" is not an ") ||
-      message.contains(" is neither ") ||
-      message.startsWith("Unsupported model type")
-    ) {
-      return GrpcStatus.INVALID_ARGUMENT;
-    }
-    return GrpcStatus.UNKNOWN;
+  private static GrpcStatus statusOf(Throwable error) {
+    return switch (error) {
+      case ClientFacingException caller -> switch (caller.kind()) {
+        case NOT_FOUND -> GrpcStatus.NOT_FOUND;
+        case INVALID_ARGUMENT, UNSUPPORTED_MODEL -> GrpcStatus.INVALID_ARGUMENT;
+      };
+      case MissingBackpressureException _ -> GrpcStatus.RESOURCE_EXHAUSTED;
+      default -> GrpcStatus.INTERNAL;
+    };
   }
 }

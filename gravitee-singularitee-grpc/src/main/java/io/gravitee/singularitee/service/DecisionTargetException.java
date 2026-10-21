@@ -15,19 +15,21 @@
  */
 package io.gravitee.singularitee.service;
 
+import io.gravitee.singularitee.inference.api.ClientFacingException;
+
 /**
  * A decision call whose target cannot serve it: an unknown id, or a model or pipeline that does
- * not decide. An {@link IllegalArgumentException}, so its message reaches the caller.
+ * not decide. Its message is written for the caller.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public final class DecisionTargetException extends IllegalArgumentException {
+public final class DecisionTargetException extends ClientFacingException {
 
   private final boolean notFound;
 
   private DecisionTargetException(String message, boolean notFound) {
-    super(message);
+    super(notFound ? Kind.NOT_FOUND : Kind.UNSUPPORTED_MODEL, message);
     this.notFound = notFound;
   }
 

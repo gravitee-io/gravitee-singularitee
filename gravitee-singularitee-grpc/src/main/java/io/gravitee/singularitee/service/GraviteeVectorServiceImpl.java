@@ -21,6 +21,7 @@ import io.gravitee.singularitee.engine.api.RerankerEngine;
 import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
 import io.gravitee.singularitee.engine.api.pipeline.executor.SpanNames;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.gravitee.singularitee.protocol.*;
 import io.vertx.core.Completable;
 import io.vertx.core.Future;
@@ -71,12 +72,14 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
     return instrumentation.traceUnary(SpanNames.key("embed"), "embed", request.getModelId(), () -> {
       var entryOpt = registry.get(request.getModelId());
       if (entryOpt.isEmpty()) {
-        return Future.failedFuture("Model not found: " + request.getModelId());
+        return Future.failedFuture(ClientFacingException.modelNotFound(request.getModelId()));
       }
       var engine = entryOpt.get().engine();
       if (!(engine instanceof EmbeddingEngine embeddingEngine)) {
         return Future.failedFuture(
-          "Model '" + request.getModelId() + "' is not an embedding model"
+          ClientFacingException.unsupportedModel(
+            "Model '" + request.getModelId() + "' is not an embedding model"
+          )
         );
       }
 
@@ -112,12 +115,14 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
       () -> {
         var entryOpt = registry.get(request.getModelId());
         if (entryOpt.isEmpty()) {
-          return Future.failedFuture("Model not found: " + request.getModelId());
+          return Future.failedFuture(ClientFacingException.modelNotFound(request.getModelId()));
         }
         var engine = entryOpt.get().engine();
         if (!(engine instanceof EmbeddingEngine embeddingEngine)) {
           return Future.failedFuture(
-            "Model '" + request.getModelId() + "' is not an embedding model"
+            ClientFacingException.unsupportedModel(
+              "Model '" + request.getModelId() + "' is not an embedding model"
+            )
           );
         }
 
@@ -158,6 +163,9 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
       float[] b = toFloatArray(request.getB());
       float score = gioMaths.cosineSimilarity(a, b);
       return Future.succeededFuture(CosineSimilarityResponse.newBuilder().setScore(score).build());
+    } catch (IllegalArgumentException e) {
+      // The vectors are the caller's: a shape the maths refuses is their error.
+      return Future.failedFuture(ClientFacingException.invalid(e.getMessage()));
     } catch (Exception e) {
       return Future.failedFuture(e);
     }
@@ -192,6 +200,9 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
         );
       }
       return Future.succeededFuture(builder.build());
+    } catch (IllegalArgumentException e) {
+      // The vectors are the caller's: a shape the maths refuses is their error.
+      return Future.failedFuture(ClientFacingException.invalid(e.getMessage()));
     } catch (Exception e) {
       return Future.failedFuture(e);
     }
@@ -218,11 +229,15 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
   private Future<TextSimilarityResponse> textSimilarityInternal(TextSimilarityRequest request) {
     var entryOpt = registry.get(request.getModelId());
     if (entryOpt.isEmpty()) {
-      return Future.failedFuture("Model not found: " + request.getModelId());
+      return Future.failedFuture(ClientFacingException.modelNotFound(request.getModelId()));
     }
     var engine = entryOpt.get().engine();
     if (!(engine instanceof EmbeddingEngine embeddingEngine)) {
-      return Future.failedFuture("Model '" + request.getModelId() + "' is not an embedding model");
+      return Future.failedFuture(
+        ClientFacingException.unsupportedModel(
+          "Model '" + request.getModelId() + "' is not an embedding model"
+        )
+      );
     }
 
     List<String> allTexts = new ArrayList<>();
@@ -293,7 +308,7 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
   private Future<TextRerankResponse> textRerankInternal(TextRerankRequest request) {
     var entryOpt = registry.get(request.getModelId());
     if (entryOpt.isEmpty()) {
-      return Future.failedFuture("Model not found: " + request.getModelId());
+      return Future.failedFuture(ClientFacingException.modelNotFound(request.getModelId()));
     }
     var engine = entryOpt.get().engine();
 
@@ -324,7 +339,9 @@ public class GraviteeVectorServiceImpl extends GraviteeVectorServiceGrpcService 
     // Bi-encoder fallback: embed query + docs, rank by cosine similarity.
     if (!(engine instanceof EmbeddingEngine embeddingEngine)) {
       return Future.failedFuture(
-        "Model '" + request.getModelId() + "' is neither an embedding nor a reranker model"
+        ClientFacingException.unsupportedModel(
+          "Model '" + request.getModelId() + "' is neither an embedding nor a reranker model"
+        )
       );
     }
 

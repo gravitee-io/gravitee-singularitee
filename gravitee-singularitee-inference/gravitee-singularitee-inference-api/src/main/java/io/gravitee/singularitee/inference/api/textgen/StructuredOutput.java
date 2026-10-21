@@ -15,6 +15,7 @@
  */
 package io.gravitee.singularitee.inference.api.textgen;
 
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import java.util.List;
 
 /**
@@ -32,7 +33,7 @@ public sealed interface StructuredOutput {
   record JsonSchema(String schema) implements StructuredOutput {
     public JsonSchema {
       if (schema == null || schema.isBlank()) {
-        throw new IllegalArgumentException("structured output: json_schema is empty");
+        throw ClientFacingException.invalid("structured output: json_schema is empty");
       }
     }
   }
@@ -44,7 +45,7 @@ public sealed interface StructuredOutput {
   record Choice(List<String> values) implements StructuredOutput {
     public Choice {
       if (values == null || values.isEmpty()) {
-        throw new IllegalArgumentException("structured output: choice needs at least one value");
+        throw ClientFacingException.invalid("structured output: choice needs at least one value");
       }
       values = List.copyOf(values);
     }
@@ -54,7 +55,7 @@ public sealed interface StructuredOutput {
   record Regex(String pattern) implements StructuredOutput {
     public Regex {
       if (pattern == null || pattern.isEmpty()) {
-        throw new IllegalArgumentException("structured output: regex is empty");
+        throw ClientFacingException.invalid("structured output: regex is empty");
       }
     }
   }
@@ -63,7 +64,7 @@ public sealed interface StructuredOutput {
   record Grammar(String text, String root) implements StructuredOutput {
     public Grammar {
       if (text == null || text.isBlank()) {
-        throw new IllegalArgumentException("structured output: grammar is empty");
+        throw ClientFacingException.invalid("structured output: grammar is empty");
       }
       root = root == null || root.isBlank() ? DEFAULT_ROOT : root;
     }
