@@ -50,7 +50,7 @@ From `examples/pipelines/guard.yaml`:
 | `model_id` | string | required | Logical id of a published classifier model. |
 | `input_field` | string | `prompt` | Context key to classify. `prompt` (or unset) means the request itself, inspected per `scope`; any other key is classified alone. |
 | `scope` | string | `conversation` | Turns inspected when the guard reads the request (`input_field` unset or `prompt`): `last_user`, `user_turns`, or `conversation` (every user, assistant and tool turn; system turns are excluded). Each turn is checked on its own and any match fires. Refused alongside any other `input_field`. A request sent as a bare prompt is inspected as that prompt. |
-| `on_empty` | string | `reject`; `skip` for `warn` | What to do when there is no text to inspect (a blank field, or no turn in scope with text, such as an image-only message): `reject` halts with `FINISH_REASON_GUARD_BLOCKED` and the rendered `message`, `skip` passes to the next step. |
+| `on_empty` | string | `reject`; `skip` for `warn` and `redact` | What to do when there is no text to inspect (a blank field, or no turn in scope with text, such as an image-only message): `reject` halts with `FINISH_REASON_GUARD_BLOCKED` and the rendered `message`, `skip` passes to the next step. |
 | `output_field` | string | `<id>.redacted` | `redact` only: context key receiving the redacted text (the original text when nothing matched). |
 | `action` | string | `reject` | `reject`, `warn` or `redact`. Unknown values fall back to `reject`. |
 | `trigger` | `{label, score}` | unset | Single trigger. Ignored when `triggers` is non-empty. Also fills the deprecated proto fields `trigger_label` / `trigger_score`. |
@@ -81,7 +81,7 @@ Plus, by action: `warn` writes `__guard_triggered = <id>`; `redact` writes `<out
 - Overlapping or adjacent spans are merged; the merged span takes the label of its highest-scoring member.
 - `redact` rewrites every matching turn in scope, tool and assistant turns included, keeping their tool-call metadata; a classified field that is not the request leaves the conversation untouched.
 - Inspecting a whole conversation costs one classification per turn with text. Set `scope: last_user` where only the newest turn matters, for instance when an earlier guard already inspected the history.
-- With `on_empty: reject` (the default for `reject` and `redact`), a guard on a model output field blocks an empty generation; set `on_empty: skip` where an empty value is legitimate.
+- With `on_empty: reject` (the default for `reject`), a guard on a model output field blocks an empty generation; set `on_empty: skip` where an empty value is legitimate.
 - Several guards can chain; each one reads the field the previous one produced (`input_field: pii_guard.output`).
 
 ## See also

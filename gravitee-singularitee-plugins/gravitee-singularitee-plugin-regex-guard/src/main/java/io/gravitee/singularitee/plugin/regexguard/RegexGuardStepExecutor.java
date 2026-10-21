@@ -140,6 +140,10 @@ public final class RegexGuardStepExecutor implements StepExecutor<RegexGuardStep
   private Maybe<String> onEmpty(String stepId, RegexGuardStepConfig cfg, StepContext ctx) {
     if (cfg.onEmpty() == GuardOnEmpty.SKIP) {
       LOGGER.debug("RegexGuard '{}': nothing to inspect, skipping (on_empty: skip)", stepId);
+      if (cfg.action() == GuardAction.REDACT) {
+        // Nothing to redact: the output is the empty input, so later steps still find it set.
+        ctx.pipelineContext().set(resolveOutputField(cfg.outputField(), stepId), "");
+      }
       return ctx.rxNextStep(stepId);
     }
     LOGGER.info("RegexGuard '{}': nothing to inspect, rejecting (on_empty: reject)", stepId);

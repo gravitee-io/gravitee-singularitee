@@ -162,12 +162,12 @@ class GuardInputsTest {
   }
 
   @Test
-  void on_empty_defaults_to_reject_except_for_warn_guards() {
+  void on_empty_defaults_to_reject_for_reject_guards_only() {
     assertThat(GuardInputs.parseOnEmpty("g", null, GuardAction.REJECT)).isEqualTo(
       GuardOnEmpty.REJECT
     );
     assertThat(GuardInputs.parseOnEmpty("g", null, GuardAction.REDACT)).isEqualTo(
-      GuardOnEmpty.REJECT
+      GuardOnEmpty.SKIP
     );
     assertThat(GuardInputs.parseOnEmpty("g", null, GuardAction.WARN)).isEqualTo(GuardOnEmpty.SKIP);
     assertThat(GuardInputs.parseOnEmpty("g", "reject", GuardAction.WARN)).isEqualTo(

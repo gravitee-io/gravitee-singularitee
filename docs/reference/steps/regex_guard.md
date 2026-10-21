@@ -31,7 +31,7 @@
 | --- | --- | --- | --- |
 | `input_field` | string | `prompt` | Context key to scan. `prompt` (or unset) means the request itself, scanned per `scope`; any other key is scanned alone. |
 | `scope` | string | `conversation` | Turns inspected when the guard reads the request (`input_field` unset or `prompt`): `last_user`, `user_turns`, or `conversation` (every user, assistant and tool turn; system turns are excluded). Each turn is scanned on its own and any match fires. Refused alongside any other `input_field`. A request sent as a bare prompt is inspected as that prompt. |
-| `on_empty` | string | `reject`; `skip` for `warn` | What to do when there is no text to inspect (a blank field, or no turn in scope with text, such as an image-only message): `reject` halts with `FINISH_REASON_GUARD_BLOCKED` and the rendered `message`, `skip` passes to the next step. |
+| `on_empty` | string | `reject`; `skip` for `warn` and `redact` | What to do when there is no text to inspect (a blank field, or no turn in scope with text, such as an image-only message): `reject` halts with `FINISH_REASON_GUARD_BLOCKED` and the rendered `message`, `skip` passes to the next step. |
 | `patterns` | list of `{name, pattern}` | required | Named Java regexes. An empty list skips the step. |
 | `patterns[].name` | string | required | Free-form label (spaces and punctuation allowed); used as `[NAME]` replacement and in the `entity_type*` fields. |
 | `patterns[].pattern` | string | required | Java `Pattern` source. Blank patterns are ignored in `redact` mode. |
