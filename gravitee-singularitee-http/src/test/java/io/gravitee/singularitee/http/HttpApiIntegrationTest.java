@@ -30,6 +30,7 @@ import io.gravitee.singularitee.engine.api.TextGenRequest;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.http.router.OpenAiRoutes;
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.gravitee.singularitee.protocol.ClassifyBatchResponse;
 import io.gravitee.singularitee.protocol.ClassifyResponse;
 import io.gravitee.singularitee.protocol.ClassifyResult;
@@ -157,7 +158,7 @@ class HttpApiIntegrationTest {
     when(modelService.getModel(any())).thenAnswer(inv -> {
       String id = ((GetModelRequest) inv.getArgument(0)).getModelId();
       if (!id.equals("llm") && !id.equals("internal-llm")) {
-        return Future.failedFuture("Model not found: " + id);
+        return Future.failedFuture(ClientFacingException.modelNotFound(id));
       }
       return Future.succeededFuture(
         GetModelResponse.newBuilder()

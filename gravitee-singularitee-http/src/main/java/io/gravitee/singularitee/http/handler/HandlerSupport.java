@@ -24,6 +24,7 @@ import io.gravitee.singularitee.http.resolve.ModelOrPipelineResolver.Resolution;
 import io.gravitee.singularitee.http.resolve.RequestModalities;
 import io.gravitee.singularitee.http.validation.PayloadValidator;
 import io.gravitee.singularitee.http.validation.SchemaName;
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.grpc.common.GrpcStatus;
 import io.vertx.grpc.server.StatusException;
@@ -201,23 +202,41 @@ public final class HandlerSupport {
   }
 
   /**
-   * Maps a service {@code Future} failure to an OpenAI error envelope and status: unknown model
-   * to 400 {@code model_not_found}, wrong model kind to 400 {@code unsupported_model}, an
-   * {@code INVALID_ARGUMENT} status (labels a decision classifier cannot take) to 400
-   * {@code invalid_request_error}, anything else to 500 {@code internal_error}.
+   * Maps a service {@code Future} failure to an OpenAI error envelope and status by its kind:
+   * unknown model to 400 {@code model_not_found}, wrong model kind to 400
+   * {@code unsupported_model}, a malformed request or an {@code INVALID_ARGUMENT} status (labels a
+   * decision classifier cannot take) to 400 {@code invalid_request_error}, anything else to 500
+   * {@code internal_error}.
    */
   public static void mapServiceError(RoutingContext rc, Throwable err) {
-    if (err instanceof StatusException s && s.status() == GrpcStatus.INVALID_ARGUMENT) {
-      badRequest(rc, s.message(), null);
-      return;
-    }
-    String msg = err.getMessage() == null ? "Internal error" : err.getMessage();
-    if (msg.startsWith("Model not found")) {
-      JsonResponses.writeError(rc, 400, msg, "invalid_request_error", "model", "model_not_found");
-    } else if (msg.contains("is not a") || msg.contains("is neither")) {
-      JsonResponses.writeError(rc, 400, msg, "invalid_request_error", "model", "unsupported_model");
-    } else {
-      JsonResponses.writeError(
+    switch (err) {
+      case StatusException s when s.status() == GrpcStatus.INVALID_ARGUMENT -> badRequest(
+        rc,
+        s.message(),
+        null
+      );
+      case ClientFacingException caller -> {
+        switch (caller.kind()) {
+          case NOT_FOUND -> JsonResponses.writeError(
+            rc,
+            400,
+            caller.getMessage(),
+            "invalid_request_error",
+            "model",
+            "model_not_found"
+          );
+          case UNSUPPORTED_MODEL -> JsonResponses.writeError(
+            rc,
+            400,
+            caller.getMessage(),
+            "invalid_request_error",
+            "model",
+            "unsupported_model"
+          );
+          case INVALID_ARGUMENT -> badRequest(rc, caller.getMessage(), null);
+        }
+      }
+      default -> JsonResponses.writeError(
         rc,
         500,
         ClientErrors.message(err, "Internal error"),

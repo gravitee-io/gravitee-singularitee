@@ -15,6 +15,8 @@
  */
 package io.gravitee.singularitee.inference.api.textgen;
 
+import io.gravitee.singularitee.inference.api.ClientFacingException;
+
 /**
  * The engine cannot enforce the requested {@link StructuredOutput}: a format it has no mechanism
  * for, or a schema or grammar it cannot compile. A client error, never a degraded generation.
@@ -22,9 +24,9 @@ package io.gravitee.singularitee.inference.api.textgen;
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public class UnsupportedStructuredOutputException extends IllegalArgumentException {
+public class UnsupportedStructuredOutputException extends ClientFacingException {
 
   public UnsupportedStructuredOutputException(String message) {
-    super(message);
+    super(Kind.INVALID_ARGUMENT, message);
   }
 }

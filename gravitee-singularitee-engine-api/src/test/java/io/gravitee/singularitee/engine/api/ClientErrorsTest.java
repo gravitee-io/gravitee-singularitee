@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.gravitee.singularitee.inference.api.decision.DecisionException;
 import io.reactivex.rxjava3.exceptions.MissingBackpressureException;
 import io.vertx.core.Future;
@@ -27,9 +28,9 @@ class ClientErrorsTest {
 
   @Test
   void a_message_written_for_the_caller_is_kept() {
-    var notFound = Future.failedFuture("Model not found: llm").cause();
+    var notFound = ClientFacingException.modelNotFound("llm");
     assertThat(ClientErrors.message(notFound, "Internal error")).isEqualTo("Model not found: llm");
-    assertThat(ClientErrors.message(new IllegalArgumentException("bad dims"), "x")).isEqualTo(
+    assertThat(ClientErrors.message(ClientFacingException.invalid("bad dims"), "x")).isEqualTo(
       "bad dims"
     );
     assertThat(ClientErrors.message(new MissingBackpressureException("full"), "x")).isEqualTo(
@@ -50,7 +51,7 @@ class ClientErrorsTest {
 
   @Test
   void for_client_wraps_once_and_keeps_client_facing_errors() {
-    var caller = new IllegalArgumentException("bad request");
+    var caller = ClientFacingException.invalid("bad request");
     assertThat(ClientErrors.forClient(caller, "x")).isSameAs(caller);
 
     var wrapped = ClientErrors.forClient(
@@ -60,5 +61,14 @@ class ClientErrorsTest {
     assertThat(wrapped.getMessage()).startsWith("Internal error (ref ").doesNotContain("10.0.0.4");
     assertThat(ClientErrors.forClient(wrapped, "x")).isSameAs(wrapped);
     assertThat(ClientErrors.message(wrapped, "x")).isEqualTo(wrapped.getMessage());
+  }
+
+  @Test
+  void a_plain_illegal_argument_or_bare_future_failure_is_internal() {
+    var jdk = new IllegalArgumentException("Illegal char <:> at index 9: /home/svc/models:x");
+    assertThat(ClientErrors.message(jdk, "Internal error")).startsWith("Internal error (ref ");
+
+    var bare = Future.failedFuture("Connection refused: 10.0.0.4").cause();
+    assertThat(ClientErrors.message(bare, "Internal error")).doesNotContain("10.0.0.4");
   }
 }

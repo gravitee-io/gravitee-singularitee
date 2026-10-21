@@ -15,10 +15,9 @@
  */
 package io.gravitee.singularitee.engine.api;
 
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.gravitee.singularitee.inference.api.decision.DecisionException;
-import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
 import io.reactivex.rxjava3.exceptions.MissingBackpressureException;
-import io.vertx.core.impl.NoStackTraceThrowable;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,12 +25,12 @@ import org.slf4j.LoggerFactory;
 /**
  * Decides what an error tells the caller.
  *
- * <p>Messages the server writes for the caller keep their text: a {@code Future} failed with a
- * message ("Model not found: x"), a rejected argument, an unenforceable structured-output
- * request, a slow-client buffer overflow, a decision the server refused or could not score.
- * Anything else (an engine, native, I/O or programming
- * error) can carry internal paths, hostnames or prompt fragments, so the caller gets a generic
- * message with a reference, and the full error is logged under that reference.
+ * <p>Messages the server writes for the caller keep their text: a {@link ClientFacingException}
+ * (an unknown id, a model of the wrong kind, a malformed request), a decision the server refused
+ * or could not score, a slow-client buffer overflow. Anything else, a plain
+ * {@link IllegalArgumentException} from the JDK or a library included, can carry internal paths,
+ * hostnames or prompt fragments, so the caller gets a generic message with a reference, and the
+ * full error is logged under that reference.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -45,9 +44,7 @@ public final class ClientErrors {
   /** Whether {@code error}'s own message is meant for the caller. */
   public static boolean isClientFacing(Throwable error) {
     return (
-      error instanceof NoStackTraceThrowable ||
-      error instanceof IllegalArgumentException ||
-      error instanceof UnsupportedStructuredOutputException ||
+      error instanceof ClientFacingException ||
       error instanceof DecisionException ||
       error instanceof MissingBackpressureException ||
       error instanceof SanitizedError

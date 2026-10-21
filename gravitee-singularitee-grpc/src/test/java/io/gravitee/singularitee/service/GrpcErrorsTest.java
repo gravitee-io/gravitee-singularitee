@@ -18,6 +18,7 @@ package io.gravitee.singularitee.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.gravitee.singularitee.engine.api.ClientErrors;
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.vertx.core.Future;
 import io.vertx.grpc.common.GrpcStatus;
 import io.vertx.grpc.server.StatusException;
@@ -29,21 +30,21 @@ class GrpcErrorsTest {
 
   @Test
   void unknown_model_is_not_found_with_its_message() {
-    var status = GrpcErrors.toStatus(Future.failedFuture("Model not found: nope").cause());
+    var status = GrpcErrors.toStatus(ClientFacingException.modelNotFound("nope"));
     assertThat(status.status()).isEqualTo(GrpcStatus.NOT_FOUND);
     assertThat(status.message()).isEqualTo("Model not found: nope");
   }
 
   @Test
   void unknown_pipeline_is_not_found() {
-    var status = GrpcErrors.toStatus(Future.failedFuture("Pipeline not found: p").cause());
+    var status = GrpcErrors.toStatus(ClientFacingException.pipelineNotFound("p"));
     assertThat(status.status()).isEqualTo(GrpcStatus.NOT_FOUND);
   }
 
   @Test
   void wrong_model_kind_is_an_invalid_argument() {
     var status = GrpcErrors.toStatus(
-      Future.failedFuture("Model 'llm' is not an embedding model").cause()
+      ClientFacingException.unsupportedModel("Model 'llm' is not an embedding model")
     );
     assertThat(status.status()).isEqualTo(GrpcStatus.INVALID_ARGUMENT);
     assertThat(status.message()).isEqualTo("Model 'llm' is not an embedding model");
@@ -51,16 +52,31 @@ class GrpcErrorsTest {
 
   @Test
   void rejected_argument_is_an_invalid_argument() {
-    var status = GrpcErrors.toStatus(new IllegalArgumentException("vectors differ in length"));
+    var status = GrpcErrors.toStatus(ClientFacingException.invalid("vectors differ in length"));
     assertThat(status.status()).isEqualTo(GrpcStatus.INVALID_ARGUMENT);
     assertThat(status.message()).isEqualTo("vectors differ in length");
   }
 
   @Test
-  void other_caller_message_keeps_its_text() {
-    var status = GrpcErrors.toStatus(Future.failedFuture("Model x is not available").cause());
-    assertThat(status.status()).isEqualTo(GrpcStatus.UNKNOWN);
-    assertThat(status.message()).isEqualTo("Model x is not available");
+  void the_kind_picks_the_status_not_the_message() {
+    var status = GrpcErrors.toStatus(ClientFacingException.invalid("Model not found: reworded"));
+    assertThat(status.status()).isEqualTo(GrpcStatus.INVALID_ARGUMENT);
+  }
+
+  @Test
+  void a_plain_illegal_argument_is_internal() {
+    var status = GrpcErrors.toStatus(
+      new IllegalArgumentException("Illegal char <:> at index 2: C::/models/secret")
+    );
+    assertThat(status.status()).isEqualTo(GrpcStatus.INTERNAL);
+    assertThat(status.message()).startsWith("Internal error (ref ").doesNotContain("secret");
+  }
+
+  @Test
+  void a_bare_failed_future_is_internal() {
+    var status = GrpcErrors.toStatus(Future.failedFuture("Connection reset by 10.0.0.4").cause());
+    assertThat(status.status()).isEqualTo(GrpcStatus.INTERNAL);
+    assertThat(status.message()).doesNotContain("10.0.0.4");
   }
 
   @Test
@@ -97,7 +113,7 @@ class GrpcErrorsTest {
     assertThat(result.get()).isEqualTo("ok");
     assertThat(failure.get()).isNull();
 
-    response.complete(null, Future.failedFuture("Model not found: x").cause());
+    response.complete(null, ClientFacingException.modelNotFound("x"));
     assertThat(failure.get()).isInstanceOf(StatusException.class);
     assertThat(((StatusException) failure.get()).status()).isEqualTo(GrpcStatus.NOT_FOUND);
   }

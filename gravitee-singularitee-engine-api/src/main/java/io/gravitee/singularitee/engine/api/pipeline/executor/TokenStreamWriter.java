@@ -19,8 +19,8 @@ import io.gravitee.singularitee.engine.api.ClientErrors;
 import io.gravitee.singularitee.engine.api.ModelEnginePerformance;
 import io.gravitee.singularitee.engine.api.ModelEngineToken;
 import io.gravitee.singularitee.engine.api.TextGenEngine;
+import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.gravitee.singularitee.inference.api.textgen.TokenChannel;
-import io.gravitee.singularitee.inference.api.textgen.UnsupportedStructuredOutputException;
 import io.gravitee.singularitee.protocol.FinishReason;
 import io.gravitee.singularitee.protocol.InferResponse;
 import io.gravitee.singularitee.protocol.InferencePerformance;
@@ -71,9 +71,7 @@ public final class TokenStreamWriter {
 
   /** The FAILED event code: a request the engine cannot honour is the caller's error. */
   public static String errorCode(Throwable error) {
-    return error instanceof UnsupportedStructuredOutputException
-      ? "invalid_request_error"
-      : "server_error";
+    return error instanceof ClientFacingException ? "invalid_request_error" : "server_error";
   }
 
   /**
