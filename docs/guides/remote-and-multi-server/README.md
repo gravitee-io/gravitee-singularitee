@@ -169,7 +169,7 @@ Full tables: [Workspaces](../../workspaces/README.md),
 ## Notes
 
 - Endpoints are plaintext unless `ssl: true`. An endpoint with credentials must set `ssl: true`
-  unless its host is loopback (`localhost`, `127.*`, `::1`); otherwise it is refused at load,
+  unless its host is loopback (`localhost` or a loopback IP literal such as `127.0.0.1` or `::1`; a host name is never treated as loopback); otherwise it is refused at load,
   and the remote models behind it are not registered.
 - Startup is fail-fast: every remote model is checked with `GetModel`; a missing model or an
   unreachable server throws `IllegalStateException` before anything is published.

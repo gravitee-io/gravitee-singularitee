@@ -24,6 +24,7 @@ import io.gravitee.node.vertx.server.VertxServerFactory;
 import io.gravitee.node.vertx.server.VertxServerOptions;
 import io.gravitee.node.vertx.server.http.VertxHttpServer;
 import io.gravitee.node.vertx.server.http.VertxHttpServerOptions;
+import io.gravitee.singularitee.client.LoopbackHosts;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
@@ -343,7 +344,7 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
   }
 
   private static boolean isLoopback(String host) {
-    return host == null || host.isBlank() || "localhost".equals(host) || host.startsWith("127.");
+    return host == null || host.isBlank() || LoopbackHosts.isLoopback(host);
   }
 
   /**
