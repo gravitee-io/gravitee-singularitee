@@ -48,6 +48,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -577,13 +578,17 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
               index -> {
                 long start = index * chunkSize;
                 long end = Math.min(total, start + chunkSize) - 1;
-                // detached both inside and around retryWhen: a late error can surface on
+                // detached both inside and around the retry: a late error can surface on
                 // either side of the resubscription boundary after fail-fast disposal
                 return firstFailureOnly(
                   detachOnDispose(
-                    detachOnDispose(
-                      downloadChunk(source.url(), start, end, asyncFile, written)
-                    ).retryWhen(errors -> backoff(errors, MAX_CHUNK_RETRIES))
+                    retried(
+                      () ->
+                        detachOnDispose(
+                          downloadChunk(source.url(), start, end, asyncFile, written)
+                        ),
+                      MAX_CHUNK_RETRIES
+                    )
                   ),
                   firstFailure
                 );
@@ -711,16 +716,40 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
   }
 
   /**
-   * Exponential backoff for {@code retryWhen}: 500 ms base, doubling, capped at 10 s.
-   * {@link NonRetryableException}s propagate immediately.
+   * Runs {@code attempt}, and again after each failure with the {@link #retryDelay} delays, up to
+   * {@code maxRetries} retries; {@link NonRetryableException}s fail at once.
+   *
+   * <p>Chunks retry this way rather than with {@code retryWhen}: there, a final failure that
+   * races the fail-fast disposal of its chunk reaches the cancelled handler, which reports it to
+   * {@code RxJavaPlugins.onError} from inside the operator, past any wrapper on the chunk. Here
+   * the failure only travels to the chunk's own observer, which drops it once disposed.
    */
-  private static Flowable<?> backoff(Flowable<Throwable> errors, int maxRetries) {
-    return backoff(errors, maxRetries, NonRetryableException.class::isInstance);
+  static Completable retried(Supplier<Completable> attempt, int maxRetries) {
+    return retried(attempt, maxRetries, 1);
+  }
+
+  private static Completable retried(Supplier<Completable> attempt, int maxRetries, int retry) {
+    return Completable.defer(attempt::get).onErrorResumeNext(error -> {
+      if (retry > maxRetries || error instanceof NonRetryableException) {
+        return Completable.error(error);
+      }
+      long delay = retryDelay(retry);
+      LOG.debug("Retry {}/{} in {} ms after: {}", retry, maxRetries, delay, error.getMessage());
+      return Completable.timer(delay, TimeUnit.MILLISECONDS).andThen(
+        retried(attempt, maxRetries, retry + 1)
+      );
+    });
+  }
+
+  /** The delay before retry number {@code retry}: 500 ms, doubling, capped at 10 s. */
+  private static long retryDelay(int retry) {
+    return Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS << (retry - 1));
   }
 
   /**
-   * Backoff with a caller-supplied non-retryable predicate, for levels that treat
-   * some marker exceptions differently (see {@link UrlExpiredException}).
+   * Exponential backoff for the file-level {@code retryWhen} ({@link #retryDelay} delays),
+   * with a caller-supplied non-retryable predicate, for levels that treat some marker
+   * exceptions differently (see {@link UrlExpiredException}).
    *
    * <p>The attempt index is tracked explicitly (not via {@code zipWith(range)}) so
    * exhausting the retries always rethrows the error: a completed inner stream
@@ -737,7 +766,7 @@ public final class HuggingFaceModelDownloader implements AutoCloseable {
       if (retry > maxRetries || nonRetryable.test(error)) {
         return Flowable.error(error);
       }
-      long delay = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS << (retry - 1));
+      long delay = retryDelay(retry);
       LOG.debug("Retry {}/{} in {} ms after: {}", retry, maxRetries, delay, error.getMessage());
       return Flowable.timer(delay, TimeUnit.MILLISECONDS);
     });
