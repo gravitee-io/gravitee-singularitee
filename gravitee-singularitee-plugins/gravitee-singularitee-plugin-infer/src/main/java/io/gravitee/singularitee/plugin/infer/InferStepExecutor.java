@@ -727,6 +727,7 @@ public final class InferStepExecutor
       case FINISH_REASON_MAX_ITERATIONS -> "max_iterations";
       case FINISH_REASON_CANCELLED -> "cancelled";
       case FINISH_REASON_STALLED -> "stalled";
+      case FINISH_REASON_START_FAILED -> "start_failed";
       default -> "unspecified";
     };
   }

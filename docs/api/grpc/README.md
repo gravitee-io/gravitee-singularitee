@@ -159,6 +159,7 @@ counts as an image.
 | `FINISH_REASON_MAX_ITERATIONS` | A `loop` step hit `max_iterations`. |
 | `FINISH_REASON_CANCELLED` | Client disconnect or slow-consumer cancellation. |
 | `FINISH_REASON_STALLED` | The backend stalled and the sequence was force-failed; output is truncated. |
+| `FINISH_REASON_START_FAILED` | A queued sequence could not start when a slot freed up; no output was generated. |
 
 Tags 4 and 5 are reserved and never emitted.
 

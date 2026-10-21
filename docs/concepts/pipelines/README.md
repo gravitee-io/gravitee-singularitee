@@ -108,7 +108,7 @@ engine finish reason recorded by an infer step, else `STOP`.
 | `GUARD_BLOCKED` | `guard`, `llm_guard`, `regex_guard` with `action: reject`; a failed child pipeline | `content_filter` (sent as a `FAILED` event with `error_code: content_filter`) |
 | `BREAK_CONDITION` | `break` condition met; `todo` step pausing on `ask_user` | `stop` |
 | `MAX_ITERATIONS` | Defined on the wire; `loop` branches to `fallback_step` instead of raising it | `stop` |
-| `CANCELLED`, `STALLED` | Engine: client went away, or the backend failed mid-generation | `stop` |
+| `CANCELLED`, `STALLED`, `START_FAILED` | Engine: client went away, the backend failed mid-generation, or a queued sequence could not start | `stop` |
 
 HTTP keeps the OpenAI closed set, so everything not listed in the right column maps to
 `stop`. The gRPC stream carries the raw enum.

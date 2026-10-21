@@ -120,7 +120,7 @@ Writes:
 | Field | Value |
 | --- | --- |
 | `<output_field>` | The full generated text. A bare tool payload captured by the engine is re-wrapped in the step's tool tags (default `<tool_call>...</tool_call>`). |
-| `<id>.finish_reason` | `stop`, `length`, `tool_calls`, `guard_blocked`, `break_condition`, `max_iterations`, `cancelled`, `stalled` or `unspecified`. |
+| `<id>.finish_reason` | `stop`, `length`, `tool_calls`, `guard_blocked`, `break_condition`, `max_iterations`, `cancelled`, `stalled`, `start_failed` or `unspecified`. |
 | `<id>.prompt_tokens`, `<id>.completion_tokens`, `<id>.reasoning_tokens` | Usage reported by the engine. |
 | `<id>.prompt_ms` | Prompt evaluation time in milliseconds. |
 | `<id>.thinking_unclosed` | `true` when the generation ended inside an unclosed reasoning span, or produced engine-classified reasoning with no answer and no tool span. |

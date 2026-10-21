@@ -177,7 +177,7 @@ class AbstractBatchEngineStartFailureTest {
         .filter(t -> t.seqId() == 2)
         .findFirst()
         .orElseThrow();
-      assertThat(token.finishReason()).isEqualTo("stalled");
+      assertThat(token.finishReason()).isEqualTo("start_failed");
     } finally {
       engine.close();
     }

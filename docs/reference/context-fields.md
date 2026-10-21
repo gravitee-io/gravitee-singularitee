@@ -75,7 +75,7 @@ Hidden from Jinja: `prompt` is exposed but excluded from the step-map split; `to
 | Step | Field | Value |
 | --- | --- | --- |
 | `infer` | `<out>` (`<id>.output`) | Full generated text, tool payload re-wrapped in the step's tool tags. |
-| `infer` | `<id>.finish_reason` | `stop`, `length`, `tool_calls`, `guard_blocked`, `break_condition`, `max_iterations`, `cancelled`, `stalled`, `unspecified`. |
+| `infer` | `<id>.finish_reason` | `stop`, `length`, `tool_calls`, `guard_blocked`, `break_condition`, `max_iterations`, `cancelled`, `stalled`, `start_failed`, `unspecified`. |
 | `infer` | `<id>.prompt_tokens`, `<id>.completion_tokens`, `<id>.reasoning_tokens` | Engine usage. |
 | `infer` | `<id>.prompt_ms` | Prompt evaluation time in ms. |
 | `infer` | `<id>.thinking_unclosed` | `true` when the generation ended inside reasoning with no answer. |

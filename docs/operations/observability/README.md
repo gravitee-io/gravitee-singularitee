@@ -176,7 +176,7 @@ The set is defined by the `ConfidenceSignal` implementations registered in `Conf
 | `ai_pipeline_latency_seconds` | timer | `pipeline` | End-to-end pipeline latency. |
 | `ai_model_call_seconds` | timer | `model`, `op` | Each engine call inside a pipeline. |
 | `ai_tokens_total` | counter | `model`, `kind` | `prompt`, `completion`, `reasoning`, `tool`. Non-positive counts are skipped. |
-| `ai_finish_reasons_total` | counter | `model`, `reason` | Infer completions by finish reason (`stop`, `length`, `tool_calls`, `stalled`, `cancelled`, ...). Makes silent truncation graphable. |
+| `ai_finish_reasons_total` | counter | `model`, `reason` | Infer completions by finish reason (`stop`, `length`, `tool_calls`, `stalled`, `start_failed`, `cancelled`, ...). Makes silent truncation graphable. |
 | `ai_failure_signals_total` | counter | `source`, `kind`, `signal` | `kind=model`: `tool_parse_failed`, `thinking_unclosed`; `kind=step`: `loop_max_iterations`; `kind=pipeline`: `guard_blocked`. `source` is the matching id. |
 | `gpu_utilization_percent`, `gpu_memory_utilization_percent`, `gpu_memory_total_bytes`, `gpu_memory_used_bytes`, `gpu_temperature_celsius`, `gpu_power_watts` | gauge | `gpu`, `name`, `uuid` | From `services.monitoring.gpu`. |
 
