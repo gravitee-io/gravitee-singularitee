@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -255,7 +256,7 @@ public final class GuardStepExecutor
   private record MatchedTrigger(String label, float score) {
     @Override
     public String toString() {
-      return label + "=" + String.format("%.4f", score);
+      return label + "=" + String.format(Locale.ROOT, "%.4f", score);
     }
   }
 
@@ -268,7 +269,7 @@ public final class GuardStepExecutor
 
     MatchedTrigger top = matchedTriggers.getFirst();
     pctx.set(stepId + ".label", top.label());
-    pctx.set(stepId + ".score", String.format("%.4f", top.score()));
+    pctx.set(stepId + ".score", String.format(Locale.ROOT, "%.4f", top.score()));
 
     String labels = matchedTriggers
       .stream()
@@ -276,11 +277,11 @@ public final class GuardStepExecutor
       .collect(Collectors.joining(", "));
     String scores = matchedTriggers
       .stream()
-      .map(t -> String.format("%.4f", t.score()))
+      .map(t -> String.format(Locale.ROOT, "%.4f", t.score()))
       .collect(Collectors.joining(", "));
     String details = matchedTriggers
       .stream()
-      .map(t -> t.label() + ": " + String.format("%.4f", t.score()))
+      .map(t -> t.label() + ": " + String.format(Locale.ROOT, "%.4f", t.score()))
       .collect(Collectors.joining(", "));
 
     pctx.set(stepId + ".labels", labels);

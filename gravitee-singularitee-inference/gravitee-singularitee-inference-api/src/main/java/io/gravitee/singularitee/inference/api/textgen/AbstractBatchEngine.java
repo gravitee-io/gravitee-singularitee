@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -569,7 +570,9 @@ public abstract class AbstractBatchEngine<CONFIG, REQUEST extends GenerationRequ
       state.firstTokenNanos > 0 ? (state.firstTokenNanos - state.startedNanos) / 1_000_000 : -1,
       decodeMs,
       state.outputTokens,
-      decodeMs > 0 ? String.format("%.1f", (state.outputTokens * 1000.0) / decodeMs) : "n/a"
+      decodeMs > 0
+        ? String.format(Locale.ROOT, "%.1f", (state.outputTokens * 1000.0) / decodeMs)
+        : "n/a"
     );
 
     // Remove from adapter (retaining KV when the slot cache is active)
