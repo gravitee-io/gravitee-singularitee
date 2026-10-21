@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.plugin.decide;
 
 import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
+import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
 import io.gravitee.singularitee.inference.api.decision.Question;
 import io.gravitee.singularitee.inference.api.decision.QuestionKind;
 import java.util.List;
@@ -44,7 +45,7 @@ public record DecideStepConfig(
   boolean questionsFromRequest,
   List<Question> questions,
   List<PromptDef> prompts
-) implements ModelBoundConfig {
+) implements ModelBoundConfig, OutputFieldConfig {
   public DecideStepConfig {
     modelId = modelId == null ? "" : modelId;
     inputField = inputField == null ? "" : inputField;

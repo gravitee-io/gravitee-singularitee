@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.gravitee.singularitee.inference.api.decision.DecisionException;
 import io.reactivex.rxjava3.exceptions.MissingBackpressureException;
 import io.vertx.core.Future;
 import java.io.IOException;
@@ -34,6 +35,8 @@ class ClientErrorsTest {
     assertThat(ClientErrors.message(new MissingBackpressureException("full"), "x")).isEqualTo(
       "full"
     );
+    var decision = DecisionException.invalid("intent", "needs two options");
+    assertThat(ClientErrors.forClient(decision, "x")).isSameAs(decision);
   }
 
   @Test

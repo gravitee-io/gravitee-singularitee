@@ -18,6 +18,7 @@ package io.gravitee.singularitee.plugin.decide;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import io.gravitee.singularitee.inference.api.decision.Question;
 import io.gravitee.singularitee.inference.api.decision.QuestionKind;
@@ -35,6 +36,25 @@ class DecideStepCodecTest {
     null,
     null
   );
+
+  @Test
+  void the_output_field_is_reserved_against_caller_context() {
+    var cfg = codec.parse(
+      "triage",
+      Map.of(
+        "model_id",
+        "decider",
+        "output_field",
+        "verdict.answers",
+        "questions",
+        Map.of("angry", Map.of("instructions", "Angry?", "noul", Map.of()))
+      ),
+      ctx
+    );
+
+    assertThat(cfg).isInstanceOf(OutputFieldConfig.class);
+    assertThat(((OutputFieldConfig) cfg).outputField()).isEqualTo("verdict.answers");
+  }
 
   @Test
   void parses_questions_in_declaration_order() {

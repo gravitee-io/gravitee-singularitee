@@ -160,15 +160,8 @@ public final class VllmDecisionModel implements AutoCloseable {
         "this model renders its own prompts: send a state and questions, not raw prompts"
       );
     }
-    Map<String, Object> response;
-    try {
-      response = runtime.decide(body(templated));
-    } catch (DecisionException e) {
-      throw e;
-    } catch (RuntimeException e) {
-      throw new DecisionException(Reason.EVALUATION_FAILED, e.getMessage(), e);
-    }
-    return result(templated.questions(), response);
+    // A runtime crash propagates as is: its text is internal, so the caller gets a generic message.
+    return result(templated.questions(), runtime.decide(body(templated)));
   }
 
   @Override

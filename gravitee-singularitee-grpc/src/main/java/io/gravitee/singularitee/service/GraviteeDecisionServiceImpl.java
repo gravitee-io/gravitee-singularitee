@@ -369,7 +369,7 @@ public class GraviteeDecisionServiceImpl extends GraviteeDecisionServiceGrpcServ
         t.getMessage()
       );
       case StatusException s -> s;
-      default -> new StatusException(GrpcStatus.INTERNAL, String.valueOf(e.getMessage()));
+      default -> GrpcErrors.toStatus(e);
     };
   }
 }

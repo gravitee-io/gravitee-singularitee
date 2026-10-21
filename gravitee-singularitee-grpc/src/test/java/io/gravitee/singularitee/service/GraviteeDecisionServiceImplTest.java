@@ -247,6 +247,45 @@ class GraviteeDecisionServiceImplTest {
     assertThat(judge.started.get()).isLessThan(200);
   }
 
+  @Test
+  void a_refused_decision_keeps_its_status_and_message() {
+    var unknown = DecideRequest.newBuilder()
+      .setModelId("nope")
+      .setTemplated(TemplatedInput.newBuilder().setText("x"))
+      .build();
+    assertThatThrownBy(() -> await(service.decide(unknown)))
+      .isInstanceOf(StatusException.class)
+      .satisfies(e -> {
+        assertThat(((StatusException) e).status()).isEqualTo(GrpcStatus.NOT_FOUND);
+        assertThat(((StatusException) e).message()).isEqualTo("Model not found: nope");
+      });
+  }
+
+  @Test
+  void an_engine_crash_reaches_the_caller_as_a_generic_internal_error() {
+    var crash = DecideRequest.newBuilder()
+      .setModelId("judge")
+      .setTemplated(
+        TemplatedInput.newBuilder()
+          .setText("crash")
+          .addQuestions(
+            DecisionQuestion.newBuilder()
+              .setId("q")
+              .setInstructions(Value.newBuilder().setStringValue("?"))
+              .setNoul(NoulQuestion.getDefaultInstance())
+          )
+      )
+      .build();
+    assertThatThrownBy(() -> await(service.decide(crash)))
+      .isInstanceOf(StatusException.class)
+      .satisfies(e -> {
+        assertThat(((StatusException) e).status()).isEqualTo(GrpcStatus.INTERNAL);
+        assertThat(((StatusException) e).message())
+          .startsWith("Internal error (ref ")
+          .doesNotContain("/models");
+      });
+  }
+
   /** {@code states} numbered states for the judge; the one at {@code failing} fails. */
   private static DecideBatchRequest batch(int states, int failing) {
     var request = DecideBatchRequest.newBuilder()
@@ -281,14 +320,16 @@ class GraviteeDecisionServiceImplTest {
         started.incrementAndGet();
         maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
         String state = (String) ((DecisionInput.Templated) request.input()).state();
-        Single<DecisionResult> answer = state.startsWith("fail")
-          ? Single.error(new DecisionException(Reason.EVALUATION_FAILED, "state 3 failed"))
-          : Single.just(
-            new DecisionResult(
-              List.of(new Answer.Noul("q", Integer.parseInt(state) / 100.0, List.of())),
-              1
-            )
-          );
+        Single<DecisionResult> answer = state.startsWith("crash")
+          ? Single.error(new IllegalStateException("cannot read /models/judge.gguf"))
+          : state.startsWith("fail")
+            ? Single.error(new DecisionException(Reason.EVALUATION_FAILED, "state 3 failed"))
+            : Single.just(
+              new DecisionResult(
+                List.of(new Answer.Noul("q", Integer.parseInt(state) / 100.0, List.of())),
+                1
+              )
+            );
         return answer
           .delay(20, TimeUnit.MILLISECONDS, true)
           .doOnEvent((result, error) -> inFlight.decrementAndGet());
