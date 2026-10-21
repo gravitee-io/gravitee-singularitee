@@ -16,13 +16,16 @@
 package io.gravitee.singularitee.engine.pipeline;
 
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
+import io.gravitee.singularitee.engine.api.pipeline.model.NestedPipelineConfig;
 import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
 import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
 import io.gravitee.singularitee.protocol.InferPipelineRequest;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Keeps a caller's {@code context} map out of the keys a pipeline writes itself.
@@ -31,7 +34,8 @@ import java.util.Set;
  * (a step output a later {@code route} reads, an internal {@code __} flag, the todo
  * counters) could steer the pipeline before any step ran. A caller key is dropped when its
  * top-level segment is a step id, the top-level segment of a step's {@code output_field},
- * or a root the engine owns; everything else passes through unchanged.
+ * in the pipeline or a local sub-pipeline it runs, or a root the engine owns; everything else
+ * passes through unchanged.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -47,23 +51,46 @@ public final class CallerContext {
 
   private CallerContext() {}
 
-  /** The request with every reserved context key removed, or the request itself if none is. */
-  public static InferPipelineRequest withoutReservedKeys(
-    PipelineModel pipeline,
-    InferPipelineRequest request
-  ) {
-    var dropped = reservedKeys(pipeline, request.getContextMap().keySet());
-    if (dropped.isEmpty()) {
+  /** {@code request} without {@code keys} in its context, or {@code request} itself if none. */
+  public static InferPipelineRequest without(InferPipelineRequest request, List<String> keys) {
+    if (keys.isEmpty()) {
       return request;
     }
     var builder = request.toBuilder();
-    dropped.forEach(builder::removeContext);
+    keys.forEach(builder::removeContext);
     return builder.build();
   }
 
-  /** The keys among {@code keys} a caller may not set for {@code pipeline}. */
-  static List<String> reservedKeys(PipelineModel pipeline, Set<String> keys) {
+  /**
+   * The keys among {@code keys} a caller may not set for {@code pipeline}: its own roots and
+   * those of every local pipeline it reaches through a sub-pipeline step, since a child inherits
+   * the parent's context unfiltered. A remote child filters its own requests.
+   *
+   * @param localPipelines the pipelines of this server, by id
+   */
+  public static List<String> reservedKeys(
+    PipelineModel pipeline,
+    Function<String, Optional<PipelineModel>> localPipelines,
+    Set<String> keys
+  ) {
     var roots = new HashSet<>(ENGINE_ROOTS);
+    collectRoots(pipeline, localPipelines, roots, new HashSet<>());
+    return keys
+      .stream()
+      .filter(k -> k.startsWith("__") || roots.contains(root(k)))
+      .sorted()
+      .toList();
+  }
+
+  private static void collectRoots(
+    PipelineModel pipeline,
+    Function<String, Optional<PipelineModel>> localPipelines,
+    Set<String> roots,
+    Set<String> visited
+  ) {
+    if (!visited.add(pipeline.id())) {
+      return;
+    }
     for (StepModel step : pipeline.steps()) {
       roots.add(step.id());
       if (
@@ -73,12 +100,13 @@ public final class CallerContext {
       ) {
         roots.add(root(out.outputField()));
       }
+      if (step.config() instanceof NestedPipelineConfig nested) {
+        nested
+          .localPipelineId()
+          .flatMap(localPipelines)
+          .ifPresent(child -> collectRoots(child, localPipelines, roots, visited));
+      }
     }
-    return keys
-      .stream()
-      .filter(k -> k.startsWith("__") || roots.contains(root(k)))
-      .sorted()
-      .toList();
   }
 
   private static String root(String key) {

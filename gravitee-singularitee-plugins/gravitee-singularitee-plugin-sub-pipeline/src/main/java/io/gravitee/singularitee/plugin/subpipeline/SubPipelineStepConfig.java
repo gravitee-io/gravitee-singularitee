@@ -15,7 +15,9 @@
  */
 package io.gravitee.singularitee.plugin.subpipeline;
 
+import io.gravitee.singularitee.engine.api.pipeline.model.NestedPipelineConfig;
 import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
+import java.util.Optional;
 
 /**
  * Runtime config of a {@code sub_pipeline} step: which pipeline to invoke, where its
@@ -39,12 +41,17 @@ public record SubPipelineStepConfig(
   String remoteId,
   String systemPrompt,
   boolean forwardMessages
-) implements OutputFieldConfig {
+) implements OutputFieldConfig, NestedPipelineConfig {
   public SubPipelineStepConfig {
     pipelineId = pipelineId == null ? "" : pipelineId;
     inputField = inputField == null ? "" : inputField;
     outputField = outputField == null ? "" : outputField;
     remoteId = remoteId == null ? "" : remoteId;
     systemPrompt = systemPrompt == null ? "" : systemPrompt;
+  }
+
+  @Override
+  public Optional<String> localPipelineId() {
+    return remoteId.isBlank() && !pipelineId.isBlank() ? Optional.of(pipelineId) : Optional.empty();
   }
 }
