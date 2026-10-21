@@ -23,7 +23,7 @@
     <parent>
         <groupId>io.gravitee.singularitee</groupId>
         <artifactId>gravitee-singularitee</artifactId>
-        <version>1.8.0</version>
+        <version>1.9.0</version>
     </parent>
 
     <artifactId>gravitee-singularitee-protocol</artifactId>

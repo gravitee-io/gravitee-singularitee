@@ -1,3 +1,44 @@
+# [1.9.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.8.0...1.9.0) (2026-10-21)
+
+
+### Bug Fixes
+
+* drop needless trust_remote_code from Qwen3 examples and warn when a model enables it ([2f22adb](https://github.com/gravitee-io/gravitee-singularitee/commit/2f22adb22543b623d91ef6df1c0f7f741c3635e9))
+* end a queued sequence that cannot start with start_failed ([5d4c125](https://github.com/gravitee-io/gravitee-singularitee/commit/5d4c125f007d728fefef79ee9bfd75ba56083787))
+* exit on failed startup or bad workspace, mark an empty server ready ([08b4048](https://github.com/gravitee-io/gravitee-singularitee/commit/08b4048fb8713854b98b5f93c7f890caf1574474))
+* fail requests whose step model is missing or mistyped, add strict workspace load ([fd259c6](https://github.com/gravitee-io/gravitee-singularitee/commit/fd259c687181b91aaee2a0a4fe0296c7027ae1fa))
+* format guard scores and memory estimates independent of locale ([f4c9074](https://github.com/gravitee-io/gravitee-singularitee/commit/f4c9074226290aaf8ad8ae6213afb3cc79ffbd86))
+* ignore caller context keys that a pipeline writes itself ([3660be3](https://github.com/gravitee-io/gravitee-singularitee/commit/3660be3eda4d20a03578e4dd42a8530d229b7a11))
+* keep decision errors client-facing and reserve the decide output ([17c0cbf](https://github.com/gravitee-io/gravitee-singularitee/commit/17c0cbf9e673959449fff1323e7754b138cc2a0a))
+* keep relative model paths inside the model cache and includes inside their folder ([07e7fa5](https://github.com/gravitee-io/gravitee-singularitee/commit/07e7fa55f2b6e2ee9699c09630603c7941e1b70e))
+* let redact guards skip empty input by default ([6ac4791](https://github.com/gravitee-io/gravitee-singularitee/commit/6ac47911cb3875c0b8892898ed24cbf27496258f))
+* log a remote model's missing chat template once at WARN instead of ERROR per request ([41f0ded](https://github.com/gravitee-io/gravitee-singularitee/commit/41f0ded6944305efb6538cd3f09b19c4849f9136))
+* make image installs read-only to the runtime user and drop the shared /tmp model dir ([b91f001](https://github.com/gravitee-io/gravitee-singularitee/commit/b91f001cbdefc71dd048c40b47854b5cfe8429fa))
+* pass attached media into pipelines with one marker per attachment ([47ed3ab](https://github.com/gravitee-io/gravitee-singularitee/commit/47ed3ab3eacb67fdce82b22e557e007abbb037d7))
+* read HTTP bodies only after auth, cap request size, refuse multipart uploads ([1f45365](https://github.com/gravitee-io/gravitee-singularitee/commit/1f45365a1d2a7a9233f59d6482e49963d3af526d))
+* refuse caller-supplied LoRA paths on raw Infer unless opted in ([f7f1dfc](https://github.com/gravitee-io/gravitee-singularitee/commit/f7f1dfc2582e00fd0b3a9f4ff689cfe3cb79b299))
+* refuse media a model or pipeline cannot read on gRPC Infer and InferPipeline ([138f82e](https://github.com/gravitee-io/gravitee-singularitee/commit/138f82e6ca6045ef0116871482dc5daaa14d9b88))
+* refuse remote endpoints that would send Basic credentials over plaintext ([8383f28](https://github.com/gravitee-io/gravitee-singularitee/commit/8383f28bce018c2dee47b96c0d6b7317151c67b3))
+* refuse vLLM models and adapters whose only weights are pickle .bin files unless opted in ([6631a5e](https://github.com/gravitee-io/gravitee-singularitee/commit/6631a5e50fcd9f28d8f24f86d943329494569453))
+* reserve sub-pipeline context keys and fail a missing sub-pipeline ([db1c14d](https://github.com/gravitee-io/gravitee-singularitee/commit/db1c14dc143250e367a8040db79cd4a88bc1e8f4))
+* send gRPC unary errors with a status code and their message ([b1a187d](https://github.com/gravitee-io/gravitee-singularitee/commit/b1a187ded8433f044bc5c69750fb7fdd8a9d9dfa))
+* send internal errors as a log reference, fail unstartable sequences ([881f3d0](https://github.com/gravitee-io/gravitee-singularitee/commit/881f3d07c97ca19687f1e9cb627a0f95d0305e78))
+* show callers only errors written for them, with a status by kind ([f5d3433](https://github.com/gravitee-io/gravitee-singularitee/commit/f5d34331a74a133cda51231339092b0d2ea1632b))
+* stop a download chunk failing during cancel from leaking uncaught ([de19f18](https://github.com/gravitee-io/gravitee-singularitee/commit/de19f1845b8e967eab5cd65982cb7231da0950f9))
+* stop sending the HF token to redirect targets on single-stream downloads ([0974e0b](https://github.com/gravitee-io/gravitee-singularitee/commit/0974e0b86a56575ddc77fd9fc0ee3b1ef1d1c5cc))
+* treat only localhost and IP literals as loopback ([5af2e29](https://github.com/gravitee-io/gravitee-singularitee/commit/5af2e29c37f7898ce709deacccaf84a7965869f3))
+* use a remote's chat template only over TLS with server verification or loopback ([991d991](https://github.com/gravitee-io/gravitee-singularitee/commit/991d99121fe615a937d201021d5fa96fe0908284))
+
+
+### Features
+
+* guards inspect the whole conversation and reject empty input by default ([bf4fe61](https://github.com/gravitee-io/gravitee-singularitee/commit/bf4fe61310c8a921a9475fca479690cf360478cf))
+
+
+### Performance Improvements
+
+* classify a guard's targets in one batch call ([8a0df3b](https://github.com/gravitee-io/gravitee-singularitee/commit/8a0df3b1a69d1a086074308627e5dade8ce00c52))
+
 # [1.8.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.7.0...1.8.0) (2026-10-19)
 
 
