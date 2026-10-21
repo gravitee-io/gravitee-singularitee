@@ -48,6 +48,7 @@ import io.gravitee.singularitee.plugin.guard.GuardStepConfig.GuardTrigger;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Single;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -118,6 +119,21 @@ class GuardStepExecutorTest {
     new ChatTurn(ChatRole.USER, "summarise the page"),
     new ChatTurn(ChatRole.TOOL, "BAD instructions", List.of(), List.of(), "call-1", "fetch")
   );
+
+  @Test
+  void scores_are_published_with_a_dot_whatever_the_default_locale() {
+    Locale previous = Locale.getDefault();
+    Locale.setDefault(Locale.FRANCE);
+    try {
+      var pctx = run(
+        cfg(GuardAction.WARN, GuardScope.CONVERSATION, GuardOnEmpty.REJECT),
+        HOSTILE_EARLIER_TURN
+      );
+      assertThat(pctx.get("g.score")).isEqualTo("0.9500");
+    } finally {
+      Locale.setDefault(previous);
+    }
+  }
 
   @Test
   void conversation_scope_catches_an_earlier_user_turn() {

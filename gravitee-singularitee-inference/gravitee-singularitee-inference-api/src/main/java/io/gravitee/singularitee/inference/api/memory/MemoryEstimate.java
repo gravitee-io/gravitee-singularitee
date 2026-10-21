@@ -15,6 +15,8 @@
  */
 package io.gravitee.singularitee.inference.api.memory;
 
+import java.util.Locale;
+
 /**
  * Result of a pre-flight VRAM estimation for a given model configuration.
  *
@@ -116,6 +118,7 @@ public record MemoryEstimate(
     String fitStr = willFit ? "fits" : "does NOT fit";
     String approxStr = isApproximate ? " (approximate)" : " (exact)";
     return String.format(
+      Locale.ROOT,
       "VRAM estimate%s: required=%.2f GiB, usable=%.2f GiB, total=%.2f GiB: %s. %s",
       approxStr,
       requiredGb,

@@ -28,6 +28,7 @@ import io.gravitee.singularitee.inference.api.memory.MemoryEstimate;
 import java.lang.foreign.Arena;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Pre-flight memory estimator for GGUF models loaded via llama.cpp.
@@ -404,7 +405,9 @@ public final class LlamaMemoryEstimator {
     int suggestedLayers
   ) {
     if (required <= available * (1.0 - GPU_SAFETY_MARGIN)) {
-      return "%s Model fits with %.0f%% headroom.".formatted(
+      return String.format(
+        Locale.ROOT,
+        "%s Model fits with %.0f%% headroom.",
         breakdown,
         (100.0 * (available - required)) / available
       );
@@ -423,7 +426,9 @@ public final class LlamaMemoryEstimator {
 
   private static String buildCpuSuggestion(String breakdown, long required, long available) {
     if (required <= available) {
-      return "%s Model fits in system RAM with %.0f%% headroom.".formatted(
+      return String.format(
+        Locale.ROOT,
+        "%s Model fits in system RAM with %.0f%% headroom.",
         breakdown,
         (100.0 * (available - required)) / available
       );
@@ -445,14 +450,18 @@ public final class LlamaMemoryEstimator {
     String breakdown = buildBreakdown(gpuWeightBytes, kvBytes, mmprojBytes, loraBytes);
     String servers = serverCount == 1 ? "1 RPC server" : serverCount + " RPC servers";
     if (totalRequired <= totalFreeBytes * (1.0 - GPU_SAFETY_MARGIN)) {
-      return "%s Model fits across %s (combined free=%.2f GiB) with %.0f%% headroom.".formatted(
+      return String.format(
+        Locale.ROOT,
+        "%s Model fits across %s (combined free=%.2f GiB) with %.0f%% headroom.",
         breakdown,
         servers,
         totalFreeBytes / GB,
         (100.0 * (totalFreeBytes - totalRequired)) / totalFreeBytes
       );
     }
-    return "%s Model is too large for %s (combined free=%.2f GiB). Add more servers or use a smaller model.".formatted(
+    return String.format(
+      Locale.ROOT,
+      "%s Model is too large for %s (combined free=%.2f GiB). Add more servers or use a smaller model.",
       breakdown,
       servers,
       totalFreeBytes / GB
@@ -468,13 +477,18 @@ public final class LlamaMemoryEstimator {
   ) {
     StringBuilder sb = new StringBuilder();
     sb.append(
-      "Breakdown: weights=%.2f GiB, KV-cache=%.2f GiB".formatted(weightBytes / GB, kvBytes / GB)
+      String.format(
+        Locale.ROOT,
+        "Breakdown: weights=%.2f GiB, KV-cache=%.2f GiB",
+        weightBytes / GB,
+        kvBytes / GB
+      )
     );
     if (mmprojBytes > 0) {
-      sb.append(", mmproj=%.2f GiB".formatted(mmprojBytes / GB));
+      sb.append(String.format(Locale.ROOT, ", mmproj=%.2f GiB", mmprojBytes / GB));
     }
     if (loraBytes > 0) {
-      sb.append(", LoRA=%.2f GiB".formatted(loraBytes / GB));
+      sb.append(String.format(Locale.ROOT, ", LoRA=%.2f GiB", loraBytes / GB));
     }
     sb.append(".");
     return sb.toString();
