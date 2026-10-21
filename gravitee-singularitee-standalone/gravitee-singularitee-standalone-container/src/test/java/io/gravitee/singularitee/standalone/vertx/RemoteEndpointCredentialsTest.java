@@ -43,12 +43,25 @@ class RemoteEndpointCredentialsTest {
   }
 
   @Test
-  void loopback_hosts_are_recognised() {
-    assertThat(WorkspaceLoaderComponent.isLoopbackHost("localhost")).isTrue();
-    assertThat(WorkspaceLoaderComponent.isLoopbackHost("127.0.0.1")).isTrue();
-    assertThat(WorkspaceLoaderComponent.isLoopbackHost("::1")).isTrue();
-    assertThat(WorkspaceLoaderComponent.isLoopbackHost("pii.internal")).isFalse();
-    assertThat(WorkspaceLoaderComponent.isLoopbackHost("10.0.0.5")).isFalse();
-    assertThat(WorkspaceLoaderComponent.isLoopbackHost(null)).isFalse();
+  void a_host_name_that_only_looks_like_loopback_is_refused() {
+    List<String> failures = new ArrayList<>();
+    var endpoint = new RemoteEndpoint(
+      "pii",
+      "127.example.com",
+      9090,
+      null,
+      "user",
+      "secret",
+      false
+    );
+
+    var clients = WorkspaceLoaderComponent.buildRemoteClients(
+      Map.of("pii", endpoint),
+      null,
+      failures
+    );
+
+    assertThat(clients).isEmpty();
+    assertThat(failures).singleElement().asString().contains("ssl: true");
   }
 }

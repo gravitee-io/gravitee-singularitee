@@ -24,6 +24,7 @@ import io.gravitee.node.vertx.server.VertxServerFactory;
 import io.gravitee.node.vertx.server.VertxServerOptions;
 import io.gravitee.node.vertx.server.http.VertxHttpServer;
 import io.gravitee.node.vertx.server.http.VertxHttpServerOptions;
+import io.gravitee.singularitee.client.LoopbackHosts;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.service.GraviteeDecisionServiceImpl;
 import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
@@ -466,7 +467,7 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
 
   /** Loopback binds are development defaults; anything else is reachable off-box. */
   private static boolean isLoopback(String host) {
-    return host == null || host.isBlank() || "localhost".equals(host) || host.startsWith("127.");
+    return host == null || host.isBlank() || LoopbackHosts.isLoopback(host);
   }
 
   private void printBanner(VertxHttpServerOptions options, boolean authEnabled) {

@@ -31,7 +31,6 @@ import io.vertx.grpc.client.InvalidStatusException;
 import io.vertx.grpc.common.GrpcErrorException;
 import io.vertx.grpc.common.GrpcStatus;
 import java.net.ConnectException;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -413,7 +412,8 @@ public final class SingulariteeClient implements AutoCloseable {
   ) {
     this.vertx = vertx;
     this.ownsVertx = ownsVertx;
-    this.secureChannel = (ssl && (tls == null || !tls.trustAll())) || isLoopbackHost(host);
+    this.secureChannel =
+      (ssl && (tls == null || !tls.trustAll())) || LoopbackHosts.isLoopback(host);
     // Configure HttpClientOptions with a short connect timeout so that
     // RPCs against an unreachable remote fail fast instead of waiting for
     // the default 60s TCP connect timeout. Vert.x's HttpClient transparently
@@ -877,11 +877,5 @@ public final class SingulariteeClient implements AutoCloseable {
    */
   public boolean isSecureChannel() {
     return secureChannel;
-  }
-
-  private static boolean isLoopbackHost(String host) {
-    if (host == null) return false;
-    String h = host.trim().toLowerCase(Locale.ROOT);
-    return h.equals("localhost") || h.startsWith("127.") || h.equals("::1") || h.equals("[::1]");
   }
 }

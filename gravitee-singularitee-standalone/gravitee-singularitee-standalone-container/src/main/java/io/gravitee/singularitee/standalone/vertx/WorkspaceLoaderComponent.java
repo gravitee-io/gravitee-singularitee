@@ -17,6 +17,7 @@ package io.gravitee.singularitee.standalone.vertx;
 
 import io.gravitee.common.service.AbstractService;
 import io.gravitee.node.api.configuration.Configuration;
+import io.gravitee.singularitee.client.LoopbackHosts;
 import io.gravitee.singularitee.client.SingulariteeClient;
 import io.gravitee.singularitee.engine.api.ModelEngine;
 import io.gravitee.singularitee.engine.api.pipeline.executor.PipelineExecutorCallback;
@@ -38,7 +39,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -282,7 +282,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       );
       // Basic credentials over plaintext would cross the network readable by anyone on the
       // path, so such an endpoint is refused unless it stays on this host.
-      if (ep.hasCredentials() && !ep.effectiveSsl() && !isLoopbackHost(ep.host())) {
+      if (ep.hasCredentials() && !ep.effectiveSsl() && !LoopbackHosts.isLoopback(ep.host())) {
         LOGGER.error(
           "Remote '{}' refused: Basic credentials to {} require ssl: true",
           entry.getKey(),
@@ -371,12 +371,5 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       callbacks.put(entry.getKey(), new RemotePipelineCallback(entry.getValue()));
     }
     return callbacks;
-  }
-
-  /** Whether a remote host is this machine, so traffic to it never crosses the network. */
-  static boolean isLoopbackHost(String host) {
-    if (host == null) return false;
-    String h = host.trim().toLowerCase(Locale.ROOT);
-    return h.equals("localhost") || h.startsWith("127.") || h.equals("::1") || h.equals("[::1]");
   }
 }
