@@ -101,10 +101,12 @@ final class PromptAssembler {
 
     if (!cfg.rawTemplate().isBlank()) {
       // Raw template mode: resolve with Jinja4j, bypass chat template
-      return new AssembledPrompt(resolveJinjaString(cfg.rawTemplate(), jinjaCtx), originalMessages);
+      String raw = resolveJinjaString(cfg.rawTemplate(), jinjaCtx);
+      checkMediaPlacement(stepId, tge, raw, originalMessages);
+      return new AssembledPrompt(raw, originalMessages);
     }
 
-    List<Map<String, Object>> messages = resolveMessages(cfg, pctx, jinjaCtx);
+    List<Map<String, Object>> messages = resolveMessages(cfg, pctx, tge, jinjaCtx);
     messages = prependInstructions(pctx, messages);
     messages = mergeSystemPrompt(cfg, messages, jinjaCtx);
     messages = trimToContextWindow(stepId, cfg, tge, messages, maxTokens);
@@ -122,10 +124,16 @@ final class PromptAssembler {
     boolean hasOverride = cfg.hasChatTemplate();
     String templateString = hasOverride ? cfg.chatTemplate() : tge.chatTemplateString();
     if (templateString != null) {
-      return new AssembledPrompt(
-        renderChatTemplate(stepId, cfg, templateString, hasOverride, pctx, jinjaCtx),
-        originalMessages
+      String rendered = renderChatTemplate(
+        stepId,
+        cfg,
+        templateString,
+        hasOverride,
+        pctx,
+        jinjaCtx
       );
+      checkMediaPlacement(stepId, tge, rendered, originalMessages);
+      return new AssembledPrompt(rendered, originalMessages);
     }
 
     // No chat template available (e.g. remote metadata not fetched yet).
@@ -160,11 +168,12 @@ final class PromptAssembler {
   private List<Map<String, Object>> resolveMessages(
     InferStepConfig cfg,
     PipelineContext pctx,
+    TextGenEngine tge,
     Map<String, Object> jinjaCtx
   ) {
     if (!cfg.messages().isEmpty()) {
       // YAML overrides messages: resolve each content with Jinja4j
-      return cfg
+      List<Map<String, Object>> resolved = cfg
         .messages()
         .stream()
         .map(md -> {
@@ -172,10 +181,22 @@ final class PromptAssembler {
           return Map.<String, Object>of("role", md.role(), "content", resolvedContent);
         })
         .toList();
+      return withCallerMedia(resolved, pctx.messages(), tge.mediaMarker());
     }
     if (pctx.messages() != null) {
-      // Implicit passthrough: caller's messages as-is
-      return pctx.messages().stream().map(PromptAssembler::toTemplateMessage).toList();
+      // Implicit passthrough: caller's messages as-is, each attachment's placeholder in its turn
+      String marker = tge.mediaMarker();
+      return pctx
+        .messages()
+        .stream()
+        .map(turn -> {
+          var message = toTemplateMessage(turn);
+          if (marker != null && !turn.media().isEmpty()) {
+            message.put("content", turn.contentWithMediaMarkers(marker));
+          }
+          return message;
+        })
+        .toList();
     }
     // Bare prompt fallback
     String bare = pctx.get(PipelineContext.KEY_PROMPT);
@@ -286,6 +307,82 @@ final class PromptAssembler {
       );
     }
     return trimmed;
+  }
+
+  /**
+   * The step's own messages with one placeholder per caller attachment at the head of the last user
+   * message, which is where the caller's turn lands ({@code {{ prompt }}}). Unchanged when the
+   * engine needs no placeholder, the caller attached nothing, or the step has no user message.
+   */
+  private static List<Map<String, Object>> withCallerMedia(
+    List<Map<String, Object>> messages,
+    List<ChatTurn> callerTurns,
+    String marker
+  ) {
+    if (marker == null || callerTurns == null) {
+      return messages;
+    }
+    int attached = callerTurns
+      .stream()
+      .mapToInt(turn -> turn.media().size())
+      .sum();
+    if (attached == 0) {
+      return messages;
+    }
+    for (int i = messages.size() - 1; i >= 0; i--) {
+      if ("user".equals(messages.get(i).get("role"))) {
+        List<Map<String, Object>> placed = new ArrayList<>(messages);
+        Map<String, Object> user = new LinkedHashMap<>(messages.get(i));
+        user.put("content", (marker + "\n").repeat(attached) + user.get("content"));
+        placed.set(i, user);
+        return placed;
+      }
+    }
+    return messages;
+  }
+
+  /**
+   * Refuses a prompt whose media placeholders do not pair one to one with the caller's
+   * attachments, which the engine would otherwise reject with an opaque tokenizer error. That
+   * happens with a raw template, step messages without a user message, or a history trim that
+   * drops a turn carrying an attachment.
+   */
+  private static void checkMediaPlacement(
+    String stepId,
+    TextGenEngine tge,
+    String prompt,
+    List<ChatTurn> turns
+  ) {
+    String marker = tge.mediaMarker();
+    if (marker == null || turns == null) {
+      return;
+    }
+    int attached = turns
+      .stream()
+      .mapToInt(turn -> turn.media().size())
+      .sum();
+    if (attached == 0) {
+      return;
+    }
+    int placed = 0;
+    for (
+      int at = prompt.indexOf(marker);
+      at >= 0;
+      at = prompt.indexOf(marker, at + marker.length())
+    ) {
+      placed++;
+    }
+    if (placed != attached) {
+      throw new IllegalArgumentException(
+        "Step '" +
+          stepId +
+          "' cannot place the attached media: " +
+          attached +
+          " attachment(s), " +
+          placed +
+          " placeholder(s) in its prompt"
+      );
+    }
   }
 
   /** Renders the chat template over the prepared Jinja context. */

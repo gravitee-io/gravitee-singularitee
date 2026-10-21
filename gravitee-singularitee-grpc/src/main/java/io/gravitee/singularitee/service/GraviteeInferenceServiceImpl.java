@@ -475,7 +475,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
 
   private static TextGenRequest buildTextGenRequest(InferRequest req) {
     String prompt = req.hasPrompt() ? req.getPrompt() : null;
-    List<ChatTurn> messages = req.hasMessages() ? toChatTurns(req.getMessages()) : null;
+    List<ChatTurn> messages = req.hasMessages() ? ChatTurns.fromProto(req.getMessages()) : null;
 
     var sp = req.hasSamplingParams()
       ? req.getSamplingParams()
@@ -504,53 +504,6 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
       sp.getTopLogprobs() > 0 ? sp.getTopLogprobs() : null,
       req.hasStructuredOutput() ? StructuredOutputs.fromProto(req.getStructuredOutput()) : null
     );
-  }
-
-  private static List<ChatTurn> toChatTurns(ChatMessageList list) {
-    return list
-      .getMessagesList()
-      .stream()
-      .map(m -> {
-        var role = switch (m.getRole()) {
-          case ROLE_SYSTEM -> ChatRole.SYSTEM;
-          case ROLE_ASSISTANT -> ChatRole.ASSISTANT;
-          case ROLE_TOOL -> ChatRole.TOOL;
-          default -> ChatRole.USER;
-        };
-        var media = m
-          .getMediaList()
-          .stream()
-          .map(mc -> {
-            var mt = toAttachmentType(mc.getMediaType());
-            return new MediaAttachment(mt, mc.getData().toStringUtf8());
-          })
-          .toList();
-        var toolCalls = m
-          .getToolCallsList()
-          .stream()
-          .map(tc -> new ChatTurn.ToolCallTurn(tc.getId(), tc.getName(), tc.getArgumentsJson()))
-          .toList();
-        return new ChatTurn(
-          role,
-          m.getContent(),
-          media,
-          toolCalls,
-          m.getToolCallId().isEmpty() ? null : m.getToolCallId(),
-          m.getName().isEmpty() ? null : m.getName()
-        );
-      })
-      .toList();
-  }
-
-  private static MediaAttachmentType toAttachmentType(MediaType proto) {
-    return switch (proto) {
-      case MEDIA_TYPE_IMAGE_JPEG -> MediaAttachmentType.IMAGE_JPEG;
-      case MEDIA_TYPE_IMAGE_PNG -> MediaAttachmentType.IMAGE_PNG;
-      case MEDIA_TYPE_IMAGE_GIF -> MediaAttachmentType.IMAGE_GIF;
-      case MEDIA_TYPE_IMAGE_BMP -> MediaAttachmentType.IMAGE_BMP;
-      case MEDIA_TYPE_AUDIO_WAV -> MediaAttachmentType.AUDIO_WAV;
-      default -> MediaAttachmentType.APPLICATION_OCTET_STREAM;
-    };
   }
 
   private static io.gravitee.singularitee.inference.api.textgen.TagConfig toTagConfig(

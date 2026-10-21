@@ -66,6 +66,13 @@ public record ChatTurn(
     this(role, content, media, List.of(), null, null);
   }
 
+  /** This turn's text preceded by {@code marker} and a newline once per attachment. */
+  public String contentWithMediaMarkers(String marker) {
+    String text = content == null ? "" : content;
+    if (marker == null || media.isEmpty()) return text;
+    return (marker + "\n").repeat(media.size()) + text;
+  }
+
   /**
    * Returns the content of the last {@link ChatRole#USER} turn in the given
    * list, or {@link Optional#empty()} if there is none.

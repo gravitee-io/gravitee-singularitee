@@ -471,31 +471,23 @@ abstract sealed class AbstractTextGenEngine<CFG, REQ extends GenerationRequest, 
   // Shared local-to-library mapping helpers (package-private)
   // ------------------------------------------------------------------
 
-  /**
-   * The literal media placeholder to inject into rendered prompts for multimodal models, or
-   * {@code null} when this engine does not use one (default). Overridden by the llama.cpp engine to
-   * return its {@code mtmd} marker so the pre-rendered prompt's marker count matches the attached
-   * bitmaps.
-   */
-  protected String mediaMarker() {
-    return null;
-  }
-
   /** Prepends {@code marker + "\n"} once per attachment to each turn's content, in message order. */
   static List<ChatTurn> injectMediaMarkers(List<ChatTurn> turns, String marker) {
     if (turns == null) return null;
     return turns
       .stream()
-      .map(turn -> {
-        int count = turn.media() == null ? 0 : turn.media().size();
-        if (count == 0) return turn;
-        StringBuilder content = new StringBuilder();
-        for (int i = 0; i < count; i++) {
-          content.append(marker).append('\n');
-        }
-        content.append(turn.content() == null ? "" : turn.content());
-        return new ChatTurn(turn.role(), content.toString(), turn.media());
-      })
+      .map(turn ->
+        turn.media().isEmpty()
+          ? turn
+          : new ChatTurn(
+            turn.role(),
+            turn.contentWithMediaMarkers(marker),
+            turn.media(),
+            turn.toolCalls(),
+            turn.toolCallId(),
+            turn.name()
+          )
+      )
       .toList();
   }
 

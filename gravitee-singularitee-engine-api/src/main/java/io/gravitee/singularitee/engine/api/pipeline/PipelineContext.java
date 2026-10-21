@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api.pipeline;
 
 import io.gravitee.singularitee.engine.api.ChatRole;
 import io.gravitee.singularitee.engine.api.ChatTurn;
+import io.gravitee.singularitee.engine.api.ChatTurns;
 import io.gravitee.singularitee.engine.api.StructuredOutputs;
 import io.gravitee.singularitee.engine.api.tools.ServerToolNames;
 import io.gravitee.singularitee.inference.api.decision.DecisionRequest;
@@ -265,31 +266,7 @@ public final class PipelineContext {
     List<ChatTurn> chatMessages = null;
 
     if (request.hasMessages()) {
-      chatMessages = request
-        .getMessages()
-        .getMessagesList()
-        .stream()
-        .map(m -> {
-          var role = switch (m.getRole()) {
-            case ROLE_SYSTEM -> ChatRole.SYSTEM;
-            case ROLE_ASSISTANT -> ChatRole.ASSISTANT;
-            case ROLE_TOOL -> ChatRole.TOOL;
-            default -> ChatRole.USER;
-          };
-          return new ChatTurn(
-            role,
-            m.getContent(),
-            List.of(),
-            m
-              .getToolCallsList()
-              .stream()
-              .map(tc -> new ChatTurn.ToolCallTurn(tc.getId(), tc.getName(), tc.getArgumentsJson()))
-              .toList(),
-            m.getToolCallId().isEmpty() ? null : m.getToolCallId(),
-            m.getName().isEmpty() ? null : m.getName()
-          );
-        })
-        .toList();
+      chatMessages = ChatTurns.fromProto(request.getMessages());
       prompt = ChatTurn.lastUserContent(chatMessages).orElse("");
     } else if (request.hasPrompt()) {
       prompt = request.getPrompt();
