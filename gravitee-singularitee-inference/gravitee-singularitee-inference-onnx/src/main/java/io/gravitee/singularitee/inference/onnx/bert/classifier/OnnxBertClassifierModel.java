@@ -40,7 +40,7 @@ import java.util.*;
  * result per content token with its character span, dropping labels in
  * {@code DISCARDED_LABELS}. Labels come from {@code id2label} in {@code config.json} when
  * present, else {@code CLASSIFIER_LABELS}, else the class index. Inputs longer than the
- * sequence budget are split (sequence) or windowed (token); see the per-mode methods.
+ * sequence budget are split on semantic boundaries; see {@link #inferAll(List)}.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -69,25 +69,8 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
   }
 
   @Override
-  public ClassifierResults infer(String string) {
-    return switch (config.<ClassifierMode>get(CLASSIFIER_MODE)) {
-      case SEQUENCE -> inferSequence(string);
-      case TOKEN -> inferTokens(string);
-    };
-  }
-
-  /**
-   * Sequence classification. A long input is split on semantic boundaries, classified in one
-   * batched pass, and merged by keeping the highest score per label, so any chunk that triggers a
-   * label (e.g. a toxicity / guardrail category) flags the whole input.
-   */
-  private ClassifierResults inferSequence(String string) {
-    List<Chunk> chunks = splitter.split(string);
-    if (chunks.size() <= 1) {
-      return getSequenceResults(encode(string)).getFirst();
-    }
-    List<String> texts = chunks.stream().map(Chunk::text).toList();
-    return perSplitRows(classifySequences(texts), chunks);
+  public ClassifierResults infer(String input) {
+    return inferAll(List.of(input)).getFirst();
   }
 
   /**
@@ -134,91 +117,64 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
   }
 
   /**
-   * Token classification. The input is tokenized once; if it exceeds the sequence budget it is run
-   * as overlapping token windows (overlap of at least {@code TOKEN_WINDOW_OVERLAP}) so every token is
-   * labelled with full surrounding context. Each token's prediction is taken from the window where
-   * it sits most interior, so an entity sliced at one window's edge is whole in the next. Character
-   * offsets come from the single full tokenization, so spans need no remapping.
+   * Classifies each input. A long input is split on semantic boundaries into chunks that fit the
+   * sequence budget, and the chunks of every input run in ONE batched forward pass, the same path
+   * {@code OnnxClassifierEngine} takes through its micro-batcher. Sequence results keep one row
+   * per (label, chunk) tagged with the chunk's span, so any chunk that triggers a label flags the
+   * input; token spans are shifted back from their chunk to the original text.
    */
-  private ClassifierResults inferTokens(String input) {
-    Encoding full = tokenizer.encode(input, true, false);
-    long[] ids = full.getIds();
-    int contentCount = ids.length - 2; // exclude [CLS] and [SEP]
-    if (contentCount <= 0) {
-      return new ClassifierResults(List.of());
-    }
-
-    float[][] tokenLogits = windowedTokenLogits(ids, contentCount);
-
-    String[] tokens = full.getTokens();
-    CharSpan[] spans = full.getCharTokenSpans();
-    var results = new ArrayList<ClassifierResult>();
-    for (int c = 0; c < contentCount; c++) {
-      int pos = c + 1; // position in the full sequence; [CLS] is at 0
-      var result = computeTokenProb(tokenLogits[c], tokens[pos].trim(), spans[pos]);
-      if (!discarded.contains(result.label())) {
-        results.add(result);
-      }
-    }
-    return new ClassifierResults(results);
-  }
-
-  /**
-   * One logit row per content token, taken from the overlapping window where that token is most
-   * interior. Inputs within budget run as a single window; otherwise windows of
-   * {@link #sequenceBudget} tokens slide with the configured overlap.
-   */
-  private float[][] windowedTokenLogits(long[] ids, int contentCount) {
-    int window = sequenceBudget;
-    int overlap = Math.min(
-      config.get(TOKEN_WINDOW_OVERLAP, TOKEN_WINDOW_OVERLAP_DEFAULT_VALUE),
-      window - 1
-    );
-    int stride = Math.max(window - overlap, 1);
-    long clsId = ids[0];
-    long sepId = ids[ids.length - 1];
-
-    float[][] best = new float[contentCount][];
-    int[] bestInterior = new int[contentCount];
-    Arrays.fill(bestInterior, -1);
-
-    for (int start = 0; start < contentCount; start += stride) {
-      int end = Math.min(start + window, contentCount);
-      try (OrtSession.Result result = encode(window(ids, clsId, sepId, start, end))) {
-        var logits = FloatTensor.of(result.get(0)); // [1][windowLen][numLabels]
-        int numLabels = logits.dim(2);
-        for (int c = start; c < end; c++) {
-          int interior = Math.min(c - start, (end - 1) - c);
-          if (interior > bestInterior[c]) {
-            bestInterior[c] = interior;
-            best[c] = logits.row((long) (1 + (c - start)) * numLabels, numLabels);
-          }
-        }
-      } catch (OrtException e) {
-        throw new IllegalArgumentException(e);
-      }
-      if (end == contentCount) {
-        break;
-      }
-    }
-    return best;
-  }
-
-  /** Builds a window {@code [CLS] ids[start..end) [SEP]}; content token c lives at {@code ids[c + 1]}. */
-  private static long[] window(long[] ids, long clsId, long sepId, int start, int end) {
-    long[] windowIds = new long[(end - start) + 2];
-    windowIds[0] = clsId;
-    System.arraycopy(ids, start + 1, windowIds, 1, end - start);
-    windowIds[windowIds.length - 1] = sepId;
-    return windowIds;
-  }
-
   @Override
-  public List<ClassifierResults> inferAll(List<String> input) {
-    return switch (config.<ClassifierMode>get(CLASSIFIER_MODE)) {
-      case SEQUENCE -> classifySequences(input);
-      case TOKEN -> classifyTokens(input);
-    };
+  public List<ClassifierResults> inferAll(List<String> inputs) {
+    boolean sequence = config.<ClassifierMode>get(CLASSIFIER_MODE) == ClassifierMode.SEQUENCE;
+    List<List<Chunk>> chunksPerInput = inputs.stream().map(splitter::split).toList();
+
+    // An input that fits runs whole in sequence mode, keeping the no-span result shape.
+    List<String> texts = new ArrayList<>();
+    for (int i = 0; i < inputs.size(); i++) {
+      List<Chunk> chunks = chunksPerInput.get(i);
+      if (sequence && chunks.size() <= 1) {
+        texts.add(inputs.get(i));
+      } else {
+        chunks.forEach(chunk -> texts.add(chunk.text()));
+      }
+    }
+    List<ClassifierResults> perText = sequence ? classifySequences(texts) : classifyTokens(texts);
+
+    var results = new ArrayList<ClassifierResults>(inputs.size());
+    int next = 0;
+    for (List<Chunk> chunks : chunksPerInput) {
+      if (sequence && chunks.size() <= 1) {
+        results.add(perText.get(next++));
+        continue;
+      }
+      List<ClassifierResults> own = perText.subList(next, next + chunks.size());
+      next += chunks.size();
+      results.add(sequence ? perSplitRows(own, chunks) : shiftedTokenRows(own, chunks));
+    }
+    return results;
+  }
+
+  /** Token rows of a split input, each span shifted by its chunk's start into the original text. */
+  private static ClassifierResults shiftedTokenRows(
+    List<ClassifierResults> perChunk,
+    List<Chunk> chunks
+  ) {
+    List<ClassifierResult> rows = new ArrayList<>();
+    for (int i = 0; i < chunks.size(); i++) {
+      int offset = chunks.get(i).start();
+      for (ClassifierResult r : perChunk.get(i).results()) {
+        rows.add(
+          new ClassifierResult(
+            r.label(),
+            r.score(),
+            r.token(),
+            r.start() + offset,
+            r.end() + offset
+          )
+        );
+      }
+    }
+    return new ClassifierResults(rows);
   }
 
   private List<ClassifierResults> getTokenResults(EncodingResults encodingResult) {

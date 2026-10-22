@@ -71,9 +71,4 @@ public final class Constants {
   public static final String PADDING = "padding";
   public static final Map<String, String> DEFAULT_TOKENIZER_CONFIG = Map.of(PADDING, "false");
   public static final String MAX_SEQUENCE_LENGTH = "maxSequenceLength";
-
-  // Token-classification overlap (in tokens) between sliding windows; >= longest expected entity
-  // so an entity sliced at one window's edge is whole inside the next.
-  public static final String TOKEN_WINDOW_OVERLAP = "tokenWindowOverlap";
-  public static final int TOKEN_WINDOW_OVERLAP_DEFAULT_VALUE = 64;
 }
