@@ -84,6 +84,11 @@ public class OnnxBertTokenClassificationTest extends OnnxBertBaseTest {
   );
 
   @Test
+  public void a_dynamic_batch_export_accepts_batches() {
+    assertTrue(tokenModel.acceptsBatches());
+  }
+
+  @Test
   public void must_classify_tokens_in_sentence() {
     var results = tokenModel
       .infer("My name is Laura and I live in Houston, Texas")

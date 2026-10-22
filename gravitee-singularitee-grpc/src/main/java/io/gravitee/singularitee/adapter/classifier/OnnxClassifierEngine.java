@@ -32,6 +32,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@link ClassifierEngine} backed by an ONNX BERT classifier model.
@@ -52,6 +54,8 @@ public final class OnnxClassifierEngine
   extends BlockingEngineAdapter<OnnxBertClassifierModel>
   implements ClassifierEngine {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(OnnxClassifierEngine.class);
+
   private final ClassifierMode mode;
 
   /** Coalesces the chunks of all concurrent requests into one batched run of the mode's head. */
@@ -60,6 +64,11 @@ public final class OnnxClassifierEngine
   OnnxClassifierEngine(OnnxBertClassifierModel delegate, ClassifierMode mode, Vertx vertx) {
     super(delegate, vertx);
     this.mode = mode == null ? ClassifierMode.SEQUENCE : mode;
+    if (!delegate.acceptsBatches()) {
+      LOGGER.warn(
+        "ONNX classifier graph pins its batch size to 1: inputs run one at a time, not batched"
+      );
+    }
     this.batcher = BatchingConfig.fromEnv("GRAVITEE_ONNX_BATCH").newBatcher(
       "onnx-classifier",
       this.mode == ClassifierMode.SEQUENCE ? delegate::classifySequences : delegate::classifyTokens

@@ -81,6 +81,10 @@ Sequence-level with an explicit label list (`examples/classifier/toxicity-bert.y
   token-boundary split (a single sentence over the budget) can come back as two spans.
 - **Batched.** Chunks from concurrent requests, and every target of a guard, run in one
   forward pass; see `GRAVITEE_ONNX_BATCH_*` in [configuration](../configuration.md).
+- **Exports pinned to batch size 1.** An export whose output fixes its leading dimension to `1`
+  (for example `logits [1, 2]`) cannot run a batch. Such a model runs each input on its own and
+  the server logs `ONNX classifier graph pins its batch size to 1` at load. Re-export with a
+  dynamic batch axis on the outputs to batch it.
 - **Per-request label overrides are ignored.** `ClassifyRequest.labels` only applies to
   GLiNER models; ONNX classifiers use their configured label set.
 - **Memory.** These models are small (tens to a few hundred MB); `memory_check: disabled` is
