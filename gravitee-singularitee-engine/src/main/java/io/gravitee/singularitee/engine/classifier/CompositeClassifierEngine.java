@@ -41,8 +41,10 @@ import java.util.Objects;
  * across every delegate in one pass, including the character spans needed
  * for the REDACT action.
  *
- * <p>Delegates are invoked sequentially in declaration order for deterministic
- * results. If any delegate errors, the composite propagates the error.
+ * <p>Delegates, and the chunks of a split input, run concurrently so a batching
+ * delegate scores them together; responses are merged in declaration and document
+ * order, so results stay deterministic. If any delegate errors, the composite
+ * propagates the error.
  *
  * <p><strong>Single split for the whole composite.</strong> Rather than letting
  * each delegate split a huge input on its own (which would re-split the same text
@@ -148,13 +150,13 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
       // Common path: the input fits the budget (single chunk); hand each delegate the full text.
       if (chunks.size() <= 1) {
         return Observable.fromIterable(delegates)
-          .concatMapSingle(delegate -> delegate.rxClassify(request))
+          .concatMapEager(delegate -> delegate.rxClassify(request).toObservable())
           .toList()
           .map(CompositeClassifierEngine::merge);
       }
       // Huge input: split once here, then run every delegate over the shared chunks.
       return Observable.fromIterable(delegates)
-        .concatMapSingle(delegate -> classifyOverChunks(delegate, chunks))
+        .concatMapEager(delegate -> classifyOverChunks(delegate, chunks).toObservable())
         .toList()
         .map(CompositeClassifierEngine::merge);
     });
@@ -168,7 +170,7 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
   @Override
   public Single<ClassifyResponse> rxClassifyPresplit(ClassifyRequest request) {
     return Observable.fromIterable(delegates)
-      .concatMapSingle(delegate -> delegate.rxClassifyPresplit(request))
+      .concatMapEager(delegate -> delegate.rxClassifyPresplit(request).toObservable())
       .toList()
       .map(CompositeClassifierEngine::merge);
   }
@@ -186,12 +188,13 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
     List<Chunk> chunks
   ) {
     return Observable.fromIterable(chunks)
-      .concatMapSingle(chunk ->
+      .concatMapEager(chunk ->
         // presplit: the chunk already fits the budget, so a delegate that does its
         // own character-budget splitting must not split it again.
         delegate
           .rxClassifyPresplit(new ClassifyRequest(chunk.text()))
           .map(resp -> shiftSpans(resp, chunk.start()))
+          .toObservable()
       )
       .toList()
       .map(CompositeClassifierEngine::merge);

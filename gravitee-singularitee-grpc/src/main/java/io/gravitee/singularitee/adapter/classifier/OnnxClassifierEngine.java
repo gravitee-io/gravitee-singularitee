@@ -36,11 +36,11 @@ import java.util.Map;
 /**
  * {@link ClassifierEngine} backed by an ONNX BERT classifier model.
  *
- * <p>In {@code SEQUENCE} mode, long inputs are split into model-sized chunks (real tokenizer
- * boundaries) and every chunk is submitted to a shared {@link MicroBatcher}, so chunks from
+ * <p>In both modes, long inputs are split into model-sized chunks (real tokenizer boundaries,
+ * semantic first) and every chunk is submitted to a shared {@link MicroBatcher}, so chunks from
  * concurrent requests fuse into a single batched ONNX run. Tune via the
- * {@code GRAVITEE_ONNX_BATCH_*} knobs (see {@link BatchingConfig}). {@code TOKEN} mode keeps the
- * windowed single-call path (overlapping windows don't fit a flat batch).
+ * {@code GRAVITEE_ONNX_BATCH_*} knobs (see {@link BatchingConfig}). In {@code TOKEN} mode each
+ * token span is shifted back from its chunk to the original text.
  *
  * <p>This class and {@link OnnxClassifierFactory} are the <strong>only</strong>
  * files permitted to import {@code gravitee-inference-onnx} classifier types.
@@ -54,18 +54,16 @@ public final class OnnxClassifierEngine
 
   private final ClassifierMode mode;
 
-  /** Coalesces sequence-classification chunks from all concurrent requests; null in TOKEN mode. */
+  /** Coalesces the chunks of all concurrent requests into one batched run of the mode's head. */
   private final MicroBatcher<String, ClassifierResults> batcher;
 
   OnnxClassifierEngine(OnnxBertClassifierModel delegate, ClassifierMode mode, Vertx vertx) {
     super(delegate, vertx);
     this.mode = mode == null ? ClassifierMode.SEQUENCE : mode;
-    this.batcher = this.mode == ClassifierMode.SEQUENCE
-      ? BatchingConfig.fromEnv("GRAVITEE_ONNX_BATCH").newBatcher(
-        "onnx-classifier",
-        delegate::classifySequences
-      )
-      : null;
+    this.batcher = BatchingConfig.fromEnv("GRAVITEE_ONNX_BATCH").newBatcher(
+      "onnx-classifier",
+      this.mode == ClassifierMode.SEQUENCE ? delegate::classifySequences : delegate::classifyTokens
+    );
   }
 
   @Override
@@ -77,10 +75,9 @@ public final class OnnxClassifierEngine
 
   @Override
   public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
-    if (mode != ClassifierMode.SEQUENCE) {
-      return rxInfer(() -> toLocalResponse(delegate.infer(request.text())));
-    }
-    return rxClassifySequenceBatched(request.text());
+    return mode == ClassifierMode.SEQUENCE
+      ? rxClassifySequenceBatched(request.text())
+      : rxClassifyTokensBatched(request.text());
   }
 
   @Override
@@ -126,6 +123,51 @@ public final class OnnxClassifierEngine
     }).subscribeOn(workerScheduler());
   }
 
+  /**
+   * Token classification via the shared batcher: every chunk is submitted and each token row is
+   * shifted by its chunk's start, so spans index the original text.
+   */
+  private Single<ClassifyResponse> rxClassifyTokensBatched(String text) {
+    return Single.defer(() -> {
+      List<Single<List<ClassifierResult>>> perChunk = new ArrayList<>();
+      for (RecursiveTextSplitter.Chunk chunk : delegate.split(text)) {
+        perChunk.add(
+          Single.fromCompletionStage(
+            batcher.submit(chunk.text(), EstimatedTokens.estimateTokens(chunk.text()))
+          ).map(results -> shiftSpans(results, chunk.start()))
+        );
+      }
+      if (perChunk.isEmpty()) {
+        return Single.just(new ClassifierResults(List.of()));
+      }
+      return Single.zip(perChunk, OnnxClassifierEngine::concatRows);
+    })
+      // split() is CPU-bound tokenizer work running at subscription time; keep it off the
+      // caller's event loop.
+      .subscribeOn(workerScheduler())
+      .map(this::toLocalResponse)
+      .observeOn(eventLoopScheduler());
+  }
+
+  private static List<ClassifierResult> shiftSpans(ClassifierResults results, int offset) {
+    return results
+      .results()
+      .stream()
+      .map(r ->
+        new ClassifierResult(r.label(), r.score(), r.token(), r.start() + offset, r.end() + offset)
+      )
+      .toList();
+  }
+
+  @SuppressWarnings("unchecked")
+  private static ClassifierResults concatRows(Object[] perChunk) {
+    List<ClassifierResult> rows = new ArrayList<>();
+    for (Object chunkRows : perChunk) {
+      rows.addAll((List<ClassifierResult>) chunkRows);
+    }
+    return new ClassifierResults(rows);
+  }
+
   /** One row per (label, chunk) tagged with the chunk's char span, mirroring the delegate's perSplitRows. */
   private static ClassifierResults perChunkRows(Object[] chunkResults) {
     List<ClassifierResult> rows = new ArrayList<>();
@@ -144,9 +186,7 @@ public final class OnnxClassifierEngine
 
   @Override
   public void close() throws Exception {
-    if (batcher != null) {
-      batcher.close();
-    }
+    batcher.close();
     delegate.close();
   }
 

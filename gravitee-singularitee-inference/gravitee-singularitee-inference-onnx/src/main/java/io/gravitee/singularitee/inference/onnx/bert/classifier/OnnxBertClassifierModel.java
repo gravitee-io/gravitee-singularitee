@@ -104,6 +104,19 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
   }
 
   /**
+   * Token-classifies pre-split chunk texts (each must fit the sequence budget, see
+   * {@link #split(String)}) in ONE batched forward pass, one result per text with character spans
+   * relative to that text. The token counterpart of {@link #classifySequences(List)}: callers that
+   * split a long input shift each span by its chunk's start. Only meaningful in {@code TOKEN} mode.
+   */
+  public List<ClassifierResults> classifyTokens(List<String> chunkTexts) {
+    if (chunkTexts.isEmpty()) {
+      return List.of();
+    }
+    return getTokenResults(encodeAll(chunkTexts));
+  }
+
+  /**
    * For a split input, emits one row per (label, split) tagged with that split's character span
    * (all labels per split). The headline score per label (the {@code max} across splits) is
    * derived downstream by {@code OnnxClassifierEngine}; keeping every (label, split) row lets
@@ -204,7 +217,7 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
   public List<ClassifierResults> inferAll(List<String> input) {
     return switch (config.<ClassifierMode>get(CLASSIFIER_MODE)) {
       case SEQUENCE -> classifySequences(input);
-      case TOKEN -> getTokenResults(encodeAll(input));
+      case TOKEN -> classifyTokens(input);
     };
   }
 

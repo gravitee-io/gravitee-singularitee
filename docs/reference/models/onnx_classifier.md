@@ -74,9 +74,13 @@ Sequence-level with an explicit label list (`examples/classifier/toxicity-bert.y
   narrows the sibling and tokenizer listings; the named files themselves are always fetched.
   A `.complete-tokenizer` marker is written once the tokenizer files are all on disk, and only
   that marker makes the next start reuse the cached tokenizer directory.
-- **Split, not truncated.** Sequence classifiers classify each chunk and keep the maximum
-  score per label; token classifiers use a sliding window and shift spans back to the
-  original text.
+- **Split, not truncated.** A long input is split on semantic boundaries (paragraph, line,
+  sentence, clause, then whole tokens) into chunks that fit `max_sequence_length`. Sequence
+  classifiers keep the maximum score per label across chunks; token classifiers shift each
+  span back to the original text. Chunks do not overlap, so a multi-word entity cut by a
+  token-boundary split (a single sentence over the budget) can come back as two spans.
+- **Batched.** Chunks from concurrent requests, and every target of a guard, run in one
+  forward pass; see `GRAVITEE_ONNX_BATCH_*` in [configuration](../configuration.md).
 - **Per-request label overrides are ignored.** `ClassifyRequest.labels` only applies to
   GLiNER models; ONNX classifiers use their configured label set.
 - **Memory.** These models are small (tens to a few hundred MB); `memory_check: disabled` is

@@ -36,9 +36,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-/**
- * Micro-batched SEQUENCE-mode chunk handling for the ONNX classifier engine (mocked delegate).
- */
+/** Micro-batched chunk handling for the ONNX classifier engine in both modes (mocked delegate). */
 class OnnxClassifierEngineTest {
 
   private static Vertx vertx;
@@ -107,22 +105,64 @@ class OnnxClassifierEngineTest {
     verify(delegate, never()).infer(anyString());
   }
 
+  /** Token stub: one "PER" row per chunk covering the whole chunk, spans relative to it. */
+  private static void stubTokens(OnnxBertClassifierModel delegate) {
+    when(delegate.classifyTokens(anyList())).thenAnswer(inv -> {
+      List<String> texts = inv.getArgument(0);
+      return texts
+        .stream()
+        .map(t ->
+          new ClassifierResults(List.of(new ClassifierResult("PER", 0.9f, t, 0, t.length())))
+        )
+        .toList();
+    });
+  }
+
   @Test
-  void token_mode_keeps_the_windowed_single_call_path() throws Exception {
+  void token_mode_batches_chunks_and_shifts_spans_to_the_original_text() throws Exception {
     var delegate = mockModel();
-    when(delegate.infer(anyString())).thenReturn(
-      new ClassifierResults(List.of(new ClassifierResult("PER", 0.9f)))
-    );
+    stubTokens(delegate);
     var engine = new OnnxClassifierEngine(delegate, ClassifierMode.TOKEN, vertx);
 
-    var response = engine.rxClassify(new ClassifyRequest("John")).blockingGet();
+    // Two chunks: "John" [0,4) and "Paris" [5,10)
+    var response = engine.rxClassify(new ClassifyRequest("John|Paris")).blockingGet();
 
     assertThat(response.topLabel()).isEqualTo("PER");
-    verify(delegate).infer("John");
+    assertThat(response.results())
+      .extracting(r -> r.token() + "@" + r.start() + "-" + r.end())
+      .containsExactly("John@0-4", "Paris@5-10");
+    verify(delegate, never()).infer(anyString());
     verify(delegate, never()).classifySequences(anyList());
 
-    engine.close(); // no batcher in TOKEN mode; must not throw
+    engine.close();
     verify(delegate).close();
+  }
+
+  @Test
+  void token_mode_batch_keeps_request_order() {
+    var delegate = mockModel();
+    stubTokens(delegate);
+    var engine = new OnnxClassifierEngine(delegate, ClassifierMode.TOKEN, vertx);
+
+    var responses = engine
+      .rxClassifyBatch(List.of(new ClassifyRequest("John"), new ClassifyRequest("Paris")))
+      .blockingGet();
+
+    assertThat(responses)
+      .extracting(r -> r.results().getFirst().token())
+      .containsExactly("John", "Paris");
+  }
+
+  @Test
+  void token_mode_on_blank_input_finds_nothing() {
+    var delegate = mockModel();
+    when(delegate.split(anyString())).thenReturn(List.of());
+    var engine = new OnnxClassifierEngine(delegate, ClassifierMode.TOKEN, vertx);
+
+    var response = engine.rxClassify(new ClassifyRequest("   ")).blockingGet();
+
+    assertThat(response.results()).isEmpty();
+    verify(delegate, never()).classifyTokens(anyList());
   }
 
   @Test
