@@ -31,6 +31,7 @@ import io.gravitee.singularitee.inference.onnx.FloatTensor;
 import io.gravitee.singularitee.inference.onnx.bert.OnnxBertInference;
 import io.gravitee.singularitee.inference.onnx.bert.config.OnnxBertConfig;
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * BERT sequence or token classifier over ONNX Runtime (e.g. DeBERTa, ModernBERT, MiniLM heads).
@@ -83,6 +84,9 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
     if (chunkTexts.isEmpty()) {
       return List.of();
     }
+    if (chunkTexts.size() > 1 && !acceptsBatches()) {
+      return oneAtATime(chunkTexts, this::classifySequences);
+    }
     return getSequenceResults(encodeAll(chunkTexts));
   }
 
@@ -96,7 +100,21 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
     if (chunkTexts.isEmpty()) {
       return List.of();
     }
+    if (chunkTexts.size() > 1 && !acceptsBatches()) {
+      return oneAtATime(chunkTexts, this::classifyTokens);
+    }
     return getTokenResults(encodeAll(chunkTexts));
+  }
+
+  /** Runs each text on its own, for a graph that pins its batch size to 1. */
+  private static List<ClassifierResults> oneAtATime(
+    List<String> texts,
+    Function<List<String>, List<ClassifierResults>> run
+  ) {
+    return texts
+      .stream()
+      .flatMap(text -> run.apply(List.of(text)).stream())
+      .toList();
   }
 
   /**

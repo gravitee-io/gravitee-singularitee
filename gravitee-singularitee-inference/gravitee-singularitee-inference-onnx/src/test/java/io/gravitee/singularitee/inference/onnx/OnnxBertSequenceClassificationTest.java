@@ -111,6 +111,7 @@ public class OnnxBertSequenceClassificationTest extends OnnxBertBaseTest {
     Map<String, Object> config
   ) {
     var sequenceModel = new OnnxBertClassifierModel(new OnnxBertConfig(resource, maths, config));
+    assertTrue(sequenceModel.acceptsBatches(), "a dynamic-batch export must stay batchable");
     var positive = sequenceModel.infer("I am so happy!").results().stream().toList();
     assertEquals(2, positive.size());
     assertEquals("POSITIVE", positive.getFirst().label());

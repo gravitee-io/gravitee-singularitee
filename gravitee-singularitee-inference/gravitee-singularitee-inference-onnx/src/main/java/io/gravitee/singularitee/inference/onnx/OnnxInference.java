@@ -19,11 +19,13 @@ import static ai.onnxruntime.OrtEnvironment.getAvailableProviders;
 import static java.lang.System.getProperty;
 import static java.util.Objects.requireNonNull;
 
+import ai.onnxruntime.NodeInfo;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtProvider;
 import ai.onnxruntime.OrtSession;
 import ai.onnxruntime.OrtSession.SessionOptions;
+import ai.onnxruntime.TensorInfo;
 import io.gravitee.singularitee.inference.api.InferenceModel;
 import java.util.List;
 import java.util.Objects;
@@ -71,11 +73,38 @@ public abstract class OnnxInference<C extends OnnxConfig<?>, I, O> extends Infer
 
   protected final OrtEnvironment environment;
   protected final OrtSession session;
+  private final boolean acceptsBatches;
 
   protected OnnxInference(C config) {
     super(config);
     this.environment = OrtEnvironment.getEnvironment();
     this.session = getSession();
+    this.acceptsBatches = leadingDimensionsAreFree(session);
+  }
+
+  /**
+   * Whether one run can take several inputs. An export can declare a dynamic batch on its inputs
+   * yet pin an output's leading dimension to 1; such a graph only runs one input at a time, and a
+   * batch of more fails inside the runtime.
+   */
+  public boolean acceptsBatches() {
+    return acceptsBatches;
+  }
+
+  private static boolean leadingDimensionsAreFree(OrtSession session) {
+    try {
+      for (NodeInfo output : session.getOutputInfo().values()) {
+        if (output.getInfo() instanceof TensorInfo tensor) {
+          long[] shape = tensor.getShape();
+          if (shape.length > 0 && shape[0] == 1) {
+            return false;
+          }
+        }
+      }
+      return true;
+    } catch (OrtException e) {
+      throw new IllegalArgumentException(e);
+    }
   }
 
   private OrtSession getSession() {
