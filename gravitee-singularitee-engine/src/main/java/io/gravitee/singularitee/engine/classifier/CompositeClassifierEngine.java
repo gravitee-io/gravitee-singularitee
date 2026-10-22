@@ -41,10 +41,10 @@ import java.util.Objects;
  * across every delegate in one pass, including the character spans needed
  * for the REDACT action.
  *
- * <p>Delegates, and the chunks of a split input, run concurrently so a batching
- * delegate scores them together; responses are merged in declaration and document
- * order, so results stay deterministic. If any delegate errors, the composite
- * propagates the error.
+ * <p>Delegates run concurrently, each receiving every piece of every request in one
+ * batch call so a batching delegate scores them together; responses are merged in
+ * declaration and document order, so results stay deterministic. If any delegate
+ * errors, the composite propagates the error.
  *
  * <p><strong>Single split for the whole composite.</strong> Rather than letting
  * each delegate split a huge input on its own (which would re-split the same text
@@ -148,28 +148,67 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
     return rxClassify(request, List.of());
   }
 
-  /**
-   * Fans the request and its label overrides out to every delegate. A delegate that ignores
-   * request labels (regex, ONNX) answers as without them; one that reads them (GLiNER, a
-   * decision model) classifies against them.
-   */
+  /** One request is a batch of one, so it takes the same split, fan-out and merge. */
   @Override
   public Single<ClassifyResponse> rxClassify(ClassifyRequest request, List<ClassifyLabel> labels) {
+    return rxClassifyBatch(List.of(request), labels).map(List::getFirst);
+  }
+
+  /**
+   * Splits every request once, here, and sends the pieces of all of them to each delegate in one
+   * batch call, so a batching delegate (a micro-batcher, a remote endpoint) scores them together.
+   * Each piece's spans are shifted back by the piece's start in its request, then the pieces are
+   * merged per request and per delegate, and the delegates per request. A request that fits stays
+   * one piece with its original text. Request labels reach every delegate; one that ignores them
+   * (regex, ONNX) answers as without them.
+   */
+  @Override
+  public Single<List<ClassifyResponse>> rxClassifyBatch(
+    List<ClassifyRequest> requests,
+    List<ClassifyLabel> labels
+  ) {
     return Single.defer(() -> {
-      List<Chunk> chunks = splitter.split(request.text());
-      // Common path: the input fits the budget (single chunk); hand each delegate the full text.
-      if (chunks.size() <= 1) {
-        return Observable.fromIterable(delegates)
-          .concatMapEager(delegate -> delegate.rxClassify(request, labels).toObservable())
-          .toList()
-          .map(CompositeClassifierEngine::merge);
+      List<List<Chunk>> piecesPerRequest = new ArrayList<>(requests.size());
+      List<ClassifyRequest> pieces = new ArrayList<>();
+      for (ClassifyRequest request : requests) {
+        List<Chunk> chunks = splitter.split(request.text());
+        if (chunks.size() <= 1) {
+          chunks = List.of(new Chunk(request.text(), 0, request.text().length()));
+        }
+        piecesPerRequest.add(chunks);
+        chunks.forEach(chunk -> pieces.add(new ClassifyRequest(chunk.text())));
       }
-      // Huge input: split once here, then run every delegate over the shared chunks.
       return Observable.fromIterable(delegates)
-        .concatMapEager(delegate -> classifyOverChunks(delegate, chunks, labels).toObservable())
+        .concatMapEager(delegate -> delegate.rxClassifyBatch(pieces, labels).toObservable())
         .toList()
-        .map(CompositeClassifierEngine::merge);
+        .map(perDelegate -> regroup(piecesPerRequest, perDelegate));
     });
+  }
+
+  /**
+   * Maps each delegate's per-piece responses back to their request: shift every piece's spans by
+   * its start, merge a request's pieces per delegate, then merge the delegates in declaration
+   * order. Pieces are in request then document order in every delegate's list.
+   */
+  private static List<ClassifyResponse> regroup(
+    List<List<Chunk>> piecesPerRequest,
+    List<List<ClassifyResponse>> perDelegate
+  ) {
+    List<ClassifyResponse> merged = new ArrayList<>(piecesPerRequest.size());
+    int next = 0;
+    for (List<Chunk> chunks : piecesPerRequest) {
+      List<ClassifyResponse> byDelegate = new ArrayList<>(perDelegate.size());
+      for (List<ClassifyResponse> responses : perDelegate) {
+        List<ClassifyResponse> own = new ArrayList<>(chunks.size());
+        for (int i = 0; i < chunks.size(); i++) {
+          own.add(shiftSpans(responses.get(next + i), chunks.get(i).start()));
+        }
+        byDelegate.add(merge(own));
+      }
+      merged.add(merge(byDelegate));
+      next += chunks.size();
+    }
+    return merged;
   }
 
   /**
@@ -183,44 +222,6 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
       .concatMapEager(delegate -> delegate.rxClassifyPresplit(request).toObservable())
       .toList()
       .map(CompositeClassifierEngine::merge);
-  }
-
-  /**
-   * Runs a single delegate over the shared chunks and combines its per-chunk
-   * responses into one response as if the delegate had seen the whole text:
-   * spans are shifted back to the original offsets, scores rolled up per label,
-   * and the delegate's top label taken from the first chunk that produced one
-   * (chunks are visited in document order). Reuses {@link #merge} since combining
-   * a delegate's chunks and combining delegates follow the same rules.
-   */
-  private static Single<ClassifyResponse> classifyOverChunks(
-    ClassifierEngine delegate,
-    List<Chunk> chunks,
-    List<ClassifyLabel> labels
-  ) {
-    return Observable.fromIterable(chunks)
-      .concatMapEager(chunk ->
-        classifyChunk(delegate, new ClassifyRequest(chunk.text()), labels)
-          .map(resp -> shiftSpans(resp, chunk.start()))
-          .toObservable()
-      )
-      .toList()
-      .map(CompositeClassifierEngine::merge);
-  }
-
-  /**
-   * Presplit when there are no labels: the chunk already fits the budget, so a delegate that does
-   * its own character-budget splitting must not split it again. Presplit takes no labels, so with
-   * labels the chunk goes through the labelled call; a delegate whose budget it fits keeps it whole.
-   */
-  private static Single<ClassifyResponse> classifyChunk(
-    ClassifierEngine delegate,
-    ClassifyRequest chunk,
-    List<ClassifyLabel> labels
-  ) {
-    return labels == null || labels.isEmpty()
-      ? delegate.rxClassifyPresplit(chunk)
-      : delegate.rxClassify(chunk, labels);
   }
 
   /**
