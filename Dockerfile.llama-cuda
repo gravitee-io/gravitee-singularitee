@@ -38,7 +38,7 @@ ARG UBUNTU_VERSION=24.04
 # ggml's composed graph).
 ARG GLINER4J_REPO=https://github.com/gravitee-io/GLiNER4j.git
 ARG GLINER4J_REF=main
-FROM alpine/git:2.47.2 AS gliner4j
+FROM alpine/git:v2.54.0 AS gliner4j
 ARG GLINER4J_REPO
 ARG GLINER4J_REF
 RUN set -eux; \
