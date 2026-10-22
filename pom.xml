@@ -42,7 +42,7 @@
         <!-- Gravitee ecosystem -->
         <gravitee-bom.version>9.0.9</gravitee-bom.version>
         <!-- The plugin framework version gravitee-node 9.2.0 pins; step plugins are gravitee plugins. -->
-        <gravitee-plugin.version>4.2.1</gravitee-plugin.version>
+        <gravitee-plugin.version>4.11.1</gravitee-plugin.version>
         <gravitee-node.version>9.2.0</gravitee-node.version>
 
         <!-- Vert.x / gRPC (Vert.x version aligned with gravitee-bom 9.0.0-alpha.2) -->
