@@ -10,6 +10,8 @@ the union of all spans, `allScores` keeps the maximum per label, `topLabel` is t
 member's non-empty top label, `topScore` the maximum. The composite reports
 `token-classification` when any member does, otherwise `text-classification`. It lets one
 `guard` step collect regex hits, NER entities and a toxicity verdict in a single pass.
+Request `labels` reach every member: GLiNER and decision members classify against them, the
+others ignore them.
 `ClientLocalModelRegistrar` registers it after the members.
 
 ## Usage

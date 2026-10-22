@@ -40,7 +40,7 @@ A decision model (`llama_cpp_decision`, `vllm_decision`, `gliner_decision`) decl
 
 ### Call it
 
-HTTP (`GRAVITEE_HTTP_ENABLED=true`). `input` is a string or an array; `labels` is optional and only GLiNER engines honour it:
+HTTP (`GRAVITEE_HTTP_ENABLED=true`). `input` is a string or an array; `labels` is optional; GLiNER and decision classifiers honour it, also as members of a composite, and the others ignore it:
 
 ```bash
 curl -s localhost:8080/v1/classify -H 'content-type: application/json' -d '{

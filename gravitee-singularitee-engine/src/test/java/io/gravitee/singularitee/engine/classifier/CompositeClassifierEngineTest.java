@@ -251,4 +251,100 @@ class CompositeClassifierEngineTest {
       result.assertValue(r -> r.topLabel().equals("chunk"));
     }
   }
+
+  @Nested
+  class Labels {
+
+    /** Records the labels and the entry point of every call. */
+    private static final class RecordingEngine implements ClassifierEngine {
+
+      final List<String> calls = new ArrayList<>();
+
+      @Override
+      public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
+        calls.add("plain");
+        return Single.just(response("plain"));
+      }
+
+      @Override
+      public Single<ClassifyResponse> rxClassify(
+        ClassifyRequest request,
+        List<ClassifyLabel> labels
+      ) {
+        if (labels.isEmpty()) return rxClassify(request);
+        calls.add("labels=" + labels.stream().map(ClassifyLabel::name).toList());
+        return Single.just(response(labels.getFirst().name()));
+      }
+
+      @Override
+      public Single<ClassifyResponse> rxClassifyPresplit(ClassifyRequest request) {
+        calls.add("presplit");
+        return Single.just(response("plain"));
+      }
+
+      @Override
+      public void close() {}
+    }
+
+    private static ClassifyResponse response(String label) {
+      return new ClassifyResponse(label, 0.5f, Map.of(label, 0.5f), List.of());
+    }
+
+    private static final String SPLIT_INPUT =
+      "The first paragraph is long enough to fill a chunk.\n\n" +
+      "The second paragraph is long enough to fill another.";
+
+    private static final List<ClassifierEngine.ClassifyLabel> LABELS = List.of(
+      new ClassifierEngine.ClassifyLabel("person", "")
+    );
+
+    @Test
+    void request_labels_reach_every_delegate() {
+      var first = new RecordingEngine();
+      var second = new RecordingEngine();
+      var composite = new CompositeClassifierEngine(List.of(first, second));
+
+      var response = composite.rxClassify(new ClassifyRequest("Ada"), LABELS).blockingGet();
+
+      assertThat(response.topLabel()).isEqualTo("person");
+      assertThat(first.calls).containsExactly("labels=[person]");
+      assertThat(second.calls).containsExactly("labels=[person]");
+    }
+
+    @Test
+    void request_labels_reach_every_chunk_of_a_split_input() {
+      var delegate = new RecordingEngine();
+      var composite = new CompositeClassifierEngine(List.of(delegate), 8);
+
+      composite.rxClassify(new ClassifyRequest(SPLIT_INPUT), LABELS).blockingGet();
+
+      assertThat(delegate.calls)
+        .hasSizeGreaterThan(1)
+        .allMatch(c -> c.equals("labels=[person]"));
+    }
+
+    @Test
+    void without_labels_a_split_input_stays_presplit() {
+      var delegate = new RecordingEngine();
+      var composite = new CompositeClassifierEngine(List.of(delegate), 8);
+
+      composite.rxClassify(new ClassifyRequest(SPLIT_INPUT)).blockingGet();
+
+      assertThat(delegate.calls)
+        .hasSizeGreaterThan(1)
+        .allMatch(c -> c.equals("presplit"));
+    }
+
+    @Test
+    void a_labelled_batch_reaches_the_delegates() {
+      var delegate = new RecordingEngine();
+      var composite = new CompositeClassifierEngine(List.of(delegate));
+
+      composite
+        .rxClassifyBatch(List.of(new ClassifyRequest("Ada"), new ClassifyRequest("Alan")), LABELS)
+        .blockingGet();
+
+      assertThat(delegate.calls).containsExactly("labels=[person]", "labels=[person]");
+    }
+  }
 }

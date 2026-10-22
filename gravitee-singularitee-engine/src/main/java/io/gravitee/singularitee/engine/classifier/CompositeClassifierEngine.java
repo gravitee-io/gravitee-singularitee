@@ -145,18 +145,28 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
 
   @Override
   public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
+    return rxClassify(request, List.of());
+  }
+
+  /**
+   * Fans the request and its label overrides out to every delegate. A delegate that ignores
+   * request labels (regex, ONNX) answers as without them; one that reads them (GLiNER, a
+   * decision model) classifies against them.
+   */
+  @Override
+  public Single<ClassifyResponse> rxClassify(ClassifyRequest request, List<ClassifyLabel> labels) {
     return Single.defer(() -> {
       List<Chunk> chunks = splitter.split(request.text());
       // Common path: the input fits the budget (single chunk); hand each delegate the full text.
       if (chunks.size() <= 1) {
         return Observable.fromIterable(delegates)
-          .concatMapEager(delegate -> delegate.rxClassify(request).toObservable())
+          .concatMapEager(delegate -> delegate.rxClassify(request, labels).toObservable())
           .toList()
           .map(CompositeClassifierEngine::merge);
       }
       // Huge input: split once here, then run every delegate over the shared chunks.
       return Observable.fromIterable(delegates)
-        .concatMapEager(delegate -> classifyOverChunks(delegate, chunks).toObservable())
+        .concatMapEager(delegate -> classifyOverChunks(delegate, chunks, labels).toObservable())
         .toList()
         .map(CompositeClassifierEngine::merge);
     });
@@ -185,19 +195,32 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
    */
   private static Single<ClassifyResponse> classifyOverChunks(
     ClassifierEngine delegate,
-    List<Chunk> chunks
+    List<Chunk> chunks,
+    List<ClassifyLabel> labels
   ) {
     return Observable.fromIterable(chunks)
       .concatMapEager(chunk ->
-        // presplit: the chunk already fits the budget, so a delegate that does its
-        // own character-budget splitting must not split it again.
-        delegate
-          .rxClassifyPresplit(new ClassifyRequest(chunk.text()))
+        classifyChunk(delegate, new ClassifyRequest(chunk.text()), labels)
           .map(resp -> shiftSpans(resp, chunk.start()))
           .toObservable()
       )
       .toList()
       .map(CompositeClassifierEngine::merge);
+  }
+
+  /**
+   * Presplit when there are no labels: the chunk already fits the budget, so a delegate that does
+   * its own character-budget splitting must not split it again. Presplit takes no labels, so with
+   * labels the chunk goes through the labelled call; a delegate whose budget it fits keeps it whole.
+   */
+  private static Single<ClassifyResponse> classifyChunk(
+    ClassifierEngine delegate,
+    ClassifyRequest chunk,
+    List<ClassifyLabel> labels
+  ) {
+    return labels == null || labels.isEmpty()
+      ? delegate.rxClassifyPresplit(chunk)
+      : delegate.rxClassify(chunk, labels);
   }
 
   /**
