@@ -163,7 +163,7 @@ Keys used in this guide. Full lists: [onnx_classifier](../../reference/models/on
 | `gliner_*.threshold` | float | `0` | Minimum confidence. |
 | `gliner_*.variant` | string | `onnx` | `onnx`, `onnx_fp16` or `onnx_quantized`. |
 | `regex.patterns[]` | list of `{pattern, entity_type}` | required | Java regex and the label its matches carry. |
-| `composite_classifier.models` | list | required | Delegate model ids, invoked in order. |
+| `composite_classifier.models` | list | required | Delegate model ids, run concurrently and merged in order. |
 | `classify.model_id` | string | required | Classifier model id. |
 | `classify.input_field` | string | `prompt` | Context key to read. |
 | `classify.output_field` | string | `<step_id>.label` | Key for the top label; score goes to `<output_field>.score`. |

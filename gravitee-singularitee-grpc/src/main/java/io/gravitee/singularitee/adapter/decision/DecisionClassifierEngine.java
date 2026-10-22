@@ -133,19 +133,15 @@ public final class DecisionClassifierEngine
   }
 
   @Override
-  public Single<List<ClassifyResponse>> rxClassifyBatch(List<ClassifyRequest> requests) {
-    return rxClassifyBatch(requests, List.of());
-  }
-
-  @Override
   public Single<List<ClassifyResponse>> rxClassifyBatch(
     List<ClassifyRequest> requests,
     List<ClassifyLabel> labels
   ) {
     return Single.defer(() -> {
       Question.Choice question = question(labels);
+      // All at once: the decision runtime batches concurrent questions. Responses keep input order.
       return Flowable.fromIterable(requests)
-        .concatMapSingle(request -> classify(request, question))
+        .concatMapEager(request -> classify(request, question).toFlowable())
         .toList();
     });
   }

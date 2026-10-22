@@ -19,8 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
+import io.gravitee.singularitee.engine.api.ClassifyResponse;
 import io.gravitee.singularitee.engine.classifier.RegexClassifierEngine.PatternEntry;
+import io.reactivex.rxjava3.core.Single;
+import io.reactivex.rxjava3.subjects.SingleSubject;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -180,6 +185,70 @@ class CompositeClassifierEngineTest {
       org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () ->
         new CompositeClassifierEngine(List.of())
       );
+    }
+  }
+
+  @Nested
+  class Concurrency {
+
+    /** Holds every call open until the test completes it, and records what it was asked. */
+    private static final class PendingEngine implements ClassifierEngine {
+
+      final List<SingleSubject<ClassifyResponse>> pending = new ArrayList<>();
+
+      @Override
+      public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
+        var subject = SingleSubject.<ClassifyResponse>create();
+        pending.add(subject);
+        return subject;
+      }
+
+      void completeAll(String label) {
+        pending.reversed().forEach(p -> p.onSuccess(response(label)));
+      }
+
+      @Override
+      public void close() {}
+    }
+
+    private static ClassifyResponse response(String label) {
+      return new ClassifyResponse(label, 0.5f, Map.of(label, 0.5f), List.of());
+    }
+
+    @Test
+    void delegates_run_at_once_and_merge_in_declaration_order() {
+      var first = new PendingEngine();
+      var second = new PendingEngine();
+      var composite = new CompositeClassifierEngine(List.of(first, second));
+
+      var result = composite.rxClassify(new ClassifyRequest("hello")).test();
+      assertThat(first.pending).hasSize(1);
+      assertThat(second.pending).as("asked before the first answers").hasSize(1);
+
+      second.completeAll("second");
+      first.completeAll("first");
+
+      result.assertValue(r -> r.topLabel().equals("first"));
+    }
+
+    @Test
+    void the_chunks_of_a_split_input_reach_a_delegate_at_once() {
+      var delegate = new PendingEngine();
+      var composite = new CompositeClassifierEngine(List.of(delegate), 8);
+
+      var result = composite
+        .rxClassify(
+          new ClassifyRequest(
+            "The first paragraph is long enough to fill a chunk.\n\n" +
+              "The second paragraph is long enough to fill another."
+          )
+        )
+        .test();
+      assertThat(delegate.pending).as("every chunk in flight together").hasSizeGreaterThan(1);
+
+      delegate.completeAll("chunk");
+
+      result.assertValue(r -> r.topLabel().equals("chunk"));
     }
   }
 }

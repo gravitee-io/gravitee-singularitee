@@ -116,13 +116,6 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
 
   @Override
   public Single<List<io.gravitee.singularitee.engine.api.ClassifyResponse>> rxClassifyBatch(
-    List<io.gravitee.singularitee.engine.api.ClassifyRequest> requests
-  ) {
-    return rxClassifyBatch(requests, List.of());
-  }
-
-  @Override
-  public Single<List<io.gravitee.singularitee.engine.api.ClassifyResponse>> rxClassifyBatch(
     List<io.gravitee.singularitee.engine.api.ClassifyRequest> requests,
     List<ClassifyLabel> labels
   ) {

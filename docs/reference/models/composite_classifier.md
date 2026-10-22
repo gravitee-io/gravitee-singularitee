@@ -5,7 +5,7 @@
 ## Overview
 
 `composite_classifier` builds a `CompositeClassifierEngine` over the ids listed in `models`.
-A request fans out to each member in declaration order and the responses merge: `results` is
+A request fans out to every member at once and the responses merge in declaration order: `results` is
 the union of all spans, `allScores` keeps the maximum per label, `topLabel` is the first
 member's non-empty top label, `topScore` the maximum. The composite reports
 `token-classification` when any member does, otherwise `text-classification`. It lets one

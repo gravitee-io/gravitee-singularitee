@@ -105,14 +105,15 @@ public non-sealed interface ClassifierEngine extends ModelEngine {
   }
 
   /**
-   * Classifies a batch of input texts. Each text is classified independently.
-   * Default implementation calls {@link #rxClassify} for each input sequentially.
+   * Classifies a batch of input texts with the model's own labels. Each text is classified
+   * independently. Delegates to {@link #rxClassifyBatch(List, List)} with no labels, so an
+   * engine batches by overriding that one alone.
    *
    * @param requests the list of classification inputs
    * @return a {@link Single} emitting a list of responses in the same order as inputs
    */
   default Single<List<ClassifyResponse>> rxClassifyBatch(List<ClassifyRequest> requests) {
-    return Flowable.fromIterable(requests).concatMapSingle(this::rxClassify).toList();
+    return rxClassifyBatch(requests, List.of());
   }
 
   /**
@@ -120,8 +121,9 @@ public non-sealed interface ClassifierEngine extends ModelEngine {
    *
    * <p>When {@code labels} is non-empty, implementations that support dynamic
    * labels (e.g. GLiNER) will use them instead of the model's default labels.
-   * The default implementation ignores the labels and delegates to
-   * {@link #rxClassifyBatch(List)}.
+   * The default implementation calls {@link #rxClassify(ClassifyRequest, List)} for every input at
+   * once, so an engine that coalesces concurrent calls (a micro-batcher, a batching runtime)
+   * scores them together, and emits the responses in input order.
    *
    * @param requests the list of classification inputs
    * @param labels   optional label overrides; empty list means use model defaults
@@ -131,6 +133,8 @@ public non-sealed interface ClassifierEngine extends ModelEngine {
     List<ClassifyRequest> requests,
     List<ClassifyLabel> labels
   ) {
-    return rxClassifyBatch(requests);
+    return Flowable.fromIterable(requests)
+      .concatMapEager(request -> rxClassify(request, labels).toFlowable())
+      .toList();
   }
 }

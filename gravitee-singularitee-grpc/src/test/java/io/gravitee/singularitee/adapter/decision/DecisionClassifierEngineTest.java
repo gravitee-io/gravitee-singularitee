@@ -31,6 +31,7 @@ import io.gravitee.singularitee.inference.api.decision.DecisionResult;
 import io.gravitee.singularitee.inference.api.decision.Question;
 import io.gravitee.singularitee.workspace.config.DecisionClassifierQuestion;
 import io.reactivex.rxjava3.core.Single;
+import io.reactivex.rxjava3.subjects.SingleSubject;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -76,10 +77,77 @@ class DecisionClassifierEngineTest {
     public void close() {}
   }
 
+  /** Holds every decision open until the test completes it, answering the request text. */
+  private static final class PendingModel implements DecisionEngine {
+
+    final List<SingleSubject<DecisionResult>> pending = new ArrayList<>();
+    final List<String> texts = new ArrayList<>();
+
+    @Override
+    public DecisionCapabilities capabilities() {
+      return new DecisionCapabilities(DecisionFamily.CUSTOM, 26, true, true);
+    }
+
+    @Override
+    public Single<DecisionResult> rxDecide(DecisionRequest request) {
+      texts.add(String.valueOf(((DecisionInput.Templated) request.input()).state()));
+      var subject = SingleSubject.<DecisionResult>create();
+      pending.add(subject);
+      return subject;
+    }
+
+    void answer(int index, String key) {
+      pending
+        .get(index)
+        .onSuccess(
+          new DecisionResult(
+            List.of(
+              new Answer.Choice(
+                "label",
+                key,
+                List.of(new Answer.OptionProbability(key, 1.0)),
+                1.0,
+                List.of()
+              )
+            ),
+            1
+          )
+        );
+    }
+
+    @Override
+    public void close() {}
+  }
+
   private static Map<String, Object> options(String... keys) {
     var map = new LinkedHashMap<String, Object>();
     for (String key : keys) map.put(key, key + " issues");
     return map;
+  }
+
+  @Test
+  void a_batch_asks_every_question_at_once_and_keeps_request_order() {
+    var model = new PendingModel();
+    var engine = (ClassifierEngine) DecisionClassifierEngine.wrap(
+      model,
+      new DecisionClassifierQuestion("Which team?", options("billing", "shipping"))
+    );
+
+    var batch = engine
+      .rxClassifyBatch(List.of(new ClassifyRequest("billing"), new ClassifyRequest("shipping")))
+      .test();
+    assertThat(model.texts).as("both asked before either answers").hasSize(2);
+
+    model.answer(1, "shipping");
+    model.answer(0, "billing");
+
+    batch.assertValue(responses ->
+      responses
+        .stream()
+        .map(r -> r.topLabel())
+        .toList()
+        .equals(List.of("billing", "shipping"))
+    );
   }
 
   @Test
