@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.ClassifyResponse;
+import io.gravitee.singularitee.engine.api.ClassifyResult;
 import io.gravitee.singularitee.engine.classifier.RegexClassifierEngine.PatternEntry;
 import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.subjects.SingleSubject;
@@ -324,18 +325,6 @@ class CompositeClassifierEngineTest {
     }
 
     @Test
-    void without_labels_a_split_input_stays_presplit() {
-      var delegate = new RecordingEngine();
-      var composite = new CompositeClassifierEngine(List.of(delegate), 8);
-
-      composite.rxClassify(new ClassifyRequest(SPLIT_INPUT)).blockingGet();
-
-      assertThat(delegate.calls)
-        .hasSizeGreaterThan(1)
-        .allMatch(c -> c.equals("presplit"));
-    }
-
-    @Test
     void a_labelled_batch_reaches_the_delegates() {
       var delegate = new RecordingEngine();
       var composite = new CompositeClassifierEngine(List.of(delegate));
@@ -345,6 +334,89 @@ class CompositeClassifierEngineTest {
         .blockingGet();
 
       assertThat(delegate.calls).containsExactly("labels=[person]", "labels=[person]");
+    }
+  }
+
+  @Nested
+  class Batching {
+
+    /** Records every batch call; answers each piece with one span covering the whole piece. */
+    private static final class BatchRecordingEngine implements ClassifierEngine {
+
+      final List<List<String>> batches = new ArrayList<>();
+
+      @Override
+      public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
+        throw new AssertionError("a composite batch must reach the delegate's batch call");
+      }
+
+      @Override
+      public Single<List<ClassifyResponse>> rxClassifyBatch(
+        List<ClassifyRequest> requests,
+        List<ClassifyLabel> labels
+      ) {
+        batches.add(requests.stream().map(ClassifyRequest::text).toList());
+        return Single.just(
+          requests
+            .stream()
+            .map(r ->
+              new ClassifyResponse(
+                "piece",
+                0.5f,
+                Map.of("piece", 0.5f),
+                List.of(new ClassifyResult("piece", 0.5f, r.text(), 0, r.text().length()))
+              )
+            )
+            .toList()
+        );
+      }
+
+      @Override
+      public void close() {}
+    }
+
+    private static final String HUGE =
+      "The first paragraph is long enough to fill a chunk.\n\n" +
+      "The second paragraph is long enough to fill another.";
+
+    @Test
+    void every_piece_of_every_request_reaches_each_delegate_in_one_call() {
+      var first = new BatchRecordingEngine();
+      var second = new BatchRecordingEngine();
+      var composite = new CompositeClassifierEngine(List.of(first, second), 8);
+
+      var responses = composite
+        .rxClassifyBatch(
+          List.of(new ClassifyRequest("short"), new ClassifyRequest(HUGE)),
+          List.of()
+        )
+        .blockingGet();
+
+      assertThat(first.batches).hasSize(1);
+      assertThat(second.batches).hasSize(1);
+      assertThat(first.batches.getFirst().getFirst()).isEqualTo("short");
+      assertThat(first.batches.getFirst()).as("the huge request is split").hasSizeGreaterThan(2);
+      assertThat(responses).hasSize(2);
+    }
+
+    @Test
+    void each_piece_span_maps_back_to_its_request_text() {
+      var delegate = new BatchRecordingEngine();
+      var composite = new CompositeClassifierEngine(List.of(delegate), 8);
+
+      var responses = composite
+        .rxClassifyBatch(
+          List.of(new ClassifyRequest("short"), new ClassifyRequest(HUGE)),
+          List.of()
+        )
+        .blockingGet();
+
+      assertThat(responses.get(0).results())
+        .extracting(r -> "short".substring(r.start(), r.end()))
+        .containsExactly("short");
+      assertThat(responses.get(1).results())
+        .hasSizeGreaterThan(1)
+        .allSatisfy(r -> assertThat(HUGE.substring(r.start(), r.end())).isEqualTo(r.token()));
     }
   }
 }
