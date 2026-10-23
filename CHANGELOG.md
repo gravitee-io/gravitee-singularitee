@@ -1,3 +1,17 @@
+## [1.9.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.9.0...1.9.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* forward request labels to every member of a composite classifier ([5ec02f6](https://github.com/gravitee-io/gravitee-singularitee/commit/5ec02f673be5719c2246a797c71feb42a0b57f7b))
+* run ONNX classifiers pinned to batch size 1 one input at a time ([1f9eb63](https://github.com/gravitee-io/gravitee-singularitee/commit/1f9eb634cc56639571293795b223f19e0ec8b223))
+
+
+### Performance Improvements
+
+* batch classify calls in every engine, ONNX token mode included ([1894257](https://github.com/gravitee-io/gravitee-singularitee/commit/18942579ed968b6f29ff55a1e28b21ba25dc2705))
+* send a composite batch to each member as one batch of all pieces ([bb8e367](https://github.com/gravitee-io/gravitee-singularitee/commit/bb8e367a30bc934df6fa9f88d4a630bcb69bace4))
+
 # [1.9.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.8.0...1.9.0) (2026-10-21)
 
 
