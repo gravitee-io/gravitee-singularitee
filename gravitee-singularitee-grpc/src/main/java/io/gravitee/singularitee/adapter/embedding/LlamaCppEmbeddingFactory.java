@@ -84,6 +84,8 @@ public final class LlamaCppEmbeddingFactory implements ModelEngineFactory {
       .nUBatch(llamaCfg.nUbatch() > 0 ? llamaCfg.nUbatch() : 512)
       .nSeqMax(llamaCfg.nSeqMax() > 0 ? llamaCfg.nSeqMax() : 8)
       .nGpuLayers(llamaCfg.nGpuLayers() > 0 ? llamaCfg.nGpuLayers() : 999)
+      .nThreads(llamaCfg.nThreads())
+      .nThreadsBatch(llamaCfg.nThreadsBatch())
       .poolingType(resolvePoolingType(llamaCfg.poolingType()))
       .attentionType(resolveAttentionType(llamaCfg.attentionType()))
       .flashAttnType(resolveFlashAttnType(llamaCfg.flashAttnType()))

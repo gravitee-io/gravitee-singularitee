@@ -380,7 +380,7 @@ against a specific vLLM Python API, so a drifting venv fails at model load rathe
 the script and the Dockerfile. See [Engines](#engines-llamacpp-is-the-default) for the setup itself.
 
 **Keep `LLAMACPP_VERSION` in lockstep with llamaj.cpp.** The FFI bindings are ABI-specific;
-a mismatch shows up as a runtime `NoSuchMethodError`. Currently llama.cpp `v0.6.0` (nightly `b11429`) ↔ llamaj.cpp `2.9.1`
+a mismatch shows up as a runtime `NoSuchMethodError`. Currently llama.cpp `v0.6.0` (nightly `b11429`) ↔ llamaj.cpp `2.10.1`
 (`Dockerfile.llama-cuda`, `install.sh`).
 
 **Java reads zero entries from openssl cert-only PKCS12 bundles.** `openssl pkcs12

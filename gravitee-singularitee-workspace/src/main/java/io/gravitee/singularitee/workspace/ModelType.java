@@ -68,6 +68,8 @@ public enum ModelType {
       if (d.nUbatch() > 0) b.setNUbatch(d.nUbatch());
       if (d.nSeqMax() > 0) b.setNSeqMax(d.nSeqMax());
       if (d.nGpuLayers() > 0) b.setNGpuLayers(d.nGpuLayers());
+      if (d.nThreads() > 0) b.setNThreads(d.nThreads());
+      if (d.nThreadsBatch() > 0) b.setNThreadsBatch(d.nThreadsBatch());
       if (d.poolingType() != null && !d.poolingType().isBlank()) b.setPoolingType(d.poolingType());
       if (d.attentionType() != null && !d.attentionType().isBlank()) b.setAttentionType(
         d.attentionType()
@@ -509,6 +511,8 @@ public enum ModelType {
       if (d.nUbatch() > 0) b.setNUbatch(d.nUbatch());
       if (d.nSeqMax() > 0) b.setNSeqMax(d.nSeqMax());
       if (d.nGpuLayers() > 0) b.setNGpuLayers(d.nGpuLayers());
+      if (d.nThreads() > 0) b.setNThreads(d.nThreads());
+      if (d.nThreadsBatch() > 0) b.setNThreadsBatch(d.nThreadsBatch());
       if (d.poolingType() != null && !d.poolingType().isBlank()) b.setPoolingType(d.poolingType());
       if (d.attentionType() != null && !d.attentionType().isBlank()) b.setAttentionType(
         d.attentionType()
@@ -551,6 +555,8 @@ public enum ModelType {
         d.nSeqMax(),
         d.nParallel(),
         d.nGpuLayers(),
+        d.nThreads(),
+        d.nThreadsBatch(),
         d.loraPath(),
         custom,
         d.codes(),
@@ -815,6 +821,8 @@ public enum ModelType {
       if (d.nUbatch() > 0) b.setNUbatch(d.nUbatch());
       if (d.nSeqMax() > 0) b.setNSeqMax(d.nSeqMax());
       if (d.nGpuLayers() > 0) b.setNGpuLayers(d.nGpuLayers());
+      if (d.nThreads() > 0) b.setNThreads(d.nThreads());
+      if (d.nThreadsBatch() > 0) b.setNThreadsBatch(d.nThreadsBatch());
       if (d.poolingType() != null && !d.poolingType().isBlank()) b.setPoolingType(d.poolingType());
       if (d.attentionType() != null && !d.attentionType().isBlank()) b.setAttentionType(
         d.attentionType()

@@ -127,6 +127,8 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
       .nUBatch(cfg.nUbatch() > 0 ? cfg.nUbatch() : 512)
       .nSeqMax(cfg.nSeqMax() > 0 ? cfg.nSeqMax() : 8)
       .nGpuLayers(cfg.nGpuLayers() > 0 ? cfg.nGpuLayers() : 999)
+      .nThreads(cfg.nThreads())
+      .nThreadsBatch(cfg.nThreadsBatch())
       .poolingType(resolvePoolingType(cfg.poolingType()))
       .attentionType(resolveAttentionType(cfg.attentionType()))
       .flashAttnType(resolveFlashAttnType(cfg.flashAttnType()))

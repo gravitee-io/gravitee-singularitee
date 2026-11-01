@@ -28,6 +28,8 @@ import java.util.Map;
  * @param nSeqMax        label families: sequences per decider, one of which holds the shared prefix
  * @param nParallel      deciders in the pool, each with its own context
  * @param nGpuLayers     layers offloaded to the GPU
+ * @param nThreads       CPU threads to decode a single token
+ * @param nThreadsBatch  CPU threads to decode several tokens at once
  * @param loraPath       LoRA adapter file, empty for none
  * @param custom         whether this is any causal model scored on {@link #codes}
  * @param codes          custom models: label codes, one per option position; empty for the default
@@ -46,6 +48,8 @@ public record LlamaCppDecisionConfig(
   int nSeqMax,
   int nParallel,
   int nGpuLayers,
+  int nThreads,
+  int nThreadsBatch,
   String loraPath,
   boolean custom,
   List<String> codes,
@@ -84,6 +88,8 @@ public record LlamaCppDecisionConfig(
       nSeqMax,
       nParallel,
       nGpuLayers,
+      nThreads,
+      nThreadsBatch,
       loraPath,
       custom,
       codes,

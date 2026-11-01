@@ -85,6 +85,8 @@ public final class LlamaCppRerankerFactory implements ModelEngineFactory {
       .nUBatch(llamaCfg.nUbatch() > 0 ? llamaCfg.nUbatch() : 512)
       .nSeqMax(llamaCfg.nSeqMax() > 0 ? llamaCfg.nSeqMax() : 8)
       .nGpuLayers(llamaCfg.nGpuLayers() > 0 ? llamaCfg.nGpuLayers() : 999)
+      .nThreads(llamaCfg.nThreads())
+      .nThreadsBatch(llamaCfg.nThreadsBatch())
       // Reranker models must use RANK pooling; forced regardless of what the YAML says.
       .poolingType(PoolingType.RANK)
       .attentionType(resolveAttentionType(llamaCfg.attentionType()))

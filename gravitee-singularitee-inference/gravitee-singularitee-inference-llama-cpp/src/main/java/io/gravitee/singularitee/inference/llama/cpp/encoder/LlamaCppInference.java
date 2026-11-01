@@ -80,12 +80,10 @@ public abstract class LlamaCppInference<INPUT, OUTPUT>
 
     this.model = new LlamaModel(arena, config.modelPath(), modelParams);
 
-    var contextParams = new LlamaContextParams(arena)
-      .nThreads(config.nThreads())
-      .nThreadsBatch(config.nThreadsBatch())
-      .embeddings(true)
-      .nCtx(config.nCtx());
+    var contextParams = new LlamaContextParams(arena).embeddings(true).nCtx(config.nCtx());
 
+    if (config.nThreads() > 0) contextParams.nThreads(config.nThreads());
+    if (config.nThreadsBatch() > 0) contextParams.nThreadsBatch(config.nThreadsBatch());
     if (config.nBatch() != 0) contextParams.nBatch(config.nBatch());
     if (config.nUBatch() != 0) contextParams.nUBatch(config.nUBatch());
     if (config.nSeqMax() != 0) contextParams.nSeqMax(config.nSeqMax());

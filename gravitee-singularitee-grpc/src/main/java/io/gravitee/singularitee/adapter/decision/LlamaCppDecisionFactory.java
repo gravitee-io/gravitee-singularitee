@@ -78,6 +78,8 @@ public final class LlamaCppDecisionFactory implements ModelEngineFactory {
         cfg.nBatch() > 0 ? cfg.nBatch() : null,
         cfg.nSeqMax() > 0 ? cfg.nSeqMax() : null,
         cfg.nParallel(),
+        cfg.nThreads() > 0 ? cfg.nThreads() : null,
+        cfg.nThreadsBatch() > 0 ? cfg.nThreadsBatch() : null,
         cfg.custom() ? (cfg.codes().isEmpty() ? DecisionBackend.DEFAULT_CODES : cfg.codes()) : null,
         toMemoryCheckPolicy(request.memoryCheckPolicy())
       )
