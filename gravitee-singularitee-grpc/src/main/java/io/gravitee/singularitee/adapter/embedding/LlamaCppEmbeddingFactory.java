@@ -78,7 +78,25 @@ public final class LlamaCppEmbeddingFactory implements ModelEngineFactory {
       ? cfg.llamaCppConfig()
       : LlamaCppConfig.getDefaultInstance();
 
-    var modelConfig = ModelConfig.builder(resolvedModelPath)
+    var modelConfig = modelConfig(llamaCfg, request.memoryCheckPolicy(), resolvedModelPath);
+
+    EmbeddingTemplate template = cfg.embeddingTemplate().isBlank()
+      ? EmbeddingTemplate.IDENTITY
+      : text -> cfg.embeddingTemplate().replace("{text}", text);
+
+    return new LlamaCppEmbeddingEngine(
+      new LlamaCppEmbeddingModel(modelConfig, gioMaths, template),
+      vertx
+    );
+  }
+
+  /** Maps the nested {@code llama_cpp:} block to the engine's config, applying the encoder defaults. */
+  static ModelConfig modelConfig(
+    LlamaCppConfig llamaCfg,
+    MemoryCheckPolicyType memoryCheckPolicy,
+    Path resolvedModelPath
+  ) {
+    return ModelConfig.builder(resolvedModelPath)
       .nCtx(llamaCfg.nCtx() > 0 ? llamaCfg.nCtx() : 512)
       .nBatch(llamaCfg.nBatch() > 0 ? llamaCfg.nBatch() : 512)
       .nUBatch(llamaCfg.nUbatch() > 0 ? llamaCfg.nUbatch() : 512)
@@ -91,17 +109,8 @@ public final class LlamaCppEmbeddingFactory implements ModelEngineFactory {
       .flashAttnType(resolveFlashAttnType(llamaCfg.flashAttnType()))
       .offloadKQV(llamaCfg.offloadKqv() == null || llamaCfg.offloadKqv())
       .loraPath(llamaCfg.loraPath().isEmpty() ? null : Path.of(llamaCfg.loraPath()))
-      .memoryCheckPolicy(toMemoryCheckPolicy(request.memoryCheckPolicy()))
+      .memoryCheckPolicy(toMemoryCheckPolicy(memoryCheckPolicy))
       .build();
-
-    EmbeddingTemplate template = cfg.embeddingTemplate().isBlank()
-      ? EmbeddingTemplate.IDENTITY
-      : text -> cfg.embeddingTemplate().replace("{text}", text);
-
-    return new LlamaCppEmbeddingEngine(
-      new LlamaCppEmbeddingModel(modelConfig, gioMaths, template),
-      vertx
-    );
   }
 
   private static MemoryCheckPolicy toMemoryCheckPolicy(MemoryCheckPolicyType policy) {

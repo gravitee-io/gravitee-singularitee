@@ -81,8 +81,8 @@ A large MoE model with quantised KV cache (`examples/llama/qwen3.6-35b.yaml`):
 | `n_ubatch` | int | `512` | Physical micro-batch size. |
 | `n_seq_max` | int | `8` | Parallel sequences (slots). KV memory is `n_ctx x n_seq_max`. |
 | `n_gpu_layers` | int | `999` | Layers offloaded to the GPU; `999` means all. |
-| `n_threads` | int | llama.cpp default (`4`) | CPU threads to decode a single token: generating for one sequence. Also sizes the multimodal projector when set. |
-| `n_threads_batch` | int | llama.cpp default (`4`) | CPU threads to decode several tokens at once: prompt processing and generating for several sequences. |
+| `n_threads` | int | llama.cpp default (`4`) | CPU threads to decode a single token: generating for one sequence. Also sizes the multimodal projector when set. `0` or negative keeps the default. |
+| `n_threads_batch` | int | llama.cpp default (`4`) | CPU threads to decode several tokens at once: prompt processing and generating for several sequences. `0` or negative keeps the default. |
 | `pooling_type` | string | `UNSPECIFIED` | `NONE`, `MEAN`, `CLS`, `LAST`, `RANK`. Leave unset for generation. Unknown values fall back to `UNSPECIFIED`. |
 | `attention_type` | string | `UNSPECIFIED` | `CAUSAL` or `NON_CAUSAL`. |
 | `flash_attn_type` | string | `AUTO` | `AUTO`, `ENABLED`, `DISABLED`. Quantised V cache needs `ENABLED`. |

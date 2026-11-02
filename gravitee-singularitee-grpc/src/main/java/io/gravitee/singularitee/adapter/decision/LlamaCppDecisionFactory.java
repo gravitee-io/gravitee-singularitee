@@ -70,19 +70,7 @@ public final class LlamaCppDecisionFactory implements ModelEngineFactory {
   public ModelEngine create(ModelLoadRequest request, Path modelPath, Path loraPath) {
     LlamaCppDecisionConfig cfg = request.llamaCppDecision();
     var backend = new LlamaCppDecisionBackend(
-      new DecisionModelConfig(
-        modelPath,
-        loraPath,
-        cfg.nGpuLayers() > 0 ? cfg.nGpuLayers() : 999,
-        cfg.nCtx() > 0 ? cfg.nCtx() : null,
-        cfg.nBatch() > 0 ? cfg.nBatch() : null,
-        cfg.nSeqMax() > 0 ? cfg.nSeqMax() : null,
-        cfg.nParallel(),
-        cfg.nThreads() > 0 ? cfg.nThreads() : null,
-        cfg.nThreadsBatch() > 0 ? cfg.nThreadsBatch() : null,
-        cfg.custom() ? (cfg.codes().isEmpty() ? DecisionBackend.DEFAULT_CODES : cfg.codes()) : null,
-        toMemoryCheckPolicy(request.memoryCheckPolicy())
-      )
+      backendConfig(cfg, request.memoryCheckPolicy(), modelPath, loraPath)
     );
     try {
       return DecisionClassifierEngine.wrap(
@@ -107,6 +95,28 @@ public final class LlamaCppDecisionFactory implements ModelEngineFactory {
       backend.close();
       throw e;
     }
+  }
+
+  /** Maps the workspace config to the backend's; a count of 0 or less becomes {@code null}, the backend default. */
+  static DecisionModelConfig backendConfig(
+    LlamaCppDecisionConfig cfg,
+    MemoryCheckPolicyType memoryCheckPolicy,
+    Path modelPath,
+    Path loraPath
+  ) {
+    return new DecisionModelConfig(
+      modelPath,
+      loraPath,
+      cfg.nGpuLayers() > 0 ? cfg.nGpuLayers() : 999,
+      cfg.nCtx() > 0 ? cfg.nCtx() : null,
+      cfg.nBatch() > 0 ? cfg.nBatch() : null,
+      cfg.nSeqMax() > 0 ? cfg.nSeqMax() : null,
+      cfg.nParallel(),
+      cfg.nThreads() > 0 ? cfg.nThreads() : null,
+      cfg.nThreadsBatch() > 0 ? cfg.nThreadsBatch() : null,
+      cfg.custom() ? (cfg.codes().isEmpty() ? DecisionBackend.DEFAULT_CODES : cfg.codes()) : null,
+      toMemoryCheckPolicy(memoryCheckPolicy)
+    );
   }
 
   private static MemoryCheckPolicy toMemoryCheckPolicy(MemoryCheckPolicyType policy) {

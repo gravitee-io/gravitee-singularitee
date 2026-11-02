@@ -121,7 +121,30 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
       );
     }
 
-    var modelConfig = ModelConfig.builder(resolvedModelPath)
+    return new LlamaCppTextGenEngine(
+      modelConfig(
+        cfg,
+        request.memoryCheckPolicy(),
+        resolvedModelPath,
+        resolvedMmprojPath,
+        resolvedLoraPath,
+        resolvedDraftPath,
+        resolvedEagle3Path
+      )
+    );
+  }
+
+  /** Maps the workspace config to the engine's, applying the defaults for unset keys. */
+  static ModelConfig modelConfig(
+    LlamaCppConfig cfg,
+    MemoryCheckPolicyType memoryCheckPolicy,
+    Path resolvedModelPath,
+    Path resolvedMmprojPath,
+    Path resolvedLoraPath,
+    Path resolvedDraftPath,
+    Path resolvedEagle3Path
+  ) {
+    return ModelConfig.builder(resolvedModelPath)
       .nCtx(cfg.nCtx() > 0 ? cfg.nCtx() : 4096)
       .nBatch(cfg.nBatch() > 0 ? cfg.nBatch() : 2048)
       .nUBatch(cfg.nUbatch() > 0 ? cfg.nUbatch() : 512)
@@ -141,7 +164,7 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
       .loraPath(resolvedLoraPath)
       .mmprojPath(resolvedMmprojPath)
       .mediaMarker(cfg.mediaMarker().isBlank() ? null : cfg.mediaMarker())
-      .memoryCheckPolicy(toMemoryCheckPolicy(request.memoryCheckPolicy()))
+      .memoryCheckPolicy(toMemoryCheckPolicy(memoryCheckPolicy))
       .mtp(cfg.mtp())
       .cacheTypeK(resolveGgmlType(cfg.cacheTypeK()))
       .cacheTypeV(resolveGgmlType(cfg.cacheTypeV()))
@@ -157,8 +180,6 @@ public final class LlamaCppEngineFactory implements ModelEngineFactory {
         cfg.mtp() && cfg.speculative() != null ? toSpeculativeConfig(cfg.speculative()) : null
       )
       .build();
-
-    return new LlamaCppTextGenEngine(modelConfig);
   }
 
   private static SpeculativeConfig toSpeculativeConfig(
