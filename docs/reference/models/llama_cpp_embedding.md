@@ -47,6 +47,8 @@ Nested `llama_cpp:` keys the factory forwards, with the encoder defaults
 | `n_ubatch` | int | `512` | Physical micro-batch size. |
 | `n_seq_max` | int | `8` | Parallel sequences. |
 | `n_gpu_layers` | int | `999` | Layers offloaded to the GPU. |
+| `n_threads` | int | llama.cpp default (`4`) | CPU threads to decode a single token; inputs are almost always longer. `0` or negative keeps the default. |
+| `n_threads_batch` | int | llama.cpp default (`4`) | CPU threads to decode several tokens at once. The one that matters here. `0` or negative keeps the default. |
 | `pooling_type` | string | `UNSPECIFIED` (the GGUF's own) | `MEAN`, `CLS`, `LAST`, `NONE`. |
 | `attention_type` | string | `UNSPECIFIED` | `CAUSAL` or `NON_CAUSAL`. |
 | `flash_attn_type` | string | `AUTO` | `AUTO`, `ENABLED`, `DISABLED`. |

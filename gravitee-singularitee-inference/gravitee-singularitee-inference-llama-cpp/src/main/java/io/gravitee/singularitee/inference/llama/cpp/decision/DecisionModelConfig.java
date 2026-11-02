@@ -30,6 +30,10 @@ import java.util.List;
  * @param nSeqMax           label families: sequences per decider (one holds the shared prefix),
  *                          or {@code null} for the default
  * @param nParallel         deciders in the pool, each with its own context
+ * @param nThreads          CPU threads to decode a single token, or {@code null} for the
+ *                          llama.cpp default
+ * @param nThreadsBatch     CPU threads to decode several tokens at once, or {@code null} for the
+ *                          llama.cpp default
  * @param codes             custom models: one single-token label code per option position;
  *                          {@code null} or empty for a native decision model
  * @param memoryCheckPolicy what to do when the estimate says the model may not fit
@@ -45,6 +49,8 @@ public record DecisionModelConfig(
   Integer nBatch,
   Integer nSeqMax,
   int nParallel,
+  Integer nThreads,
+  Integer nThreadsBatch,
   List<String> codes,
   MemoryCheckPolicy memoryCheckPolicy
 ) {

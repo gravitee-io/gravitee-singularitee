@@ -21,6 +21,7 @@ import io.gravitee.llama.cpp.DecisionPrompt;
 import io.gravitee.llama.cpp.LabelDecider;
 import io.gravitee.llama.cpp.LayaDecider;
 import io.gravitee.llama.cpp.LayaPrompt;
+import io.gravitee.llama.cpp.LlamaContext;
 import io.gravitee.llama.cpp.LlamaDecider;
 import io.gravitee.llama.cpp.LlamaExt;
 import io.gravitee.llama.cpp.LlamaModel;
@@ -107,6 +108,7 @@ public final class LlamaCppDecisionBackend implements DecisionBackend {
         if (model.loraAdapter() != null) {
           decider.context().setLoraAdapter(model.loraAdapter(), 1.0f);
         }
+        applyThreads(decider.context(), config);
         created.add(decider);
       }
     } catch (RuntimeException e) {
@@ -163,6 +165,15 @@ public final class LlamaCppDecisionBackend implements DecisionBackend {
     } catch (RuntimeException e) {
       return null;
     }
+  }
+
+  /** Overrides only what the config names; the other count stays at the context's value. */
+  private static void applyThreads(LlamaContext context, DecisionModelConfig config) {
+    if (config.nThreads() == null && config.nThreadsBatch() == null) return;
+    context.setThreads(
+      config.nThreads() != null ? config.nThreads() : context.nThreads(),
+      config.nThreadsBatch() != null ? config.nThreadsBatch() : context.nThreadsBatch()
+    );
   }
 
   private static void runMemoryCheck(DecisionModelConfig config) {

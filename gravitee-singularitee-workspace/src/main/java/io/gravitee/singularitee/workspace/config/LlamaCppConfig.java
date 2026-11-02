@@ -28,6 +28,8 @@ public record LlamaCppConfig(
   int nUbatch,
   int nSeqMax,
   int nGpuLayers,
+  int nThreads,
+  int nThreadsBatch,
   String poolingType,
   String attentionType,
   String flashAttnType,
@@ -84,6 +86,8 @@ public record LlamaCppConfig(
     private int nUbatch;
     private int nSeqMax;
     private int nGpuLayers;
+    private int nThreads;
+    private int nThreadsBatch;
     private String poolingType = "";
     private String attentionType = "";
     private String flashAttnType = "";
@@ -122,6 +126,16 @@ public record LlamaCppConfig(
 
     public Builder setNSeqMax(int v) {
       this.nSeqMax = v;
+      return this;
+    }
+
+    public Builder setNThreads(int v) {
+      this.nThreads = v;
+      return this;
+    }
+
+    public Builder setNThreadsBatch(int v) {
+      this.nThreadsBatch = v;
       return this;
     }
 
@@ -242,6 +256,8 @@ public record LlamaCppConfig(
         nUbatch,
         nSeqMax,
         nGpuLayers,
+        nThreads,
+        nThreadsBatch,
         poolingType,
         attentionType,
         flashAttnType,

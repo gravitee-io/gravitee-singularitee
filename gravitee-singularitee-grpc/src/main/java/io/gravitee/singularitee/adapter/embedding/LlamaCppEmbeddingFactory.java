@@ -78,19 +78,7 @@ public final class LlamaCppEmbeddingFactory implements ModelEngineFactory {
       ? cfg.llamaCppConfig()
       : LlamaCppConfig.getDefaultInstance();
 
-    var modelConfig = ModelConfig.builder(resolvedModelPath)
-      .nCtx(llamaCfg.nCtx() > 0 ? llamaCfg.nCtx() : 512)
-      .nBatch(llamaCfg.nBatch() > 0 ? llamaCfg.nBatch() : 512)
-      .nUBatch(llamaCfg.nUbatch() > 0 ? llamaCfg.nUbatch() : 512)
-      .nSeqMax(llamaCfg.nSeqMax() > 0 ? llamaCfg.nSeqMax() : 8)
-      .nGpuLayers(llamaCfg.nGpuLayers() > 0 ? llamaCfg.nGpuLayers() : 999)
-      .poolingType(resolvePoolingType(llamaCfg.poolingType()))
-      .attentionType(resolveAttentionType(llamaCfg.attentionType()))
-      .flashAttnType(resolveFlashAttnType(llamaCfg.flashAttnType()))
-      .offloadKQV(llamaCfg.offloadKqv() == null || llamaCfg.offloadKqv())
-      .loraPath(llamaCfg.loraPath().isEmpty() ? null : Path.of(llamaCfg.loraPath()))
-      .memoryCheckPolicy(toMemoryCheckPolicy(request.memoryCheckPolicy()))
-      .build();
+    var modelConfig = modelConfig(llamaCfg, request.memoryCheckPolicy(), resolvedModelPath);
 
     EmbeddingTemplate template = cfg.embeddingTemplate().isBlank()
       ? EmbeddingTemplate.IDENTITY
@@ -100,6 +88,29 @@ public final class LlamaCppEmbeddingFactory implements ModelEngineFactory {
       new LlamaCppEmbeddingModel(modelConfig, gioMaths, template),
       vertx
     );
+  }
+
+  /** Maps the nested {@code llama_cpp:} block to the engine's config, applying the encoder defaults. */
+  static ModelConfig modelConfig(
+    LlamaCppConfig llamaCfg,
+    MemoryCheckPolicyType memoryCheckPolicy,
+    Path resolvedModelPath
+  ) {
+    return ModelConfig.builder(resolvedModelPath)
+      .nCtx(llamaCfg.nCtx() > 0 ? llamaCfg.nCtx() : 512)
+      .nBatch(llamaCfg.nBatch() > 0 ? llamaCfg.nBatch() : 512)
+      .nUBatch(llamaCfg.nUbatch() > 0 ? llamaCfg.nUbatch() : 512)
+      .nSeqMax(llamaCfg.nSeqMax() > 0 ? llamaCfg.nSeqMax() : 8)
+      .nGpuLayers(llamaCfg.nGpuLayers() > 0 ? llamaCfg.nGpuLayers() : 999)
+      .nThreads(llamaCfg.nThreads())
+      .nThreadsBatch(llamaCfg.nThreadsBatch())
+      .poolingType(resolvePoolingType(llamaCfg.poolingType()))
+      .attentionType(resolveAttentionType(llamaCfg.attentionType()))
+      .flashAttnType(resolveFlashAttnType(llamaCfg.flashAttnType()))
+      .offloadKQV(llamaCfg.offloadKqv() == null || llamaCfg.offloadKqv())
+      .loraPath(llamaCfg.loraPath().isEmpty() ? null : Path.of(llamaCfg.loraPath()))
+      .memoryCheckPolicy(toMemoryCheckPolicy(memoryCheckPolicy))
+      .build();
   }
 
   private static MemoryCheckPolicy toMemoryCheckPolicy(MemoryCheckPolicyType policy) {
