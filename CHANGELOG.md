@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.9.1...1.10.0) (2026-11-02)
+
+
+### Features
+
+* set llama.cpp CPU threads per model, default kept when unset ([dcc828b](https://github.com/gravitee-io/gravitee-singularitee/commit/dcc828b3e8d8a9f7f43ef998cbebb387452c5c87))
+
 ## [1.9.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.9.0...1.9.1) (2026-10-23)
 
 
