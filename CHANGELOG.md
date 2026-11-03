@@ -1,3 +1,10 @@
+## [1.10.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.10.0...1.10.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* honour temperature 0 as greedy decoding in pipelines ([#22](https://github.com/gravitee-io/gravitee-singularitee/issues/22)) ([8880976](https://github.com/gravitee-io/gravitee-singularitee/commit/8880976f9d34b8cfbd1f5ebd547d365c7b3ebcd8))
+
 # [1.10.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.9.1...1.10.0) (2026-11-02)
 
 
