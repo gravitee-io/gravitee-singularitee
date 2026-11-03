@@ -133,7 +133,7 @@ To bypass the chat template entirely (you then own every special token), give a 
 
 ### Override sampling per request
 
-Request-level `sampling_params` (gRPC) or `max_tokens` / `temperature` / `top_p` (HTTP) win over the step's `sampling` block field by field; a zero value keeps the step value. On a pipeline they apply to the first infer step reached.
+Request-level `sampling_params` (gRPC) or `max_tokens` / `temperature` / `top_p` (HTTP) win over the step's `sampling` block field by field; a zero value keeps the step value, except `temperature`, where `0` asks for greedy decoding and only an unset or negative value keeps the step value. On a pipeline they apply to the first infer step reached.
 
 ## Options
 

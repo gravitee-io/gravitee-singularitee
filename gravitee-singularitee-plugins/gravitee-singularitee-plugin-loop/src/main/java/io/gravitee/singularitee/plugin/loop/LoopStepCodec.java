@@ -97,7 +97,7 @@ public final class LoopStepCodec implements StepConfigCodec<LoopStepConfig> {
   private static SamplingParams toSamplingParams(SamplingYaml s) {
     var sp = SamplingParams.newBuilder();
     if (s.maxTokens() > 0) sp.setMaxTokens(s.maxTokens());
-    if (s.temperature() > 0) sp.setTemperature(s.temperature());
+    if (s.temperature() != null && s.temperature() >= 0) sp.setTemperature(s.temperature());
     if (s.topP() > 0) sp.setTopP(s.topP());
     if (s.presencePenalty() != 0) sp.setPresencePenalty(s.presencePenalty());
     if (s.frequencyPenalty() != 0) sp.setFrequencyPenalty(s.frequencyPenalty());
@@ -145,7 +145,7 @@ public final class LoopStepCodec implements StepConfigCodec<LoopStepConfig> {
   @JsonIgnoreProperties(ignoreUnknown = true)
   private record SamplingYaml(
     @JsonProperty("max_tokens") int maxTokens,
-    @JsonProperty("temperature") float temperature,
+    @JsonProperty("temperature") Float temperature,
     @JsonProperty("top_p") float topP,
     @JsonProperty("presence_penalty") float presencePenalty,
     @JsonProperty("frequency_penalty") float frequencyPenalty,

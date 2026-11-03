@@ -60,7 +60,7 @@ config:
 | `prompt.messages` | list of `{role, content}` | unset | Screening conversation; each `content` is a Jinja template. `role` defaults to `user`. |
 | `prompt.template` / `prompt.template_file` / `prompt.template_id` | string | unset | Raw Jinja prompt sent as a bare string (bypasses the chat template). Mutually exclusive with each other; takes precedence over `messages`. Same resolution as on [`infer`](./infer.md#prompt). |
 | `sampling.max_tokens` | int | `64` | Completion cap. |
-| `sampling.temperature`, `sampling.top_p` | float | engine default | Only these two sampling values are forwarded; penalties and `stop` are ignored by this step. |
+| `sampling.temperature`, `sampling.top_p` | float | engine default (`temperature: 0` is greedy) | Only these two sampling values are forwarded; penalties and `stop` are ignored by this step. |
 | `message` | string | unset | Jinja template rendered on `reject` and returned as the failure message. |
 | `context` | map | unset | Typed Jinja variables merged into the rendering context for the prompt and the message, and forwarded to the engine's chat template (`reasoning_effort`, `enable_thinking`). |
 | `tags` | object or string | unset | The judge model's reasoning and tool-call markers, same shape as [`infer`'s `tags`](./infer.md#tags). A bare string references a workspace `tags:` entry by id. Set it when the judge is a channel dialect such as Harmony, so the engine strips its analysis and only the answer reaches the verdict. |

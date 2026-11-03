@@ -64,7 +64,7 @@ A one-shot branch (`examples/pipelines/todo-agent.yaml`): `max_iterations: 1` wi
 | `condition.threshold` | float | `0` | Reference for `score_above`, `score_below`. |
 | `loopback_message.role` | string | `user` | `system`, `user` or `assistant`; unknown values fall back to `user`. |
 | `loopback_message.content` | string | unset | Jinja template appended to `messages` on every retry. A render failure or an empty result skips the injection without failing the loop. |
-| `retry_sampling_params` | object | unset | `max_tokens`, `temperature`, `top_p`, `presence_penalty`, `frequency_penalty` applied to infer steps on the retry edge only. Precedence: request override > retry > step. Cleared on exit and on fallback. |
+| `retry_sampling_params` | object | unset | `max_tokens`, `temperature`, `top_p`, `presence_penalty`, `frequency_penalty` applied to infer steps on the retry edge only; `temperature: 0` is greedy, a negative one is ignored. Precedence: request override > retry > step. Cleared on exit and on fallback. |
 
 ## Context fields
 

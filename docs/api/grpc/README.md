@@ -91,7 +91,7 @@ Slow consumers are cancelled after `ai.streaming.buffer-capacity` tokens of lag.
 | --- | --- | --- |
 | `model_id` | string | Target text-generation model. |
 | `prompt` / `messages` | oneof string / `ChatMessageList` | A raw prompt is sent as-is; `messages` are rendered through the model's chat template. |
-| `sampling_params` | `SamplingParams` | `max_tokens` (0 = engine default), `temperature` (negative = engine default), `top_p`, `presence_penalty`, `frequency_penalty`, `seed` (0 = random), `top_logprobs` (0 = off). |
+| `sampling_params` | `SamplingParams` | `max_tokens` (0 = engine default), `temperature` (0 = greedy; unset or negative = engine default), `top_p`, `presence_penalty`, `frequency_penalty`, `seed` (0 = random), `top_logprobs` (0 = off). |
 | `reasoning_tags`, `tool_call_tags` | `TagConfig` | `open_tag`, `close_tag`, `open_tag_alternatives`, `close_tag_alternatives`, `repeatable`. Routes tokens to the reasoning or tool channel. |
 | `stop` | repeated string | Stop strings. |
 | `lora` | `LoraConfig` | `lora_name`, `lora_path`. A `lora_path` is refused with `invalid_request_error` unless `ai.inference.request-lora.enabled` is set. |
@@ -340,6 +340,7 @@ grpcurl -cacert certs/ca.pem -import-path $PROTO -proto io/gravitee/singularitee
 - `grpc.auth.enabled: true` with an empty `grpc.auth.users` fails startup.
 - Sampling zero-values mean "engine default" (`max_tokens: 0`, `top_p: 0`, `seed: 0` = random);
   `temperature` uses a negative value for the engine default because `0` is valid greedy decoding.
+  It is `optional`: unset behaves like a negative value (engine default on a raw `Infer`, the step's value on a pipeline).
 - `TokenUsage` has no `total_tokens` (tag 5 is reserved); sum `prompt_tokens` and `completion_tokens`.
 - `Infer` against a bare model returns raw tokens. Dialect handling (channel markers, tool tags)
   lives in the pipeline step's `tags:`; call the pipeline for client-facing traffic.

@@ -120,6 +120,7 @@ class InferStepCodecTest {
     assertThat(cfg.modelId()).isEmpty();
     assertThat(cfg.messages()).isEmpty();
     assertThat(cfg.samplingParams().getMaxTokens()).isZero();
+    assertThat(cfg.samplingParams().hasTemperature()).isFalse();
     assertThat(cfg.reasoningTags()).isNull();
     assertThat(cfg.toolCallTags()).isNull();
     assertThat(cfg.context()).isNull();
@@ -129,6 +130,16 @@ class InferStepCodecTest {
     assertThat(cfg.shouldInjectTools()).isTrue();
     assertThat(cfg.shouldTrimHistory()).isTrue();
     assertThat(cfg.shouldStripThinking()).isFalse();
+  }
+
+  @Test
+  void a_zero_temperature_is_kept_as_greedy_and_a_negative_one_is_dropped() {
+    var greedy = codec.parse("gen", Map.of("sampling", Map.of("temperature", 0)), EMPTY);
+    var negative = codec.parse("gen", Map.of("sampling", Map.of("temperature", -1)), EMPTY);
+
+    assertThat(greedy.samplingParams().hasTemperature()).isTrue();
+    assertThat(greedy.samplingParams().getTemperature()).isZero();
+    assertThat(negative.samplingParams().hasTemperature()).isFalse();
   }
 
   @Test

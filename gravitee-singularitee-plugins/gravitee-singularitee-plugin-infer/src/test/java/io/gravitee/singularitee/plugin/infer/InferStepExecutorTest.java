@@ -340,6 +340,19 @@ class InferStepExecutorTest {
     void request_override_beats_retry_override() {
       assertThat(run(temp(0.5f), temp(0.2f)).temperature()).isEqualTo(0.5f);
     }
+
+    @Test
+    void a_zero_request_temperature_asks_for_greedy() {
+      assertThat(run(temp(0f), null).temperature()).isZero();
+    }
+
+    @Test
+    void an_unset_request_temperature_keeps_the_step_value() {
+      var noTemperature = io.gravitee.singularitee.protocol.SamplingParams.newBuilder()
+        .setMaxTokens(16)
+        .build();
+      assertThat(run(noTemperature, null).temperature()).isEqualTo(0.9f);
+    }
   }
 
   // ── Per-step chat_template override ───────────────────────────────────────

@@ -85,12 +85,12 @@ Exactly one of the three template keys may be set; setting two fails the workspa
 
 ### `sampling`
 
-Step values apply only when non-zero. Precedence at request time: request `sampling_params` > a loop's `retry_sampling_params` > the step's `sampling`.
+Step values apply only when non-zero, except `temperature`, where `0` is greedy. Precedence at request time: request `sampling_params` > a loop's `retry_sampling_params` > the step's `sampling`.
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
 | `sampling.max_tokens` | int | engine default | Completion cap; also the reservation `trim_history` keeps free. |
-| `sampling.temperature` | float | engine default | Sampling temperature. |
+| `sampling.temperature` | float | engine default | Sampling temperature; `0` is greedy, a negative value keeps the engine default. |
 | `sampling.top_p` | float | engine default | Nucleus threshold. |
 | `sampling.presence_penalty` | float | `0` | Presence penalty. |
 | `sampling.frequency_penalty` | float | `0` | Frequency penalty. |
