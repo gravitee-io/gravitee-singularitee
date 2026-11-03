@@ -85,7 +85,7 @@ Exactly one of the three template keys may be set; setting two fails the workspa
 
 ### `sampling`
 
-Step values apply only when non-zero. Precedence at request time: request `sampling_params` > a loop's `retry_sampling_params` > the step's `sampling`.
+Step values apply only when non-zero, except `temperature`, where `0` is greedy. Precedence at request time: request `sampling_params` > a loop's `retry_sampling_params` > the step's `sampling`.
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |

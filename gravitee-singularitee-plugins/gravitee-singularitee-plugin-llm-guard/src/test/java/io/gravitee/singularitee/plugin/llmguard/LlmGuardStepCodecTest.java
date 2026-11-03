@@ -142,6 +142,24 @@ class LlmGuardStepCodecTest {
   }
 
   @Test
+  void a_zero_temperature_is_kept_as_greedy_and_a_negative_one_is_dropped() {
+    var greedy = judgeWithSampling(Map.of("temperature", 0));
+    var negative = judgeWithSampling(Map.of("temperature", -1));
+    var unset = judgeWithSampling(Map.of("max_tokens", 8));
+
+    assertThat(greedy.samplingParams().hasTemperature()).isTrue();
+    assertThat(greedy.samplingParams().getTemperature()).isZero();
+    assertThat(negative.samplingParams().hasTemperature()).isFalse();
+    assertThat(unset.samplingParams().hasTemperature()).isFalse();
+  }
+
+  private LlmGuardStepConfig judgeWithSampling(Map<String, Object> sampling) {
+    var raw = judge(null);
+    raw.put("sampling", sampling);
+    return codec.parse("judge", raw, ctx(Map.of(), null));
+  }
+
+  @Test
   void inlineTemplateWinsOverMessages() {
     var cfg = codec.parse(
       "judge",

@@ -77,6 +77,29 @@ class LoopStepCodecTest {
   }
 
   @Test
+  void a_zero_retry_temperature_is_kept_as_greedy_and_a_negative_one_is_dropped() {
+    var greedy = codec.parse("gate", retryWith(Map.of("temperature", 0)), ctx);
+    var negative = codec.parse("gate", retryWith(Map.of("temperature", -1)), ctx);
+    var unset = codec.parse("gate", retryWith(Map.of("max_tokens", 64)), ctx);
+
+    assertThat(greedy.retrySamplingParams().hasTemperature()).isTrue();
+    assertThat(greedy.retrySamplingParams().getTemperature()).isZero();
+    assertThat(negative.retrySamplingParams().hasTemperature()).isFalse();
+    assertThat(unset.retrySamplingParams().hasTemperature()).isFalse();
+  }
+
+  private static Map<String, Object> retryWith(Map<String, Object> retrySamplingParams) {
+    return Map.of(
+      "loopback_step",
+      "generate",
+      "max_iterations",
+      2,
+      "retry_sampling_params",
+      retrySamplingParams
+    );
+  }
+
+  @Test
   void boolean_match_value_maps_to_yes_no() {
     var cfg = codec.parse(
       "gate",

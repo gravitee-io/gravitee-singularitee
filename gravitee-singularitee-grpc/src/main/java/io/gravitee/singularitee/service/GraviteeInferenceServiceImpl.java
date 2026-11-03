@@ -494,7 +494,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
       prompt,
       messages,
       sp.getMaxTokens() > 0 ? sp.getMaxTokens() : null,
-      sp.getTemperature() >= 0 ? sp.getTemperature() : null,
+      sp.hasTemperature() && sp.getTemperature() >= 0 ? sp.getTemperature() : null,
       sp.getTopP() > 0 ? sp.getTopP() : null,
       sp.getPresencePenalty() != 0 ? sp.getPresencePenalty() : null,
       sp.getFrequencyPenalty() != 0 ? sp.getFrequencyPenalty() : null,
