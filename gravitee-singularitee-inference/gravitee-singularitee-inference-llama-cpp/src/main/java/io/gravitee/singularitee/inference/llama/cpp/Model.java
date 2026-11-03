@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -485,7 +486,8 @@ public final class Model implements AutoCloseable {
       reusePrefixTokens = 0;
     }
     PromptStats stats = promptStats(prompt);
-    var sampler = samplerFor(request);
+    int seed = seedFor(request);
+    var sampler = samplerFor(request, seed);
     int promptTokens = stats.promptTokens();
     int contextTokens = stats.contextTokens();
     if (promptTokens >= contextTokens) {
@@ -507,11 +509,15 @@ public final class Model implements AutoCloseable {
     }
 
     if (mtpContext != null) {
-      state.setMtp(mtpContext, speculativeConfigFor(request));
+      state.setMtp(mtpContext, speculativeConfigFor(speculativeConfig, request, seed));
     } else if (draftContext != null) {
-      state.setDraft(draftContext, speculativeConfigFor(request));
+      state.setDraft(draftContext, speculativeConfigFor(speculativeConfig, request, seed));
     } else if (eagle3Context != null) {
-      state.setEagle3(eagle3Context, eagle3Model, speculativeConfigFor(request));
+      state.setEagle3(
+        eagle3Context,
+        eagle3Model,
+        speculativeConfigFor(speculativeConfig, request, seed)
+      );
     }
 
     if (request.stop() != null && !request.stop().isEmpty()) {
@@ -575,12 +581,12 @@ public final class Model implements AutoCloseable {
    * top_p 0.9); under speculative decoding the per-request sampler is bypassed, and defaulting to
    * greedy here makes penalty-free models loop. A request must ask for {@code temperature: 0}
    * explicitly to get greedy decoding. Penalties are not representable under speculative decoding
-   * (rejection sampling is exact only for memoryless samplers) and are silently ignored.
+   * (rejection sampling is exact only for memoryless samplers) and are silently ignored. A
+   * non-zero workspace draft seed is kept only for a request that sets no seed.
    */
-  private SpeculativeConfig speculativeConfigFor(Request request) {
-    var spec = speculativeConfig;
+  static SpeculativeConfig speculativeConfigFor(SpeculativeConfig spec, Request request, int seed) {
     if (spec.temperature() > 0f) {
-      return spec;
+      return spec.seed() != 0 && request.seed() == null ? spec : spec.withSeed(seed);
     }
     float temperature = request.temperature() != null ? request.temperature() : 0.7f;
     if (temperature <= 0f) {
@@ -589,7 +595,14 @@ public final class Model implements AutoCloseable {
     return spec
       .withTemperature(temperature)
       .withTopP(request.topP() != null ? request.topP() : 0.9f)
-      .withSeed(request.seed() != null ? request.seed() : 42);
+      .withSeed(seed);
+  }
+
+  /** The request's seed, or a fresh random one: an unset seed means random on the wire. */
+  static int seedFor(Request request) {
+    return request.seed() != null
+      ? request.seed()
+      : ThreadLocalRandom.current().nextInt(1, Integer.MAX_VALUE);
   }
 
   /**
@@ -599,12 +612,11 @@ public final class Model implements AutoCloseable {
    *
    * @throws UnsupportedStructuredOutputException when the constraint cannot be enforced
    */
-  public LlamaSampler samplerFor(Request request) {
+  public LlamaSampler samplerFor(Request request, int seed) {
     float temperature = request.temperature() != null ? request.temperature() : 0.7f;
     float topP = request.topP() != null ? request.topP() : 0.9f;
     float presencePenalty = request.presencePenalty() != null ? request.presencePenalty() : 0.0f;
     float frequencyPenalty = request.frequencyPenalty() != null ? request.frequencyPenalty() : 0.0f;
-    int seed = request.seed() != null ? request.seed() : 42;
 
     Gbnf gbnf = grammarFor(request);
     var sampler = new LlamaSampler(arena);
@@ -612,7 +624,11 @@ public final class Model implements AutoCloseable {
       sampler.grammar(vocab, gbnf.text(), gbnf.root());
     }
     if (temperature <= 0f) {
-      return sampler.greedy().seed(seed);
+      // No dist sampler after greedy: it would redraw from the softmax and replace the argmax.
+      return sampler.greedy();
+    }
+    if (request.seed() == null) {
+      LOGGER.debug("Request sets no seed, sampling with seed {}", seed);
     }
     return sampler
       .temperature(temperature)

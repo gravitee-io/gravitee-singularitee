@@ -114,7 +114,7 @@ A large MoE model with quantised KV cache (`examples/llama/qwen3.6-35b.yaml`):
 | `temperature` | float | unset | Draft sampling temperature. |
 | `top_k` | int | unset | Draft top-k. |
 | `top_p` | float | `1.0` | Draft top-p. |
-| `seed` | long | unset | Draft sampler seed. |
+| `seed` | long | unset | Draft sampler seed with `temperature` set, used only for a request that sets no seed. Unset, the draft takes the request's seed, or a random one per request. |
 
 ## Notes
 
