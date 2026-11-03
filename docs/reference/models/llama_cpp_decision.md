@@ -116,6 +116,8 @@ Template variables: `id`, `type`, `instructions`, `state`, `options` (each with 
 | `n_seq_max` | int | `8` | Label families: sequences per decider. Sequence 0 holds the prefix the prompts of a request share, so up to `n_seq_max - 1` prompts decode together. `1` disables prefix sharing. |
 | `n_parallel` | int | `1` | Deciders in the pool. Each holds its own context; a request borrows one, further requests queue. |
 | `n_gpu_layers` | int | `999` | Layers offloaded to the GPU. |
+| `n_threads` | int | llama.cpp default (`4`) | CPU threads of each decider to decode a single token; prompts are almost always longer. `0` or negative keeps the default. |
+| `n_threads_batch` | int | llama.cpp default (`4`) | CPU threads of each decider to decode several tokens at once. The one that matters here. `0` or negative keeps the default. |
 | `lora_path` | string | unset | LoRA adapter in the same repository, attached to every decider. |
 
 `as_classifier:` block (`DecisionClassifierDef`):
@@ -140,6 +142,12 @@ refuses a call without labels. Duplicate names, or more labels than `max_options
 
 ## Notes
 
+- **Threads apply to CPU work.** With every layer on the GPU they change little. On CPU, more
+  threads help up to about the performance core count, then latency climbs sharply: spawning one
+  per logical or efficiency core can be slower than the default. Each context has its own threads,
+  so budget across every model in the process, and `n_threads_batch x n_parallel` within a
+  decision model. Measure before settling on a value. Changing a count can move scores slightly
+  and flip a close decision; runs at the same count repeat.
 - **Order.** Questions and options render and answer in request order. `clef` sorts choice
   options by key and decides every question in one joint prompt; `lev` and `clef` sort the keys
   of the template variables; `openjev` and `clef` list noul answers true first. Answers always

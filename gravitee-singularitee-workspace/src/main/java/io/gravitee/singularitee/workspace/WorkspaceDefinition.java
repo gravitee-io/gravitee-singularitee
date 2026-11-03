@@ -314,6 +314,10 @@ public record WorkspaceDefinition(
     @JsonProperty("n_seq_max") int nSeqMax,
     /** {@code n_gpu_layers}: layers offloaded to the GPU; a large value offloads all. */
     @JsonProperty("n_gpu_layers") int nGpuLayers,
+    /** {@code n_threads}: CPU threads to decode a single token. Zero = llama.cpp default. */
+    @JsonProperty("n_threads") int nThreads,
+    /** {@code n_threads_batch}: CPU threads to decode several tokens at once. Zero = llama.cpp default. */
+    @JsonProperty("n_threads_batch") int nThreadsBatch,
     /** {@code pooling_type}: llama.cpp pooling enum name ({@code MEAN}, {@code CLS}, {@code LAST}, {@code RANK}). */
     @JsonProperty("pooling_type") String poolingType,
     /** {@code attention_type}: llama.cpp attention enum name. */
@@ -562,6 +566,10 @@ public record WorkspaceDefinition(
     @JsonProperty("n_parallel") int nParallel,
     /** {@code n_gpu_layers}: layers offloaded to the GPU. Zero = all. */
     @JsonProperty("n_gpu_layers") int nGpuLayers,
+    /** {@code n_threads}: CPU threads to decode a single token. Zero = llama.cpp default. */
+    @JsonProperty("n_threads") int nThreads,
+    /** {@code n_threads_batch}: CPU threads to decode several tokens at once. Zero = llama.cpp default. */
+    @JsonProperty("n_threads_batch") int nThreadsBatch,
     /** {@code lora_path}: LoRA adapter file in the same repository, attached to every decider. */
     @JsonProperty("lora_path") String loraPath,
     /** {@code as_classifier}: a choice question that also publishes the model as a classifier. */

@@ -81,6 +81,8 @@ A large MoE model with quantised KV cache (`examples/llama/qwen3.6-35b.yaml`):
 | `n_ubatch` | int | `512` | Physical micro-batch size. |
 | `n_seq_max` | int | `8` | Parallel sequences (slots). KV memory is `n_ctx x n_seq_max`. |
 | `n_gpu_layers` | int | `999` | Layers offloaded to the GPU; `999` means all. |
+| `n_threads` | int | llama.cpp default (`4`) | CPU threads to decode a single token: generating for one sequence. Also sizes the multimodal projector when set. `0` or negative keeps the default. |
+| `n_threads_batch` | int | llama.cpp default (`4`) | CPU threads to decode several tokens at once: prompt processing and generating for several sequences. `0` or negative keeps the default. |
 | `pooling_type` | string | `UNSPECIFIED` | `NONE`, `MEAN`, `CLS`, `LAST`, `RANK`. Leave unset for generation. Unknown values fall back to `UNSPECIFIED`. |
 | `attention_type` | string | `UNSPECIFIED` | `CAUSAL` or `NON_CAUSAL`. |
 | `flash_attn_type` | string | `AUTO` | `AUTO`, `ENABLED`, `DISABLED`. Quantised V cache needs `ENABLED`. |
@@ -116,6 +118,11 @@ A large MoE model with quantised KV cache (`examples/llama/qwen3.6-35b.yaml`):
 
 ## Notes
 
+- **Threads apply to CPU work.** With every layer on the GPU they change little. On CPU, more
+  threads help up to about the performance core count, then latency climbs sharply: spawning one
+  per logical or efficiency core can be slower than the default. Each context has its own threads,
+  so budget across every model in the process. Measure before settling on a value. Changing a
+  count can change generated text, even at `temperature: 0`; runs at the same count repeat.
 - **Memory is `n_ctx x n_seq_max`, plus the weights.** `n_ctx` is per sequence. A 30B MoE at
   `131072 x 2` does not fit a 36 GB machine where the same model at `131072 x 1` does. When
   a model will not load, lower `n_seq_max` before blaming the quantisation. `memory_check`
@@ -143,7 +150,7 @@ A large MoE model with quantised KV cache (`examples/llama/qwen3.6-35b.yaml`):
   `flash_attn_type`, `cache_type_k/v` silently falls back to the default rather than failing.
 - **Platforms.** llamaj.cpp ships natives for macOS/Apple Silicon (Metal) and Linux/x86_64
   (CPU and CUDA), installed by `install.sh` into `~/.llama.cpp`. Keep `LLAMACPP_VERSION` in
-  step with the llamaj.cpp version (`v0.6.0` with `2.9.1`); a mismatch is a
+  step with the llamaj.cpp version (`v0.6.0` with `2.10.1`); a mismatch is a
   `NoSuchMethodError` at runtime.
 - **The raw model returns the raw stream.** Channel markers and tool-call tags are parsed by
   the `infer` step's `tags:`; call a pipeline id for client-facing traffic.
