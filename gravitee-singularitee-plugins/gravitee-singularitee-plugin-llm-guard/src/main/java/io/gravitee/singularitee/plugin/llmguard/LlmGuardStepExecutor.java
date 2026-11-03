@@ -333,7 +333,9 @@ public final class LlmGuardStepExecutor
     SamplingParams sp = cfg.samplingParams();
 
     int maxTokens = sp.getMaxTokens() > 0 ? sp.getMaxTokens() : DEFAULT_MAX_TOKENS;
-    Float temperature = sp.getTemperature() > 0 ? sp.getTemperature() : null;
+    Float temperature = sp.hasTemperature() && sp.getTemperature() >= 0
+      ? sp.getTemperature()
+      : null;
     Float topP = sp.getTopP() > 0 ? sp.getTopP() : null;
 
     return new TextGenRequest(

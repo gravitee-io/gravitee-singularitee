@@ -622,7 +622,7 @@ public final class PipelineContext {
     if (sp == null) return;
     StringBuilder parts = new StringBuilder();
     if (sp.getMaxTokens() > 0) appendPart(parts, "max_tokens=" + sp.getMaxTokens());
-    if (sp.getTemperature() > 0) appendPart(parts, "temperature=" + sp.getTemperature());
+    if (sp.hasTemperature()) appendPart(parts, "temperature=" + sp.getTemperature());
     if (sp.getTopP() > 0) appendPart(parts, "top_p=" + sp.getTopP());
     if (sp.getPresencePenalty() != 0) appendPart(
       parts,

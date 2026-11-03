@@ -191,7 +191,9 @@ public final class InferStepCodec implements StepConfigCodec<InferStepConfig> {
     var sp = SamplingParams.newBuilder();
     if (sampling != null) {
       if (sampling.maxTokens() > 0) sp.setMaxTokens(sampling.maxTokens());
-      if (sampling.temperature() > 0) sp.setTemperature(sampling.temperature());
+      if (sampling.temperature() != null && sampling.temperature() >= 0) sp.setTemperature(
+        sampling.temperature()
+      );
       if (sampling.topP() > 0) sp.setTopP(sampling.topP());
       if (sampling.presencePenalty() != 0) sp.setPresencePenalty(sampling.presencePenalty());
       if (sampling.frequencyPenalty() != 0) sp.setFrequencyPenalty(sampling.frequencyPenalty());
@@ -238,11 +240,11 @@ public final class InferStepCodec implements StepConfigCodec<InferStepConfig> {
     @JsonProperty("template_id") String templateId
   ) {}
 
-  /** The {@code sampling:} block. Zero leaves the engine default in place. */
+  /** The {@code sampling:} block. Zero leaves the engine default in place; a temperature of 0 is greedy. */
   @JsonIgnoreProperties(ignoreUnknown = true)
   private record SamplingYaml(
     @JsonProperty("max_tokens") int maxTokens,
-    @JsonProperty("temperature") float temperature,
+    @JsonProperty("temperature") Float temperature,
     @JsonProperty("top_p") float topP,
     @JsonProperty("presence_penalty") float presencePenalty,
     @JsonProperty("frequency_penalty") float frequencyPenalty,

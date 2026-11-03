@@ -74,13 +74,9 @@ final class TextGenRequestFactory {
   ) {
     var stepSp = stepSamplingParams(cfg);
 
-    float temperature = pickFloat(
-      requestOverrides != null ? requestOverrides.getTemperature() : 0,
-      pickFloat(
-        retryOverrides != null ? retryOverrides.getTemperature() : 0,
-        stepSp.getTemperature()
-      )
-    );
+    Float temperature = temperatureOf(requestOverrides);
+    if (temperature == null) temperature = temperatureOf(retryOverrides);
+    if (temperature == null) temperature = temperatureOf(stepSp);
     float topP = pickFloat(
       requestOverrides != null ? requestOverrides.getTopP() : 0,
       pickFloat(retryOverrides != null ? retryOverrides.getTopP() : 0, stepSp.getTopP())
@@ -113,7 +109,7 @@ final class TextGenRequestFactory {
       // (engine-side rendering) when prompt is null.
       wireMessages,
       maxTokens > 0 ? maxTokens : null,
-      temperature > 0 ? temperature : null,
+      temperature,
       topP > 0 ? topP : null,
       presencePenalty != 0 ? presencePenalty : null,
       frequencyPenalty != 0 ? frequencyPenalty : null,
@@ -190,6 +186,12 @@ final class TextGenRequestFactory {
 
   private static int pick(int override, int fallback) {
     return override > 0 ? override : fallback;
+  }
+
+  private static Float temperatureOf(SamplingParams sp) {
+    return sp != null && sp.hasTemperature() && sp.getTemperature() >= 0
+      ? sp.getTemperature()
+      : null;
   }
 
   private static float pickFloat(float override, float fallback) {

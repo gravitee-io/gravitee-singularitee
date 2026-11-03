@@ -340,6 +340,7 @@ grpcurl -cacert certs/ca.pem -import-path $PROTO -proto io/gravitee/singularitee
 - `grpc.auth.enabled: true` with an empty `grpc.auth.users` fails startup.
 - Sampling zero-values mean "engine default" (`max_tokens: 0`, `top_p: 0`, `seed: 0` = random);
   `temperature` uses a negative value for the engine default because `0` is valid greedy decoding.
+  It is `optional`: unset keeps the step's value on a pipeline and is read as `0` on a raw `Infer` call.
 - `TokenUsage` has no `total_tokens` (tag 5 is reserved); sum `prompt_tokens` and `completion_tokens`.
 - `Infer` against a bare model returns raw tokens. Dialect handling (channel markers, tool tags)
   lives in the pipeline step's `tags:`; call the pipeline for client-facing traffic.

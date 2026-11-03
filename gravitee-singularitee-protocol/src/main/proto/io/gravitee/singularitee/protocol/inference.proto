@@ -508,8 +508,9 @@ enum MediaType {
 message SamplingParams {
   // Maximum tokens to generate. 0 = engine default.
   int32 max_tokens        = 1;
-  // Temperature. Negative = engine default.
-  float temperature       = 2;
+  // Temperature. 0 = greedy, negative = engine default. Unset is the engine default
+  // on a pipeline, and 0 on a raw Infer call.
+  optional float temperature = 2;
   // Nucleus sampling threshold. 0 = engine default.
   float top_p             = 3;
   float presence_penalty  = 4;
