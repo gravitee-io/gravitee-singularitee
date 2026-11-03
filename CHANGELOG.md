@@ -1,3 +1,10 @@
+## [1.10.2](https://github.com/gravitee-io/gravitee-singularitee/compare/1.10.1...1.10.2) (2026-11-03)
+
+
+### Bug Fixes
+
+* draw a random seed per llama.cpp request when none is set ([#21](https://github.com/gravitee-io/gravitee-singularitee/issues/21)) ([1de3280](https://github.com/gravitee-io/gravitee-singularitee/commit/1de328024116ec204186e1def6ddcdf261116968))
+
 ## [1.10.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.10.0...1.10.1) (2026-11-03)
 
 
