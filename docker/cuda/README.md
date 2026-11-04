@@ -57,7 +57,7 @@ grep -o '<llama.cpp.version>[^<]*' \
 # <llama.cpp.version>v0.6.0  ->  LLAMACPP_VERSION=v0.6.0
 ```
 
-(`llamaj.cpp 2.10.1` -> `v0.6.0`.)
+(`llamaj.cpp 2.11.0` -> `v0.6.0`.)
 
 ## Build
 

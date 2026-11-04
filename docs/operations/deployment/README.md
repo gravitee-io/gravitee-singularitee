@@ -121,7 +121,7 @@ workspace:
 | `UBUNTU_VERSION` | `24.04` | `*-cuda` | Ubuntu base release. |
 | `TEMURIN_APT_CODENAME` | `noble` | `onnx-cuda`, `llamacpp-cuda` | Adoptium repository codename for the JDK. |
 | `LLAMA_LIBS_IMAGE` | `llama-cpp-cuda:local` | `llamacpp-cuda` | Image holding the prebuilt llama.cpp CUDA libraries. |
-| `LLAMACPP_VERSION` | `v0.6.0` | `llama-cuda` | llama.cpp tag to compile. Must match the llamaj.cpp binding (`2.10.1`). |
+| `LLAMACPP_VERSION` | `v0.6.0` | `llama-cuda` | llama.cpp tag to compile. Must match the llamaj.cpp binding (`2.11.0`). |
 | `CUDA_ARCHITECTURES` | `70-real;...;121-real;90-virtual` | `llama-cuda` | Target GPU architectures. Trim to the cards you deploy for a faster build. |
 | `VLLM_IMAGE` | `vllm/vllm-openai:v0.31.0-cu129` | `vllm-cuda` | Base image. Keep its vLLM version equal to `scripts/setup-venv.sh`'s `VLLM_VERSION`. The `cu129` tag runs on driver r525+; the default CUDA 13 tags need r580+. |
 | `BAKE_MODEL` | unset | `vllm-cuda` | HuggingFace repo to download into the image. |
@@ -166,7 +166,7 @@ llama.cpp twin is several times faster on the same machine.
 - One model per process and GPU. llama.cpp, vLLM and ONNX Runtime each load their own native CUDA libraries; several engines or several large models in one JVM compete for GPU memory and can conflict on library versions. Give each its own process and compose them with `remote_*` models.
 - Weights are not in the images (unless `BAKE_MODEL` is set). They download on first boot into `GRAVITEE_AI_MODELS_PATH`; persist that directory.
 - Each image serves only its own engine. A workspace naming another engine's type fails at load with "no factory for type".
-- Keep `LLAMACPP_VERSION` and the llamaj.cpp dependency in lockstep (`v0.6.0` with `2.10.1`). The FFM bindings are ABI-specific; a mismatch is a runtime `NoSuchMethodError`. `docker/cuda/README.md` shows how to read the pinned build out of the llamaj.cpp jar.
+- Keep `LLAMACPP_VERSION` and the llamaj.cpp dependency in lockstep (`v0.6.0` with `2.11.0`). The FFM bindings are ABI-specific; a mismatch is a runtime `NoSuchMethodError`. `docker/cuda/README.md` shows how to read the pinned build out of the llamaj.cpp jar.
 - Keep `VLLM_IMAGE` and `scripts/setup-venv.sh`'s `VLLM_VERSION` equal (`0.31.0`), and `SR_RUNTIME_REF` equal in both (the `vllm-srun` commit `vllm_decision` runs on). vLLM4j is compiled against one vLLM Python API and fails at model load, not at build, when they drift.
 - Images run as `graviteeio` with the install read-only to it: code, plugins, native libraries and scripts are owned by root, and only `logs/`, `models/`, `plugins/.work` (re-extracted on every start) and `HOME` (`/home/graviteeio` on the CUDA images, for kernel and Python caches) are writable, owned by `graviteeio` and group `root` so an arbitrary runtime uid in group `root` works too. Mounted volumes for `models/` must be writable by that uid; otherwise the CUDA entrypoint falls back to a private, non-persistent temporary directory.
 - The management API keeps a default `admin:adminadmin` and binds to `localhost`; a non-loopback `services.core.http.host` with that password logs a warning at startup. Set `services.core.http.authentication.users.admin` before exposing it.
