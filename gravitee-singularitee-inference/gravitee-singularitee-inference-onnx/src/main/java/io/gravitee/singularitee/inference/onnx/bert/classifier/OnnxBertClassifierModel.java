@@ -125,13 +125,15 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
    */
   private ClassifierResults perSplitRows(List<ClassifierResults> perChunk, List<Chunk> chunks) {
     List<ClassifierResult> rows = new ArrayList<>();
+    int tokens = 0;
     for (int i = 0; i < chunks.size(); i++) {
       Chunk chunk = chunks.get(i);
+      tokens += perChunk.get(i).inputTokens();
       for (ClassifierResult r : perChunk.get(i).results()) {
         rows.add(new ClassifierResult(r.label(), r.score(), null, chunk.start(), chunk.end()));
       }
     }
-    return new ClassifierResults(rows);
+    return new ClassifierResults(rows, tokens);
   }
 
   /**
@@ -178,8 +180,10 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
     List<Chunk> chunks
   ) {
     List<ClassifierResult> rows = new ArrayList<>();
+    int tokens = 0;
     for (int i = 0; i < chunks.size(); i++) {
       int offset = chunks.get(i).start();
+      tokens += perChunk.get(i).inputTokens();
       for (ClassifierResult r : perChunk.get(i).results()) {
         rows.add(
           new ClassifierResult(
@@ -192,7 +196,7 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
         );
       }
     }
-    return new ClassifierResults(rows);
+    return new ClassifierResults(rows, tokens);
   }
 
   private List<ClassifierResults> getTokenResults(EncodingResults encodingResult) {
@@ -220,7 +224,7 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
             result.add(classifierResult);
           }
         }
-        results.add(new ClassifierResults(result));
+        results.add(new ClassifierResults(result, encoding.getIds().length));
       }
 
       return results;
@@ -254,7 +258,12 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
       SequenceInput input = this.getSequenceInput(result.get(0));
       var results = new ArrayList<ClassifierResults>(input.batchSize());
       for (int i = 0; i < input.batchSize(); i++) {
-        results.add(new ClassifierResults(computeSequenceProb(input.logits()[i])));
+        results.add(
+          new ClassifierResults(
+            computeSequenceProb(input.logits()[i]),
+            encodingResult.encoding().get(i).getIds().length
+          )
+        );
       }
       return results;
     }

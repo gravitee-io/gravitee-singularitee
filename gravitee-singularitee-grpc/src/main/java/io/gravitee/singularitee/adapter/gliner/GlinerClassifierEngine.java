@@ -17,6 +17,7 @@ package io.gravitee.singularitee.adapter.gliner;
 
 import io.gravitee.lab.gliner4j.GLiNER4jClassifier;
 import io.gravitee.lab.gliner4j.schema.ClassificationLabel;
+import io.gravitee.lab.gliner4j.schema.ClassificationOutput;
 import io.gravitee.lab.gliner4j.schema.ClassificationResult;
 import io.gravitee.singularitee.adapter.BlockingEngineAdapter;
 import io.gravitee.singularitee.adapter.batching.MicroBatcher;
@@ -65,7 +66,7 @@ public final class GlinerClassifierEngine
    * {@code classifyBatch} GPU run. gliner4j's {@code classifyBatch} takes no per-request label list,
    * so custom-label requests can't batch.
    */
-  private final MicroBatcher<String, List<ClassificationResult>> batcher;
+  private final MicroBatcher<String, ClassificationOutput> batcher;
 
   GlinerClassifierEngine(
     GLiNER4jClassifier delegate,
@@ -79,7 +80,7 @@ public final class GlinerClassifierEngine
     this.tokenCap = tokenCap;
     this.configLabelNames = configLabelNames == null ? List.of() : configLabelNames;
     this.batcher = GlinerBatching.CONFIG.newBatcher("gliner-classifier", texts ->
-      delegate.classifyBatch(texts, effectiveThreshold)
+      delegate.classifyBatchWithUsage(texts, effectiveThreshold)
     );
   }
 
@@ -131,7 +132,7 @@ public final class GlinerClassifierEngine
   private Single<ClassifyResponse> rxClassifyBatched(String text, List<String> labelNames) {
     if (text == null || text.isBlank()) {
       return Single.just(
-        GlinerChunking.classifierResponse(new LinkedHashMap<>(), new ArrayList<>())
+        GlinerChunking.classifierResponse(new LinkedHashMap<>(), new ArrayList<>(), 0)
       );
     }
     return Single.defer(() -> {
@@ -147,7 +148,7 @@ public final class GlinerClassifierEngine
         perChunk.add(
           Single.fromCompletionStage(
             batcher.submit(chunk.text(), GlinerChunking.estimateTokens(chunk.text()))
-          ).map(results -> new ChunkScores(chunk, results))
+          ).map(output -> new ChunkScores(chunk, output))
         );
       }
       return Single.zip(perChunk, GlinerClassifierEngine::assembleScores);
@@ -158,22 +159,21 @@ public final class GlinerClassifierEngine
   private static ClassifyResponse assembleScores(Object[] chunkResults) {
     List<ClassifyResult> rows = new ArrayList<>();
     Map<String, Float> maxByLabel = new LinkedHashMap<>();
+    int tokens = 0;
     for (Object o : chunkResults) {
       ChunkScores cs = (ChunkScores) o;
-      for (ClassificationResult r : cs.results()) {
+      tokens += cs.output().inputTokens();
+      for (ClassificationResult r : cs.output().results()) {
         rows.add(
           new ClassifyResult(r.label(), r.confidence(), null, cs.chunk().start(), cs.chunk().end())
         );
         maxByLabel.merge(r.label(), r.confidence(), Math::max);
       }
     }
-    return GlinerChunking.classifierResponse(maxByLabel, rows);
+    return GlinerChunking.classifierResponse(maxByLabel, rows, tokens);
   }
 
-  private record ChunkScores(
-    RecursiveTextSplitter.Chunk chunk,
-    List<ClassificationResult> results
-  ) {}
+  private record ChunkScores(RecursiveTextSplitter.Chunk chunk, ClassificationOutput output) {}
 
   /**
    * Splits {@code text} to fit the encoder window (budget = tokenCap minus estimated label prompt),
@@ -194,19 +194,21 @@ public final class GlinerClassifierEngine
     );
     List<ClassifyResult> rows = new ArrayList<>();
     Map<String, Float> maxByLabel = new LinkedHashMap<>();
+    int tokens = 0;
     for (RecursiveTextSplitter.Chunk chunk : chunks) {
-      List<ClassificationResult> results = delegate.classify(
+      ClassificationOutput output = delegate.classifyWithUsage(
         chunk.text(),
         labels,
         effectiveThreshold
       );
-      for (ClassificationResult r : results) {
+      tokens += output.inputTokens();
+      for (ClassificationResult r : output.results()) {
         // one row per (label, chunk), tagged with the chunk's char span so the per-chunk
         // classifications stay visible in the response (not just the max-per-label rollup).
         rows.add(new ClassifyResult(r.label(), r.confidence(), null, chunk.start(), chunk.end()));
         maxByLabel.merge(r.label(), r.confidence(), Math::max);
       }
     }
-    return GlinerChunking.classifierResponse(maxByLabel, rows);
+    return GlinerChunking.classifierResponse(maxByLabel, rows, tokens);
   }
 }

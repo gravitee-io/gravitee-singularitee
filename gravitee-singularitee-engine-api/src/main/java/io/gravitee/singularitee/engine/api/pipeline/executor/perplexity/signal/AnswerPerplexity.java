@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal;
 
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
+import java.util.OptionalDouble;
 
 /**
  * Perplexity over the answer tokens alone; falls back to the whole generation when no answer tokens
@@ -32,5 +33,11 @@ public final class AnswerPerplexity implements ConfidenceSignal {
     return c.answer().isEmpty()
       ? ConfidenceSignal.perplexity(c.chosen())
       : ConfidenceSignal.perplexity(c.answer());
+  }
+
+  /** A perplexity: its inverse. */
+  @Override
+  public OptionalDouble confidence(double value) {
+    return ConfidenceSignal.inversePerplexity(value);
   }
 }

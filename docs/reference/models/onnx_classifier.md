@@ -64,6 +64,9 @@ Sequence-level with an explicit label list (`examples/classifier/toxicity-bert.y
 
 ## Notes
 
+- **Usage.** Each response reports `usage.prompt_tokens`, the tokenizer ids the graph read
+  (special tokens included), summed over the chunks of a split input; `completion_tokens` is
+  always 0.
 - **`TOKEN` mode is NER.** There is no separate NER value; token mode returns `start`/`end`
   character spans and the engine's task becomes `token-classification`.
 - **What gets downloaded.** `OnnxModelResolver` fetches `model_path` together with every

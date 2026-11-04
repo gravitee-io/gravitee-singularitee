@@ -28,9 +28,11 @@ import static org.mockito.Mockito.when;
 
 import io.gravitee.lab.gliner4j.GLiNER4jClassifier;
 import io.gravitee.lab.gliner4j.schema.ClassificationLabel;
+import io.gravitee.lab.gliner4j.schema.ClassificationOutput;
 import io.gravitee.lab.gliner4j.schema.ClassificationResult;
 import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
+import io.gravitee.singularitee.engine.api.ClassifyUsage;
 import io.vertx.rxjava3.core.Vertx;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,8 +72,8 @@ class GlinerClassifierEngineTest {
   @Test
   void per_request_labels_reach_the_label_aware_overload_when_no_labels_configured() {
     var delegate = mock(GLiNER4jClassifier.class);
-    when(delegate.classify(anyString(), anyList(), anyFloat())).thenReturn(
-      List.of(new ClassificationResult("browse_catalog", 0.91f))
+    when(delegate.classifyWithUsage(anyString(), anyList(), anyFloat())).thenReturn(
+      new ClassificationOutput(List.of(new ClassificationResult("browse_catalog", 0.91f)), 9)
     );
 
     var labels = List.of(
@@ -86,24 +88,25 @@ class GlinerClassifierEngineTest {
 
     assertThat(response.topLabel()).isEqualTo("browse_catalog");
     assertThat(response.topScore()).isEqualTo(0.91f);
+    assertThat(response.usage()).isEqualTo(new ClassifyUsage(9, 0));
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<ClassificationLabel>> captor = ArgumentCaptor.forClass(List.class);
-    verify(delegate).classify(anyString(), captor.capture(), eq(THRESHOLD));
+    verify(delegate).classifyWithUsage(anyString(), captor.capture(), eq(THRESHOLD));
     assertThat(captor.getValue())
       .extracting(ClassificationLabel::name)
       .containsExactly("browse_catalog", "place_order", "account_help");
     // Custom labels can't be batched: the single-call overload is used, never classifyBatch.
-    verify(delegate, never()).classify(anyString(), anyFloat());
-    verify(delegate, never()).classifyBatch(anyList(), anyFloat());
+    verify(delegate, never()).classifyWithUsage(anyString(), anyFloat());
+    verify(delegate, never()).classifyBatchWithUsage(anyList(), anyFloat());
   }
 
   @Test
   void empty_per_request_labels_fall_back_to_the_configured_labels_via_batch() {
     var delegate = mock(GLiNER4jClassifier.class);
     // Default-schema path now goes through the batched overload.
-    when(delegate.classifyBatch(anyList(), anyFloat())).thenReturn(
-      List.of(List.of(new ClassificationResult("toxicity", 0.8f)))
+    when(delegate.classifyBatchWithUsage(anyList(), anyFloat())).thenReturn(
+      List.of(new ClassificationOutput(List.of(new ClassificationResult("toxicity", 0.8f)), 4))
     );
 
     var response = engine(delegate, List.of("toxicity", "safe"))
@@ -111,9 +114,9 @@ class GlinerClassifierEngineTest {
       .blockingGet();
 
     assertThat(response.topLabel()).isEqualTo("toxicity");
-    verify(delegate).classifyBatch(anyList(), eq(THRESHOLD));
-    verify(delegate, never()).classify(anyString(), anyFloat());
-    verify(delegate, never()).classify(anyString(), anyList(), anyFloat());
+    verify(delegate).classifyBatchWithUsage(anyList(), eq(THRESHOLD));
+    verify(delegate, never()).classifyWithUsage(anyString(), anyFloat());
+    verify(delegate, never()).classifyWithUsage(anyString(), anyList(), anyFloat());
   }
 
   @Test
@@ -125,8 +128,8 @@ class GlinerClassifierEngineTest {
       .blockingGet();
 
     assertThat(response.results()).isEmpty();
-    verify(delegate, never()).classifyBatch(anyList(), anyFloat());
-    verify(delegate, never()).classify(anyString(), anyFloat());
+    verify(delegate, never()).classifyBatchWithUsage(anyList(), anyFloat());
+    verify(delegate, never()).classifyWithUsage(anyString(), anyFloat());
   }
 
   /**
@@ -138,11 +141,16 @@ class GlinerClassifierEngineTest {
   void large_input_aggregates_scores_across_multiple_batches() {
     var delegate = mock(GLiNER4jClassifier.class);
     // Score the label by chunk length so the max lands on a deterministic (the longest) chunk.
-    when(delegate.classifyBatch(anyList(), anyFloat())).thenAnswer(inv -> {
+    when(delegate.classifyBatchWithUsage(anyList(), anyFloat())).thenAnswer(inv -> {
       List<String> texts = inv.getArgument(0);
-      List<List<ClassificationResult>> out = new ArrayList<>(texts.size());
+      List<ClassificationOutput> out = new ArrayList<>(texts.size());
       for (String t : texts) {
-        out.add(List.of(new ClassificationResult("toxicity", scoreFor(t))));
+        out.add(
+          new ClassificationOutput(
+            List.of(new ClassificationResult("toxicity", scoreFor(t))),
+            t.length()
+          )
+        );
       }
       return out;
     });
@@ -175,8 +183,17 @@ class GlinerClassifierEngineTest {
     assertThat(response.topScore()).isEqualTo(expectedMax);
     assertThat(response.allScores().get("toxicity")).isEqualTo(expectedMax);
     assertThat(response.results()).hasSize(chunks.size());
+    assertThat(response.usage()).isEqualTo(
+      new ClassifyUsage(
+        chunks
+          .stream()
+          .mapToInt(c -> c.text().length())
+          .sum(),
+        0
+      )
+    );
 
-    verify(delegate, atLeast(2)).classifyBatch(anyList(), eq(THRESHOLD));
+    verify(delegate, atLeast(2)).classifyBatchWithUsage(anyList(), eq(THRESHOLD));
   }
 
   private static float scoreFor(String text) {

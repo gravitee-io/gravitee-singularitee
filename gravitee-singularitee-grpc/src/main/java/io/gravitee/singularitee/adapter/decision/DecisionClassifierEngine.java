@@ -19,6 +19,7 @@ import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.ClassifyResponse;
 import io.gravitee.singularitee.engine.api.ClassifyResult;
+import io.gravitee.singularitee.engine.api.ClassifyUsage;
 import io.gravitee.singularitee.engine.api.DecisionEngine;
 import io.gravitee.singularitee.engine.api.ModelEngineType;
 import io.gravitee.singularitee.engine.api.ModelTasks;
@@ -200,7 +201,8 @@ public final class DecisionClassifierEngine
           ranked
             .stream()
             .map(p -> new ClassifyResult(p.key(), (float) p.probability()))
-            .toList()
+            .toList(),
+          new ClassifyUsage(result.inputTokens(), 0)
         );
       });
   }

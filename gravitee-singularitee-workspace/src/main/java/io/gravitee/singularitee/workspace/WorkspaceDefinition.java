@@ -253,6 +253,8 @@ public record WorkspaceDefinition(
     @JsonProperty("regex") RegexDef regex,
     /** {@code composite_classifier}: member models for {@code type: composite_classifier}. */
     @JsonProperty("composite_classifier") CompositeClassifierDef compositeClassifier,
+    /** {@code llm_token_classifier}: generating model and prompt for {@code type: llm_token_classifier}. */
+    @JsonProperty("llm_token_classifier") LlmTokenClassifierDef llmTokenClassifier,
     /** {@code onnx_reranker}: engine block for {@code type: onnx_reranker}. */
     @JsonProperty("onnx_reranker") OnnxRerankerDef onnxReranker,
     /** {@code llama_cpp_embedding}: engine block for {@code type: llama_cpp_embedding}. */
@@ -741,6 +743,62 @@ public record WorkspaceDefinition(
      * composite, or any remote/ONNX/GLiNER classifier).
      */
     @JsonProperty("models") List<String> models
+  ) {}
+
+  /**
+   * The {@code llm_token_classifier:} block: a client-local token classifier that asks a
+   * text-generation model of the workspace to list the entities in each input, each a label and
+   * a value copied from the input (by default {@code {"spans":[{"label":"...","text":"..."}]}},
+   * see {@link LlmAnswerDef}), and places them back into the input.
+   */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record LlmTokenClassifierDef(
+    /** {@code model_id}: id of a text-generation model ({@code llama_cpp}, {@code vllm}, {@code remote_llm}). Required. */
+    @JsonProperty("model_id") String modelId,
+    /** {@code system_prompt}: system turn sent before every input, usually the prompt the model was trained with. */
+    @JsonProperty("system_prompt") String systemPrompt,
+    /** {@code labels}: labels kept from the answer. Unset = every label the model emits. */
+    @JsonProperty("labels") List<String> labels,
+    /** {@code max_tokens}: answer budget in tokens. Unset = 1024. */
+    @JsonProperty("max_tokens") Integer maxTokens,
+    /** {@code context}: chat-template variables, e.g. {@code enable_thinking: false}. */
+    @JsonProperty("context") Map<String, Object> context,
+    /** {@code chunk_tokens}: estimated tokens per request before the input is split; {@code 0} never splits. Unset = 1024. */
+    @JsonProperty("chunk_tokens") Integer chunkTokens,
+    /**
+     * {@code repeat_min_length}: a found value at least this long is also marked at its other
+     * whole-word occurrences; {@code 0} disables. Unset = 4.
+     */
+    @JsonProperty("repeat_min_length") Integer repeatMinLength,
+    /**
+     * {@code score}: confidence signal scoring each span from its tokens' log-probabilities,
+     * e.g. {@code max_token_perplexity}; {@code none} scores every span 1.0. Unset =
+     * {@code max_entropy}.
+     */
+    @JsonProperty("score") String score,
+    /** {@code answer}: where the answer keeps its items, labels and values. Unset = {@code {"spans":[{"label","text"}]}}. */
+    @JsonProperty("answer") LlmAnswerDef answer,
+    /**
+     * {@code structured_output}: constrain decoding to the JSON schema of {@code answer}, so the
+     * model can only write items the classifier reads. Unset = {@code true}.
+     */
+    @JsonProperty("structured_output") Boolean structuredOutput
+  ) {}
+
+  /**
+   * The {@code answer:} block of {@code llm_token_classifier}: the JSON shape the model answers
+   * in. Each unset key keeps its default.
+   */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record LlmAnswerDef(
+    /** {@code spans}: key of the items array in the answer object; {@code ""} when the answer is the array itself. Unset = {@code spans}. */
+    @JsonProperty("spans") String spans,
+    /** {@code label}: field of an item holding its label. Unset = {@code label}. */
+    @JsonProperty("label") String label,
+    /** {@code text}: field of an item holding the value copied from the input. Unset = {@code text}. */
+    @JsonProperty("text") String text,
+    /** {@code metadata}: other string fields an item may carry, such as {@code ref}, declared in the schema. */
+    @JsonProperty("metadata") List<String> metadata
   ) {}
 
   // ── Pipeline ──────────────────────────────────────────────────────────────

@@ -20,7 +20,16 @@ import java.util.Collection;
 /**
  * All labels a classifier produced for one input.
  *
+ * @param results      the labels, with their spans for token classification
+ * @param inputTokens  tokens the model read for the input, special tokens included; {@code 0}
+ *                     when not counted
+ *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public record ClassifierResults(Collection<ClassifierResult> results) {}
+public record ClassifierResults(Collection<ClassifierResult> results, int inputTokens) {
+  /** Results whose tokens were not counted. */
+  public ClassifierResults(Collection<ClassifierResult> results) {
+    this(results, 0);
+  }
+}

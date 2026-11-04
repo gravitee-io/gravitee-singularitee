@@ -21,7 +21,7 @@ One page per model type, one page per step type, one page for templates, one for
 
 | Page | Contents |
 | --- | --- |
-| [Model types](./reference/models/README.md) | `llama_cpp`, `vllm`, `onnx_classifier`, `onnx_embedding`, `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker`, [`llama_cpp_decision`](./reference/models/llama_cpp_decision.md), [`vllm_decision`](./reference/models/vllm_decision.md), [`gliner_decision`](./reference/models/gliner_decision.md), `remote_*` (including [`remote_decision`](./reference/models/remote_decision.md)), `regex`, `composite_classifier`. |
+| [Model types](./reference/models/README.md) | `llama_cpp`, `vllm`, `onnx_classifier`, `onnx_embedding`, `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker`, [`llama_cpp_decision`](./reference/models/llama_cpp_decision.md), [`vllm_decision`](./reference/models/vllm_decision.md), [`gliner_decision`](./reference/models/gliner_decision.md), `remote_*` (including [`remote_decision`](./reference/models/remote_decision.md)), `regex`, `composite_classifier`, [`llm_token_classifier`](./reference/models/llm_token_classifier.md). |
 | [Step types](./reference/steps/README.md) | `infer`, `classify`, `embed`, `route`, `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`, [`decide`](./reference/steps/decide.md). |
 | [Templates](./reference/templates/README.md) | The `templates:` section, Jinja variables, chat and tool-extraction templates. |
 | [Context fields](./reference/context-fields.md) | Every key a step reads from or writes to the pipeline context. |
@@ -42,7 +42,7 @@ One page per model type, one page per step type, one page for templates, one for
 | Guide | What you will build |
 | --- | --- |
 | [Text generation](./guides/text-generation/README.md) | Stream tokens from a model or a pipeline, with sampling, stop strings and reasoning tags. |
-| [Classification](./guides/classification/README.md) | Sequence, token and zero-shot classification; regex and composite classifiers. |
+| [Classification](./guides/classification/README.md) | Sequence, token and zero-shot classification; regex, generative span and composite classifiers. |
 | [Embeddings and reranking](./guides/embeddings-and-reranking/README.md) | Vectors, cross-encoder reranking, similarity. |
 | [Guards and redaction](./guides/guards-and-redaction/README.md) | Reject, warn or redact input with classifier, LLM-as-judge or regex guards. |
 | [Routing](./guides/routing/README.md) | Branch on a label, on embedding similarity, on an LLM's structured answer, or on a decision. |

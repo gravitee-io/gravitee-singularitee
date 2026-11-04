@@ -48,6 +48,7 @@ includes exactly one of them.
 | `gliner_decision` | decision model (a GLiNER2 bundle such as GLiNER2.5-Decide, one classification task per question) | GLiNER (gliner4j on llama.cpp or ONNX Runtime) | `decision` | [gliner_decision](../reference/models/gliner_decision.md) |
 | `regex` | token classifier, pure Java | none (in-process) | `token-classification` | [regex](../reference/models/regex.md) |
 | `composite_classifier` | union of classifiers, pure Java | none (in-process) | widest of its members | [composite_classifier](../reference/models/composite_classifier.md) |
+| `llm_token_classifier` | token classifier over a generative model, pure Java | the generating model's (in-process wrapper) | `token-classification` | [llm_token_classifier](../reference/models/llm_token_classifier.md) |
 | `remote_llm` | proxy | gRPC to another Singularitee | `text-generation` | [remote_llm](../reference/models/remote_llm.md) |
 | `remote_classifier` | proxy | gRPC to another Singularitee | `text-classification` unless declared | [remote_classifier](../reference/models/remote_classifier.md) |
 | `remote_embedding` | proxy | gRPC to another Singularitee | `feature-extraction` | [remote_embedding](../reference/models/remote_embedding.md) |
@@ -101,8 +102,8 @@ pipeline, hide the models it is built from.
 
 A direct call to a text model returns the raw token stream: channel markers and tool-call
 tags are parsed by the `infer` step's `tags:`, so client-facing traffic goes through a
-pipeline id. Client-side pipelines run the same step executors as the server; `regex` and
-`composite_classifier` run in-process on either side.
+pipeline id. Client-side pipelines run the same step executors as the server; `regex`,
+`composite_classifier` and `llm_token_classifier` (over a `remote_llm`) run in-process on either side.
 
 ### One backend per process
 

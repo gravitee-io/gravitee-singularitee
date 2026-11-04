@@ -18,6 +18,7 @@ package io.gravitee.singularitee.engine.remote;
 import io.gravitee.singularitee.client.SingulariteeClient;
 import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyResult;
+import io.gravitee.singularitee.engine.api.ClassifyUsage;
 import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.reactivex.rxjava3.core.Single;
 import java.util.LinkedHashMap;
@@ -86,32 +87,7 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
       }
     }
 
-    return client
-      .classify(builder.build())
-      .map(protoResp -> {
-        Map<String, Float> allScores = new LinkedHashMap<>(protoResp.getAllScoresMap());
-
-        var results = protoResp
-          .getResultsList()
-          .stream()
-          .map(r ->
-            new ClassifyResult(
-              r.getLabel(),
-              r.getScore(),
-              r.hasToken() ? r.getToken() : null,
-              r.hasStart() ? r.getStart() : null,
-              r.hasEnd() ? r.getEnd() : null
-            )
-          )
-          .toList();
-
-        return new io.gravitee.singularitee.engine.api.ClassifyResponse(
-          protoResp.getTopLabel(),
-          protoResp.getTopScore(),
-          allScores,
-          results
-        );
-      });
+    return client.classify(builder.build()).map(RemoteClassifierEngine::fromProto);
   }
 
   @Override
@@ -139,33 +115,41 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
     return client
       .classifyBatch(builder.build())
       .map(batchResp ->
-        batchResp
-          .getResultsList()
-          .stream()
-          .map(protoResp -> {
-            Map<String, Float> allScores = new LinkedHashMap<>(protoResp.getAllScoresMap());
-            var results = protoResp
-              .getResultsList()
-              .stream()
-              .map(r ->
-                new ClassifyResult(
-                  r.getLabel(),
-                  r.getScore(),
-                  r.hasToken() ? r.getToken() : null,
-                  r.hasStart() ? r.getStart() : null,
-                  r.hasEnd() ? r.getEnd() : null
-                )
-              )
-              .toList();
-            return new io.gravitee.singularitee.engine.api.ClassifyResponse(
-              protoResp.getTopLabel(),
-              protoResp.getTopScore(),
-              allScores,
-              results
-            );
-          })
-          .toList()
+        batchResp.getResultsList().stream().map(RemoteClassifierEngine::fromProto).toList()
       );
+  }
+
+  private static io.gravitee.singularitee.engine.api.ClassifyResponse fromProto(
+    io.gravitee.singularitee.protocol.ClassifyResponse protoResp
+  ) {
+    Map<String, Float> allScores = new LinkedHashMap<>(protoResp.getAllScoresMap());
+    var results = protoResp
+      .getResultsList()
+      .stream()
+      .map(r ->
+        new ClassifyResult(
+          r.getLabel(),
+          r.getScore(),
+          r.hasToken() ? r.getToken() : null,
+          r.hasStart() ? r.getStart() : null,
+          r.hasEnd() ? r.getEnd() : null,
+          r.getMetadataMap()
+        )
+      )
+      .toList();
+    var usage = protoResp.hasUsage()
+      ? new ClassifyUsage(
+        protoResp.getUsage().getPromptTokens(),
+        protoResp.getUsage().getCompletionTokens()
+      )
+      : null;
+    return new io.gravitee.singularitee.engine.api.ClassifyResponse(
+      protoResp.getTopLabel(),
+      protoResp.getTopScore(),
+      allScores,
+      results,
+      usage
+    );
   }
 
   @Override

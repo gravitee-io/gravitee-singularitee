@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal;
 
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
+import java.util.OptionalDouble;
 
 /** Peak token perplexity over the answer tokens alone; falls back to the full-generation peak. */
 public final class AnswerMaxTokenPerplexity implements ConfidenceSignal {
@@ -28,5 +29,11 @@ public final class AnswerMaxTokenPerplexity implements ConfidenceSignal {
   public double compute(TokenConfidence c) {
     var scope = c.answer().isEmpty() ? c.chosen() : c.answer();
     return scope.isEmpty() ? 0.0 : Math.exp(-ConfidenceSignal.min(scope));
+  }
+
+  /** A perplexity: its inverse. */
+  @Override
+  public OptionalDouble confidence(double value) {
+    return ConfidenceSignal.inversePerplexity(value);
   }
 }

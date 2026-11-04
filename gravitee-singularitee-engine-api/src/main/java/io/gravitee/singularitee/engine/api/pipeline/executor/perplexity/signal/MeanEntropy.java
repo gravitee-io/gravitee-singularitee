@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal;
 
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
+import java.util.OptionalDouble;
 
 /** Mean per-token entropy over the top-k candidates (0 without alternatives). */
 public final class MeanEntropy implements ConfidenceSignal {
@@ -27,5 +28,11 @@ public final class MeanEntropy implements ConfidenceSignal {
 
   public double compute(TokenConfidence c) {
     return ConfidenceSignal.mean(c.entropies());
+  }
+
+  /** The inverse of the effective number of candidates, {@code exp(-entropy)}. */
+  @Override
+  public OptionalDouble confidence(double value) {
+    return OptionalDouble.of(Math.exp(-value));
   }
 }

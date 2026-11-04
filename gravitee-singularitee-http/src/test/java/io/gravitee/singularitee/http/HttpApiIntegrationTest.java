@@ -330,6 +330,89 @@ class HttpApiIntegrationTest {
   }
 
   @Test
+  void aLabelInSeveralSpansScoresEachSpan() throws Exception {
+    when(inference.classifyBatch(any())).thenReturn(
+      Future.succeededFuture(
+        ClassifyBatchResponse.newBuilder()
+          .addResults(
+            ClassifyResponse.newBuilder()
+              .setTopLabel("PERSON")
+              .setTopScore(0.99f)
+              .putAllScores("PERSON", 0.99f)
+              .putAllScores("SPECIAL_CATEGORY", 0.88f)
+              .addResults(span("PERSON", 0.99f, 0, 3))
+              .addResults(span("SPECIAL_CATEGORY", 0.88f, 8, 21))
+              .addResults(span("SPECIAL_CATEGORY", 0.46f, 25, 50))
+              .build()
+          )
+          .build()
+      )
+    );
+    Resp r = post("/v1/classify", "{\"model\":\"pii\",\"input\":\"text\"}");
+    assertThat(r.status()).isEqualTo(200);
+    JsonNode scores = mapper.readTree(r.body()).at("/results/0/scores");
+    assertThat(scores.get("PERSON").isNumber()).isTrue();
+    assertThat(scores.get("PERSON").floatValue()).isEqualTo(0.99f);
+    assertThat(scores.get("SPECIAL_CATEGORY").isArray()).isTrue();
+    assertThat(scores.get("SPECIAL_CATEGORY").get(0).floatValue()).isEqualTo(0.88f);
+    assertThat(scores.get("SPECIAL_CATEGORY").get(1).floatValue()).isEqualTo(0.46f);
+  }
+
+  @Test
+  void spanMetadataAndUsageAreRendered() throws Exception {
+    when(inference.classifyBatch(any())).thenReturn(
+      Future.succeededFuture(
+        ClassifyBatchResponse.newBuilder()
+          .addResults(
+            ClassifyResponse.newBuilder()
+              .setTopLabel("PERSON")
+              .setTopScore(0.99f)
+              .addResults(span("PERSON", 0.99f, 0, 4).toBuilder().putMetadata("ref", "p1"))
+              .setUsage(TokenUsage.newBuilder().setPromptTokens(40).setCompletionTokens(12))
+              .build()
+          )
+          .addResults(
+            ClassifyResponse.newBuilder()
+              .setUsage(TokenUsage.newBuilder().setPromptTokens(30).setCompletionTokens(5))
+              .build()
+          )
+          .build()
+      )
+    );
+    Resp r = post("/v1/classify", "{\"model\":\"pii\",\"input\":[\"a\",\"b\"]}");
+    assertThat(r.status()).isEqualTo(200);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/results/0/spans/0/metadata/ref").asText()).isEqualTo("p1");
+    assertThat(n.at("/usage/prompt_tokens").asInt()).isEqualTo(70);
+    assertThat(n.at("/usage/completion_tokens").asInt()).isEqualTo(17);
+    assertThat(n.at("/usage/total_tokens").asInt()).isEqualTo(87);
+  }
+
+  @Test
+  void classificationWithoutCountsHasNoUsage() throws Exception {
+    when(inference.classifyBatch(any())).thenReturn(
+      Future.succeededFuture(
+        ClassifyBatchResponse.newBuilder()
+          .addResults(ClassifyResponse.newBuilder().setTopLabel("safe").setTopScore(0.9f))
+          .build()
+      )
+    );
+    Resp r = post("/v1/classify", "{\"model\":\"gliguard\",\"input\":\"text\"}");
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/usage").isMissingNode()).isTrue();
+    assertThat(n.at("/results/0/spans").isMissingNode()).isTrue();
+  }
+
+  private static ClassifyResult span(String label, float score, int start, int end) {
+    return ClassifyResult.newBuilder()
+      .setLabel(label)
+      .setScore(score)
+      .setStart(start)
+      .setEnd(end)
+      .build();
+  }
+
+  @Test
   void listModels() throws Exception {
     Resp r = get("/v1/models");
     assertThat(r.status()).isEqualTo(200);

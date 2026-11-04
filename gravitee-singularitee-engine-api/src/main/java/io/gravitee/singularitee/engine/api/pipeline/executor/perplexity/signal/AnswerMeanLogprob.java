@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal;
 
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
+import java.util.OptionalDouble;
 
 /** Mean chosen-token log-probability over the answer tokens alone (reasoning excluded). */
 public final class AnswerMeanLogprob implements ConfidenceSignal {
@@ -27,5 +28,11 @@ public final class AnswerMeanLogprob implements ConfidenceSignal {
 
   public double compute(TokenConfidence c) {
     return ConfidenceSignal.mean(c.answer());
+  }
+
+  /** A mean logprob: the geometric-mean token probability. */
+  @Override
+  public OptionalDouble confidence(double value) {
+    return OptionalDouble.of(Math.exp(value));
   }
 }

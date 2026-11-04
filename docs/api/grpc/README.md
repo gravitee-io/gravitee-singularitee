@@ -166,9 +166,13 @@ Tags 4 and 5 are reserved and never emitted.
 `StepRole`: `STEP_ROLE_UNSPECIFIED` (treated as output), `STEP_ROLE_THINKING`, `STEP_ROLE_OUTPUT`,
 `STEP_ROLE_INTERNAL` (never streamed), `STEP_ROLE_TOOL` (bare tool-call payload).
 
-`ClassifyResponse { top_label, top_score, map<string,float> all_scores, repeated ClassifyResult results }`;
-`ClassifyResult { label, score, optional token, optional start, optional end }` carries character
-offsets for token-classification models. `ClassifyLabel { name, description }` overrides the
+`ClassifyResponse { top_label, top_score, map<string,float> all_scores, repeated ClassifyResult results, TokenUsage usage }`;
+`ClassifyResult { label, score, optional token, optional start, optional end, map<string,string> metadata }`
+carries character offsets for token-classification models, and `metadata` engine-specific facts
+(an `llm_token_classifier` span's `ref`, the person it belongs to). `usage` is set only by models
+that count tokens (`onnx_classifier`, `gliner_ner`, `gliner_classifier`, `llm_token_classifier`,
+decision classifiers):
+`prompt_tokens` read, `completion_tokens` generated (0 for an encoder). `ClassifyLabel { name, description }` overrides the
 label set per request on GLiNER models and on decision models published with `as_classifier`;
 labels a decision classifier refuses (duplicates, too many, none when it has no labels of its
 own) answer `INVALID_ARGUMENT`.

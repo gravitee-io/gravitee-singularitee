@@ -28,7 +28,10 @@ import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * {@code POST /v1/classify}: Gravitee classification extension.
@@ -94,7 +97,15 @@ public final class ClassifyHandler implements Handler<RoutingContext> {
         root.put("object", "classification");
         root.put("model", model);
         ArrayNode results = root.putArray("results");
+        boolean reported = false;
+        int promptTokens = 0;
+        int completionTokens = 0;
         for (var result : resp.getResultsList()) {
+          if (result.hasUsage()) {
+            reported = true;
+            promptTokens += result.getUsage().getPromptTokens();
+            completionTokens += result.getUsage().getCompletionTokens();
+          }
           ObjectNode entry = results.addObject();
           entry.put("top_label", result.getTopLabel());
           entry.put("top_score", result.getTopScore());
@@ -103,6 +114,7 @@ public final class ClassifyHandler implements Handler<RoutingContext> {
           // Spans are a token-classification (NER) concept: emit them only for entries that
           // carry character offsets. Sequence text classification has no spans.
           ArrayNode spans = null;
+          Map<String, List<Float>> spanScores = new LinkedHashMap<>();
           for (var span : result.getResultsList()) {
             if (!span.hasStart()) {
               continue;
@@ -110,6 +122,9 @@ public final class ClassifyHandler implements Handler<RoutingContext> {
             if (spans == null) {
               spans = entry.putArray("spans");
             }
+            spanScores
+              .computeIfAbsent(span.getLabel(), l -> new ArrayList<>())
+              .add(span.getScore());
             ObjectNode s = spans.addObject();
             s.put("label", span.getLabel());
             s.put("score", span.getScore());
@@ -120,7 +135,26 @@ public final class ClassifyHandler implements Handler<RoutingContext> {
             if (span.hasEnd()) {
               s.put("end", span.getEnd());
             }
+            if (span.getMetadataCount() > 0) {
+              ObjectNode metadata = s.putObject("metadata");
+              span.getMetadataMap().forEach(metadata::put);
+            }
           }
+          // A label found in several spans scores each one, in span order; a label with a
+          // single span, and every sequence-classification label, keeps a plain number.
+          spanScores.forEach((label, values) -> {
+            if (values.size() > 1) {
+              ArrayNode perSpan = scores.putArray(label);
+              values.forEach(perSpan::add);
+            }
+          });
+        }
+        // Only engines that count tokens report them; an absent usage means not reported, not zero.
+        if (reported) {
+          ObjectNode usage = root.putObject("usage");
+          usage.put("prompt_tokens", promptTokens);
+          usage.put("completion_tokens", completionTokens);
+          usage.put("total_tokens", promptTokens + completionTokens);
         }
         JsonResponses.writeJson(rc, root);
       })

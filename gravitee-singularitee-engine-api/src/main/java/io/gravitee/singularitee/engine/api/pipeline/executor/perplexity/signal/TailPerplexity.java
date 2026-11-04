@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal;
 
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
+import java.util.OptionalDouble;
 
 /** Perplexity over the last min(8, n) tokens: the commit-point / conclusion confidence. */
 public final class TailPerplexity implements ConfidenceSignal {
@@ -30,5 +31,11 @@ public final class TailPerplexity implements ConfidenceSignal {
     if (xs.isEmpty()) return 0.0;
     int k = Math.min(8, xs.size());
     return ConfidenceSignal.perplexity(xs.subList(xs.size() - k, xs.size()));
+  }
+
+  /** A perplexity: its inverse. */
+  @Override
+  public OptionalDouble confidence(double value) {
+    return ConfidenceSignal.inversePerplexity(value);
   }
 }

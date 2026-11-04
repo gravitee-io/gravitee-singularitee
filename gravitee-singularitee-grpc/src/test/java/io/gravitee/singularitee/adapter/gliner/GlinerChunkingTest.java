@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.gravitee.singularitee.engine.api.ClassifyResponse;
 import io.gravitee.singularitee.engine.api.ClassifyResult;
+import io.gravitee.singularitee.engine.api.ClassifyUsage;
 import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -82,12 +83,13 @@ class GlinerChunkingTest {
       )
     );
 
-    ClassifyResponse r = GlinerChunking.nerResponse(spans);
+    ClassifyResponse r = GlinerChunking.nerResponse(spans, 42);
 
     assertThat(r.topLabel()).isEqualTo("EMAIL");
     assertThat(r.topScore()).isEqualTo(0.95f);
     assertThat(r.allScores()).containsEntry("EMAIL", 0.95f).containsEntry("PERSON", 0.60f);
     assertThat(r.results().getFirst().score()).isEqualTo(0.95f); // sorted strongest-first
+    assertThat(r.usage()).isEqualTo(new ClassifyUsage(42, 0));
   }
 
   @Test
@@ -101,9 +103,10 @@ class GlinerChunkingTest {
       new ClassifyResult("malicious", 0.91f, null, 64, 128)
     );
 
-    ClassifyResponse r = GlinerChunking.classifierResponse(max, rows);
+    ClassifyResponse r = GlinerChunking.classifierResponse(max, rows, 42);
 
     assertThat(r.topLabel()).isEqualTo("malicious"); // max per label across chunks
+    assertThat(r.usage()).isEqualTo(new ClassifyUsage(42, 0));
     assertThat(r.topScore()).isEqualTo(0.91f);
     assertThat(r.allScores()).containsEntry("benign", 0.30f).containsEntry("malicious", 0.91f);
     // per-chunk rows preserved, each tagged with the chunk span it came from

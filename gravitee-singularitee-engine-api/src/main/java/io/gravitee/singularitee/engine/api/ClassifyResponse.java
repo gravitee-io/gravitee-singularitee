@@ -29,6 +29,7 @@ import java.util.Map;
  * @param allScores  full map of label to score for all classes
  * @param results    ordered list of individual {@link ClassifyResult} entries (may include
  *                   token-level results for NER / token-classification models)
+ * @param usage      tokens the engine read and wrote; {@code null} when it does not report them
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -37,5 +38,21 @@ public record ClassifyResponse(
   String topLabel,
   float topScore,
   Map<String, Float> allScores,
-  List<ClassifyResult> results
-) {}
+  List<ClassifyResult> results,
+  ClassifyUsage usage
+) {
+  /** A response without token usage. */
+  public ClassifyResponse(
+    String topLabel,
+    float topScore,
+    Map<String, Float> allScores,
+    List<ClassifyResult> results
+  ) {
+    this(topLabel, topScore, allScores, results, null);
+  }
+
+  /** The same response with {@code usage}. */
+  public ClassifyResponse withUsage(ClassifyUsage usage) {
+    return new ClassifyResponse(topLabel, topScore, allScores, results, usage);
+  }
+}

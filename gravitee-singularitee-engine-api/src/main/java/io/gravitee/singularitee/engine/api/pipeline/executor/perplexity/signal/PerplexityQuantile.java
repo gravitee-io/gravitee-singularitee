@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal;
 
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
+import java.util.OptionalDouble;
 
 /**
  * The q-th percentile of per-token perplexity: a robust peak, steadier across generations than the
@@ -43,5 +44,11 @@ public final class PerplexityQuantile implements ConfidenceSignal {
     int idx = (int) Math.floor((1.0 - q) * (s.size() - 1));
     idx = Math.max(0, Math.min(s.size() - 1, idx));
     return Math.exp(-s.get(idx));
+  }
+
+  /** A perplexity: its inverse. */
+  @Override
+  public OptionalDouble confidence(double value) {
+    return ConfidenceSignal.inversePerplexity(value);
   }
 }

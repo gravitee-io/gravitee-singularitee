@@ -1,6 +1,6 @@
 # Classification
 
-> How to classify text with a fine-tuned ONNX model, a GLiNER zero-shot schema, a regex model or a composite of them, over `POST /v1/classify`, the `Classify` RPC, or a `classify` pipeline step.
+> How to classify text with a fine-tuned ONNX model, a GLiNER zero-shot schema, a regex model, a generative span model or a composite of them, over `POST /v1/classify`, the `Classify` RPC, or a `classify` pipeline step.
 
 ## Overview
 
@@ -12,6 +12,7 @@ Any model whose engine implements `ClassifierEngine` answers a classify call wit
 | `gliner_classifier` | The label set is yours to define in YAML and may change without retraining. | `text-classification` |
 | `gliner_ner` | Same, for entity extraction with spans. | `token-classification` |
 | `regex` | Deterministic patterns (emails, IBANs, keys). Pure Java, runs anywhere. | `token-classification` |
+| `llm_token_classifier` | A generative model fine-tuned to list entities as JSON items, each a label and a value (by default `{"spans":[{label, text}]}`, any field names with `answer:`), such as a PII span model. Wraps a `llama_cpp`, `vllm` or `remote_llm` model. | `token-classification` |
 | `composite_classifier` | One id that fans out to several of the above and merges their verdicts. | from its delegates |
 
 Oversized input is split on semantic boundaries and recombined, never truncated.
@@ -53,7 +54,7 @@ curl -s localhost:8080/v1/classify -H 'content-type: application/json' -d '{
 }' | jq
 ```
 
-The response is `{"object":"classification","model":...,"results":[{"top_label","top_score","scores":{...},"spans":[{"label","score","token","start","end"}]}]}`; `spans` is present only for results that carry offsets.
+The response is `{"object":"classification","model":...,"results":[{"top_label","top_score","scores":{...},"spans":[{"label","score","token","start","end"}]}]}`; `spans` is present only for results that carry offsets. A `scores` value is a number, or an array of per-span scores (in span order) for a label found in several spans. A span may carry `metadata`, and the response `usage` when the model counts tokens.
 
 gRPC:
 
@@ -153,7 +154,7 @@ To act on the verdict, use a [guard](../guards-and-redaction/README.md) (block o
 
 ## Options
 
-Keys used in this guide. Full lists: [onnx_classifier](../../reference/models/onnx_classifier.md), [gliner_classifier](../../reference/models/gliner_classifier.md), [gliner_ner](../../reference/models/gliner_ner.md), [regex](../../reference/models/regex.md), [composite_classifier](../../reference/models/composite_classifier.md), [classify step](../../reference/steps/classify.md).
+Keys used in this guide. Full lists: [onnx_classifier](../../reference/models/onnx_classifier.md), [gliner_classifier](../../reference/models/gliner_classifier.md), [gliner_ner](../../reference/models/gliner_ner.md), [regex](../../reference/models/regex.md), [composite_classifier](../../reference/models/composite_classifier.md), [llm_token_classifier](../../reference/models/llm_token_classifier.md), [classify step](../../reference/steps/classify.md).
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
@@ -164,6 +165,11 @@ Keys used in this guide. Full lists: [onnx_classifier](../../reference/models/on
 | `gliner_*.variant` | string | `onnx` | `onnx`, `onnx_fp16` or `onnx_quantized`. |
 | `regex.patterns[]` | list of `{pattern, entity_type}` | required | Java regex and the label its matches carry. |
 | `composite_classifier.models` | list | required | Delegate model ids, run concurrently and merged in order. |
+| `llm_token_classifier.model_id` | string | required | The generating model. |
+| `llm_token_classifier.system_prompt` | string | unset | The prompt the model was trained with. |
+| `llm_token_classifier.score` | string | `max_entropy` | Confidence signal grading each span from its tokens; `none` scores every span `1.0`. |
+| `llm_token_classifier.answer` | map | `{spans: spans, label: label, text: text}` | Where the answer keeps its items, labels and values, plus optional `metadata` fields. |
+| `llm_token_classifier.structured_output` | boolean | `true` | Decode against the JSON schema of `answer`. |
 | `classify.model_id` | string | required | Classifier model id. |
 | `classify.input_field` | string | `prompt` | Context key to read. |
 | `classify.output_field` | string | `<step_id>.label` | Key for the top label; score goes to `<output_field>.score`. |
@@ -171,11 +177,12 @@ Keys used in this guide. Full lists: [onnx_classifier](../../reference/models/on
 ## Notes
 
 - There is no `NER` mode: `classifier_mode: TOKEN` is NER. The engine reports `token-classification` and results carry `start` / `end`.
-- Per-request `labels` replace the schema for GLiNER engines only. ONNX, regex and composite engines ignore them.
+- Per-request `labels` replace the schema for GLiNER engines only. `llm_token_classifier` keeps only the requested labels from its answer. ONNX and regex engines ignore them; a composite passes them to its delegates.
 - Composite merge: `results` is the union of delegate spans, `scores` merges per label with the maximum, `top_label` is the first delegate's non-empty top label, `top_score` the maximum. The composite splits long input once and hands the chunks to its delegates.
 - Regex matches all score `1.0` and `top_label` is the first match in the text. Thresholds on regex verdicts are binary.
-- `regex` and `composite_classifier` are pure Java and run on a client workspace as well as a server.
-- GLiNER sequence results for chunked input include one row per (label, chunk) whose span locates the chunk, not an entity. Only NER and regex spans are entity spans.
+- `regex`, `composite_classifier` and `llm_token_classifier` are pure Java and run on a client workspace as well as a server.
+- `llm_token_classifier` spans are graded by a confidence signal over each span's own tokens (`max_entropy` by default; `score: none` gives `1.0`, like regex); an answer that is not span JSON fails the call rather than reporting a clean text.
+- GLiNER sequence results for chunked input include one row per (label, chunk) whose span locates the chunk, not an entity. Only NER, regex and `llm_token_classifier` spans are entity spans.
 - `threshold` on the `classify` step is informational; it does not filter the output.
 
 ## See also

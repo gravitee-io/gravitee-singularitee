@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal;
 
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
+import java.util.OptionalDouble;
 
 /** Max per-token entropy over the top-k candidates: the single most-spread step. */
 public final class MaxEntropy implements ConfidenceSignal {
@@ -29,5 +30,11 @@ public final class MaxEntropy implements ConfidenceSignal {
     double m = 0.0;
     for (double e : c.entropies()) if (e > m) m = e;
     return m;
+  }
+
+  /** The inverse of the effective number of candidates, {@code exp(-entropy)}. */
+  @Override
+  public OptionalDouble confidence(double value) {
+    return OptionalDouble.of(Math.exp(-value));
   }
 }

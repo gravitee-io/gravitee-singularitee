@@ -460,6 +460,19 @@ public enum ModelType {
     }
   },
 
+  LLM_TOKEN_CLASSIFIER("llm_token_classifier") {
+    @Override
+    ModelLoadRequest toModelLoadRequest(
+      String modelId,
+      String modelName,
+      String modelPath,
+      MemoryCheckPolicyType memoryCheckPolicy,
+      WorkspaceDefinition.ModelDefinition modelDef
+    ) {
+      return null;
+    }
+  },
+
   // ── llama.cpp encoder model types ─────────────────────────────────────────
 
   LLAMA_CPP_EMBEDDING("llama_cpp_embedding") {
@@ -932,7 +945,7 @@ public enum ModelType {
    * no native library, no GPU, and no gRPC call.
    */
   public boolean isClientLocal() {
-    return (this == REGEX || this == COMPOSITE_CLASSIFIER);
+    return (this == REGEX || this == COMPOSITE_CLASSIFIER || this == LLM_TOKEN_CLASSIFIER);
   }
 
   /**
@@ -985,6 +998,7 @@ public enum ModelType {
             "remote_decision",
             "regex",
             "composite_classifier",
+            "llm_token_classifier",
             "llama_cpp_embedding",
             "llama_cpp_reranker",
             "llama_cpp_decision",

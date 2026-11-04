@@ -24,7 +24,7 @@ A workspace YAML declares the models and pipelines to publish. Weights download 
 | --- | --- |
 | Text generation | Streamed token by token, from a model or from a pipeline. |
 | Pipelines | A DAG of steps over those models: guards, classifiers, routers, loops, tool calling, sub-pipelines. |
-| Classification | ONNX sequence and token classifiers, GLiNER zero-shot, regex, composite. |
+| Classification | ONNX sequence and token classifiers, GLiNER zero-shot, generative span models (`llm_token_classifier`), regex, composite. |
 | Embeddings and reranking | Vectors, cross-encoder reranking, similarity. |
 | Discovery | List and inspect what a server publishes. |
 
