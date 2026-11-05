@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.adapter.batching;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -27,12 +28,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Two-lane micro-batcher (Nagle-style) for coalescing many small blocking calls into batched calls.
+ * Length-bucketed micro-batcher (Nagle-style) for coalescing many small blocking calls into batched calls.
  *
  * <p>Concurrent producers on any thread {@link #submit(Object, int)} an input with a cost weight
  * (estimated tokens) and get a {@link CompletableFuture} for its result. Items are routed by weight
- * into one of two independent lanes, <em>short</em> ({@code weight <= bucketWeight}) and
- * <em>long</em>, each with its own FIFO queue and daemon worker thread. A lane's worker takes the
+ * into one of several independent lanes, one per length bucket: a bucket boundary list
+ * {@code [b1, b2, ..., bn]} yields {@code n + 1} lanes covering {@code weight <= b1},
+ * {@code b1 < weight <= b2}, ... and {@code weight > bn}. With one boundary these are the classic
+ * <em>short</em> and <em>long</em> lanes. Each lane has its own FIFO queue and daemon worker
+ * thread. A lane's worker takes the
  * first pending item, lingers up to {@code lingerMillis} to let more accumulate, then invokes
  * {@code batchFn} <em>once</em> for the whole group and completes each item's future with the
  * matching output (by position).
@@ -40,10 +44,12 @@ import org.slf4j.LoggerFactory;
  * <p>Batch composition is shaped for encoders that pad every batch item to the longest sequence in
  * the batch (quadratic-attention cost):
  * <ul>
- *   <li><strong>Token cap</strong>: a batch closes once its summed weight reaches
- *       {@code maxBatchWeight}, bounding worst-case batch wall time regardless of item count.</li>
- *   <li><strong>Length bucketing</strong>: short and long items never share a batch, so a single
- *       long chunk can't inflate the padded cost of many short ones.</li>
+ *   <li><strong>Token cap</strong>: a batch closes once its <em>padded</em> weight (item count
+ *       times the heaviest item) would exceed {@code maxBatchWeight}, bounding worst-case batch
+ *       wall time regardless of item count.</li>
+ *   <li><strong>Length bucketing</strong>: items from different buckets never share a batch, so a
+ *       single long chunk can't inflate the padded cost of many short ones. More boundaries mean
+ *       less padding but more lanes competing for the same device.</li>
  *   <li><strong>Lane isolation</strong>: because each lane dispatches on its own thread, an
  *       expensive long batch inside {@code batchFn} cannot head-of-line block short requests
  *       (convoy effect); the short lane keeps flowing while a long batch runs.</li>
@@ -52,7 +58,7 @@ import org.slf4j.LoggerFactory;
  * <p>When a lane is idle its first item is dispatched after at most {@code lingerMillis} as a batch
  * of one, so the latency cost of batching is bounded by the linger window.
  *
- * <p><strong>batchFn must be thread-safe:</strong> the two lanes may invoke it concurrently (ONNX
+ * <p><strong>batchFn must be thread-safe:</strong> the lanes may invoke it concurrently (ONNX
  * Runtime sessions support concurrent {@code Run()} calls).
  *
  * @param <I> batch input element type
@@ -65,12 +71,11 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MicroBatcher.class);
 
-  private final long bucketWeight;
-  private final Lane shortLane;
-  private final Lane longLane;
+  private final long[] bucketBoundaries;
+  private final List<Lane> lanes;
   private volatile boolean running = true;
 
-  /** Inline batches on the lane thread (parallelism 1). */
+  /** Single short/long boundary at {@code bucketWeight}; inline batches on the lane thread. */
   public MicroBatcher(
     String name,
     int maxBatchSize,
@@ -79,16 +84,17 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
     long lingerMillis,
     Function<List<I>, List<O>> batchFn
   ) {
-    this(name, maxBatchSize, maxBatchWeight, bucketWeight, lingerMillis, 1, batchFn);
+    this(name, maxBatchSize, maxBatchWeight, new long[] { bucketWeight }, lingerMillis, 1, batchFn);
   }
 
   /**
-   * Creates the two lanes and starts their daemon workers.
+   * Creates one lane per length bucket and starts their daemon workers.
    *
    * @param name           thread-name prefix for the lane workers
    * @param maxBatchSize   max items per batch (floored at 1)
-   * @param maxBatchWeight max summed weight per batch (floored at 1)
-   * @param bucketWeight   short/long lane boundary (floored at 1)
+   * @param maxBatchWeight max padded weight per batch, items times the heaviest (floored at 1)
+   * @param boundaries     upper bounds of the length buckets (each floored at 1, sorted and
+   *                       de-duplicated); the last bucket is unbounded
    * @param lingerMillis   how long a lane waits for a batch to fill (floored at 0)
    * @param parallelism    batches a lane runs concurrently (floored at 1)
    * @param batchFn        thread-safe batch function returning one output per input, in order
@@ -97,23 +103,33 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
     String name,
     int maxBatchSize,
     long maxBatchWeight,
-    long bucketWeight,
+    long[] boundaries,
     long lingerMillis,
     int parallelism,
     Function<List<I>, List<O>> batchFn
   ) {
-    this.bucketWeight = Math.max(1, bucketWeight);
+    this.bucketBoundaries = Arrays.stream(boundaries)
+      .map(b -> Math.max(1, b))
+      .sorted()
+      .distinct()
+      .toArray();
     int size = Math.max(1, maxBatchSize);
     long weight = Math.max(1, maxBatchWeight);
     long lingerNanos = TimeUnit.MILLISECONDS.toNanos(Math.max(0, lingerMillis));
     int par = Math.max(1, parallelism);
-    this.shortLane = new Lane(name + "-short", size, weight, lingerNanos, par, batchFn);
-    this.longLane = new Lane(name + "-long", size, weight, lingerNanos, par, batchFn);
+    this.lanes = new ArrayList<>();
+    int laneCount = this.bucketBoundaries.length + 1;
+    for (int i = 0; i < laneCount; i++) {
+      String laneName = laneCount == 2
+        ? name + (i == 0 ? "-short" : "-long")
+        : name + "-b" + (i < laneCount - 1 ? this.bucketBoundaries[i] : "max");
+      lanes.add(new Lane(laneName, size, weight, lingerNanos, par, batchFn));
+    }
   }
 
   /**
    * Enqueue {@code item} for a future batch. {@code weight} is the item's estimated cost in tokens;
-   * it selects the lane (short vs long) and drives the per-batch token cap. The returned future
+   * it selects the length bucket's lane and drives the per-batch token cap. The returned future
    * completes on the owning lane's worker thread with this item's output, or completes
    * exceptionally if the batch call throws (all items in a failed batch fail together).
    */
@@ -123,18 +139,28 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
       job.future.completeExceptionally(new IllegalStateException("micro-batcher is closed"));
       return job.future;
     }
-    (job.weight <= bucketWeight ? shortLane : longLane).queue.add(job);
+    laneFor(job.weight).queue.add(job);
     return job.future;
+  }
+
+  private Lane laneFor(int weight) {
+    for (int i = 0; i < bucketBoundaries.length; i++) {
+      if (weight <= bucketBoundaries[i]) {
+        return lanes.get(i);
+      }
+    }
+    return lanes.getLast();
   }
 
   @Override
   public void close() {
     running = false;
-    shortLane.close();
-    longLane.close();
+    for (Lane lane : lanes) {
+      lane.close();
+    }
   }
 
-  /** One FIFO queue + worker thread; composes and dispatches batches independently of the other lane. */
+  /** One FIFO queue + worker thread; composes and dispatches batches independently of the other lanes. */
   private final class Lane {
 
     private final BlockingQueue<Job<I, O>> queue = new LinkedBlockingQueue<>();
@@ -220,12 +246,14 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
     /**
      * Grows {@code batch}, already led by its head (always included, even if it alone exceeds the
      * token cap), lingering up to the window for more jobs until the count or token cap is reached.
-     * A polled job that would overflow the cap is kept as {@link #carry} to lead the next batch.
+     * The cap applies to the padded weight (count times the heaviest item), since the encoder pads
+     * every row to the longest. A polled job that would overflow it is kept as {@link #carry} to
+     * lead the next batch.
      */
     private void fillBatch(List<Job<I, O>> batch) throws InterruptedException {
-      long weight = batch.getFirst().weight;
+      long heaviest = batch.getFirst().weight;
       long deadline = System.nanoTime() + lingerNanos;
-      while (batch.size() < maxBatchSize && weight < maxBatchWeight) {
+      while (batch.size() < maxBatchSize && (batch.size() + 1L) * heaviest <= maxBatchWeight) {
         long remaining = deadline - System.nanoTime();
         if (remaining <= 0) {
           break;
@@ -234,12 +262,13 @@ public final class MicroBatcher<I, O> implements AutoCloseable {
         if (next == null) {
           break;
         }
-        if (weight + next.weight > maxBatchWeight) {
+        long paddedWeight = (batch.size() + 1L) * Math.max(heaviest, next.weight);
+        if (paddedWeight > maxBatchWeight) {
           carry = next;
           break;
         }
         batch.add(next);
-        weight += next.weight;
+        heaviest = Math.max(heaviest, next.weight);
       }
     }
 

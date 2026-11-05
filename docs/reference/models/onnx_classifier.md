@@ -31,6 +31,28 @@ workspace:
         classifier_mode: TOKEN
 ```
 
+Large multilingual token classifier, one quantised export picked out of several
+(`examples/classifier/pii-arabic.yaml`; `download.exclude` keeps the other exports from being
+downloaded):
+
+```yaml
+    - id: pii
+      name: gravitee-io/OpenMed-PII-Arabic-BigMed-Large-560M-v1-onnx
+      type: onnx_classifier
+      memory_check: disabled
+      download:
+        exclude:
+          - "onnx/model.onnx"
+          - "onnx/model.onnx_data"
+          - "onnx/model_fp16.onnx"
+      onnx_classifier:
+        model_path: onnx/model_uint8.onnx
+        tokenizer_path: tokenizer.json
+        config_json_path: config.json
+        max_sequence_length: 512
+        classifier_mode: TOKEN
+```
+
 Sequence-level with an explicit label list (`examples/classifier/toxicity-bert.yaml`):
 
 ```yaml
@@ -59,7 +81,7 @@ Sequence-level with an explicit label list (`examples/classifier/toxicity-bert.y
 | `tokenizer_path` | string | unset | Tokenizer file (`tokenizer.json`) or directory prefix. Required; a blank value fails the load. |
 | `config_json_path` | string | unset | `config.json` providing `id2label`. Optional when `labels` is set. |
 | `labels` | list of string | from `config.json` | Ordered labels matching the output logits. |
-| `max_sequence_length` | int | library default | Token cap per input; longer inputs are split and recombined. |
+| `max_sequence_length` | int | `512` | Model window in tokens, special tokens included; longer inputs are split to fit and recombined. |
 | `classifier_mode` | string | `SEQUENCE` | `SEQUENCE` or `TOKEN`. Unknown values fall back to `SEQUENCE`. |
 
 ## Notes
@@ -77,6 +99,11 @@ Sequence-level with an explicit label list (`examples/classifier/toxicity-bert.y
   narrows the sibling and tokenizer listings; the named files themselves are always fetched.
   A `.complete-tokenizer` marker is written once the tokenizer files are all on disk, and only
   that marker makes the next start reuse the cached tokenizer directory.
+- **The window counts the special tokens.** `max_sequence_length` is the whole encoded sequence,
+  `[CLS]`/`[SEP]` (or `<s>`/`</s>`) included, so `512` leaves 510 content tokens per chunk. Set it
+  to the model's position limit: `max_position_embeddings` from `config.json` for BERT-family
+  models, that value minus 2 for RoBERTa-family ones (XLM-R: 514, so 512). The tokenizer never
+  truncates; a value above the model's limit fails at inference instead of dropping text.
 - **Split, not truncated.** A long input is split on semantic boundaries (paragraph, line,
   sentence, clause, then whole tokens) into chunks that fit `max_sequence_length`. Sequence
   classifiers keep the maximum score per label across chunks; token classifiers shift each
@@ -84,6 +111,8 @@ Sequence-level with an explicit label list (`examples/classifier/toxicity-bert.y
   token-boundary split (a single sentence over the budget) can come back as two spans.
 - **Batched.** Chunks from concurrent requests, and every target of a guard, run in one
   forward pass; see `GRAVITEE_ONNX_BATCH_*` in [configuration](../configuration.md).
+  Chunks are grouped by length (`GRAVITEE_ONNX_BATCH_BUCKET_TOKENS`, e.g. `64,128,256`) so a
+  batch pads little; finer buckets help most on mixed-length traffic with a large model.
 - **Exports pinned to batch size 1.** An export whose output fixes its leading dimension to `1`
   (for example `logits [1, 2]`) cannot run a batch. Such a model runs each input on its own and
   the server logs `ONNX classifier graph pins its batch size to 1` at load. Re-export with a

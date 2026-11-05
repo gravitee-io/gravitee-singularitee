@@ -64,9 +64,13 @@ public class OnnxBertRerankerModel extends OnnxBertInference<RerankPair, RerankT
 
   private final int maxBatchTokens = resolveMaxBatchTokens();
 
+  /** Special tokens the tokenizer adds around a pair ({@code [CLS] q [SEP] d [SEP]} is three). */
+  private final int pairSpecialTokens;
+
   public OnnxBertRerankerModel(OnnxBertConfig config, RerankScoring scoring) {
     super(config);
     this.scoring = scoring;
+    this.pairSpecialTokens = tokenizer.encode("", "", true, false).getIds().length;
   }
 
   private static int resolveMaxBatchTokens() {
@@ -125,8 +129,8 @@ public class OnnxBertRerankerModel extends OnnxBertInference<RerankPair, RerankT
   }
 
   /**
-   * Splits {@code document} so each {@code (query, chunk)} pair fits the sequence budget, reserving
-   * room for the (assumed short) query and the pair's extra separator token.
+   * Splits {@code document} so each {@code (query, chunk)} pair fits the window, reserving room for
+   * the (assumed short) query and the pair's special tokens.
    */
   private List<String> splitDocument(String query, String document) {
     return splitDocument(countTokens(query), document);
@@ -134,8 +138,12 @@ public class OnnxBertRerankerModel extends OnnxBertInference<RerankPair, RerankT
 
   /** As above, with the query already measured; it is the same for every document in a batch. */
   private List<String> splitDocument(int queryTokens, String document) {
-    int docBudget = Math.max(sequenceBudget - queryTokens - 1, 1);
-    return newSplitter(docBudget).split(document).stream().map(Chunk::text).toList();
+    return newSplitter(docBudget(queryTokens)).split(document).stream().map(Chunk::text).toList();
+  }
+
+  /** Document tokens one pair holds: the window minus the query and the pair's special tokens. */
+  private int docBudget(int queryTokens) {
+    return Math.max(maxSequenceLength - pairSpecialTokens - queryTokens, 1);
   }
 
   /**
@@ -170,7 +178,7 @@ public class OnnxBertRerankerModel extends OnnxBertInference<RerankPair, RerankT
 
     // The query is the same for every row: measure it once.
     int queryTokens = countTokens(query);
-    int docBudget = Math.max(sequenceBudget - queryTokens - 1, 1);
+    int docBudget = docBudget(queryTokens);
 
     RerankTokenCount[] out = new RerankTokenCount[input.size()];
     List<int[]> fitting = new ArrayList<>(input.size()); // {index, docTokens}
@@ -196,7 +204,10 @@ public class OnnxBertRerankerModel extends OnnxBertInference<RerankPair, RerankT
       int longest = 0;
       int end = cursor;
       while (end < fitting.size()) {
-        int candidateLongest = Math.max(longest, fitting.get(end)[1] + queryTokens + 1);
+        int candidateLongest = Math.max(
+          longest,
+          fitting.get(end)[1] + queryTokens + pairSpecialTokens
+        );
         int candidateCost = (rows + 1) * candidateLongest;
         // Always take at least one row, otherwise a single large document stalls.
         if (rows > 0 && (candidateCost > maxBatchTokens || rows >= MAX_BATCH_ROWS)) {

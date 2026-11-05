@@ -273,11 +273,11 @@ These are read straight from the process environment by the engine adapters.
 | `GRAVITEE_ONNX_INTRA_OPS_NUM_THREADS` | CPU count | Intra-op threads for ONNX classifier, embedding and reranker sessions. |
 | `GRAVITEE_ONNX_RERANK_MAX_BATCH_TOKENS` | `32768` | Padded-token budget per ONNX reranker batch (rows are capped at 256 regardless). |
 | `GRAVITEE_ONNX_BATCH_MAX` | `16` | Max items fused into one ONNX classifier or embedding batch. |
-| `GRAVITEE_ONNX_BATCH_MAX_TOKENS` | `2048` | Max summed estimated tokens per batch. |
-| `GRAVITEE_ONNX_BATCH_BUCKET_TOKENS` | `128` | Short/long bucket boundary; items at or below it never share a batch with longer ones. |
+| `GRAVITEE_ONNX_BATCH_MAX_TOKENS` | `2048` | Max padded tokens per batch (items times the longest item, estimated). |
+| `GRAVITEE_ONNX_BATCH_BUCKET_TOKENS` | `128` | Length bucket boundaries: one number, or an ascending comma list such as `64,128,256` for four buckets. Items from different buckets never share a batch. Each bucket runs on its own thread, so more buckets cut padding but compete for the same cores on CPU. |
 | `GRAVITEE_ONNX_BATCH_LINGER_MS` | `5` | How long a partial batch waits for more items. |
 | `GRAVITEE_GLINER_BATCH_MAX`, `_MAX_TOKENS`, `_BUCKET_TOKENS`, `_LINGER_MS` | same as ONNX | The same micro-batcher knobs for the GLiNER runtimes. |
-| `GRAVITEE_GLINER_BATCH_PARALLELISM` | `1` | Batches each lane runs concurrently. Above 1 only pays with a backend that can serve several calls at once — the ggml engine with `JAVA_OPTS=-Dgliner4j.ggml.replicas=N` (N model copies, one row in flight each); set both to the same N. |
+| `GRAVITEE_GLINER_BATCH_PARALLELISM` | `1` | Batches each lane runs concurrently. Above 1 only pays with a backend that can serve several calls at once: the ggml engine with `JAVA_OPTS=-Dgliner4j.ggml.replicas=N` (N model copies, one row in flight each). Every length bucket is a lane, so up to lanes times this value batches are in flight; size the replicas for that. |
 | `GRAVITEE_GLINER_ENCODER_INTRA_OP_THREADS` | all cores | Intra-op threads for the GLiNER encoder and span sessions. |
 | `GRAVITEE_GLINER_ENCODER_INTER_OP_THREADS` | cores/2, min 2 | Inter-op threads for the same sessions. |
 | `GRAVITEE_GLINER_SCORING_INTRA_OP_THREADS` | cores/4, min 2 | Intra-op threads for the scoring heads. |

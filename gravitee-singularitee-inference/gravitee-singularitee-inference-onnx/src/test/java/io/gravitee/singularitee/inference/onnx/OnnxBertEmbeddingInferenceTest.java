@@ -110,6 +110,21 @@ public class OnnxBertEmbeddingInferenceTest extends OnnxBertBaseTest {
   }
 
   @Test
+  public void must_embed_every_token_of_an_input_longer_than_the_window() {
+    // 1200 one-token words and no separator: well past the 512 window, so the input is split and
+    // every chunk, special tokens included, fills the window exactly.
+    String input = "word ".repeat(1200);
+    var model = new OnnxBertEmbeddingModel(ONNX_BERT_CONFIG_STREAM_MEAN.getFirst());
+
+    var result = model.infer(input);
+
+    assertEquals(384, result.embedding().length);
+    assertEquals(1202, result.tokenCount());
+    assertEquals(1202, model.countTokens(input));
+    model.close();
+  }
+
+  @Test
   public void embedding_must_be_the_same_with_different_maths() {
     var nativeModel = new OnnxBertEmbeddingModel(ONNX_BERT_CONFIG_STREAM_MEAN.get(0));
     var simdModel = new OnnxBertEmbeddingModel(ONNX_BERT_CONFIG_STREAM_MEAN.get(1));

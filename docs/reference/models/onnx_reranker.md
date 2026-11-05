@@ -39,7 +39,7 @@ workspace:
 | `model_path` | string | unset | ONNX file inside the repository. Required. |
 | `tokenizer_path` | string | unset | Tokenizer file or directory prefix. Required; blank fails the load. |
 | `config_json_path` | string | unset | Model `config.json`. Optional. |
-| `max_sequence_length` | int | library default | Cap for the concatenated pair; oversized documents are split against it, with the query's tokens reserved. |
+| `max_sequence_length` | int | `512` | Window for the whole (query, document) pair, special tokens included; oversized documents are split against it, with the query's tokens reserved. |
 | `scoring` | string | unset (auto-detect) | `SIGMOID` (one-logit heads), `SOFTMAX` (two-class heads), `LOGIT` (raw score). Unknown values fall back to auto-detection from the output shape. |
 
 ## Notes

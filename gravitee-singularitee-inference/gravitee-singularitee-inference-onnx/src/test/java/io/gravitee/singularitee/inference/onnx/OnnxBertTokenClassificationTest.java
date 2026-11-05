@@ -250,6 +250,61 @@ public class OnnxBertTokenClassificationTest extends OnnxBertBaseTest {
     chunkedModel.close();
   }
 
+  /** {@code filler} followed by "My name is Laura and I live in Houston, Texas". */
+  private static String afterFiller(String filler) {
+    return filler + "My name is Laura and I live in Houston, Texas";
+  }
+
+  @Test
+  public void must_classify_the_tail_of_a_long_input_at_a_512_window() {
+    // max_sequence_length 512 is what the example workspaces set. About 660 punctuated tokens, so a
+    // splitter that measures the real length cuts it into a full chunk and a short one holding the
+    // names (a long run of identical filler sentences would blur the model's context).
+    String filler = "The weather was mild and nothing happened that day. ".repeat(60);
+    String text = afterFiller(filler);
+    var model = new OnnxBertClassifierModel(
+      new OnnxBertConfig(
+        TOKEN_ONNX_BERT_RESOURCE,
+        NativeMath.INSTANCE,
+        Map.of(
+          CLASSIFIER_MODE,
+          TOKEN,
+          DISCARDED_LABELS,
+          List.of("O", "B-MISC", "I-MISC"),
+          MAX_SEQUENCE_LENGTH,
+          512
+        )
+      )
+    );
+
+    var results = model.infer(text).results();
+
+    assertTrue(
+      results
+        .stream()
+        .anyMatch(t -> t.token().equals("Houston") && t.start() == filler.length() + 31),
+      "Houston, past the first window, not classified: " + results
+    );
+    model.close();
+  }
+
+  @Test
+  public void must_classify_the_tail_of_a_long_run_without_separators() {
+    // No boundary the splitter could cut on, so it packs whole tokens up to the budget: each chunk
+    // fills the default 512 window exactly once the special tokens are added.
+    String filler = "and then ".repeat(600);
+    String text = afterFiller(filler);
+
+    var results = tokenModel.infer(text).results();
+
+    assertTrue(
+      results
+        .stream()
+        .anyMatch(t -> t.token().equals("Houston") && t.start() == filler.length() + 31),
+      "Houston, past the first window, not classified: " + results
+    );
+  }
+
   @AfterAll
   public static void cleanup() {
     tokenModel.close();

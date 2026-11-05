@@ -53,7 +53,8 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
   private final Set<String> discarded;
 
   public OnnxBertClassifierModel(OnnxBertConfig config) {
-    super(config);
+    // Inputs are split to the window first: the tokenizer must measure their real length.
+    super(config.withoutTruncation());
     this.labels = getLabels(config);
     this.discarded = Set.copyOf(config.get(DISCARDED_LABELS, List.of()));
   }
