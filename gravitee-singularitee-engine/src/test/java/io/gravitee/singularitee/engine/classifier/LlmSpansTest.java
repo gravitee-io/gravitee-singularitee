@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gravitee.singularitee.engine.classifier.LlmSpans.Item;
+import io.gravitee.singularitee.engine.classifier.LlmSpans.MalformedItemException;
 import io.gravitee.singularitee.engine.classifier.LlmSpans.Span;
 import java.util.List;
 import java.util.Map;
@@ -94,11 +95,37 @@ class LlmSpansTest {
     }
 
     @Test
-    void skips_malformed_items() {
-      var items = items(
-        "{\"spans\":[{\"label\":\"PERSON\"},{\"text\":\"x\"},{\"label\":1,\"text\":\"y\"},{\"label\":\"AGE\",\"text\":\"42\"}]}"
-      );
-      assertThat(items).extracting(Item::label, Item::text).containsExactly(tuple("AGE", "42"));
+    void an_entry_that_is_not_an_item_fails_the_answer() {
+      // Each would otherwise read as "nothing found", the one verdict a detector must not fake.
+      for (String answer : List.of(
+        "{\"spans\":[{\"label\":\"EMAIL\",\"value\":\"alice@example.com\"}]}",
+        "{\"spans\":[null,42]}",
+        "{\"spans\":[{\"label\":\"PERSON\"}]}",
+        "{\"spans\":[{\"text\":\"x\"}]}",
+        "{\"spans\":[{\"label\":1,\"text\":\"y\"}]}",
+        "{\"spans\":[{\"label\":\"PERSON\",\"text\":\"   \"}]}",
+        "{\"spans\":[{\"label\":\"AGE\",\"text\":\"42\"},\"oops\"]}"
+      )) {
+        assertThatThrownBy(() -> LlmSpans.parse(answer))
+          .as(answer)
+          .isInstanceOf(MalformedItemException.class);
+      }
+    }
+
+    @Test
+    void a_malformed_item_is_named_by_position_and_field_never_by_content() {
+      assertThatThrownBy(() ->
+        LlmSpans.parse(
+          "{\"spans\":[{\"label\":\"AGE\",\"text\":\"42\"},{\"label\":\"EMAIL\",\"value\":\"alice@example.com\"}]}"
+        )
+      )
+        .hasMessage("item 2 has no non-blank string 'text'")
+        .hasMessageNotContaining("alice");
+    }
+
+    @Test
+    void an_empty_array_is_a_valid_answer() {
+      assertThat(items("{\"spans\":[]}")).isEmpty();
     }
 
     @Test
@@ -132,16 +159,15 @@ class LlmSpansTest {
     }
 
     @Test
-    void another_formats_keys_are_not_items() {
+    void another_formats_keys_fail_the_answer() {
+      // No items array under the expected key: not span JSON.
       assertThat(
         LlmSpans.parse("{\"spans\":[{\"label\":\"PERSON\",\"text\":\"Kari\"}]}", ENTITIES)
       ).isEmpty();
-      assertThat(
-        LlmSpans.parse(
-          "{\"entities\":[{\"label\":\"PERSON\",\"text\":\"Kari\"}]}",
-          ENTITIES
-        ).orElseThrow()
-      ).isEmpty();
+      // The array, but items without the expected fields: malformed, not an empty list.
+      assertThatThrownBy(() ->
+        LlmSpans.parse("{\"entities\":[{\"label\":\"PERSON\",\"text\":\"Kari\"}]}", ENTITIES)
+      ).isInstanceOf(MalformedItemException.class);
     }
 
     @Test
@@ -227,6 +253,20 @@ class LlmSpansTest {
       String text = "Kjønn: K";
       var located = LlmSpans.locate(text, List.of(new Item("GENDER", "K")));
       assertThat(located.spans()).containsExactly(new Span("GENDER", "K", 7, 8));
+    }
+
+    @Test
+    void a_whole_word_before_the_cursor_beats_part_of_a_word_after_it() {
+      // Items grouped by person rather than by position: Ola is listed after Per.
+      String text = "Ola ringte Per om Olav.";
+      var located = LlmSpans.locate(
+        text,
+        List.of(new Item("PERSON", "Per"), new Item("PERSON", "Ola"))
+      );
+      assertThat(located.spans()).containsExactly(
+        new Span("PERSON", "Ola", 0, 3),
+        new Span("PERSON", "Per", 11, 14)
+      );
     }
 
     @Test

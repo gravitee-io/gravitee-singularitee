@@ -190,6 +190,17 @@ public final class LlmSpans {
 
   private LlmSpans() {}
 
+  /**
+   * An items array holding an entry that is not an object with a non-blank textual label and
+   * value. The message names the entry by position and field, never its content.
+   */
+  public static final class MalformedItemException extends IllegalArgumentException {
+
+    MalformedItemException(String message) {
+      super(message);
+    }
+  }
+
   /** Reads the items of an answer in the {@link Format#DEFAULT default format}. */
   public static Optional<List<Item>> parse(String answer) {
     return parse(answer, Format.DEFAULT);
@@ -198,12 +209,17 @@ public final class LlmSpans {
   /**
    * Reads the items of an answer. Anything up to a closing reasoning tag is dropped, then the
    * first JSON object is read and its {@code format.spans()} array kept, or, for a bare-array
-   * format, the first JSON array. Items without a textual label and value are skipped. Each
-   * item records where it sits in the answer, from its opening brace to the end of its label or
-   * value, whichever is last, so the tokens that produced it can be found. Its other scalar
-   * fields ({@code ref} and the like) become its metadata.
+   * format, the first JSON array. Each item records where it sits in the answer, from its
+   * opening brace to the end of its label or value, whichever is last, so the tokens that
+   * produced it can be found. Its other scalar fields ({@code ref} and the like) become its
+   * metadata.
+   *
+   * <p>An entry that is not an item fails the whole answer rather than being skipped: a detector
+   * must not read a list it cannot understand as a list of nothing.
    *
    * @return the items, or empty when the answer holds no such object
+   * @throws MalformedItemException when an entry is not an object with a non-blank textual label
+   *     and value
    */
   public static Optional<List<Item>> parse(String answer, Format format) {
     if (answer == null) return Optional.empty();
@@ -246,9 +262,9 @@ public final class LlmSpans {
     List<Item> items = new ArrayList<>();
     JsonToken t;
     while ((t = p.nextToken()) != JsonToken.END_ARRAY) {
+      int position = items.size() + 1;
       if (t != JsonToken.START_OBJECT) {
-        p.skipChildren();
-        continue;
+        throw new MalformedItemException("item " + position + " is not an object");
       }
       int from = base + (int) p.currentTokenLocation().getCharOffset();
       int to = from;
@@ -271,18 +287,27 @@ public final class LlmSpans {
           p.skipChildren();
         }
       }
-      if (label != null && text != null) {
-        items.add(new Item(label, text, from, to, 1.0f, metadata));
-      }
+      requireValue(label, format.label(), position);
+      requireValue(text, format.text(), position);
+      items.add(new Item(label, text, from, to, 1.0f, metadata));
     }
     return items;
   }
 
+  private static void requireValue(String value, String field, int position) {
+    if (value == null || value.isBlank()) {
+      throw new MalformedItemException(
+        "item " + position + " has no non-blank string '" + field + "'"
+      );
+    }
+  }
+
   /**
-   * Places each item in {@code text}. Items come in order of appearance, so each is searched
-   * from the end of the previous match, then from the start; case-sensitively, then ignoring
-   * case; preferring a whole-word occurrence; never overlapping a span already placed. An item
-   * found nowhere counts as missing.
+   * Places each item in {@code text}, never overlapping a span already placed: case-sensitively
+   * before ignoring case, then a whole-word occurrence before part of a longer word, then from
+   * the end of the previous match before from the start. A whole word before the cursor thus
+   * beats part of a word after it, so items listed out of input order (grouped by person, say)
+   * still land on their real mention. An item found nowhere counts as missing.
    */
   public static Located locate(String text, List<Item> items) {
     List<Span> placed = new ArrayList<>(items.size());
@@ -293,8 +318,8 @@ public final class LlmSpans {
       if (needle.isEmpty()) continue;
       int found = -1;
       search: for (boolean ignoreCase : new boolean[] { false, true }) {
-        for (int from : new int[] { cursor, 0 }) {
-          for (boolean wholeWord : new boolean[] { true, false }) {
+        for (boolean wholeWord : new boolean[] { true, false }) {
+          for (int from : new int[] { cursor, 0 }) {
             found = findFree(text, needle, from, ignoreCase, wholeWord, placed);
             if (found >= 0) break search;
           }

@@ -54,7 +54,7 @@ curl -s localhost:8080/v1/classify -H 'content-type: application/json' -d '{
 }' | jq
 ```
 
-The response is `{"object":"classification","model":...,"results":[{"top_label","top_score","scores":{...},"spans":[{"label","score","token","start","end"}]}]}`; `spans` is present only for results that carry offsets. A `scores` value is a number, or an array of per-span scores (in span order) for a label found in several spans. A span may carry `metadata`, and the response `usage` when the model counts tokens.
+The response is `{"object":"classification","model":...,"results":[{"top_label","top_score","scores":{...},"spans":[{"label","score","token","start","end"}]}]}`; `spans` is present only for results that carry offsets. A `scores` value is a number, or, for a token-classification label found in several spans, an array of per-span scores in span order; a text classifier keeps one number per label, however its input was split. A span may carry `metadata`, and the response `usage` when the model counts tokens.
 
 gRPC:
 

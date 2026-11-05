@@ -18,6 +18,7 @@ package io.gravitee.singularitee.http.handler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.http.json.JsonResponses;
 import io.gravitee.singularitee.http.json.Utils;
@@ -72,6 +73,13 @@ public final class ClassifyHandler implements Handler<RoutingContext> {
       HandlerSupport.badRequest(rc, "Missing required parameter: 'input'", "input");
       return;
     }
+
+    // Spans are entities only for a token classifier. A sequence classifier that split a long
+    // input returns one row per chunk with its offsets; its scores stay one number per label.
+    boolean tokenClassification = modelRegistry
+      .get(model)
+      .map(entry -> ModelTasks.TOKEN_CLASSIFICATION.equals(entry.engine().task()))
+      .orElse(false);
 
     var request = ClassifyBatchRequest.newBuilder().setModelId(model).addAllTexts(inputs);
     JsonNode labels = payload.at("/labels");
@@ -140,10 +148,10 @@ public final class ClassifyHandler implements Handler<RoutingContext> {
               span.getMetadataMap().forEach(metadata::put);
             }
           }
-          // A label found in several spans scores each one, in span order; a label with a
-          // single span, and every sequence-classification label, keeps a plain number.
+          // A token-classification label found in several spans scores each one, in span order;
+          // a label with a single span, and every sequence-classification label, keeps a number.
           spanScores.forEach((label, values) -> {
-            if (values.size() > 1) {
+            if (tokenClassification && values.size() > 1) {
               ArrayNode perSpan = scores.putArray(label);
               values.forEach(perSpan::add);
             }

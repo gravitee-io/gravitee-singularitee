@@ -29,6 +29,7 @@ import io.gravitee.singularitee.engine.api.TextGenRequest;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
 import io.gravitee.singularitee.engine.classifier.LlmSpans.Item;
+import io.gravitee.singularitee.engine.classifier.LlmSpans.MalformedItemException;
 import io.gravitee.singularitee.engine.classifier.LlmSpans.Span;
 import io.gravitee.singularitee.inference.api.text.EstimatedTokens;
 import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter;
@@ -238,7 +239,9 @@ public final class LlmTokenClassifierEngine implements ClassifierEngine {
       ? Set.of()
       : requested.stream().map(ClassifyLabel::name).collect(Collectors.toUnmodifiableSet());
     return Flowable.fromIterable(chunks)
-      .concatMapEager(chunk -> spansOf(chunk).toFlowable())
+      // Bounded: a long input must neither overflow the model's pending queue nor starve its
+      // other callers.
+      .concatMapEager(chunk -> spansOf(chunk).toFlowable(), 4, 1)
       .toList()
       .map(perChunk -> {
         List<Span> spans = new ArrayList<>();
@@ -254,28 +257,44 @@ public final class LlmTokenClassifierEngine implements ClassifierEngine {
       });
   }
 
+  /**
+   * Why an answer may have stopped short: a prompt overflow ({@code length_prompt}) only gets
+   * smaller with smaller pieces, a cut-off answer also with a larger answer budget.
+   */
+  private static String cutOffHint(String finishReason) {
+    if (finishReason == null || !finishReason.startsWith("length")) return "";
+    return "length_prompt".equals(finishReason)
+      ? " (the input piece does not fit the context: lower chunk_tokens)"
+      : " (cut off: " + finishReason + "; raise max_tokens or lower chunk_tokens)";
+  }
+
   /** The spans of one piece, shifted to the full input, and the tokens asking for them took. */
   private record ChunkSpans(List<Span> spans, ClassifyUsage usage) {}
 
   /** Asks the model about one piece and returns its spans shifted to the full input. */
   private Single<ChunkSpans> spansOf(Chunk chunk) {
     return generate(chunk.text()).map(answer -> {
-      var items = LlmSpans.parse(answer.text(), options.format()).orElseThrow(() ->
-        new IllegalStateException(
-          "llm_token_classifier '" +
-            name +
-            "': the model answer is not span JSON" +
-            (answer.finishReason() != null && answer.finishReason().startsWith("length")
-                ? " (cut off: " +
-                answer.finishReason() +
-                "; raise max_tokens or lower chunk_tokens)"
-                : "")
-        )
-      );
+      List<Item> items;
+      try {
+        items = LlmSpans.parse(answer.text(), options.format()).orElseThrow(() ->
+          new IllegalStateException(
+            "llm_token_classifier '" +
+              name +
+              "': the model answer is not span JSON" +
+              cutOffHint(answer.finishReason())
+          )
+        );
+      } catch (MalformedItemException e) {
+        throw new IllegalStateException(
+          "llm_token_classifier '" + name + "': the model answer is malformed: " + e.getMessage(),
+          e
+        );
+      }
       if (options.score() != null) items = scored(items, answer.tokens());
       var located = LlmSpans.locate(chunk.text(), items);
       if (located.missing() > 0) {
-        LOGGER.debug(
+        // The count only, never the text: an item that is not placed passes a guard unredacted.
+        LOGGER.warn(
           "llm_token_classifier '{}': {} of {} item(s) not found in the input",
           name,
           located.missing(),

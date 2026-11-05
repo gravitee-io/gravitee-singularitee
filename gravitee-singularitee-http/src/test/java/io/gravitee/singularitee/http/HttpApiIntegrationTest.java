@@ -23,8 +23,10 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ModelEngineToken;
 import io.gravitee.singularitee.engine.api.ModelEngineType;
+import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.gravitee.singularitee.engine.api.TextGenEngine;
 import io.gravitee.singularitee.engine.api.TextGenRequest;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
@@ -106,6 +108,13 @@ class HttpApiIntegrationTest {
       token -> {},
       "",
       false
+    );
+    modelRegistry.register("pii", "PII", classifier(ModelTasks.TOKEN_CLASSIFICATION), token -> {});
+    modelRegistry.register(
+      "toxicity",
+      "Toxicity",
+      classifier(ModelTasks.TEXT_CLASSIFICATION),
+      token -> {}
     );
     PipelineRegistry pipelineRegistry = new PipelineRegistry(modelRegistry);
 
@@ -401,6 +410,37 @@ class HttpApiIntegrationTest {
     JsonNode n = mapper.readTree(r.body());
     assertThat(n.at("/usage").isMissingNode()).isTrue();
     assertThat(n.at("/results/0/spans").isMissingNode()).isTrue();
+  }
+
+  @Test
+  void aSequenceClassifierSplitIntoChunksKeepsOneScorePerLabel() throws Exception {
+    // A long input to a text classifier comes back as one row per chunk, with its offsets.
+    when(inference.classifyBatch(any())).thenReturn(
+      Future.succeededFuture(
+        ClassifyBatchResponse.newBuilder()
+          .addResults(
+            ClassifyResponse.newBuilder()
+              .setTopLabel("toxic")
+              .setTopScore(0.9f)
+              .putAllScores("toxic", 0.9f)
+              .addResults(span("toxic", 0.2f, 0, 100))
+              .addResults(span("toxic", 0.9f, 100, 180))
+              .build()
+          )
+          .build()
+      )
+    );
+    Resp r = post("/v1/classify", "{\"model\":\"toxicity\",\"input\":\"text\"}");
+    assertThat(r.status()).isEqualTo(200);
+    JsonNode scores = mapper.readTree(r.body()).at("/results/0/scores");
+    assertThat(scores.get("toxic").isNumber()).isTrue();
+    assertThat(scores.get("toxic").floatValue()).isEqualTo(0.9f);
+  }
+
+  private static ClassifierEngine classifier(String task) {
+    ClassifierEngine engine = mock(ClassifierEngine.class);
+    when(engine.task()).thenReturn(task);
+    return engine;
   }
 
   private static ClassifyResult span(String label, float score, int start, int end) {

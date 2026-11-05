@@ -324,6 +324,33 @@ class LlmTokenClassifierEngineTest {
   }
 
   @Test
+  void an_answer_with_a_malformed_item_fails_the_call_instead_of_finding_nothing() {
+    var llm = new ScriptedLlm(t ->
+      "{\"spans\":[{\"label\":\"EMAIL\",\"value\":\"alice@example.com\"}]}"
+    );
+    var call = engine(llm, List.of(), 0)
+      .rxClassify(new ClassifyRequest("Email alice@example.com"))
+      .test();
+    call.assertError(
+      e ->
+        e instanceof IllegalStateException &&
+        e.getMessage().contains("'pii'") &&
+        e.getMessage().contains("malformed") &&
+        !e.getMessage().contains("alice")
+    );
+  }
+
+  @Test
+  void a_prompt_that_does_not_fit_points_at_chunk_tokens_only() {
+    var llm = new ScriptedLlm(t -> "");
+    llm.finishReason = "length_prompt";
+    var call = engine(llm, List.of(), 0).rxClassify(new ClassifyRequest("Kari")).test();
+    call.assertError(
+      e -> e.getMessage().contains("lower chunk_tokens") && !e.getMessage().contains("max_tokens")
+    );
+  }
+
+  @Test
   void disposing_the_call_cancels_the_sequence() {
     var llm = new ScriptedLlm(t -> "") {
       @Override

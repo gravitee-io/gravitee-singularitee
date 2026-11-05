@@ -144,7 +144,7 @@ Behind a `guard` step it redacts like any NER model:
 | `labels` | list of string | unset (every label) | Labels kept from the answer; anything else the model emits is dropped. |
 | `max_tokens` | int | `1024` | Answer budget per request. An answer cut off before its JSON closes fails the call. |
 | `context` | map | unset | Chat-template variables, such as `enable_thinking: false` for a model that must answer without reasoning. |
-| `chunk_tokens` | int | `1024` | Estimated tokens per request; a longer input is split on paragraph, line and sentence boundaries and each piece asked separately. `0` never splits. |
+| `chunk_tokens` | int | `1024` | Estimated tokens per request; a longer input is split on paragraph, line and sentence boundaries and each piece asked separately, at most 4 at a time. `0` never splits. |
 | `repeat_min_length` | int | `4` | A found value at least this long is also marked at its other whole-word occurrences. `0` disables. |
 | `score` | string | `max_entropy` | Confidence signal scoring each span from its own tokens (see Notes). `none` scores every span `1.0` and requests no log-probabilities. An unknown name, or a signal with no confidence reading, skips the classifier with a WARN. |
 | `answer` | map | see below | Where the answer keeps its items, labels and values. |
@@ -169,8 +169,7 @@ skips the classifier with a WARN.
 
 - **The answer contract.** The model must answer with one JSON object whose `answer.spans`
   array holds objects with a string `answer.label` and `answer.text` (by default `spans`,
-  `label`, `text`), or with that array alone when `answer.spans` is `""`; items without both
-  are skipped. Text up to a closing `</think>` and prose around the object are dropped;
+  `label`, `text`), or with that array alone when `answer.spans` is `""`. Text up to a closing `</think>` and prose around the object are dropped;
   reasoning-channel tokens are never read.
 - **Structured output.** The schema has the items array as its only key, and each item its
   label (a string), its value (a non-empty string) and the `metadata` fields (optional
@@ -182,9 +181,12 @@ skips the classifier with a WARN.
   `structured_output: false` there. `labels` is not part of the schema: it filters the answer,
   so narrowing it never forces a label onto an item the model would have labelled otherwise.
 - **Invalid answers fail closed.** An answer without that object fails the classification
-  call, and a `guard` over it fails the pipeline: a detector that cannot read its model must
-  not report a clean text. The error names a cut-off answer and suggests raising `max_tokens`
-  or lowering `chunk_tokens`.
+  call, and so does an array entry that is not an object with a non-blank string label and
+  value: a detector that cannot read its model must not report a clean text, so a `guard` over
+  it fails the pipeline instead of passing the input on. The error names the entry by position
+  and field, never its content. For a cut-off answer it suggests raising `max_tokens` or
+  lowering `chunk_tokens`; for an input piece that does not fit the context, lowering
+  `chunk_tokens`. An empty array is a valid answer: nothing found.
 - **Metadata.** Every other scalar field of an item (`ref` for this model: the person the
   data belongs to, the same for every mention of them) is kept as the span's `metadata`, as
   a string, in the order the model wrote them; a repeated occurrence takes its span's
@@ -192,7 +194,15 @@ skips the classifier with a WARN.
 - **Usage.** The response counts the prompt tokens read and the answer tokens generated,
   summed over the pieces of a split input.
 - **Items not found are dropped.** An item whose text does not occur in the input is logged
-  at DEBUG (count only, never the text) and left out.
+  as a WARN (count only, never the text) and left out, so behind a `guard` that value passes
+  unredacted. The model must copy each value verbatim; one it normalises (spaces dropped from
+  a phone number) or one that crosses a `chunk_tokens` boundary is not found.
+- **The input can steer the model.** It is the user turn, so a text that tells the model to
+  list nothing can be obeyed; `structured_output` fixes the answer's shape, not its content.
+  Where a miss is costly, pair it with a `regex` model in a `composite_classifier`.
+- **Placement.** Each item is placed case-sensitively before ignoring case, as a whole word
+  before as part of a longer word, after the previous item before anywhere: items listed out
+  of input order, as when grouped by person, still land on their real mention.
 - **Scores.** The engine requests the top 5 candidates per position and computes the
   `score` signal over the tokens of each item, its `ref` excluded. A token counts for one
   item only: the one holding its last character, else the one holding its first, so a token
