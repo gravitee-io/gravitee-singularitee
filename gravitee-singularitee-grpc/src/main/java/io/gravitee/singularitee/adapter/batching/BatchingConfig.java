@@ -15,6 +15,7 @@
  */
 package io.gravitee.singularitee.adapter.batching;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 import org.slf4j.Logger;
@@ -28,13 +29,14 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>{@code <prefix>_MAX}: max items fused into one batched GPU run (default
  *       {@value #DEFAULT_MAX_BATCH}).</li>
- *   <li>{@code <prefix>_MAX_TOKENS}: max summed estimated tokens per batch (default
- *       {@value #DEFAULT_MAX_BATCH_TOKENS}). Bounds worst-case batch wall time: the encoder pads
- *       every batch item to the longest sequence, so a count-only cap lets one full batch of
- *       max-size items monopolise the device.</li>
- *   <li>{@code <prefix>_BUCKET_TOKENS}: short/long bucket boundary (default
- *       {@value #DEFAULT_BUCKET_TOKENS}). Items at or below it never share a batch with longer
- *       ones, so short requests don't pay the long items' padded-attention cost.</li>
+ *   <li>{@code <prefix>_MAX_TOKENS}: max padded estimated tokens per batch (default
+ *       {@value #DEFAULT_MAX_BATCH_TOKENS}). Counted as padded tokens (items times the longest):
+ *       the encoder pads every batch item to the longest sequence, so a count-only cap lets one
+ *       full batch of max-size items monopolise the device.</li>
+ *   <li>{@code <prefix>_BUCKET_TOKENS}: length bucket boundaries, one number or a comma-separated
+ *       ascending list (default {@value #DEFAULT_BUCKET_TOKENS}). Items in different buckets never
+ *       share a batch, so short requests don't pay the long items' padded-attention cost.
+ *       {@code 64,128,256} gives four buckets; each extra bucket adds a lane thread.</li>
  *   <li>{@code <prefix>_LINGER_MS}: how long the batcher waits for a batch to fill before
  *       dispatching (default {@value #DEFAULT_LINGER_MS} ms). Bounds the added latency under light
  *       load; under heavy load the batch fills well before this elapses.</li>
@@ -56,14 +58,14 @@ public final class BatchingConfig {
 
   private final int maxBatchSize;
   private final long maxBatchTokens;
-  private final long bucketTokens;
+  private final long[] bucketTokens;
   private final long lingerMillis;
   private final int parallelism;
 
   private BatchingConfig(
     int maxBatchSize,
     long maxBatchTokens,
-    long bucketTokens,
+    long[] bucketTokens,
     long lingerMillis,
     int parallelism
   ) {
@@ -83,7 +85,7 @@ public final class BatchingConfig {
     return new BatchingConfig(
       (int) readLong(prefix + "_MAX", DEFAULT_MAX_BATCH, 1),
       readLong(prefix + "_MAX_TOKENS", DEFAULT_MAX_BATCH_TOKENS, 1),
-      readLong(prefix + "_BUCKET_TOKENS", DEFAULT_BUCKET_TOKENS, 1),
+      readLongs(prefix + "_BUCKET_TOKENS", DEFAULT_BUCKET_TOKENS),
       readLong(prefix + "_LINGER_MS", DEFAULT_LINGER_MS, 0),
       (int) readLong(prefix + "_PARALLELISM", DEFAULT_PARALLELISM, 1)
     );
@@ -104,6 +106,50 @@ public final class BatchingConfig {
       parallelism,
       batchFn
     );
+  }
+
+  private static long[] readLongs(String env, long fallback) {
+    String raw = System.getenv(env);
+    if (raw == null || raw.isBlank()) {
+      return new long[] { fallback };
+    }
+    long[] parsed = parseBoundaries(env, raw);
+    if (parsed == null) {
+      LOGGER.warn("{}={} is not a valid number list; using default {}", env, raw, fallback);
+      return new long[] { fallback };
+    }
+    return parsed.length == 0 ? new long[] { fallback } : parsed;
+  }
+
+  /**
+   * Parses a comma list of bucket boundaries into a sorted, de-duplicated array of values of at
+   * least 1; {@code null} when an entry is not a number. Dropped entries are logged.
+   */
+  static long[] parseBoundaries(String env, String raw) {
+    long[] parsed;
+    try {
+      parsed = Arrays.stream(raw.split(","))
+        .map(String::trim)
+        .filter(v -> !v.isEmpty())
+        .mapToLong(Long::parseLong)
+        .toArray();
+    } catch (NumberFormatException e) {
+      return null;
+    }
+    long[] kept = Arrays.stream(parsed)
+      .filter(v -> v >= 1)
+      .sorted()
+      .distinct()
+      .toArray();
+    if (kept.length != parsed.length) {
+      LOGGER.warn(
+        "{}={}: dropped entries below 1 or repeated; using {}",
+        env,
+        raw,
+        Arrays.toString(kept)
+      );
+    }
+    return kept;
   }
 
   private static long readLong(String env, long fallback, long min) {

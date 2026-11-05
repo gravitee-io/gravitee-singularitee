@@ -25,8 +25,8 @@ import java.util.Map;
  */
 public final class Constants {
 
-  /** Default encoder sequence budget: 512 minus the two special tokens [CLS] and [SEP]. */
-  public static final int MAX_SEQUENCE_LENGTH_DEFAULT_VALUE = 510;
+  /** Default encoder window in tokens, the special tokens ([CLS], [SEP], ...) included. */
+  public static final int MAX_SEQUENCE_LENGTH_DEFAULT_VALUE = 512;
 
   private Constants() {}
 
@@ -69,6 +69,7 @@ public final class Constants {
   public static final String POOLING_MODE = "poolingMode";
 
   public static final String PADDING = "padding";
+  public static final String TRUNCATION = "truncation";
   public static final Map<String, String> DEFAULT_TOKENIZER_CONFIG = Map.of(PADDING, "false");
   public static final String MAX_SEQUENCE_LENGTH = "maxSequenceLength";
 }

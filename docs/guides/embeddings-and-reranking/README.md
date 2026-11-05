@@ -170,7 +170,7 @@ Keys used in this guide. Full lists: [onnx_embedding](../../reference/models/onn
 | --- | --- | --- | --- |
 | `onnx_embedding.pooling_mode` | string | `MEAN` | `MEAN` or `CLS`; follow the model card. |
 | `onnx_embedding.normalize` | bool | `false` | L2-normalise the vector. |
-| `onnx_*.max_sequence_length` | int | `0` (library default 510) | Token window; also the split budget. |
+| `onnx_*.max_sequence_length` | int | `0` (library default 512) | Token window, special tokens included; chunks get this minus the tokenizer's special tokens. |
 | `llama_cpp_embedding.llama_cpp.pooling_type` | string | unset | `MEAN`, `CLS` or `LAST`; `RANK` for a reranker. |
 | `llama_cpp_embedding.embedding_template` | string | unset | Wrapper with `{text}` applied to each input. |
 | `*_reranker.scoring` | string | unset (auto-detect) | `SIGMOID`, `SOFTMAX` or `LOGIT`. |

@@ -35,7 +35,7 @@ class MicroBatcherTest {
 
   /**
    * Records each dispatched batch; optionally blocks batches whose first item matches
-   * {@code blockPrefix} until released. May be invoked concurrently by the two lanes.
+   * {@code blockPrefix} until released. May be invoked concurrently by the lanes.
    */
   private static final class RecordingBatchFn implements Function<List<String>, List<String>> {
 
@@ -150,6 +150,63 @@ class MicroBatcherTest {
   }
 
   @Test
+  void several_boundaries_keep_every_bucket_in_its_own_batches() throws Exception {
+    var fn = new RecordingBatchFn(null);
+    try (
+      var batcher = new MicroBatcher<String, String>(
+        "t",
+        16,
+        10_000,
+        new long[] { 20, 10, 20 }, // unsorted and duplicated on purpose: buckets are <=10, <=20, >20
+        50,
+        1,
+        fn
+      )
+    ) {
+      List<CompletableFuture<String>> futures = new ArrayList<>();
+      for (int w : new int[] { 5, 15, 30, 6, 16, 31 }) {
+        futures.add(batcher.submit("w" + w, w));
+      }
+      for (var f : futures) {
+        f.get(2, TimeUnit.SECONDS);
+      }
+      for (List<String> batch : fn.batches) {
+        long buckets = batch
+          .stream()
+          .map(x -> Integer.parseInt(x.substring(1)))
+          .map(w -> w <= 10 ? 0 : w <= 20 ? 1 : 2)
+          .distinct()
+          .count();
+        assertThat(buckets).as("mixed buckets in %s", batch).isEqualTo(1);
+      }
+    }
+  }
+
+  @Test
+  void token_cap_counts_padded_weight() throws Exception {
+    // Weights 20 + 20 + 60 sum to exactly the cap of 100, but the batch would pad to
+    // 3 x 60 = 180: the heavy item must not join the others.
+    var fn = new RecordingBatchFn("plug");
+    try (var batcher = new MicroBatcher<String, String>("t", 16, TOKEN_CAP, BUCKET, 50, fn)) {
+      List<CompletableFuture<String>> futures = new ArrayList<>();
+      futures.add(batcher.submit("plug-long", 40));
+      assertThat(fn.blockedBatchRunning.await(2, TimeUnit.SECONDS)).isTrue();
+      futures.add(batcher.submit("a", 20));
+      futures.add(batcher.submit("b", 20));
+      futures.add(batcher.submit("c", 60));
+      fn.release.countDown();
+      for (var f : futures) {
+        f.get(2, TimeUnit.SECONDS);
+      }
+      for (List<String> batch : fn.batches) {
+        if (batch.contains("c")) {
+          assertThat(batch).as("heavy item padded %s", batch).hasSize(1);
+        }
+      }
+    }
+  }
+
+  @Test
   void oversized_single_item_still_dispatches_alone() throws Exception {
     var fn = new RecordingBatchFn(null);
     try (var batcher = new MicroBatcher<String, String>("t", 16, TOKEN_CAP, BUCKET, 5, fn)) {
@@ -189,7 +246,15 @@ class MicroBatcherTest {
         .map(s -> "out:" + s)
         .toList();
     };
-    var batcher = new MicroBatcher<String, String>("saturated", 1, TOKEN_CAP, BUCKET, 0, 2, fn);
+    var batcher = new MicroBatcher<String, String>(
+      "saturated",
+      1,
+      TOKEN_CAP,
+      new long[] { BUCKET },
+      0,
+      2,
+      fn
+    );
     try {
       var a = batcher.submit("a", 1);
       var b = batcher.submit("b", 1);

@@ -42,7 +42,8 @@ import java.util.List;
 public class OnnxBertEmbeddingModel extends OnnxBertInference<String, EmbeddingTokenCount> {
 
   public OnnxBertEmbeddingModel(OnnxBertConfig onnxBertConfig) {
-    super(onnxBertConfig);
+    // Inputs are split to the window first: the tokenizer must measure their real length.
+    super(onnxBertConfig.withoutTruncation());
   }
 
   @Override

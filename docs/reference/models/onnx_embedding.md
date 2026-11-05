@@ -44,12 +44,17 @@ block.
 | `model_path` | string | unset | ONNX file inside the repository. Required. |
 | `tokenizer_path` | string | unset | Tokenizer file or directory prefix. Required; blank fails the load. |
 | `config_json_path` | string | unset | Model `config.json`. Optional. |
-| `max_sequence_length` | int | library default | Token cap per input; longer inputs are split and recombined. |
+| `max_sequence_length` | int | `512` | Model window in tokens, special tokens included; longer inputs are split to fit and recombined. |
 | `pooling_mode` | string | `MEAN` | `CLS` or `MEAN`. Unknown values fall back to `MEAN`. |
 | `normalize` | boolean | `false` | L2-normalise the output vector. |
 
 ## Notes
 
+- **The window counts the special tokens.** `max_sequence_length` is the whole encoded sequence,
+  `[CLS]`/`[SEP]` (or `<s>`/`</s>`) included, so `512` leaves 510 content tokens per chunk. Set it
+  to the model's position limit: `max_position_embeddings` from `config.json` for BERT-family
+  models, that value minus 2 for RoBERTa-family ones (XLM-R: 514, so 512). The tokenizer never
+  truncates; a value above the model's limit fails at inference instead of dropping text.
 - **Pooling must match the model card.** BGE models want `CLS` with `normalize: true`; most
   sentence-transformers want `MEAN`.
 - **Long inputs.** Chunks are embedded separately and reduced to a mean weighted by content

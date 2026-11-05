@@ -50,8 +50,10 @@ import java.util.Set;
  * returning. The returned {@code Result} owns native output memory: callers must close it,
  * and must read its tensors before closing.
  *
- * <p>{@link #sequenceBudget} is the content-token limit per sequence; {@link #splitter} cuts
- * longer inputs on tokenizer boundaries. The tokenizer and session are shared and thread-safe.
+ * <p>{@link #maxSequenceLength} is the model window, special tokens included; {@link #sequenceBudget}
+ * is what is left of it for content once the tokenizer adds its special tokens, and
+ * {@link #splitter} cuts longer inputs on tokenizer boundaries to fit it. The tokenizer and session
+ * are shared and thread-safe.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -64,7 +66,9 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
   protected final JsonNode configJson;
   private final boolean hasTokenTypeIds;
 
-  /** Maximum content tokens (no special tokens) the model accepts in a single sequence. */
+  /** The model window in tokens, special tokens included ({@code max_sequence_length}). */
+  protected final int maxSequenceLength;
+  /** Content tokens (no special tokens) one sequence holds within {@link #maxSequenceLength}. */
   protected final int sequenceBudget;
   /** Splits oversized inputs into chunks that each fit {@link #sequenceBudget}. */
   protected final RecursiveTextSplitter splitter;
@@ -74,7 +78,9 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
     this.tokenizer = getTokenizer();
     this.configJson = getConfigJson();
     hasTokenTypeIds = session.getInputNames().contains(TOKEN_TYPE_IDS);
-    this.sequenceBudget = config.get(MAX_SEQUENCE_LENGTH, MAX_SEQUENCE_LENGTH_DEFAULT_VALUE);
+    this.maxSequenceLength = config.get(MAX_SEQUENCE_LENGTH, MAX_SEQUENCE_LENGTH_DEFAULT_VALUE);
+    int specialTokens = tokenizer.encode("", true, false).getIds().length;
+    this.sequenceBudget = Math.max(maxSequenceLength - specialTokens, 1);
     this.splitter = newSplitter(sequenceBudget);
   }
 
@@ -99,7 +105,7 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
   }
 
   /**
-   * The per-sequence token budget: inputs longer than this must be split.
+   * The per-sequence content-token budget: inputs longer than this must be split.
    *
    * <p>Exposed so a caller that has already measured its input can tell whether
    * {@link #split(String)} would do anything, and skip a redundant tokenizer pass when it

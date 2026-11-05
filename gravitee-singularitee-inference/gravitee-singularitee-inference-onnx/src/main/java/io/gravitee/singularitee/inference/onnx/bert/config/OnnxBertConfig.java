@@ -16,11 +16,13 @@
 package io.gravitee.singularitee.inference.onnx.bert.config;
 
 import static io.gravitee.singularitee.inference.api.Constants.DEFAULT_TOKENIZER_CONFIG;
+import static io.gravitee.singularitee.inference.api.Constants.TRUNCATION;
 
 import io.gravitee.singularitee.inference.api.utils.ConfigWrapper;
 import io.gravitee.singularitee.inference.math.api.GioMaths;
 import io.gravitee.singularitee.inference.onnx.OnnxConfig;
 import io.gravitee.singularitee.inference.onnx.bert.resource.OnnxBertResource;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -47,8 +49,17 @@ public final class OnnxBertConfig extends OnnxConfig<OnnxBertResource> {
     Map<String, Object> configuration,
     Map<String, String> tokenizerConfig
   ) {
+    this(resource, gioMath, new ConfigWrapper(configuration), tokenizerConfig);
+  }
+
+  private OnnxBertConfig(
+    OnnxBertResource resource,
+    GioMaths gioMath,
+    ConfigWrapper configuration,
+    Map<String, String> tokenizerConfig
+  ) {
     super(resource);
-    this.configuration = new ConfigWrapper(configuration);
+    this.configuration = configuration;
     this.gioMath = gioMath;
     this.tokenizerConfig = tokenizerConfig;
   }
@@ -77,5 +88,17 @@ public final class OnnxBertConfig extends OnnxConfig<OnnxBertResource> {
 
   public Map<String, String> getTokenizerConfig() {
     return tokenizerConfig;
+  }
+
+  /**
+   * This config with the tokenizer's truncation turned off, for models that split every input to
+   * fit the window before encoding it. Their splitter measures with the same tokenizer, and a
+   * truncating one reports any long input as fitting, so everything past its limit would be
+   * dropped without being read.
+   */
+  public OnnxBertConfig withoutTruncation() {
+    var options = new HashMap<>(tokenizerConfig);
+    options.put(TRUNCATION, "false");
+    return new OnnxBertConfig(getResource(), gioMath, configuration, Map.copyOf(options));
   }
 }

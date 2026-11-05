@@ -112,6 +112,7 @@ The axis here is fine-tuned versus zero-shot:
 | File | id | Type | How you change what it detects |
 | --- | --- | --- | --- |
 | `pii-bert.yaml` | `pii` | `onnx_classifier` (TOKEN) | Retrain. Fast and cheap; detects only what it was trained on. |
+| `pii-arabic.yaml` | `pii` | `onnx_classifier` (TOKEN) | Retrain. OpenMed 560M Arabic token classifier; heavy on CPU. The model repo is private: needs an `HF_TOKEN` with gravitee-io read access. |
 | `pii-gliner.yaml` | `pii` | `gliner_ner` | Edit the entity list. Zero-shot; heavier per call. |
 | `pii-nordic-llm.yaml` | `pii` | `llm_token_classifier` over `llama_cpp` | Retrain. A Qwen3.5-4B fine-tuned to list Norwegian and Swedish PII (18 categories); the slowest per call, the widest coverage. |
 | `toxicity-bert.yaml` | `toxicity` | `onnx_classifier` (SEQUENCE) | Retrain. Multilingual, `{non-toxic, toxic}`. |
