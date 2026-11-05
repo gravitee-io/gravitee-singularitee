@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.10.2...1.11.0) (2026-11-05)
+
+
+### Features
+
+* llm_token_classifier, span metadata and token usage on /v1/classify ([#23](https://github.com/gravitee-io/gravitee-singularitee/issues/23)) ([0c46744](https://github.com/gravitee-io/gravitee-singularitee/commit/0c467440ff9e37062873648c22b3e96477b7d432))
+
 ## [1.10.2](https://github.com/gravitee-io/gravitee-singularitee/compare/1.10.1...1.10.2) (2026-11-03)
 
 

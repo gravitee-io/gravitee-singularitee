@@ -23,7 +23,7 @@
     <parent>
         <groupId>io.gravitee.singularitee.inference</groupId>
         <artifactId>gravitee-singularitee-inference-math</artifactId>
-        <version>1.10.2</version>
+        <version>1.11.0</version>
     </parent>
 
     <artifactId>gravitee-singularitee-inference-math-native</artifactId>
