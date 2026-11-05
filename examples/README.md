@@ -113,6 +113,7 @@ The axis here is fine-tuned versus zero-shot:
 | --- | --- | --- | --- |
 | `pii-bert.yaml` | `pii` | `onnx_classifier` (TOKEN) | Retrain. Fast and cheap; detects only what it was trained on. |
 | `pii-gliner.yaml` | `pii` | `gliner_ner` | Edit the entity list. Zero-shot; heavier per call. |
+| `pii-nordic-llm.yaml` | `pii` | `llm_token_classifier` over `llama_cpp` | Retrain. A Qwen3.5-4B fine-tuned to list Norwegian and Swedish PII (18 categories); the slowest per call, the widest coverage. |
 | `toxicity-bert.yaml` | `toxicity` | `onnx_classifier` (SEQUENCE) | Retrain. Multilingual, `{non-toxic, toxic}`. |
 | `guardrails-gliner.yaml` | `gliguard` | `gliner_classifier` | Edit the safety labels. A policy change is a YAML edit, not a training run. |
 | `intent-gliner.yaml` | `router` | `gliner_classifier` | Edit the intent labels. Backs `pipelines/gliner-router.yaml`. |

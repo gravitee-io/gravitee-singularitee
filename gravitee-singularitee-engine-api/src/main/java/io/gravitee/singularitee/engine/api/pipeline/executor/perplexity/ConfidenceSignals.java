@@ -33,6 +33,7 @@ import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal.U
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The registry of confidence signals the infer step publishes from every generation, and the one
@@ -69,6 +70,13 @@ public final class ConfidenceSignals {
   /** Every published signal, in publication order. */
   public static List<ConfidenceSignal> all() {
     return ALL;
+  }
+
+  /** The signal publishing under {@code field}, if any. */
+  public static Optional<ConfidenceSignal> byField(String field) {
+    return ALL.stream()
+      .filter(s -> s.field().equals(field))
+      .findFirst();
   }
 
   /** Compute every signal over the sample, keyed by field, in publication order. */

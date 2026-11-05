@@ -21,6 +21,8 @@ import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.ClassifyResponse;
 import io.gravitee.singularitee.engine.api.ClassifyResult;
+import io.gravitee.singularitee.engine.api.ClassifyUsage;
+import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.gravitee.singularitee.engine.classifier.RegexClassifierEngine.PatternEntry;
 import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.subjects.SingleSubject;
@@ -417,6 +419,61 @@ class CompositeClassifierEngineTest {
       assertThat(responses.get(1).results())
         .hasSizeGreaterThan(1)
         .allSatisfy(r -> assertThat(HUGE.substring(r.start(), r.end())).isEqualTo(r.token()));
+    }
+  }
+
+  @Nested
+  class MetadataAndUsage {
+
+    private ClassifierEngine fixed(ClassifyResponse response) {
+      return new ClassifierEngine() {
+        @Override
+        public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
+          return Single.just(response);
+        }
+
+        @Override
+        public String task() {
+          return ModelTasks.TOKEN_CLASSIFICATION;
+        }
+
+        @Override
+        public void close() {}
+      };
+    }
+
+    @Test
+    void sums_the_usage_of_the_members_that_report_it_and_keeps_metadata() {
+      var spans = new ClassifyResponse(
+        "PERSON",
+        0.9f,
+        Map.of("PERSON", 0.9f),
+        List.of(new ClassifyResult("PERSON", 0.9f, "Kari", 0, 4, Map.of("ref", "p1"))),
+        new ClassifyUsage(10, 7)
+      );
+      var other = new ClassifyResponse(
+        "x",
+        0.1f,
+        Map.of("x", 0.1f),
+        List.of(),
+        new ClassifyUsage(5, 0)
+      );
+      var silent = new ClassifyResponse("y", 0.1f, Map.of("y", 0.1f), List.of());
+      var composite = new CompositeClassifierEngine(
+        List.of(fixed(spans), fixed(other), fixed(silent))
+      );
+
+      var resp = composite.rxClassify(new ClassifyRequest("Kari")).blockingGet();
+
+      assertThat(resp.usage()).isEqualTo(new ClassifyUsage(15, 7));
+      assertThat(resp.results().getFirst().metadata()).containsEntry("ref", "p1");
+    }
+
+    @Test
+    void no_member_reporting_usage_reports_none() {
+      var silent = new ClassifyResponse("y", 0.1f, Map.of("y", 0.1f), List.of());
+      var composite = new CompositeClassifierEngine(List.of(fixed(silent)));
+      assertThat(composite.rxClassify(new ClassifyRequest("Kari")).blockingGet().usage()).isNull();
     }
   }
 }

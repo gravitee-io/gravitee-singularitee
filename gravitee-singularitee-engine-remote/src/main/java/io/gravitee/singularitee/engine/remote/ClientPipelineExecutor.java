@@ -227,7 +227,7 @@ public final class ClientPipelineExecutor {
       registerRemoteModel(modelDef, clients, ws.remotes(), streamRegistry, modelRegistry);
     }
 
-    // 4b. Register client-local models (regex, composite: pure-Java engines)
+    // 4b. Register client-local models (regex, llm_token_classifier, composite: pure-Java engines)
     ClientLocalModelRegistrar.register(
       ws.clientLocalModels(),
       modelRegistry,

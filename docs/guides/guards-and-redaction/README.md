@@ -8,7 +8,7 @@ A guard is a step placed before (or between) generation steps. Three step types 
 
 | Step type | Backed by | Fires when |
 | --- | --- | --- |
-| `guard` | any classifier model (`onnx_classifier`, `gliner_*`, `regex`, `composite_classifier`) | a trigger label scores at or above its threshold, or, for token-level models, any entity span is found |
+| `guard` | any classifier model (`onnx_classifier`, `gliner_*`, `regex`, `llm_token_classifier`, `composite_classifier`) | a trigger label scores at or above its threshold, or, for token-level models, any entity span is found |
 | `llm_guard` | a text-generation model acting as judge | the verdict does not start with `safe_token` |
 | `regex_guard` | inline patterns, no model | any pattern matches (kept for compatibility; prefer a `regex` model behind `guard`) |
 
@@ -167,7 +167,7 @@ Keys used in this guide. Full lists: [guard](../../reference/steps/guard.md), [l
 
 ## See also
 
-- [Classification](../classification/README.md): the models behind `guard`, including regex and composite.
+- [Classification](../classification/README.md): the models behind `guard`, including regex, generative span models and composite.
 - [Routing](../routing/README.md): branch on a label instead of blocking.
 - [Sub-pipelines](../sub-pipelines/README.md): finish-reason propagation.
 - [Pipelines](../../concepts/pipelines/README.md) and [Context fields](../../reference/context-fields.md).

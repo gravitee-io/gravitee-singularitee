@@ -80,6 +80,9 @@ message ClassifyResponse {
   map<string, float>    all_scores = 3;
   // Detailed results (token-level NER spans when available).
   repeated ClassifyResult results  = 4;
+  // Tokens the classification read (prompt_tokens) and generated (completion_tokens). Unset when
+  // the engine does not report them.
+  TokenUsage usage = 5;
 }
 
 message ClassifyResult {
@@ -88,6 +91,8 @@ message ClassifyResult {
   optional string token = 3;
   optional int32  start = 4;
   optional int32  end   = 5;
+  // Engine-specific facts about the result, such as the person a span belongs to (ref).
+  map<string, string> metadata = 6;
 }
 
 // Label definition for per-request classification override (GLiNER, decision classifiers).

@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal;
 
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
+import java.util.OptionalDouble;
 
 /** Fraction of tokens whose chosen logprob fell below the uncertain threshold (~perplexity 7.4+). */
 public final class UncertainTokenFraction implements ConfidenceSignal {
@@ -35,5 +36,11 @@ public final class UncertainTokenFraction implements ConfidenceSignal {
       .filter(lp -> lp < UNCERTAIN_LOGPROB)
       .count();
     return (double) n / c.chosen().size();
+  }
+
+  /** The fraction of confident tokens. */
+  @Override
+  public OptionalDouble confidence(double value) {
+    return OptionalDouble.of(1.0 - value);
   }
 }

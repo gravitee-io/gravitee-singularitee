@@ -218,7 +218,7 @@ workspace:
 
 **Model types** (`ModelType.java`): `llama_cpp`, `vllm`, `onnx_classifier`, `onnx_embedding`,
 `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `llama_cpp_embedding`, `llama_cpp_reranker`,
-`llama_cpp_decision`, `vllm_decision`, `gliner_decision`, the `remote_*` proxies (`remote_decision` included), and `regex` / `composite_classifier` (pure Java, run anywhere).
+`llama_cpp_decision`, `vllm_decision`, `gliner_decision`, the `remote_*` proxies (`remote_decision` included), and `regex` / `composite_classifier` / `llm_token_classifier` (pure Java, run anywhere; the last wraps a text-generation model as a span classifier).
 
 **Step types** (one plugin module each under `gravitee-singularitee-plugins/`): `infer`, `classify`, `embed`, `route`,
 `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`,
@@ -380,7 +380,7 @@ against a specific vLLM Python API, so a drifting venv fails at model load rathe
 the script and the Dockerfile. See [Engines](#engines-llamacpp-is-the-default) for the setup itself.
 
 **Keep `LLAMACPP_VERSION` in lockstep with llamaj.cpp.** The FFI bindings are ABI-specific;
-a mismatch shows up as a runtime `NoSuchMethodError`. Currently llama.cpp `v0.6.0` (nightly `b11429`) ↔ llamaj.cpp `2.10.1`
+a mismatch shows up as a runtime `NoSuchMethodError`. Currently llama.cpp `v0.6.0` (nightly `b11429`) ↔ llamaj.cpp `2.11.0`
 (`Dockerfile.llama-cuda`, `install.sh`).
 
 **Java reads zero entries from openssl cert-only PKCS12 bundles.** `openssl pkcs12

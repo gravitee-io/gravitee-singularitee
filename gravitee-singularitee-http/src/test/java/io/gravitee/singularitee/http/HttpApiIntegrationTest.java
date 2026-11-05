@@ -23,8 +23,10 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ModelEngineToken;
 import io.gravitee.singularitee.engine.api.ModelEngineType;
+import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.gravitee.singularitee.engine.api.TextGenEngine;
 import io.gravitee.singularitee.engine.api.TextGenRequest;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
@@ -106,6 +108,15 @@ class HttpApiIntegrationTest {
       token -> {},
       "",
       false
+    );
+    // What each classifier id stands for. The handler must not take the model's task as proof
+    // that every span is an entity: a composite reports token-classification over text rows.
+    modelRegistry.register("pii", "PII", classifier(ModelTasks.TOKEN_CLASSIFICATION), token -> {});
+    modelRegistry.register(
+      "toxicity",
+      "Toxicity",
+      classifier(ModelTasks.TEXT_CLASSIFICATION),
+      token -> {}
     );
     PipelineRegistry pipelineRegistry = new PipelineRegistry(modelRegistry);
 
@@ -327,6 +338,148 @@ class HttpApiIntegrationTest {
     assertThat(n.at("/results/0/spans/0/label").asText()).isEqualTo("EMAIL");
     assertThat(n.at("/results/0/spans/0/start").asInt()).isEqualTo(11);
     assertThat(n.at("/results/0/spans/0/end").asInt()).isEqualTo(27);
+  }
+
+  @Test
+  void aLabelInSeveralSpansScoresEachSpan() throws Exception {
+    when(inference.classifyBatch(any())).thenReturn(
+      Future.succeededFuture(
+        ClassifyBatchResponse.newBuilder()
+          .addResults(
+            ClassifyResponse.newBuilder()
+              .setTopLabel("PERSON")
+              .setTopScore(0.99f)
+              .putAllScores("PERSON", 0.99f)
+              .putAllScores("SPECIAL_CATEGORY", 0.88f)
+              .addResults(span("PERSON", 0.99f, 0, 3).toBuilder().setToken("Ola"))
+              .addResults(span("SPECIAL_CATEGORY", 0.88f, 8, 21).toBuilder().setToken("diabetes"))
+              .addResults(span("SPECIAL_CATEGORY", 0.46f, 25, 50).toBuilder().setToken("asthma"))
+              .build()
+          )
+          .build()
+      )
+    );
+    Resp r = post("/v1/classify", "{\"model\":\"pii\",\"input\":\"text\"}");
+    assertThat(r.status()).isEqualTo(200);
+    JsonNode scores = mapper.readTree(r.body()).at("/results/0/scores");
+    assertThat(scores.get("PERSON").isNumber()).isTrue();
+    assertThat(scores.get("PERSON").floatValue()).isEqualTo(0.99f);
+    assertThat(scores.get("SPECIAL_CATEGORY").isArray()).isTrue();
+    assertThat(scores.get("SPECIAL_CATEGORY").get(0).floatValue()).isEqualTo(0.88f);
+    assertThat(scores.get("SPECIAL_CATEGORY").get(1).floatValue()).isEqualTo(0.46f);
+  }
+
+  @Test
+  void spanMetadataAndUsageAreRendered() throws Exception {
+    when(inference.classifyBatch(any())).thenReturn(
+      Future.succeededFuture(
+        ClassifyBatchResponse.newBuilder()
+          .addResults(
+            ClassifyResponse.newBuilder()
+              .setTopLabel("PERSON")
+              .setTopScore(0.99f)
+              .addResults(span("PERSON", 0.99f, 0, 4).toBuilder().putMetadata("ref", "p1"))
+              .setUsage(TokenUsage.newBuilder().setPromptTokens(40).setCompletionTokens(12))
+              .build()
+          )
+          .addResults(
+            ClassifyResponse.newBuilder()
+              .setUsage(TokenUsage.newBuilder().setPromptTokens(30).setCompletionTokens(5))
+              .build()
+          )
+          .build()
+      )
+    );
+    Resp r = post("/v1/classify", "{\"model\":\"pii\",\"input\":[\"a\",\"b\"]}");
+    assertThat(r.status()).isEqualTo(200);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/results/0/spans/0/metadata/ref").asText()).isEqualTo("p1");
+    assertThat(n.at("/usage/prompt_tokens").asInt()).isEqualTo(70);
+    assertThat(n.at("/usage/completion_tokens").asInt()).isEqualTo(17);
+    assertThat(n.at("/usage/total_tokens").asInt()).isEqualTo(87);
+  }
+
+  @Test
+  void classificationWithoutCountsHasNoUsage() throws Exception {
+    when(inference.classifyBatch(any())).thenReturn(
+      Future.succeededFuture(
+        ClassifyBatchResponse.newBuilder()
+          .addResults(ClassifyResponse.newBuilder().setTopLabel("safe").setTopScore(0.9f))
+          .build()
+      )
+    );
+    Resp r = post("/v1/classify", "{\"model\":\"gliguard\",\"input\":\"text\"}");
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/usage").isMissingNode()).isTrue();
+    assertThat(n.at("/results/0/spans").isMissingNode()).isTrue();
+  }
+
+  @Test
+  void aSequenceClassifierSplitIntoChunksKeepsOneScorePerLabel() throws Exception {
+    // A long input to a text classifier comes back as one row per chunk, with its offsets.
+    when(inference.classifyBatch(any())).thenReturn(
+      Future.succeededFuture(
+        ClassifyBatchResponse.newBuilder()
+          .addResults(
+            ClassifyResponse.newBuilder()
+              .setTopLabel("toxic")
+              .setTopScore(0.9f)
+              .putAllScores("toxic", 0.9f)
+              .addResults(span("toxic", 0.2f, 0, 100))
+              .addResults(span("toxic", 0.9f, 100, 180))
+              .build()
+          )
+          .build()
+      )
+    );
+    Resp r = post("/v1/classify", "{\"model\":\"toxicity\",\"input\":\"text\"}");
+    assertThat(r.status()).isEqualTo(200);
+    JsonNode scores = mapper.readTree(r.body()).at("/results/0/scores");
+    assertThat(scores.get("toxic").isNumber()).isTrue();
+    assertThat(scores.get("toxic").floatValue()).isEqualTo(0.9f);
+  }
+
+  @Test
+  void aCompositeKeepsItsTextClassifierScoreScalar() throws Exception {
+    // A composite of a token and a text classifier is a token classifier, yet its text
+    // delegate's per-chunk rows (offsets, no token) still come through.
+    when(inference.classifyBatch(any())).thenReturn(
+      Future.succeededFuture(
+        ClassifyBatchResponse.newBuilder()
+          .addResults(
+            ClassifyResponse.newBuilder()
+              .setTopLabel("toxic")
+              .setTopScore(0.9f)
+              .putAllScores("toxic", 0.9f)
+              .putAllScores("EMAIL", 1.0f)
+              .addResults(span("EMAIL", 1.0f, 5, 22).toBuilder().setToken("alice@example.com"))
+              .addResults(span("toxic", 0.2f, 0, 100))
+              .addResults(span("toxic", 0.9f, 100, 180))
+              .build()
+          )
+          .build()
+      )
+    );
+    Resp r = post("/v1/classify", "{\"model\":\"pii\",\"input\":\"text\"}");
+    assertThat(r.status()).isEqualTo(200);
+    JsonNode scores = mapper.readTree(r.body()).at("/results/0/scores");
+    assertThat(scores.get("toxic").isNumber()).isTrue();
+    assertThat(scores.get("toxic").floatValue()).isEqualTo(0.9f);
+  }
+
+  private static ClassifierEngine classifier(String task) {
+    ClassifierEngine engine = mock(ClassifierEngine.class);
+    when(engine.task()).thenReturn(task);
+    return engine;
+  }
+
+  private static ClassifyResult span(String label, float score, int start, int end) {
+    return ClassifyResult.newBuilder()
+      .setLabel(label)
+      .setScore(score)
+      .setStart(start)
+      .setEnd(end)
+      .build();
   }
 
   @Test

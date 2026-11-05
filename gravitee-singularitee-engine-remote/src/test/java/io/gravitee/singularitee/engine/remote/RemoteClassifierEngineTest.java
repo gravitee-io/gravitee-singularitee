@@ -24,6 +24,7 @@ import static org.mockito.Mockito.when;
 import io.gravitee.singularitee.client.SingulariteeClient;
 import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
+import io.gravitee.singularitee.engine.api.ClassifyUsage;
 import io.gravitee.singularitee.protocol.ClassifyLabel;
 import io.reactivex.rxjava3.core.Single;
 import java.util.List;
@@ -94,5 +95,49 @@ class RemoteClassifierEngineTest {
     var captor = ArgumentCaptor.forClass(io.gravitee.singularitee.protocol.ClassifyRequest.class);
     verify(client).classify(captor.capture());
     assertThat(captor.getValue().getLabelsList()).isEmpty();
+  }
+
+  @Test
+  void rxClassify_reads_back_span_metadata_and_usage() {
+    var client = mock(SingulariteeClient.class);
+    when(client.classify(any())).thenReturn(
+      Single.just(
+        io.gravitee.singularitee.protocol.ClassifyResponse.newBuilder()
+          .setTopLabel("PERSON")
+          .setTopScore(0.9f)
+          .addResults(
+            io.gravitee.singularitee.protocol.ClassifyResult.newBuilder()
+              .setLabel("PERSON")
+              .setScore(0.9f)
+              .setStart(0)
+              .setEnd(4)
+              .putMetadata("ref", "p1")
+          )
+          .setUsage(
+            io.gravitee.singularitee.protocol.TokenUsage.newBuilder()
+              .setPromptTokens(12)
+              .setCompletionTokens(9)
+          )
+          .build()
+      )
+    );
+    var response = new RemoteClassifierEngine(client, MODEL_ID, null)
+      .rxClassify(new ClassifyRequest("Kari"))
+      .blockingGet();
+
+    assertThat(response.results().getFirst().metadata()).containsEntry("ref", "p1");
+    assertThat(response.usage()).isEqualTo(new ClassifyUsage(12, 9));
+  }
+
+  @Test
+  void rxClassify_without_usage_on_the_wire_reports_none() {
+    var client = mock(SingulariteeClient.class);
+    when(client.classify(any())).thenReturn(
+      Single.just(io.gravitee.singularitee.protocol.ClassifyResponse.newBuilder().build())
+    );
+    var response = new RemoteClassifierEngine(client, MODEL_ID, null)
+      .rxClassify(new ClassifyRequest("Kari"))
+      .blockingGet();
+    assertThat(response.usage()).isNull();
   }
 }

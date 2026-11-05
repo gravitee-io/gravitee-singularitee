@@ -66,6 +66,10 @@ Thread and batching knobs are the `GRAVITEE_GLINER_*` variables in both cases.
 
 ## Notes
 
+- **Usage.** Each response reports `usage.prompt_tokens`: the non-padding tokens the model read,
+  counted by gliner4j from the row it built, so the label prompt and special tokens are
+  included. A split input sums its chunks; `completion_tokens` is always 0. The prompt usually
+  dominates, so a long label list costs tokens on every chunk.
 - **Per-request labels.** `ClassifyRequest.labels` (and the HTTP `labels` array) replace the
   configured schema for that request. GLiNER is the only family that honours this.
 - **Chunking budget.** Each chunk gets `token_cap` minus an estimate of the label prompt

@@ -138,7 +138,7 @@ public final class OnnxClassifierEngine
    */
   private Single<ClassifyResponse> rxClassifyTokensBatched(String text) {
     return Single.defer(() -> {
-      List<Single<List<ClassifierResult>>> perChunk = new ArrayList<>();
+      List<Single<ClassifierResults>> perChunk = new ArrayList<>();
       for (RecursiveTextSplitter.Chunk chunk : delegate.split(text)) {
         perChunk.add(
           Single.fromCompletionStage(
@@ -158,37 +158,42 @@ public final class OnnxClassifierEngine
       .observeOn(eventLoopScheduler());
   }
 
-  private static List<ClassifierResult> shiftSpans(ClassifierResults results, int offset) {
-    return results
+  private static ClassifierResults shiftSpans(ClassifierResults results, int offset) {
+    var shifted = results
       .results()
       .stream()
       .map(r ->
         new ClassifierResult(r.label(), r.score(), r.token(), r.start() + offset, r.end() + offset)
       )
       .toList();
+    return new ClassifierResults(shifted, results.inputTokens());
   }
 
-  @SuppressWarnings("unchecked")
   private static ClassifierResults concatRows(Object[] perChunk) {
     List<ClassifierResult> rows = new ArrayList<>();
-    for (Object chunkRows : perChunk) {
-      rows.addAll((List<ClassifierResult>) chunkRows);
+    int tokens = 0;
+    for (Object o : perChunk) {
+      ClassifierResults chunk = (ClassifierResults) o;
+      rows.addAll(chunk.results());
+      tokens += chunk.inputTokens();
     }
-    return new ClassifierResults(rows);
+    return new ClassifierResults(rows, tokens);
   }
 
   /** One row per (label, chunk) tagged with the chunk's char span, mirroring the delegate's perSplitRows. */
   private static ClassifierResults perChunkRows(Object[] chunkResults) {
     List<ClassifierResult> rows = new ArrayList<>();
+    int tokens = 0;
     for (Object o : chunkResults) {
       ChunkResults cr = (ChunkResults) o;
+      tokens += cr.results().inputTokens();
       for (ClassifierResult r : cr.results().results()) {
         rows.add(
           new ClassifierResult(r.label(), r.score(), null, cr.chunk().start(), cr.chunk().end())
         );
       }
     }
-    return new ClassifierResults(rows);
+    return new ClassifierResults(rows, tokens);
   }
 
   private record ChunkResults(RecursiveTextSplitter.Chunk chunk, ClassifierResults results) {}
@@ -218,6 +223,12 @@ public final class OnnxClassifierEngine
     String topLabel = top == null ? "" : top.getKey();
     float topScore = top == null ? 0f : top.getValue();
 
-    return new ClassifyResponse(topLabel, topScore, allScores, local);
+    return new ClassifyResponse(
+      topLabel,
+      topScore,
+      allScores,
+      local,
+      new ClassifyUsage(results.inputTokens(), 0)
+    );
   }
 }

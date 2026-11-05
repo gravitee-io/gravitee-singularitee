@@ -64,6 +64,10 @@ Thread and batching knobs are the `GRAVITEE_GLINER_*` variables in both cases.
 
 ## Notes
 
+- **Usage.** Each response reports `usage.prompt_tokens`: the non-padding tokens the model read,
+  counted by gliner4j from the row it built, so the entity prompt and special tokens are
+  included. A split input sums its chunks; `completion_tokens` is always 0. The prompt usually
+  dominates, so a long label list costs tokens on every chunk.
 - **Spans are real.** Unlike a chunked `gliner_classifier`, every result's offsets locate an
   entity in the original text; chunk offsets are shifted back before the response is built.
 - **Per-request entity sets** arrive through `ClassifyRequest.labels`, same as the classifier.

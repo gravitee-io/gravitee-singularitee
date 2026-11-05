@@ -16,6 +16,7 @@
 package io.gravitee.singularitee.engine.api.pipeline.executor.perplexity;
 
 import java.util.List;
+import java.util.OptionalDouble;
 
 /**
  * One confidence feature computed from a {@link TokenConfidence} sample: a single summary of the
@@ -33,6 +34,20 @@ public interface ConfidenceSignal {
 
   /** Compute the signal from the sample; conventionally 0 when the sample lacks the needed data. */
   double compute(TokenConfidence sample);
+
+  /**
+   * A computed value read as a confidence in {@code [0, 1]}, 1 the most confident, for consumers
+   * that need a score rather than a raw feature (a span classifier's score). Empty when the
+   * value has no such reading, as for a spread or a trend.
+   */
+  default OptionalDouble confidence(double value) {
+    return OptionalDouble.empty();
+  }
+
+  /** A perplexity read as a confidence: its inverse, the geometric-mean token probability. */
+  static OptionalDouble inversePerplexity(double perplexity) {
+    return OptionalDouble.of(perplexity >= 1.0 ? 1.0 / perplexity : 1.0);
+  }
 
   /** Perplexity of a set of logprobs: {@code exp(-mean)}. 0 for an empty set. */
   static double perplexity(List<Double> logprobs) {

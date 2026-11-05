@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal;
 
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
+import java.util.OptionalDouble;
 
 /** Fraction of tokens whose top1-top2 margin was below the low-margin threshold (contested picks). */
 public final class LowMarginFraction implements ConfidenceSignal {
@@ -35,5 +36,11 @@ public final class LowMarginFraction implements ConfidenceSignal {
       .filter(m -> m < LOW_MARGIN)
       .count();
     return (double) n / c.margins().size();
+  }
+
+  /** The fraction of uncontested tokens. */
+  @Override
+  public OptionalDouble confidence(double value) {
+    return OptionalDouble.of(1.0 - value);
   }
 }

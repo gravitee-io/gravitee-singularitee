@@ -363,27 +363,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
         new io.gravitee.singularitee.engine.api.ClassifyRequest(request.getText()),
         labels
       )
-      .map(result -> {
-        var responseBuilder = ClassifyResponse.newBuilder()
-          .setTopLabel(result.topLabel() == null ? "" : result.topLabel())
-          .setTopScore(result.topScore());
-
-        if (result.allScores() != null) {
-          responseBuilder.putAllAllScores(result.allScores());
-        }
-
-        if (result.results() != null) {
-          for (var r : result.results()) {
-            var rb = ClassifyResult.newBuilder().setLabel(r.label()).setScore(r.score());
-            if (r.token() != null) rb.setToken(r.token());
-            if (r.start() != null) rb.setStart(r.start());
-            if (r.end() != null) rb.setEnd(r.end());
-            responseBuilder.addResults(rb.build());
-          }
-        }
-
-        return responseBuilder.build();
-      })
+      .map(GraviteeInferenceServiceImpl::toProtoClassifyResponse)
       .subscribe(promise::complete, e -> promise.fail(classifyFailure(e)));
     return promise.future();
   }
@@ -445,29 +425,43 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
       .map(results -> {
         var batchBuilder = ClassifyBatchResponse.newBuilder();
         for (var result : results) {
-          var responseBuilder = ClassifyResponse.newBuilder()
-            .setTopLabel(result.topLabel() == null ? "" : result.topLabel())
-            .setTopScore(result.topScore());
-
-          if (result.allScores() != null) {
-            responseBuilder.putAllAllScores(result.allScores());
-          }
-
-          if (result.results() != null) {
-            for (var r : result.results()) {
-              var rb = ClassifyResult.newBuilder().setLabel(r.label()).setScore(r.score());
-              if (r.token() != null) rb.setToken(r.token());
-              if (r.start() != null) rb.setStart(r.start());
-              if (r.end() != null) rb.setEnd(r.end());
-              responseBuilder.addResults(rb.build());
-            }
-          }
-          batchBuilder.addResults(responseBuilder.build());
+          batchBuilder.addResults(toProtoClassifyResponse(result));
         }
         return batchBuilder.build();
       })
       .subscribe(promise::complete, e -> promise.fail(classifyFailure(e)));
     return promise.future();
+  }
+
+  private static ClassifyResponse toProtoClassifyResponse(
+    io.gravitee.singularitee.engine.api.ClassifyResponse result
+  ) {
+    var responseBuilder = ClassifyResponse.newBuilder()
+      .setTopLabel(result.topLabel() == null ? "" : result.topLabel())
+      .setTopScore(result.topScore());
+    if (result.allScores() != null) {
+      responseBuilder.putAllAllScores(result.allScores());
+    }
+    if (result.results() != null) {
+      for (var r : result.results()) {
+        var rb = ClassifyResult.newBuilder()
+          .setLabel(r.label())
+          .setScore(r.score())
+          .putAllMetadata(r.metadata());
+        if (r.token() != null) rb.setToken(r.token());
+        if (r.start() != null) rb.setStart(r.start());
+        if (r.end() != null) rb.setEnd(r.end());
+        responseBuilder.addResults(rb.build());
+      }
+    }
+    if (result.usage() != null) {
+      responseBuilder.setUsage(
+        TokenUsage.newBuilder()
+          .setPromptTokens(result.usage().inputTokens())
+          .setCompletionTokens(result.usage().outputTokens())
+      );
+    }
+    return responseBuilder.build();
   }
 
   /**

@@ -19,6 +19,7 @@ import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.ClassifyResponse;
 import io.gravitee.singularitee.engine.api.ClassifyResult;
+import io.gravitee.singularitee.engine.api.ClassifyUsage;
 import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.gravitee.singularitee.inference.api.text.EstimatedTokens;
 import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter;
@@ -236,15 +237,15 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
     }
     List<ClassifyResult> shifted = new ArrayList<>(resp.results().size());
     for (ClassifyResult r : resp.results()) {
-      if (r.start() == null || r.end() == null) {
-        shifted.add(r);
-      } else {
-        shifted.add(
-          new ClassifyResult(r.label(), r.score(), r.token(), r.start() + offset, r.end() + offset)
-        );
-      }
+      shifted.add(r.start() == null || r.end() == null ? r : r.shifted(offset));
     }
-    return new ClassifyResponse(resp.topLabel(), resp.topScore(), resp.allScores(), shifted);
+    return new ClassifyResponse(
+      resp.topLabel(),
+      resp.topScore(),
+      resp.allScores(),
+      shifted,
+      resp.usage()
+    );
   }
 
   @Override
@@ -257,9 +258,11 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
     Map<String, Float> mergedScores = new HashMap<>();
     String topLabel = null;
     float topScore = 0f;
+    ClassifyUsage usage = null;
 
     for (ClassifyResponse r : responses) {
       if (r == null) continue;
+      usage = r.usage() == null ? usage : r.usage().plus(usage);
 
       if (r.results() != null) {
         mergedResults.addAll(r.results());
@@ -281,14 +284,15 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
     }
 
     if (mergedResults.isEmpty() && mergedScores.isEmpty() && topLabel == null) {
-      return EMPTY_RESPONSE;
+      return EMPTY_RESPONSE.withUsage(usage);
     }
 
     return new ClassifyResponse(
       topLabel,
       topScore,
       Map.copyOf(mergedScores),
-      List.copyOf(mergedResults)
+      List.copyOf(mergedResults),
+      usage
     );
   }
 }

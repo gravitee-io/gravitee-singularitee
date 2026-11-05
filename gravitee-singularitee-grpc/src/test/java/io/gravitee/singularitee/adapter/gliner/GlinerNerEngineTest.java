@@ -29,8 +29,10 @@ import static org.mockito.Mockito.when;
 import io.gravitee.lab.gliner4j.GLiNER4jNER;
 import io.gravitee.lab.gliner4j.schema.EntityDefinition;
 import io.gravitee.lab.gliner4j.schema.EntitySpan;
+import io.gravitee.lab.gliner4j.schema.NerOutput;
 import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
+import io.gravitee.singularitee.engine.api.ClassifyUsage;
 import io.vertx.rxjava3.core.Vertx;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,8 +64,8 @@ class GlinerNerEngineTest {
   @Test
   void per_request_entities_reach_the_definition_aware_overload() {
     var delegate = mock(GLiNER4jNER.class);
-    when(delegate.extract(anyString(), anyList(), anyFloat())).thenReturn(
-      Map.of("person", List.of(new EntitySpan("person", "John", 0.9f, 0, 4)))
+    when(delegate.extractWithUsage(anyString(), anyList(), anyFloat())).thenReturn(
+      new NerOutput(Map.of("person", List.of(new EntitySpan("person", "John", 0.9f, 0, 4))), 7)
     );
 
     var engine = new GlinerNerEngine(delegate, THRESHOLD, 512, List.of(), vertx);
@@ -75,21 +77,24 @@ class GlinerNerEngineTest {
 
     assertThat(response.results()).isNotEmpty();
     assertThat(response.results().get(0).label()).isEqualTo("person");
+    assertThat(response.usage()).isEqualTo(new ClassifyUsage(7, 0));
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<EntityDefinition>> captor = ArgumentCaptor.forClass(List.class);
-    verify(delegate).extract(anyString(), captor.capture(), eq(THRESHOLD));
+    verify(delegate).extractWithUsage(anyString(), captor.capture(), eq(THRESHOLD));
     assertThat(captor.getValue()).extracting(EntityDefinition::name).containsExactly("person");
     // Custom entities can't be batched: the single-call overload is used, never extractBatch.
-    verify(delegate, never()).extract(anyString(), anyFloat());
-    verify(delegate, never()).extractBatch(anyList(), anyFloat());
+    verify(delegate, never()).extractWithUsage(anyString(), anyFloat());
+    verify(delegate, never()).extractBatchWithUsage(anyList(), anyFloat());
   }
 
   @Test
   void empty_per_request_entities_fall_back_to_the_configured_entities_via_batch() {
     var delegate = mock(GLiNER4jNER.class);
     // Default-schema path now goes through the batched overload.
-    when(delegate.extractBatch(anyList(), anyFloat())).thenReturn(List.of(Map.of()));
+    when(delegate.extractBatchWithUsage(anyList(), anyFloat())).thenReturn(
+      List.of(new NerOutput(Map.of(), 3))
+    );
 
     var engine = new GlinerNerEngine(delegate, THRESHOLD, 512, List.of("email"), vertx);
 
@@ -98,9 +103,9 @@ class GlinerNerEngineTest {
       .blockingGet();
 
     assertThat(response.results()).isEmpty();
-    verify(delegate).extractBatch(anyList(), eq(THRESHOLD));
-    verify(delegate, never()).extract(anyString(), anyFloat());
-    verify(delegate, never()).extract(anyString(), anyList(), anyFloat());
+    verify(delegate).extractBatchWithUsage(anyList(), eq(THRESHOLD));
+    verify(delegate, never()).extractWithUsage(anyString(), anyFloat());
+    verify(delegate, never()).extractWithUsage(anyString(), anyList(), anyFloat());
   }
 
   @Test
@@ -112,8 +117,8 @@ class GlinerNerEngineTest {
     var response = engine.rxClassify(new ClassifyRequest("   ")).blockingGet();
 
     assertThat(response.results()).isEmpty();
-    verify(delegate, never()).extractBatch(anyList(), anyFloat());
-    verify(delegate, never()).extract(anyString(), anyFloat());
+    verify(delegate, never()).extractBatchWithUsage(anyList(), anyFloat());
+    verify(delegate, never()).extractWithUsage(anyString(), anyFloat());
   }
 
   /**
@@ -126,11 +131,16 @@ class GlinerNerEngineTest {
   void large_input_reassembles_spans_correctly_across_multiple_batches() {
     var delegate = mock(GLiNER4jNER.class);
     // Echo one span per chunk covering the whole chunk, so offset re-basing is directly checkable.
-    when(delegate.extractBatch(anyList(), anyFloat())).thenAnswer(inv -> {
+    when(delegate.extractBatchWithUsage(anyList(), anyFloat())).thenAnswer(inv -> {
       List<String> texts = inv.getArgument(0);
-      List<Map<String, List<EntitySpan>>> out = new ArrayList<>(texts.size());
+      List<NerOutput> out = new ArrayList<>(texts.size());
       for (String t : texts) {
-        out.add(Map.of("chunk", List.of(new EntitySpan("chunk", t, 1f, 0, t.length()))));
+        out.add(
+          new NerOutput(
+            Map.of("chunk", List.of(new EntitySpan("chunk", t, 1f, 0, t.length()))),
+            t.length()
+          )
+        );
       }
       return out;
     });
@@ -150,6 +160,13 @@ class GlinerNerEngineTest {
 
     // Exactly one span per chunk; nothing dropped or duplicated across batches.
     assertThat(response.results()).hasSize(chunkCount);
+    // Usage sums every chunk's count (the stub reports a chunk's length) across batches.
+    int expectedTokens = GlinerChunking.splitter(budget)
+      .split(text)
+      .stream()
+      .mapToInt(c -> c.text().length())
+      .sum();
+    assertThat(response.usage()).isEqualTo(new ClassifyUsage(expectedTokens, 0));
     // Every span's absolute offsets slice the original text back to its own token: the re-basing is
     // correct regardless of which batch produced the chunk.
     for (var r : response.results()) {
@@ -159,7 +176,7 @@ class GlinerNerEngineTest {
     // The chunks really were split across ≥2 batched GPU calls, and every chunk was processed once.
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
-    verify(delegate, atLeast(2)).extractBatch(captor.capture(), eq(THRESHOLD));
+    verify(delegate, atLeast(2)).extractBatchWithUsage(captor.capture(), eq(THRESHOLD));
     int totalBatched = captor.getAllValues().stream().mapToInt(List::size).sum();
     assertThat(totalBatched).isEqualTo(chunkCount);
     assertThat(captor.getAllValues()).allSatisfy(batch ->

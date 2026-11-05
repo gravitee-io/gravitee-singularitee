@@ -24,6 +24,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
+import io.gravitee.singularitee.engine.api.ClassifyUsage;
 import io.gravitee.singularitee.inference.api.classifier.ClassifierMode;
 import io.gravitee.singularitee.inference.api.classifier.ClassifierResult;
 import io.gravitee.singularitee.inference.api.classifier.ClassifierResults;
@@ -68,7 +69,12 @@ class OnnxClassifierEngineTest {
       List<String> texts = inv.getArgument(0);
       return texts
         .stream()
-        .map(t -> new ClassifierResults(List.of(new ClassifierResult("toxic", t.length() / 10f))))
+        .map(t ->
+          new ClassifierResults(
+            List.of(new ClassifierResult("toxic", t.length() / 10f)),
+            t.length()
+          )
+        )
         .toList();
     });
     return delegate;
@@ -105,6 +111,27 @@ class OnnxClassifierEngineTest {
     verify(delegate, never()).infer(anyString());
   }
 
+  @Test
+  void usage_sums_the_tokens_of_every_chunk_in_sequence_mode() {
+    var engine = new OnnxClassifierEngine(mockModel(), ClassifierMode.SEQUENCE, vertx);
+    assertThat(engine.rxClassify(new ClassifyRequest("hello")).blockingGet().usage()).isEqualTo(
+      new ClassifyUsage(5, 0)
+    );
+    assertThat(
+      engine.rxClassify(new ClassifyRequest("abc|abcdefgh")).blockingGet().usage()
+    ).isEqualTo(new ClassifyUsage(11, 0));
+  }
+
+  @Test
+  void usage_sums_the_tokens_of_every_chunk_in_token_mode() {
+    var delegate = mockModel();
+    stubTokens(delegate);
+    var engine = new OnnxClassifierEngine(delegate, ClassifierMode.TOKEN, vertx);
+    assertThat(
+      engine.rxClassify(new ClassifyRequest("abc|abcdefgh")).blockingGet().usage()
+    ).isEqualTo(new ClassifyUsage(11, 0));
+  }
+
   /** Token stub: one "PER" row per chunk covering the whole chunk, spans relative to it. */
   private static void stubTokens(OnnxBertClassifierModel delegate) {
     when(delegate.classifyTokens(anyList())).thenAnswer(inv -> {
@@ -112,7 +139,10 @@ class OnnxClassifierEngineTest {
       return texts
         .stream()
         .map(t ->
-          new ClassifierResults(List.of(new ClassifierResult("PER", 0.9f, t, 0, t.length())))
+          new ClassifierResults(
+            List.of(new ClassifierResult("PER", 0.9f, t, 0, t.length())),
+            t.length()
+          )
         )
         .toList();
     });

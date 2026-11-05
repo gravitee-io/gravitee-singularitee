@@ -17,12 +17,19 @@ package io.gravitee.singularitee.engine.remote;
 
 import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ModelEngine;
+import io.gravitee.singularitee.engine.api.TextGenEngine;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
+import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignals;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.classifier.CompositeClassifierEngine;
+import io.gravitee.singularitee.engine.classifier.LlmSpans;
+import io.gravitee.singularitee.engine.classifier.LlmTokenClassifierEngine;
 import io.gravitee.singularitee.engine.classifier.RegexClassifierEngine;
 import io.gravitee.singularitee.workspace.ModelType;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition.CompositeClassifierDef;
+import io.gravitee.singularitee.workspace.WorkspaceDefinition.LlmAnswerDef;
+import io.gravitee.singularitee.workspace.WorkspaceDefinition.LlmTokenClassifierDef;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition.ModelDefinition;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition.RegexDef;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition.RegexPatternDef;
@@ -43,8 +50,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Registration happens in two passes:
  * <ol>
- *   <li>Simple engines ({@code regex}) are built and
- *       registered first.</li>
+ *   <li>Simple engines ({@code regex}, and {@code llm_token_classifier} over a
+ *       text-generation model registered earlier) are built and registered first.</li>
  *   <li>Composite engines ({@code composite_classifier}) are built second,
  *       resolving each of their declared sub-model IDs against the registry
  *       so composite references to simple engines (and even to other
@@ -84,6 +91,13 @@ public final class ClientLocalModelRegistrar {
     );
   }
 
+  static final int DEFAULT_LLM_MAX_TOKENS = 1024;
+  static final int DEFAULT_LLM_CHUNK_TOKENS = 1024;
+  static final int DEFAULT_LLM_REPEAT_MIN_LENGTH = 4;
+  /** Span score signal when {@code score} is unset; {@value #NO_LLM_SCORE} turns scoring off. */
+  static final String DEFAULT_LLM_SCORE = "max_entropy";
+  static final String NO_LLM_SCORE = "none";
+
   private ClientLocalModelRegistrar() {}
 
   /**
@@ -105,7 +119,7 @@ public final class ClientLocalModelRegistrar {
   ) {
     if (models == null || models.isEmpty()) return;
 
-    // Pass 1: simple engines (regex)
+    // Pass 1: simple engines (regex, llm_token_classifier)
     List<ClientLocalModelData> composites = new ArrayList<>();
     for (ClientLocalModelData data : models) {
       ModelDefinition def = data.definition();
@@ -144,6 +158,7 @@ public final class ClientLocalModelRegistrar {
               entries.size()
             );
           }
+          case LLM_TOKEN_CLASSIFIER -> registerLlmTokenClassifier(def, registry, registrar);
           case COMPOSITE_CLASSIFIER -> composites.add(data);
           default -> LOGGER.warn(
             "Skipping client-local model '{}': unexpected type '{}'",
@@ -218,6 +233,128 @@ public final class ClientLocalModelRegistrar {
         );
       }
     }
+  }
+
+  /**
+   * Builds an {@code llm_token_classifier} over a text-generation model already in the registry.
+   * Local and remote models register before any client-local one, so the reference resolves
+   * here; one that does not, or that names a non-generating model, skips the classifier with a
+   * WARN.
+   */
+  private static void registerLlmTokenClassifier(
+    ModelDefinition def,
+    ModelRegistry registry,
+    Registrar registrar
+  ) {
+    LlmTokenClassifierDef cfg = def.llmTokenClassifier();
+    if (cfg == null || cfg.modelId() == null || cfg.modelId().isBlank()) {
+      LOGGER.warn(
+        "Skipping llm_token_classifier '{}': llm_token_classifier.model_id is required",
+        def.id()
+      );
+      return;
+    }
+    Optional<ModelRegistry.ModelEntry> entry = registry.get(cfg.modelId());
+    if (entry.isEmpty()) {
+      LOGGER.warn(
+        "llm_token_classifier '{}': model '{}' not registered, skipping classifier",
+        def.id(),
+        cfg.modelId()
+      );
+      return;
+    }
+    if (!(entry.get().engine() instanceof TextGenEngine llm)) {
+      LOGGER.warn(
+        "llm_token_classifier '{}': model '{}' is not a text-generation model (type={}), skipping classifier",
+        def.id(),
+        cfg.modelId(),
+        entry.get().engine().type()
+      );
+      return;
+    }
+    String scoreName = cfg.score() == null || cfg.score().isBlank()
+      ? DEFAULT_LLM_SCORE
+      : cfg.score().strip();
+    ConfidenceSignal score = null;
+    if (!NO_LLM_SCORE.equals(scoreName)) {
+      score = ConfidenceSignals.byField(scoreName)
+        .filter(signal -> signal.confidence(0.0).isPresent())
+        .orElse(null);
+      if (score == null) {
+        LOGGER.warn(
+          "llm_token_classifier '{}': unknown score '{}' (one of {}, or {}), skipping classifier",
+          def.id(),
+          scoreName,
+          scoreSignals(),
+          NO_LLM_SCORE
+        );
+        return;
+      }
+    }
+    LlmSpans.Format format;
+    try {
+      format = answerFormat(cfg.answer());
+    } catch (IllegalArgumentException e) {
+      LOGGER.warn(
+        "llm_token_classifier '{}': invalid answer block ({}), skipping classifier",
+        def.id(),
+        e.getMessage()
+      );
+      return;
+    }
+    var options = new LlmTokenClassifierEngine.Options(
+      cfg.systemPrompt(),
+      cfg.labels(),
+      positiveOr(cfg.maxTokens(), DEFAULT_LLM_MAX_TOKENS),
+      cfg.context(),
+      cfg.chunkTokens() != null ? cfg.chunkTokens() : DEFAULT_LLM_CHUNK_TOKENS,
+      cfg.repeatMinLength() != null ? cfg.repeatMinLength() : DEFAULT_LLM_REPEAT_MIN_LENGTH,
+      score,
+      format,
+      cfg.structuredOutput() == null || cfg.structuredOutput()
+    );
+    var engine = new LlmTokenClassifierEngine(def.id(), llm, entry.get()::nextSequenceId, options);
+    registrar.register(
+      def.id(),
+      displayName(def),
+      engine,
+      task(def),
+      def.isVisible(),
+      modalities(def)
+    );
+    LOGGER.info(
+      "Client-local model registered: id='{}', type='llm_token_classifier', model='{}', labels={}, score={}, structured_output={}",
+      def.id(),
+      cfg.modelId(),
+      options.labels().isEmpty() ? "any" : options.labels().size(),
+      score == null ? "none" : score.field(),
+      options.structuredOutput()
+    );
+  }
+
+  /** The answer format of an {@code answer:} block, each unset key at its default. */
+  static LlmSpans.Format answerFormat(LlmAnswerDef answer) {
+    var d = LlmSpans.Format.DEFAULT;
+    if (answer == null) return d;
+    return new LlmSpans.Format(
+      answer.spans() != null ? answer.spans() : d.spans(),
+      answer.label() != null ? answer.label() : d.label(),
+      answer.text() != null ? answer.text() : d.text(),
+      answer.metadata()
+    );
+  }
+
+  /** The signals a span score can name: those with a reading as a confidence. */
+  private static List<String> scoreSignals() {
+    return ConfidenceSignals.all()
+      .stream()
+      .filter(signal -> signal.confidence(0.0).isPresent())
+      .map(ConfidenceSignal::field)
+      .toList();
+  }
+
+  private static int positiveOr(Integer value, int fallback) {
+    return value != null && value > 0 ? value : fallback;
   }
 
   private static RegexClassifierEngine.PatternEntry toPatternEntry(RegexPatternDef def) {

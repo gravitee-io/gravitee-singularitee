@@ -7,8 +7,8 @@
 A model entry names a stable `id`, a source (`name`), a `type`, and one config block keyed by
 that type (`llama_cpp:`, `vllm:`, `onnx_classifier:`, ...). The loader (`YamlWorkspaceLoader`)
 turns local types into a `ModelLoadRequest` handed to the engine factory that is registered
-for that type; remote types become lazy gRPC proxies; `regex` and `composite_classifier` are
-built in-process with no engine at all. The type string is parsed case-insensitively.
+for that type; remote types become lazy gRPC proxies; `regex`, `composite_classifier` and
+`llm_token_classifier` are built in-process with no engine of their own. The type string is parsed case-insensitively.
 
 ## Index
 
@@ -33,6 +33,7 @@ built in-process with no engine at all. The type string is parsed case-insensiti
 | [`remote_decision`](./remote_decision.md) | proxy | gRPC | `decision` | any JVM |
 | [`regex`](./regex.md) | token classifier | pure Java | `token-classification` | any JVM |
 | [`composite_classifier`](./composite_classifier.md) | classifier union | pure Java | widest task of its members | any JVM |
+| [`llm_token_classifier`](./llm_token_classifier.md) | token classifier over a generative model | pure Java, over a `llama_cpp`, `vllm` or `remote_llm` model | `token-classification` | any JVM |
 
 Engine factories are registered only when the engine library is on the classpath
 (`SingulariteeConfiguration`): llama.cpp types probe `io.gravitee.llama.cpp.LlamaModel`, `vllm`

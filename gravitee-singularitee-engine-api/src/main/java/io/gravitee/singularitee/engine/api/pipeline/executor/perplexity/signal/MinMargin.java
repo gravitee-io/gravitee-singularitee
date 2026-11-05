@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.signal;
 
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.ConfidenceSignal;
 import io.gravitee.singularitee.engine.api.pipeline.executor.perplexity.TokenConfidence;
+import java.util.OptionalDouble;
 
 /**
  * Smallest top-1 vs top-2 margin (nats): the most contested single token. Small = the model nearly
@@ -31,5 +32,11 @@ public final class MinMargin implements ConfidenceSignal {
 
   public double compute(TokenConfidence c) {
     return c.margins().isEmpty() ? 0.0 : ConfidenceSignal.min(c.margins());
+  }
+
+  /** The top-1 token's probability against the top-2 alone: {@code sigmoid(margin)}. */
+  @Override
+  public OptionalDouble confidence(double value) {
+    return OptionalDouble.of(1.0 / (1.0 + Math.exp(-value)));
   }
 }

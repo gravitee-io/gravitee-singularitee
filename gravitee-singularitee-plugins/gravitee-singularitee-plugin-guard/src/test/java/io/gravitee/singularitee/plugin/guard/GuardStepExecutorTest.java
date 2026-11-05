@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -225,6 +226,23 @@ class GuardStepExecutorTest {
 
     assertThat(pctx.isHalted()).isFalse();
     assertThat(pctx.get("g.redacted")).isEmpty();
+  }
+
+  @Test
+  void a_classifier_that_fails_fails_the_guard_instead_of_passing_the_text() {
+    // A detector that cannot read its model (a malformed answer, say) must not yield a clean
+    // verdict, and a redacting guard must not hand the original text on.
+    doReturn(Single.error(new IllegalStateException("the model answer is malformed")))
+      .when(engine)
+      .rxClassify(any());
+    var cfg = cfg(GuardAction.REDACT, GuardScope.LAST_USER, GuardOnEmpty.REJECT);
+    var pctx = context(HOSTILE_EARLIER_TURN);
+
+    assertThatThrownBy(() ->
+      executor.rxExecuteWithEngine("g", cfg, engine, stepContext(pctx)).blockingGet()
+    ).hasMessageContaining("malformed");
+    assertThat(pctx.isHalted()).isFalse();
+    assertThat(pctx.get("g.redacted")).isNull();
   }
 
   @Test

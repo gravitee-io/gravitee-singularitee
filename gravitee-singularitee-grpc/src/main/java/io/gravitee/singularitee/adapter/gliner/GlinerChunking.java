@@ -17,6 +17,7 @@ package io.gravitee.singularitee.adapter.gliner;
 
 import io.gravitee.singularitee.engine.api.ClassifyResponse;
 import io.gravitee.singularitee.engine.api.ClassifyResult;
+import io.gravitee.singularitee.engine.api.ClassifyUsage;
 import io.gravitee.singularitee.inference.api.text.EstimatedTokens;
 import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter;
 import java.util.Collection;
@@ -87,7 +88,7 @@ final class GlinerChunking {
   }
 
   /** NER: order spans by score (strongest first); all-scores = max per entity type. */
-  static ClassifyResponse nerResponse(List<ClassifyResult> spans) {
+  static ClassifyResponse nerResponse(List<ClassifyResult> spans, int inputTokens) {
     Map<String, Float> allScores = new LinkedHashMap<>();
     for (ClassifyResult r : spans) {
       allScores.merge(r.label(), r.score(), Math::max);
@@ -95,7 +96,13 @@ final class GlinerChunking {
     spans.sort((a, b) -> Float.compare(b.score(), a.score()));
     String topLabel = spans.isEmpty() ? "" : spans.getFirst().label();
     float topScore = spans.isEmpty() ? 0f : spans.getFirst().score();
-    return new ClassifyResponse(topLabel, topScore, allScores, spans);
+    return new ClassifyResponse(
+      topLabel,
+      topScore,
+      allScores,
+      spans,
+      new ClassifyUsage(inputTokens, 0)
+    );
   }
 
   /**
@@ -105,7 +112,8 @@ final class GlinerChunking {
    */
   static ClassifyResponse classifierResponse(
     Map<String, Float> maxByLabel,
-    List<ClassifyResult> perChunkRows
+    List<ClassifyResult> perChunkRows,
+    int inputTokens
   ) {
     String topLabel = "";
     float topScore = 0f;
@@ -115,6 +123,12 @@ final class GlinerChunking {
         topScore = e.getValue();
       }
     }
-    return new ClassifyResponse(topLabel, topScore, new LinkedHashMap<>(maxByLabel), perChunkRows);
+    return new ClassifyResponse(
+      topLabel,
+      topScore,
+      new LinkedHashMap<>(maxByLabel),
+      perChunkRows,
+      new ClassifyUsage(inputTokens, 0)
+    );
   }
 }

@@ -28,7 +28,7 @@ info:
     - The path is served under `/v1` (documented here) and bare (`/classify`).
     - `model` is the id of a published classifier (`onnx_classifier`,
       `gliner_classifier`, `gliner_ner`, `regex`, `composite_classifier`,
-      `remote_classifier`). Pipelines are not accepted here. An unknown id or an
+      `llm_token_classifier`, `remote_classifier`). Pipelines are not accepted here. An unknown id or an
       entry published with `visible: false` returns `400` with
       `code: model_not_found`; a model of another task returns `400` with
       `code: unsupported_model`.
@@ -181,8 +181,15 @@ components:
               top_score: { type: number }
               scores:
                 type: object
-                description: Score per label.
-                additionalProperties: { type: number }
+                description: >-
+                  Score per label. A label found in several entity spans (spans with a `token`)
+                  carries one score per span, in span order; any other label, including a sequence
+                  classifier's label over a long input split into chunks, carries a single number.
+                additionalProperties:
+                  anyOf:
+                    - type: number
+                    - type: array
+                      items: { type: number }
               spans:
                 type: array
                 description: Present only for token-classification results (entries that carry a character offset).
@@ -195,3 +202,21 @@ components:
                     token: { type: string, description: Matched text; absent when the engine does not report it. }
                     start: { type: integer, description: "Character offset, inclusive." }
                     end: { type: integer, description: "Character offset, exclusive; absent when the engine does not report it." }
+                    metadata:
+                      type: object
+                      description: >-
+                        Engine-specific facts about the span, absent when there are none. An
+                        llm_token_classifier reports the extra fields of the model's answer, such as
+                        `ref`, the person the span belongs to.
+                      additionalProperties: { type: string }
+        usage:
+          type: object
+          description: >-
+            Tokens read and generated, summed over the inputs (and over the pieces of a split input).
+            Present only when the model counts them: onnx_classifier and the GLiNER models (the ids
+            the encoder read, special and label prompt tokens included), llm_token_classifier,
+            decision models published as classifiers. regex reports none.
+          properties:
+            prompt_tokens: { type: integer }
+            completion_tokens: { type: integer, description: "Tokens generated; 0 for a model that only reads." }
+            total_tokens: { type: integer }

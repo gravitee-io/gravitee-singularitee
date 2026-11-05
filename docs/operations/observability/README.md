@@ -161,7 +161,9 @@ questions can carry nothing on long reasoning.
 | `mean_entropy`, `max_entropy` | top-k | Mean and max per-token entropy over the top-k candidates. Only at top-k depth >= 2. |
 
 The set is defined by the `ConfidenceSignal` implementations registered in `ConfidenceSignals`
-(`engine-api`); adding a signal is one class plus one registry line.
+(`engine-api`); adding a signal is one class plus one registry line. A signal that also reads
+as a confidence in `[0, 1]` (`ConfidenceSignal.confidence`) can score the spans of an
+[`llm_token_classifier`](../../reference/models/llm_token_classifier.md) (`score:`).
 
 ### Metrics (Prometheus names)
 

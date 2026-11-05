@@ -163,7 +163,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       }
     }
 
-    // Client-local models (pure-Java engines: regex, composite)
+    // Client-local models (pure-Java engines: regex, llm_token_classifier, composite)
     io.gravitee.singularitee.engine.remote.ClientLocalModelRegistrar.register(
       ws.clientLocalModels(),
       modelService.modelRegistry(),

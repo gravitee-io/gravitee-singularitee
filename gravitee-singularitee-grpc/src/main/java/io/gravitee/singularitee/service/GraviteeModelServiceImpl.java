@@ -36,7 +36,9 @@ import io.gravitee.singularitee.grpc.resolver.VllmModelResolver;
 import io.gravitee.singularitee.inference.api.ClientFacingException;
 import io.gravitee.singularitee.protocol.*;
 import io.gravitee.singularitee.workspace.ModelLoadRequest;
+import io.reactivex.rxjava3.core.Scheduler;
 import io.reactivex.rxjava3.core.Single;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 import io.vertx.core.Completable;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -45,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,6 +72,20 @@ public class GraviteeModelServiceImpl
   implements io.gravitee.singularitee.engine.api.pipeline.executor.StreamRegistry {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(GraviteeModelServiceImpl.class);
+
+  /**
+   * Where vLLM models load: one platform thread that lives as long as the process. The load runs
+   * the model on the loading thread, and runtimes under vLLM (MLX on Metal) keep per-thread state
+   * holding Python objects that is freed when that thread exits, crashing the JVM. A pool thread
+   * exits once idle, so vLLM loads never run on one. The thread starts on the first vLLM load.
+   */
+  private static final Scheduler VLLM_LOADER = Schedulers.from(
+    Executors.newSingleThreadExecutor(runnable -> {
+      Thread thread = new Thread(runnable, "vllm-loader");
+      thread.setDaemon(true);
+      return thread;
+    })
+  );
 
   private final Vertx vertx;
   private final ModelRegistry registry;
@@ -146,7 +163,7 @@ public class GraviteeModelServiceImpl
     );
 
     return rxBuildEngine(request, factory)
-      .observeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
+      .observeOn(Schedulers.io())
       .map(engine -> {
         var activeStreams = new ConcurrentHashMap<Integer, StreamContext>();
         Consumer<ModelEngineToken> tokenConsumer = token -> dispatchToken(token, activeStreams);
@@ -380,7 +397,7 @@ public class GraviteeModelServiceImpl
             cfg.eagle3Path()
           );
         return llamaFactory.create(request, resolved, mmproj, lora, draft, eagle3);
-      }).subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io());
+      }).subscribeOn(Schedulers.io());
     }
 
     // llama.cpp embedding: same GGUF resolution path as text-gen
@@ -394,7 +411,7 @@ public class GraviteeModelServiceImpl
       return Single.fromCallable(() -> {
         Path resolved = ggufResolver.resolve(request.modelName(), request.modelPath());
         return llamaEmbedFactory.create(request, resolved);
-      }).subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io());
+      }).subscribeOn(Schedulers.io());
     }
 
     // llama.cpp reranker: same GGUF resolution path as text-gen
@@ -408,7 +425,7 @@ public class GraviteeModelServiceImpl
       return Single.fromCallable(() -> {
         Path resolved = ggufResolver.resolve(request.modelName(), request.modelPath());
         return (ModelEngine) llamaRerankerFactory.create(request, resolved);
-      }).subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io());
+      }).subscribeOn(Schedulers.io());
     }
 
     // llama.cpp decision: the GGUF and its LoRA come from the same repository
@@ -422,7 +439,7 @@ public class GraviteeModelServiceImpl
         String loraPath = request.llamaCppDecision().loraPath();
         Path lora = loraPath.isEmpty() ? null : ggufResolver.resolve(request.modelName(), loraPath);
         return decisionFactory.create(request, resolved, lora);
-      }).subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io());
+      }).subscribeOn(Schedulers.io());
     }
 
     // vLLM custom decision model: weights downloaded like a vllm model's. The vllm-sr models fall
@@ -434,7 +451,7 @@ public class GraviteeModelServiceImpl
     ) {
       return vllmResolver
         .resolve(request.modelName(), request.downloadExclude())
-        .observeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
+        .observeOn(VLLM_LOADER)
         .map(resolved -> decisionFactory.create(request, resolved));
     }
 
@@ -449,7 +466,7 @@ public class GraviteeModelServiceImpl
             new VllmPaths(resolved, lora.orElse(null))
           )
         )
-        .observeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
+        .observeOn(VLLM_LOADER)
         .map(paths -> vllmFactory.create(request, paths.model(), paths.lora()));
     }
 
@@ -460,10 +477,7 @@ public class GraviteeModelServiceImpl
         factory instanceof io.gravitee.singularitee.adapter.reranker.OnnxRerankerFactory) &&
       onnxResolver != null
     ) {
-      return onnxResolver
-        .resolve(request)
-        .observeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
-        .map(factory::create);
+      return onnxResolver.resolve(request).observeOn(Schedulers.io()).map(factory::create);
     }
 
     // GLiNER: resolve / download model directory reactively (download stays off the event loop)
@@ -473,14 +487,13 @@ public class GraviteeModelServiceImpl
         factory instanceof GlinerDecisionFactory) &&
       glinerResolver != null
     ) {
-      return glinerResolver
-        .resolve(request)
-        .observeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
-        .map(factory::create);
+      return glinerResolver.resolve(request).observeOn(Schedulers.io()).map(factory::create);
     }
 
+    // The vLLM Semantic Router decision models resolve their own files and land here.
+    boolean vllm = factory instanceof VllmEngineFactory || factory instanceof VllmDecisionFactory;
     return Single.fromCallable(() -> factory.create(request)).subscribeOn(
-      io.reactivex.rxjava3.schedulers.Schedulers.io()
+      vllm ? VLLM_LOADER : Schedulers.io()
     );
   }
 

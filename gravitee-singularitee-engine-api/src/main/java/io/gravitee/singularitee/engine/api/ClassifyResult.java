@@ -15,6 +15,8 @@
  */
 package io.gravitee.singularitee.engine.api;
 
+import java.util.Map;
+
 /**
  * A single classification result for one label.
  *
@@ -22,16 +24,34 @@ package io.gravitee.singularitee.engine.api;
  * meaningful. For token-classification / NER models {@code token}, {@code start},
  * and {@code end} carry the matched span.
  *
- * @param label  the class label
- * @param score  the model confidence for this label (0.0 to 1.0)
- * @param token  the matched token text for NER results; {@code null} for sequence models
- * @param start  character start offset of the matched span; {@code null} for sequence models
- * @param end    character end offset of the matched span; {@code null} for sequence models
+ * @param label     the class label
+ * @param score     the model confidence for this label (0.0 to 1.0)
+ * @param token     the matched token text for NER results; {@code null} for sequence models
+ * @param start     character start offset of the matched span; {@code null} for sequence models
+ * @param end       character end offset of the matched span; {@code null} for sequence models
+ * @param metadata  engine-specific facts about the result, such as the person a span belongs
+ *                  to; never {@code null}, empty when the engine reports none
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public record ClassifyResult(String label, float score, String token, Integer start, Integer end) {
+public record ClassifyResult(
+  String label,
+  float score,
+  String token,
+  Integer start,
+  Integer end,
+  Map<String, String> metadata
+) {
+  public ClassifyResult {
+    metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+  }
+
+  /** A result without metadata. */
+  public ClassifyResult(String label, float score, String token, Integer start, Integer end) {
+    this(label, score, token, start, end, Map.of());
+  }
+
   /**
    * Convenience constructor for sequence-classification results.
    *
@@ -39,6 +59,19 @@ public record ClassifyResult(String label, float score, String token, Integer st
    * @param score the confidence score
    */
   public ClassifyResult(String label, float score) {
-    this(label, score, null, null, null);
+    this(label, score, null, null, null, Map.of());
+  }
+
+  /** The same result with its span moved by {@code offset} characters. */
+  public ClassifyResult shifted(int offset) {
+    if (start == null) return this;
+    return new ClassifyResult(
+      label,
+      score,
+      token,
+      start + offset,
+      end == null ? null : end + offset,
+      metadata
+    );
   }
 }

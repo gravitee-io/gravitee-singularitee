@@ -18,6 +18,7 @@ package io.gravitee.singularitee.adapter.gliner;
 import io.gravitee.lab.gliner4j.GLiNER4jNER;
 import io.gravitee.lab.gliner4j.schema.EntityDefinition;
 import io.gravitee.lab.gliner4j.schema.EntitySpan;
+import io.gravitee.lab.gliner4j.schema.NerOutput;
 import io.gravitee.singularitee.adapter.BlockingEngineAdapter;
 import io.gravitee.singularitee.adapter.batching.MicroBatcher;
 import io.gravitee.singularitee.engine.api.*;
@@ -62,7 +63,7 @@ public final class GlinerNerEngine
    * {@code extractBatch} GPU run. Only the configured-entity path uses it: gliner4j's
    * {@code extractBatch} takes no per-request entity list, so custom-label requests can't batch.
    */
-  private final MicroBatcher<String, Map<String, List<EntitySpan>>> batcher;
+  private final MicroBatcher<String, NerOutput> batcher;
 
   GlinerNerEngine(
     GLiNER4jNER delegate,
@@ -76,7 +77,7 @@ public final class GlinerNerEngine
     this.tokenCap = tokenCap;
     this.configEntityNames = configEntityNames == null ? List.of() : configEntityNames;
     this.batcher = GlinerBatching.CONFIG.newBatcher("gliner-ner", texts ->
-      delegate.extractBatch(texts, effectiveThreshold)
+      delegate.extractBatchWithUsage(texts, effectiveThreshold)
     );
   }
 
@@ -132,7 +133,7 @@ public final class GlinerNerEngine
    */
   private Single<ClassifyResponse> rxExtractBatched(String text, List<String> labelNames) {
     if (text == null || text.isBlank()) {
-      return Single.just(GlinerChunking.nerResponse(new ArrayList<>()));
+      return Single.just(GlinerChunking.nerResponse(new ArrayList<>(), 0));
     }
     return Single.defer(() -> {
       int budget = GlinerChunking.textBudget(tokenCap, labelNames);
@@ -147,7 +148,7 @@ public final class GlinerNerEngine
         perChunk.add(
           Single.fromCompletionStage(
             batcher.submit(chunk.text(), GlinerChunking.estimateTokens(chunk.text()))
-          ).map(spansByType -> new ChunkSpans(chunk, spansByType))
+          ).map(output -> new ChunkSpans(chunk, output))
         );
       }
       return Single.zip(perChunk, GlinerNerEngine::assembleSpans);
@@ -157,9 +158,11 @@ public final class GlinerNerEngine
   /** Flattens per-chunk span maps into re-based, absolute-offset results. */
   private static ClassifyResponse assembleSpans(Object[] chunkResults) {
     List<ClassifyResult> spans = new ArrayList<>();
+    int tokens = 0;
     for (Object o : chunkResults) {
       ChunkSpans cs = (ChunkSpans) o;
-      for (var entry : cs.spansByType().entrySet()) {
+      tokens += cs.output().inputTokens();
+      for (var entry : cs.output().spans().entrySet()) {
         for (EntitySpan span : entry.getValue()) {
           spans.add(
             new ClassifyResult(
@@ -174,13 +177,10 @@ public final class GlinerNerEngine
       }
     }
     LOGGER.debug("GLiNER NER: {} span(s) across chunked input", spans.size());
-    return GlinerChunking.nerResponse(spans);
+    return GlinerChunking.nerResponse(spans, tokens);
   }
 
-  private record ChunkSpans(
-    RecursiveTextSplitter.Chunk chunk,
-    Map<String, List<EntitySpan>> spansByType
-  ) {}
+  private record ChunkSpans(RecursiveTextSplitter.Chunk chunk, NerOutput output) {}
 
   /**
    * Splits {@code text} to fit the encoder window (budget = tokenCap minus estimated entity prompt),
@@ -196,13 +196,11 @@ public final class GlinerNerEngine
     var chunks = GlinerChunking.splitter(budget).split(text);
     LOGGER.debug("GLiNER NER: split into {} chunk(s) at budget {} tokens", chunks.size(), budget);
     List<ClassifyResult> spans = new ArrayList<>();
+    int tokens = 0;
     for (RecursiveTextSplitter.Chunk chunk : chunks) {
-      Map<String, List<EntitySpan>> spansByType = delegate.extract(
-        chunk.text(),
-        entityDefs,
-        effectiveThreshold
-      );
-      for (var entry : spansByType.entrySet()) {
+      NerOutput output = delegate.extractWithUsage(chunk.text(), entityDefs, effectiveThreshold);
+      tokens += output.inputTokens();
+      for (var entry : output.spans().entrySet()) {
         for (EntitySpan span : entry.getValue()) {
           spans.add(
             new ClassifyResult(
@@ -217,6 +215,6 @@ public final class GlinerNerEngine
       }
     }
     LOGGER.debug("GLiNER NER: {} span(s) across chunked input", spans.size());
-    return GlinerChunking.nerResponse(spans);
+    return GlinerChunking.nerResponse(spans, tokens);
   }
 }

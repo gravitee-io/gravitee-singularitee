@@ -1,0 +1,99 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# PII detection · Norwegian and Swedish, generative span model (llama.cpp)
+#
+# Standalone workspace. Run it with:
+#   ./run-server.sh --workspace examples/classifier/pii-nordic-llm.yaml
+#
+# A fine-tuned Qwen3.5-4B that reads a text and answers with the personal data it holds as
+# {"spans":[{"label":"PERSON","text":"Kari Nordmann","ref":"p1"}, ...]}. The llm_token_classifier
+# entry turns that answer into character spans, so the model is a token classifier like any
+# other: /v1/classify, the guard step (reject, warn, redact) and composite_classifier take it
+# as they take pii-bert or pii-gliner. The generating model itself is hidden.
+#
+# Slower than an encoder (one generated token per answer character, about 4.5 GB of weights)
+# but it covers 18 categories, GDPR special categories included, in Bokmål, Nynorsk and Swedish.
+#
+# Classify over HTTP:
+#   curl localhost:8080/v1/classify -H 'content-type: application/json' \
+#     -d '{"model":"pii","input":"Ring Kari Nordmann på 912 34 567, hun er 42 år."}'
+
+workspace:
+  name: pii-nordic-llm
+
+  models:
+    - id: nordic-pii-spans
+      name: unified-analytics/nordic-pii-spans-qwen3.5-4b
+      type: llama_cpp
+      visible: false
+      llama_cpp:
+        path: nordic-pii-spans-qwen3.5-4b.Q8_0.gguf
+        n_ctx: 4096
+        n_seq_max: 2
+        n_gpu_layers: 999
+
+    - id: pii
+      type: llm_token_classifier
+      llm_token_classifier:
+        model_id: nordic-pii-spans
+        # The prompt the model was trained with (prompt.json in the repository), verbatim.
+        system_prompt: >-
+          Find all personal data in the user's text. Answer with JSON only:
+          {"spans":[{"label":"...","text":"...","ref":"p1"}]}. List the spans in the order they
+          appear and copy each text exactly as written. ref numbers the people (p1, p2, ...) so
+          that every mention of the same person, and data that belongs to them, gets the same
+          ref. Labels: PERSON, ADDRESS, PHONE, EMAIL, NATIONAL_ID, DATE_OF_BIRTH, AGE, GENDER,
+          HEALTH, SPECIAL_CATEGORY, CRIMINAL, BANK_ACCOUNT, PAYMENT_CARD, ID_DOCUMENT,
+          LICENSE_PLATE, IP_ADDRESS, USERNAME, EMPLOYEE_ID. If there is none, answer
+          {"spans":[]}.
+        labels:
+          - PERSON
+          - ADDRESS
+          - PHONE
+          - EMAIL
+          - NATIONAL_ID
+          - DATE_OF_BIRTH
+          - AGE
+          - GENDER
+          - HEALTH
+          - SPECIAL_CATEGORY
+          - CRIMINAL
+          - BANK_ACCOUNT
+          - PAYMENT_CARD
+          - ID_DOCUMENT
+          - LICENSE_PLATE
+          - IP_ADDRESS
+          - USERNAME
+          - EMPLOYEE_ID
+        # Where the answer keeps its items: these are the defaults, written out. ref (the person
+        # the data belongs to) is declared so the constrained answer can still write it.
+        answer:
+          spans: spans
+          label: label
+          text: text
+          metadata: [ref]
+        # Decoding follows the JSON schema of the answer (the default), so the model can only
+        # write items the classifier reads, even from a heavily quantized GGUF.
+        structured_output: true
+        max_tokens: 1500
+        # The model answers with thinking off; on, it reasons instead of answering in JSON.
+        context:
+          enable_thinking: false
+        # Grade each span by the most spread token of its item (the default), so a guard
+        # threshold can drop a doubtful mention while a clear name or number scores close to
+        # 1. max_token_perplexity or min_margin grade differently; none scores every span 1.
+        score: max_entropy
