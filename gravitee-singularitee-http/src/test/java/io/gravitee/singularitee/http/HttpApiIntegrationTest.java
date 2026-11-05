@@ -109,6 +109,8 @@ class HttpApiIntegrationTest {
       "",
       false
     );
+    // What each classifier id stands for. The handler must not take the model's task as proof
+    // that every span is an entity: a composite reports token-classification over text rows.
     modelRegistry.register("pii", "PII", classifier(ModelTasks.TOKEN_CLASSIFICATION), token -> {});
     modelRegistry.register(
       "toxicity",
@@ -349,9 +351,9 @@ class HttpApiIntegrationTest {
               .setTopScore(0.99f)
               .putAllScores("PERSON", 0.99f)
               .putAllScores("SPECIAL_CATEGORY", 0.88f)
-              .addResults(span("PERSON", 0.99f, 0, 3))
-              .addResults(span("SPECIAL_CATEGORY", 0.88f, 8, 21))
-              .addResults(span("SPECIAL_CATEGORY", 0.46f, 25, 50))
+              .addResults(span("PERSON", 0.99f, 0, 3).toBuilder().setToken("Ola"))
+              .addResults(span("SPECIAL_CATEGORY", 0.88f, 8, 21).toBuilder().setToken("diabetes"))
+              .addResults(span("SPECIAL_CATEGORY", 0.46f, 25, 50).toBuilder().setToken("asthma"))
               .build()
           )
           .build()
@@ -431,6 +433,34 @@ class HttpApiIntegrationTest {
       )
     );
     Resp r = post("/v1/classify", "{\"model\":\"toxicity\",\"input\":\"text\"}");
+    assertThat(r.status()).isEqualTo(200);
+    JsonNode scores = mapper.readTree(r.body()).at("/results/0/scores");
+    assertThat(scores.get("toxic").isNumber()).isTrue();
+    assertThat(scores.get("toxic").floatValue()).isEqualTo(0.9f);
+  }
+
+  @Test
+  void aCompositeKeepsItsTextClassifierScoreScalar() throws Exception {
+    // A composite of a token and a text classifier is a token classifier, yet its text
+    // delegate's per-chunk rows (offsets, no token) still come through.
+    when(inference.classifyBatch(any())).thenReturn(
+      Future.succeededFuture(
+        ClassifyBatchResponse.newBuilder()
+          .addResults(
+            ClassifyResponse.newBuilder()
+              .setTopLabel("toxic")
+              .setTopScore(0.9f)
+              .putAllScores("toxic", 0.9f)
+              .putAllScores("EMAIL", 1.0f)
+              .addResults(span("EMAIL", 1.0f, 5, 22).toBuilder().setToken("alice@example.com"))
+              .addResults(span("toxic", 0.2f, 0, 100))
+              .addResults(span("toxic", 0.9f, 100, 180))
+              .build()
+          )
+          .build()
+      )
+    );
+    Resp r = post("/v1/classify", "{\"model\":\"pii\",\"input\":\"text\"}");
     assertThat(r.status()).isEqualTo(200);
     JsonNode scores = mapper.readTree(r.body()).at("/results/0/scores");
     assertThat(scores.get("toxic").isNumber()).isTrue();

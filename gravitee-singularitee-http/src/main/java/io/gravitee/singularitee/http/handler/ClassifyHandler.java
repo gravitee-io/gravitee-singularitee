@@ -18,7 +18,6 @@ package io.gravitee.singularitee.http.handler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.gravitee.singularitee.engine.api.ModelTasks;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.http.json.JsonResponses;
 import io.gravitee.singularitee.http.json.Utils;
@@ -74,13 +73,6 @@ public final class ClassifyHandler implements Handler<RoutingContext> {
       return;
     }
 
-    // Spans are entities only for a token classifier. A sequence classifier that split a long
-    // input returns one row per chunk with its offsets; its scores stay one number per label.
-    boolean tokenClassification = modelRegistry
-      .get(model)
-      .map(entry -> ModelTasks.TOKEN_CLASSIFICATION.equals(entry.engine().task()))
-      .orElse(false);
-
     var request = ClassifyBatchRequest.newBuilder().setModelId(model).addAllTexts(inputs);
     JsonNode labels = payload.at("/labels");
     if (labels.isArray()) {
@@ -130,9 +122,13 @@ public final class ClassifyHandler implements Handler<RoutingContext> {
             if (spans == null) {
               spans = entry.putArray("spans");
             }
-            spanScores
-              .computeIfAbsent(span.getLabel(), l -> new ArrayList<>())
-              .add(span.getScore());
+            // Only an entity span carries the text it covers. A sequence classifier's per-chunk
+            // row (also from inside a composite) has offsets but no token, so it is not one.
+            if (span.hasToken()) {
+              spanScores
+                .computeIfAbsent(span.getLabel(), l -> new ArrayList<>())
+                .add(span.getScore());
+            }
             ObjectNode s = spans.addObject();
             s.put("label", span.getLabel());
             s.put("score", span.getScore());
@@ -148,10 +144,10 @@ public final class ClassifyHandler implements Handler<RoutingContext> {
               span.getMetadataMap().forEach(metadata::put);
             }
           }
-          // A token-classification label found in several spans scores each one, in span order;
-          // a label with a single span, and every sequence-classification label, keeps a number.
+          // A label found in several entity spans scores each one, in span order; a label with a
+          // single span, and every sequence-classification label, keeps a number.
           spanScores.forEach((label, values) -> {
-            if (tokenClassification && values.size() > 1) {
+            if (values.size() > 1) {
               ArrayNode perSpan = scores.putArray(label);
               values.forEach(perSpan::add);
             }

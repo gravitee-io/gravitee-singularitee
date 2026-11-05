@@ -191,8 +191,8 @@ curl localhost:8080/v1/embeddings \
 #### POST /v1/classify
 Spec: [classification.openapi.yaml](../../../openapi/classification.openapi.yaml).
 Sequence labels, token spans with character offsets, and per-request `labels` for zero-shot
-models. Each `scores` value is a number, or, for a token-classification label found in
-several spans, an array with one score per span in span order. A span may carry `metadata`
+models. Each `scores` value is a number, or, for a label found in several entity spans (spans
+with a `token`), an array with one score per span in span order. A span may carry `metadata`
 (engine-specific strings, such as an `llm_token_classifier` span's `ref`), and the response a
 `usage` (`prompt_tokens`, `completion_tokens`, `total_tokens`) when the model counts tokens.
 

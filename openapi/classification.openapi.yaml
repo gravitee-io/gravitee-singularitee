@@ -182,8 +182,9 @@ components:
               scores:
                 type: object
                 description: >-
-                  Score per label. A token-classification label found in several spans carries one
-                  score per span, in span order; any other label carries a single number.
+                  Score per label. A label found in several entity spans (spans with a `token`)
+                  carries one score per span, in span order; any other label, including a sequence
+                  classifier's label over a long input split into chunks, carries a single number.
                 additionalProperties:
                   anyOf:
                     - type: number
