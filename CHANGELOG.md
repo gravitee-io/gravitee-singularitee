@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.11.0...1.12.0) (2026-11-06)
+
+
+### Features
+
+* Arabic PII example and length-bucketed ONNX micro-batching ([4bb937c](https://github.com/gravitee-io/gravitee-singularitee/commit/4bb937cd66f2c2cc30db0e77ccc261ca888a9b5c))
+
 # [1.11.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.10.2...1.11.0) (2026-11-05)
 
 
