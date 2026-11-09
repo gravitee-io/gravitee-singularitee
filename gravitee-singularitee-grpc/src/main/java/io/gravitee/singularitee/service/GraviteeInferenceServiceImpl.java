@@ -322,12 +322,11 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
    */
   @Override
   public Future<ClassifyResponse> classify(ClassifyRequest request) {
-    return instrumentation.traceUnary(
-      SpanNames.key("classify"),
-      "classify",
-      request.getModelId(),
-      () -> classifyInternal(request)
-    );
+    return instrumentation
+      .traceUnary(SpanNames.key("classify"), "classify", request.getModelId(), () ->
+        classifyInternal(request)
+      )
+      .recover(e -> Future.failedFuture(classifyFailure(e)));
   }
 
   private Future<ClassifyResponse> classifyInternal(ClassifyRequest request) {
@@ -364,7 +363,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
         labels
       )
       .map(GraviteeInferenceServiceImpl::toProtoClassifyResponse)
-      .subscribe(promise::complete, e -> promise.fail(classifyFailure(e)));
+      .subscribe(promise::complete, promise::fail);
     return promise.future();
   }
 
@@ -378,12 +377,11 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
    */
   @Override
   public Future<ClassifyBatchResponse> classifyBatch(ClassifyBatchRequest request) {
-    return instrumentation.traceUnary(
-      SpanNames.key("classify.batch"),
-      "classify",
-      request.getModelId(),
-      () -> classifyBatchInternal(request)
-    );
+    return instrumentation
+      .traceUnary(SpanNames.key("classify.batch"), "classify", request.getModelId(), () ->
+        classifyBatchInternal(request)
+      )
+      .recover(e -> Future.failedFuture(classifyFailure(e)));
   }
 
   private Future<ClassifyBatchResponse> classifyBatchInternal(ClassifyBatchRequest request) {
@@ -429,7 +427,7 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
         }
         return batchBuilder.build();
       })
-      .subscribe(promise::complete, e -> promise.fail(classifyFailure(e)));
+      .subscribe(promise::complete, promise::fail);
     return promise.future();
   }
 
@@ -466,7 +464,8 @@ public class GraviteeInferenceServiceImpl extends GraviteeInferenceServiceGrpcSe
 
   /**
    * A decision classifier's refusal (labels it cannot take) as its gRPC status, so it reads as
-   * {@code INVALID_ARGUMENT} rather than an internal error; other failures pass through.
+   * {@code INVALID_ARGUMENT} rather than an internal error; other failures pass through. Applied
+   * after tracing: the trace hides any failure it does not know as client-facing, a status included.
    */
   private static Throwable classifyFailure(Throwable e) {
     return e instanceof DecisionException ? GraviteeDecisionServiceImpl.toStatus(e) : e;

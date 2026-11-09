@@ -16,18 +16,26 @@
 package io.gravitee.singularitee.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import io.gravitee.node.api.opentelemetry.Tracer;
+import io.gravitee.singularitee.adapter.decision.DecisionClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.ClassifyResponse;
+import io.gravitee.singularitee.engine.api.DecisionEngine;
 import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
+import io.gravitee.singularitee.protocol.ClassifyBatchRequest;
 import io.reactivex.rxjava3.core.Single;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.grpc.common.GrpcStatus;
+import io.vertx.grpc.server.StatusException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -41,6 +49,7 @@ import org.junit.jupiter.api.Test;
 class GraviteeInferenceServiceImplClassifyTest {
 
   private static final String MODEL_ID = "sentence-classifier";
+  private static final String DECISION_ID = "decision-classifier";
 
   private static Vertx vertx;
 
@@ -62,6 +71,12 @@ class GraviteeInferenceServiceImplClassifyTest {
     var registry = new ModelRegistry();
     engine = new RecordingClassifierEngine();
     registry.register(MODEL_ID, "test-classifier", engine, token -> {});
+    registry.register(
+      DECISION_ID,
+      "test-decision-classifier",
+      new DecisionClassifierEngine(mock(DecisionEngine.class), null, List.of()),
+      token -> {}
+    );
     service = new GraviteeInferenceServiceImpl(
       vertx,
       registry,
@@ -103,6 +118,41 @@ class GraviteeInferenceServiceImplClassifyTest {
     var response = await(service.classify(request));
 
     assertThat(response.getTopLabel()).isEqualTo(RecordingClassifierEngine.DEFAULT_PATH_LABEL);
+  }
+
+  @Test
+  void classify_reports_labels_a_decision_classifier_refuses_as_invalid_argument() {
+    var request = io.gravitee.singularitee.protocol.ClassifyRequest.newBuilder()
+      .setModelId(DECISION_ID)
+      .setText("hello")
+      .addLabels(protoLabel("a", ""))
+      .addLabels(protoLabel("a", ""))
+      .build();
+
+    assertRefusedAsInvalidArgument(service.classify(request));
+  }
+
+  @Test
+  void classify_batch_reports_labels_a_decision_classifier_refuses_as_invalid_argument() {
+    var request = ClassifyBatchRequest.newBuilder()
+      .setModelId(DECISION_ID)
+      .addTexts("hello")
+      .addLabels(protoLabel("a", ""))
+      .addLabels(protoLabel("a", ""))
+      .build();
+
+    assertRefusedAsInvalidArgument(service.classifyBatch(request));
+  }
+
+  /** The caller error survives the service's tracing, which hides internal failures. */
+  private static void assertRefusedAsInvalidArgument(Future<?> future) {
+    assertThatThrownBy(() -> await(future))
+      .isInstanceOf(ExecutionException.class)
+      .cause()
+      .isInstanceOfSatisfying(StatusException.class, status -> {
+        assertThat(status.status()).isEqualTo(GrpcStatus.INVALID_ARGUMENT);
+        assertThat(status.message()).isEqualTo("labels: duplicate label 'a'");
+      });
   }
 
   private static io.gravitee.singularitee.protocol.ClassifyLabel protoLabel(

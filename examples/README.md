@@ -88,6 +88,7 @@ projection GGUF. Set it and the engine loads the multimodal context.
 | `qwen3.8-27b.yaml` | Qwen/Qwen3.8-27B-FP8 | Dense 27.8B, official FP8 checkpoint; fits one 40 GB card. |
 | `qwen3-0.6b-judge.yaml` | Qwen/Qwen3-0.6B | A `vllm_decision` model with `family: custom`: the chat model scored on label codes through vLLM's `logprob_token_ids`, `debias: reverse`. The vLLM twin of `decision/qwen3-0.6b-judge.yaml`; run end to end on Apple Silicon. |
 | `decision-2.0-kai-0.6b.yaml` | vllm-sr/Decision-2.0-Kai-0.6B | A `vllm_decision` model on vLLM Semantic Router's runtime (needs `setup-venv.sh -r`), also published as a classifier. Runs on CPU, CUDA or MPS; run end to end on Apple Silicon. |
+| `pii-nordic-llm.yaml` | unified-analytics/nordic-pii-spans-qwen3.5-4b-BF16 | The vLLM twin of `classifier/pii-nordic-llm.yaml`: the same `pii` span classifier (`llm_token_classifier`) over the BF16 safetensors build, structured output through guided decoding. Run end to end on Apple Silicon. |
 | `d3-lite.yaml` | vllm-sr/d3-lite | Decision 3.0's 1.7 GB model as a `vllm_decision` model (`decision3`, read from the id) on vLLM Semantic Router's runtime (needs `setup-venv.sh -r`). Text only. |
 
 A representative subset of the `llama/` families; quantised (AWQ/GPTQ) variants live as
@@ -100,7 +101,7 @@ Two things differ from the llama.cpp equivalents:
 - Multi-GPU is explicit. Models above roughly 40 GB of weights carry `tensor_parallel_size`. Set it once for a whole deployment with `GRAVITEE_AI_VLLM_TENSORPARALLELSIZE` instead and leave it out of the workspace.
 
 The vLLM backend is far less exercised than llama.cpp. Run end to end so far: the two
-quantized Qwen3 files, `gpt-oss-20b-mac.yaml`, `qwen3-0.6b-judge.yaml` and `decision-2.0-kai-0.6b.yaml` on Apple Silicon. The rest are configured
+quantized Qwen3 files, `gpt-oss-20b-mac.yaml`, `qwen3-0.6b-judge.yaml`, `decision-2.0-kai-0.6b.yaml` and `pii-nordic-llm.yaml` on Apple Silicon. The rest are configured
 from checkpoint metadata and verified to parse, not to serve. They need a vLLM virtualenv on
 the JVM command line (`-Dvllm4j.venv=...`; `run-server.sh` sets it, see
 `scripts/setup-venv.sh`) unless you use the `vllm-cuda` image, which bundles one.
@@ -114,7 +115,7 @@ The axis here is fine-tuned versus zero-shot:
 | `pii-bert.yaml` | `pii` | `onnx_classifier` (TOKEN) | Retrain. Fast and cheap; detects only what it was trained on. |
 | `pii-arabic.yaml` | `pii` | `onnx_classifier` (TOKEN) | Retrain. OpenMed 560M Arabic token classifier; heavy on CPU. The model repo is private: needs an `HF_TOKEN` with gravitee-io read access. |
 | `pii-gliner.yaml` | `pii` | `gliner_ner` | Edit the entity list. Zero-shot; heavier per call. |
-| `pii-nordic-llm.yaml` | `pii` | `llm_token_classifier` over `llama_cpp` | Retrain. A Qwen3.5-4B fine-tuned to list Norwegian and Swedish PII (18 categories); the slowest per call, the widest coverage. |
+| `pii-nordic-llm.yaml` | `pii` | `llm_token_classifier` over `llama_cpp` | Retrain. A Qwen3.5-4B fine-tuned to list Norwegian and Swedish PII (18 categories); the slowest per call, the widest coverage. `vllm/pii-nordic-llm.yaml` is the same classifier on vLLM. |
 | `toxicity-bert.yaml` | `toxicity` | `onnx_classifier` (SEQUENCE) | Retrain. Multilingual, `{non-toxic, toxic}`. |
 | `guardrails-gliner.yaml` | `gliguard` | `gliner_classifier` | Edit the safety labels. A policy change is a YAML edit, not a training run. |
 | `intent-gliner.yaml` | `router` | `gliner_classifier` | Edit the intent labels. Backs `pipelines/gliner-router.yaml`. |

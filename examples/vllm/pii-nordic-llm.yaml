@@ -1,0 +1,111 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# PII detection · Norwegian and Swedish, generative span model (vLLM)
+#
+# Standalone workspace, the vLLM twin of classifier/pii-nordic-llm.yaml; run end to end on Apple
+# Silicon. Run it with:
+#   ./run-server.sh --workspace examples/vllm/pii-nordic-llm.yaml
+#
+# The same fine-tuned Qwen3.5-4B, from the BF16 safetensors build the publisher ships for vLLM
+# (vLLM never fetches the GGUF of the llama.cpp file). It answers with the personal data a text
+# holds as {"spans":[{"label":"PERSON","text":"Kari Nordmann","ref":"p1"}, ...]}; the
+# llm_token_classifier entry turns that answer into character spans, so /v1/classify, the guard
+# step and composite_classifier take it as they take pii-bert or pii-gliner. The id is the same
+# (pii), so a pipeline written against the llama.cpp file runs unchanged.
+#
+# 9.1 GB of weights (Qwen3.5-4B's vision tower included, unused), twice the Q8_0 GGUF, with the
+# same accuracy within noise. A hybrid model: 8 of its 32 layers keep a KV cache, the other 24
+# a fixed recurrent state, so a 4096-token sequence costs about 180 MiB.
+#
+# Classify over HTTP:
+#   curl localhost:8080/v1/classify -H 'content-type: application/json' \
+#     -d '{"model":"pii","input":"Ring Kari Nordmann på 912 34 567, hun er 42 år."}'
+
+workspace:
+  name: pii-nordic-llm-vllm
+
+  models:
+    - id: nordic-pii-spans
+      name: unified-analytics/nordic-pii-spans-qwen3.5-4b-BF16
+      type: vllm
+      visible: false
+      memory_check: warn
+      vllm:
+        dtype: auto
+        # system_prompt + one input piece (chunk_tokens, 1024) + max_tokens (1500) fit with room.
+        max_model_len: 4096
+        # One classification sends up to 4 input pieces at once; 8 lets two run side by side.
+        max_num_seqs: 8
+        # vLLM claims the whole fraction and fills what the weights leave with cache: on a 36 GB
+        # Mac the server's footprint is 16 GB. The weights need 9.1 GB and each sequence about
+        # 180 MiB, so lower it on a larger machine. On Apple Silicon the fraction applies to total
+        # unified memory, not what is free.
+        gpu_memory_utilization: 0.5
+        # A hybrid model: vLLM supports it with chunked prefill only, and warns that turning it
+        # off may crash the engine or corrupt the output.
+        enable_chunked_prefill: true
+
+    - id: pii
+      type: llm_token_classifier
+      llm_token_classifier:
+        model_id: nordic-pii-spans
+        # The prompt the model was trained with (prompt.json in the repository), verbatim.
+        system_prompt: >-
+          Find all personal data in the user's text. Answer with JSON only:
+          {"spans":[{"label":"...","text":"...","ref":"p1"}]}. List the spans in the order they
+          appear and copy each text exactly as written. ref numbers the people (p1, p2, ...) so
+          that every mention of the same person, and data that belongs to them, gets the same
+          ref. Labels: PERSON, ADDRESS, PHONE, EMAIL, NATIONAL_ID, DATE_OF_BIRTH, AGE, GENDER,
+          HEALTH, SPECIAL_CATEGORY, CRIMINAL, BANK_ACCOUNT, PAYMENT_CARD, ID_DOCUMENT,
+          LICENSE_PLATE, IP_ADDRESS, USERNAME, EMPLOYEE_ID. If there is none, answer
+          {"spans":[]}.
+        labels:
+          - PERSON
+          - ADDRESS
+          - PHONE
+          - EMAIL
+          - NATIONAL_ID
+          - DATE_OF_BIRTH
+          - AGE
+          - GENDER
+          - HEALTH
+          - SPECIAL_CATEGORY
+          - CRIMINAL
+          - BANK_ACCOUNT
+          - PAYMENT_CARD
+          - ID_DOCUMENT
+          - LICENSE_PLATE
+          - IP_ADDRESS
+          - USERNAME
+          - EMPLOYEE_ID
+        # Where the answer keeps its items: these are the defaults, written out. ref (the person
+        # the data belongs to) is declared so the constrained answer can still write it.
+        answer:
+          spans: spans
+          label: label
+          text: text
+          metadata: [ref]
+        # vLLM guided decoding follows the JSON schema of the answer (the default), so the model
+        # can only write items the classifier reads.
+        structured_output: true
+        max_tokens: 1500
+        # The model answers with thinking off; on, it reasons instead of answering in JSON.
+        context:
+          enable_thinking: false
+        # Grade each span by the most spread token of its item (the default), from the
+        # log-probabilities vLLM returns per token.
+        score: max_entropy
