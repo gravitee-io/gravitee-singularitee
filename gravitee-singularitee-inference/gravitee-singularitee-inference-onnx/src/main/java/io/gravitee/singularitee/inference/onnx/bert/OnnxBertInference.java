@@ -61,6 +61,10 @@ import java.util.Set;
 public abstract class OnnxBertInference<INPUT, OUTPUT>
   extends OnnxInference<OnnxBertConfig, INPUT, OUTPUT> {
 
+  static {
+    DjlTelemetry.optOut();
+  }
+
   protected static final ObjectMapper objectMapper = new ObjectMapper();
   protected final HuggingFaceTokenizer tokenizer;
   protected final JsonNode configJson;
