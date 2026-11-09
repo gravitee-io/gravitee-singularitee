@@ -136,6 +136,7 @@ workspace:
 | `HF_TOKEN` | unset | Gated repos and higher download rate limits. |
 | `LLAMA_CPP_LIB_PATH` | `${GRAVITEEIO_HOME}/native/llama-cuda` | Directory llamaj.cpp loads the CUDA natives from (`llamacpp-cuda`). |
 | `VLLM4J_VENV` | `${GRAVITEEIO_HOME}/vllm-venv` | Virtualenv `cuda-env.sh` passes as `-Dvllm4j.venv` (`vllm-cuda`). |
+| `OPT_OUT_TRACKING` | `true` (set by the server) | DJL telemetry opt-out. Unless set, the ONNX engine sets it before loading the first tokenizer, so DJL does not query the EC2 metadata service and its S3 telemetry bucket. Set `false` to let DJL report. |
 | `JAVA_OPTS` | unset | Extra JVM flags and `-D` overrides. |
 | `GRAVITEE_*` | | Any `gravitee.yml` key; see [Configuration](../../reference/configuration.md). |
 
