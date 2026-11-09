@@ -1,3 +1,10 @@
+## [1.12.2](https://github.com/gravitee-io/gravitee-singularitee/compare/1.12.1...1.12.2) (2026-11-09)
+
+
+### Bug Fixes
+
+* refused classify labels answer 400; add vLLM Nordic PII example ([7cf0897](https://github.com/gravitee-io/gravitee-singularitee/commit/7cf0897465445ae0514566245411ed655c82041a))
+
 ## [1.12.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.12.0...1.12.1) (2026-11-09)
 
 
