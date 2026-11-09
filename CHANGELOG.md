@@ -1,3 +1,10 @@
+## [1.12.1](https://github.com/gravitee-io/gravitee-singularitee/compare/1.12.0...1.12.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **onnx:** opt out of DJL telemetry before loading tokenizers ([20a24cc](https://github.com/gravitee-io/gravitee-singularitee/commit/20a24cc0ae81dbbdc5cb6ee4876f69d8f14a410d))
+
 # [1.12.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.11.0...1.12.0) (2026-11-06)
 
 
