@@ -52,7 +52,9 @@ mention.
 
 [`examples/classifier/pii-nordic-llm.yaml`](../../../examples/classifier/pii-nordic-llm.yaml)
 publishes `unified-analytics/nordic-pii-spans-qwen3.5-4b`, a Norwegian and Swedish PII span
-model, as the classifier `pii`:
+model, as the classifier `pii`
+([`examples/vllm/pii-nordic-llm.yaml`](../../../examples/vllm/pii-nordic-llm.yaml) is the same
+classifier over the model's BF16 safetensors build on `vllm`):
 
 ```yaml
 workspace:
