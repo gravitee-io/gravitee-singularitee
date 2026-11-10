@@ -33,6 +33,7 @@ import io.gravitee.singularitee.engine.remote.RemoteRerankerEngine;
 import io.gravitee.singularitee.engine.remote.RemoteTextGenEngine;
 import io.gravitee.singularitee.plugin.api.StepPlugins;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
+import io.gravitee.singularitee.standalone.sync.ReleaseSyncComponent;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition;
 import io.gravitee.singularitee.workspace.YamlWorkspaceLoader;
 import java.nio.file.Path;
@@ -90,7 +91,11 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
 
   @Override
   protected void doStart() throws Exception {
-    String workspacePath = configuration.getProperty("ai.workspace.path");
+    // A node synced from the control plane serves what it was given, whatever local workspace is also configured.
+    String workspacePath = System.getProperty(ReleaseSyncComponent.SYNCED_WORKSPACE_PROPERTY);
+    if (workspacePath == null || workspacePath.isBlank()) {
+      workspacePath = configuration.getProperty("ai.workspace.path");
+    }
     if (workspacePath == null || workspacePath.isBlank()) {
       LOGGER.info("No workspace configured (ai.workspace.path not set). Skipping workspace load.");
       // Still set default sub-pipeline callbacks (local-only)

@@ -136,6 +136,20 @@ ai:
     # instead of serving the part that loaded.
     strict: false
 
+  # Pull the workspace from the Gamma module instead of a local file. When enabled, url and token
+  # are required (the token names the server group) and the pulled release overrides workspace.path. A newer release is
+  # applied by exiting so the supervisor restarts the node, unless restart-on-change is false.
+  sync:
+    enabled: false
+    # url:
+    # token:
+    interval: 30
+    # Seconds between status reports to Gamma; the first one registers the node.
+    heartbeat-interval: 10
+    # instance-id: stable node id; unset = a UUID generated once under cache-dir
+    # cache-dir: ${gravitee.home}/sync
+    restart-on-change: true
+
   # Directory where model files (GGUF, ONNX, GLiNER) are stored / downloaded.
   # Models referenced by filename in workspace definitions resolve relative to this path.
   models:

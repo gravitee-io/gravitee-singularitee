@@ -52,6 +52,7 @@ REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 PORT=8080
 DEBUG=false
 WORKSPACE="$REPO_ROOT/examples/llama/qwen3-0.6b.yaml"
+WORKSPACE_GIVEN=false
 
 list_examples() {
   echo "Runnable example workspaces (examples/<folder>/<file>.yaml):"
@@ -78,7 +79,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --debug)     DEBUG=true; shift ;;
     --port)      PORT="$2"; shift 2 ;;
-    --workspace) WORKSPACE="$2"; shift 2 ;;
+    --workspace) WORKSPACE="$2"; WORKSPACE_GIVEN=true; shift 2 ;;
     --venv)      VLLM_VENV="$2"; shift 2 ;;
     --list)      list_examples; exit 0 ;;
     -h|--help)   sed -n '19,45p' "$0"; exit 0 ;;
@@ -86,7 +87,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ! -f "$WORKSPACE" ]]; then
+# A node that syncs from the Gamma control plane (GRAVITEE_AI_SYNC_ENABLED=true) serves the workspace it is given there, not a
+# file: the default example would only be a decoy (its model id is `llm`). Without --workspace there is no local workspace at all.
+SYNC=false
+case "${GRAVITEE_AI_SYNC_ENABLED:-}" in true|TRUE|True|1) SYNC=true ;; esac
+if [[ "$SYNC" == true && "$WORKSPACE_GIVEN" == false ]]; then
+  WORKSPACE=""
+fi
+
+if [[ -n "$WORKSPACE" && ! -f "$WORKSPACE" ]]; then
   echo "Workspace not found: $WORKSPACE" >&2
   echo >&2
   list_examples >&2
@@ -94,7 +103,7 @@ if [[ ! -f "$WORKSPACE" ]]; then
 fi
 # Relative paths are fine on the command line, but the server resolves this from
 # its own working directory, so hand it an absolute path.
-WORKSPACE="$(cd "$(dirname "$WORKSPACE")" && pwd)/$(basename "$WORKSPACE")"
+[[ -n "$WORKSPACE" ]] && WORKSPACE="$(cd "$(dirname "$WORKSPACE")" && pwd)/$(basename "$WORKSPACE")"
 
 # Fragments under modular/models|pipelines|templates declare no entry point of
 # their own: loading one directly publishes a model with no pipeline, which looks
@@ -123,7 +132,12 @@ for pkg in pipeline inference; do
 done
 [[ "$DEBUG" == true ]] && echo ">> DEBUG: rendered prompts + streamed tokens are TRACE-logged"
 
-echo ">> Workspace: ${WORKSPACE#"$REPO_ROOT"/}"
+if [[ "$SYNC" == true ]]; then
+  echo ">> Workspace: synced from the control plane (${GRAVITEE_AI_SYNC_URL:-ai.sync.url})"
+  [[ -n "$WORKSPACE" ]] && echo ">> Note: --workspace is ignored while GRAVITEE_AI_SYNC_ENABLED is true" >&2
+else
+  echo ">> Workspace: ${WORKSPACE#"$REPO_ROOT"/}"
+fi
 echo ">> OpenAI-compatible API on http://localhost:$PORT/v1"
 
 # On Linux the ggml backends are dlopen'd by name from the same directory rather
@@ -221,7 +235,11 @@ if grep -qE '^[[:space:]]*type:[[:space:]]*vllm(_decision)?[[:space:]]*$' "$WORK
   fi
 fi
 
-exec env \
+# With ai.sync.enabled the node exits with 75 to apply a newer release (models cannot be unloaded at runtime):
+# start it again, as a supervisor would. Any other status, including Ctrl-C, ends the script.
+while true; do
+  rc=0
+  env \
   JAVA_OPTS="$JAVA_OPTS" \
   LD_PRELOAD="${LD_PRELOAD:-}" \
   LD_LIBRARY_PATH="$NATIVE_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
@@ -229,4 +247,7 @@ exec env \
   GRAVITEE_HTTP_PORT="$PORT" \
   GRAVITEE_AI_WORKSPACE_PATH="$WORKSPACE" \
   GRAVITEE_AI_MODELS_PATH="$HOME/.cache/gravitee-singularitee/models" \
-  "$DIST/bin/gravitee.sh"
+  "$DIST/bin/gravitee.sh" || rc=$?
+  if [[ "$rc" -ne 75 ]]; then exit "$rc"; fi
+  echo ">> New release received: restarting the node"
+done
