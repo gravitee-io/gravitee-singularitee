@@ -1,0 +1,974 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "$id" : "https://gravitee.io/schemas/singularitee/workspace.schema.json",
+  "title" : "Gravitee Singularitee workspace",
+  "$ref" : "#/$defs/WorkspaceDefinition",
+  "$defs" : {
+    "CompositeClassifierDef" : {
+      "type" : "object",
+      "properties" : {
+        "models" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        }
+      },
+      "additionalProperties" : false
+    },
+    "DecisionClassifierDef" : {
+      "type" : "object",
+      "properties" : {
+        "instructions" : { },
+        "options" : {
+          "type" : "object",
+          "additionalProperties" : { }
+        }
+      },
+      "additionalProperties" : false
+    },
+    "DecisionPromptDef" : {
+      "type" : "object",
+      "properties" : {
+        "template" : {
+          "type" : "string"
+        },
+        "prefill" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "DownloadDef" : {
+      "type" : "object",
+      "properties" : {
+        "exclude" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        }
+      },
+      "additionalProperties" : false
+    },
+    "GlinerClassifierDef" : {
+      "type" : "object",
+      "properties" : {
+        "model_dir" : {
+          "type" : "string"
+        },
+        "labels" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/GlinerLabelDef"
+          }
+        },
+        "threshold" : {
+          "type" : "number"
+        },
+        "variant" : {
+          "type" : "string"
+        },
+        "token_cap" : {
+          "type" : "integer"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "GlinerDecisionDef" : {
+      "type" : "object",
+      "properties" : {
+        "model_dir" : {
+          "type" : "string"
+        },
+        "variant" : {
+          "type" : "string"
+        },
+        "as_classifier" : {
+          "$ref" : "#/$defs/DecisionClassifierDef"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "GlinerEntityDef" : {
+      "type" : "object",
+      "properties" : {
+        "name" : {
+          "type" : "string"
+        },
+        "description" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "GlinerLabelDef" : {
+      "type" : "object",
+      "properties" : {
+        "name" : {
+          "type" : "string"
+        },
+        "description" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "GlinerNerDef" : {
+      "type" : "object",
+      "properties" : {
+        "model_dir" : {
+          "type" : "string"
+        },
+        "entities" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/GlinerEntityDef"
+          }
+        },
+        "threshold" : {
+          "type" : "number"
+        },
+        "variant" : {
+          "type" : "string"
+        },
+        "token_cap" : {
+          "type" : "integer"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "IncludesDef" : {
+      "type" : "object",
+      "properties" : {
+        "models" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "pipelines" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "templates" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        }
+      },
+      "additionalProperties" : false
+    },
+    "LlamaCppDecisionDef" : {
+      "type" : "object",
+      "properties" : {
+        "path" : {
+          "type" : "string"
+        },
+        "family" : {
+          "type" : "string"
+        },
+        "codes" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "debias" : {
+          "type" : "string"
+        },
+        "prompt" : {
+          "$ref" : "#/$defs/DecisionPromptDef"
+        },
+        "temperatures" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "number"
+          }
+        },
+        "n_ctx" : {
+          "type" : "integer"
+        },
+        "n_batch" : {
+          "type" : "integer"
+        },
+        "n_seq_max" : {
+          "type" : "integer"
+        },
+        "n_parallel" : {
+          "type" : "integer"
+        },
+        "n_gpu_layers" : {
+          "type" : "integer"
+        },
+        "n_threads" : {
+          "type" : "integer"
+        },
+        "n_threads_batch" : {
+          "type" : "integer"
+        },
+        "lora_path" : {
+          "type" : "string"
+        },
+        "as_classifier" : {
+          "$ref" : "#/$defs/DecisionClassifierDef"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "LlamaCppDef" : {
+      "type" : "object",
+      "properties" : {
+        "path" : {
+          "type" : "string"
+        },
+        "n_ctx" : {
+          "type" : "integer"
+        },
+        "n_batch" : {
+          "type" : "integer"
+        },
+        "n_ubatch" : {
+          "type" : "integer"
+        },
+        "n_seq_max" : {
+          "type" : "integer"
+        },
+        "n_gpu_layers" : {
+          "type" : "integer"
+        },
+        "n_threads" : {
+          "type" : "integer"
+        },
+        "n_threads_batch" : {
+          "type" : "integer"
+        },
+        "pooling_type" : {
+          "type" : "string"
+        },
+        "attention_type" : {
+          "type" : "string"
+        },
+        "flash_attn_type" : {
+          "type" : "string"
+        },
+        "offload_kqv" : {
+          "type" : "boolean"
+        },
+        "lora_path" : {
+          "type" : "string"
+        },
+        "mmproj_path" : {
+          "type" : "string"
+        },
+        "media_marker" : {
+          "type" : "string"
+        },
+        "mtp" : {
+          "type" : "boolean"
+        },
+        "speculative" : {
+          "$ref" : "#/$defs/SpeculativeDef"
+        },
+        "use_mlock" : {
+          "type" : "boolean"
+        },
+        "cache_type_k" : {
+          "type" : "string"
+        },
+        "cache_type_v" : {
+          "type" : "string"
+        },
+        "prompt_cache" : {
+          "type" : "boolean"
+        },
+        "prompt_cache_min_tokens" : {
+          "type" : "integer"
+        },
+        "eog_ramp_start" : {
+          "type" : "number"
+        },
+        "eog_ramp_max_bias" : {
+          "type" : "number"
+        },
+        "draft_model" : {
+          "type" : "string"
+        },
+        "draft_path" : {
+          "type" : "string"
+        },
+        "eagle3_model" : {
+          "type" : "string"
+        },
+        "eagle3_path" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "LlamaCppEmbeddingDef" : {
+      "type" : "object",
+      "properties" : {
+        "llama_cpp" : {
+          "$ref" : "#/$defs/LlamaCppDef"
+        },
+        "embedding_template" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "LlamaCppRerankerDef" : {
+      "type" : "object",
+      "properties" : {
+        "llama_cpp" : {
+          "$ref" : "#/$defs/LlamaCppDef"
+        },
+        "scoring" : {
+          "type" : "string"
+        },
+        "rerank_template" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "LlmAnswerDef" : {
+      "type" : "object",
+      "properties" : {
+        "spans" : {
+          "type" : "string"
+        },
+        "label" : {
+          "type" : "string"
+        },
+        "text" : {
+          "type" : "string"
+        },
+        "metadata" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        }
+      },
+      "additionalProperties" : false
+    },
+    "LlmTokenClassifierDef" : {
+      "type" : "object",
+      "properties" : {
+        "model_id" : {
+          "type" : "string"
+        },
+        "system_prompt" : {
+          "type" : "string"
+        },
+        "labels" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "max_tokens" : {
+          "type" : "integer"
+        },
+        "context" : {
+          "type" : "object",
+          "additionalProperties" : { }
+        },
+        "chunk_tokens" : {
+          "type" : "integer"
+        },
+        "repeat_min_length" : {
+          "type" : "integer"
+        },
+        "score" : {
+          "type" : "string"
+        },
+        "answer" : {
+          "$ref" : "#/$defs/LlmAnswerDef"
+        },
+        "structured_output" : {
+          "type" : "boolean"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "ModelDefinition" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "type" : {
+          "type" : "string",
+          "enum" : [ "llama_cpp", "vllm", "onnx_classifier", "onnx_embedding", "onnx_reranker", "gliner_classifier", "gliner_ner", "remote_llm", "remote_classifier", "remote_embedding", "remote_reranker", "remote_decision", "regex", "composite_classifier", "llm_token_classifier", "llama_cpp_embedding", "llama_cpp_decision", "vllm_decision", "gliner_decision", "llama_cpp_reranker" ]
+        },
+        "server" : {
+          "type" : "string"
+        },
+        "task" : {
+          "type" : "string"
+        },
+        "visible" : {
+          "type" : "boolean"
+        },
+        "modalities" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "memory_check" : {
+          "type" : "string"
+        },
+        "download" : {
+          "$ref" : "#/$defs/DownloadDef"
+        },
+        "llama_cpp" : {
+          "$ref" : "#/$defs/LlamaCppDef"
+        },
+        "vllm" : {
+          "$ref" : "#/$defs/VllmDef"
+        },
+        "onnx_classifier" : {
+          "$ref" : "#/$defs/OnnxClassifierDef"
+        },
+        "onnx_embedding" : {
+          "$ref" : "#/$defs/OnnxEmbeddingDef"
+        },
+        "gliner_classifier" : {
+          "$ref" : "#/$defs/GlinerClassifierDef"
+        },
+        "gliner_ner" : {
+          "$ref" : "#/$defs/GlinerNerDef"
+        },
+        "regex" : {
+          "$ref" : "#/$defs/RegexDef"
+        },
+        "composite_classifier" : {
+          "$ref" : "#/$defs/CompositeClassifierDef"
+        },
+        "llm_token_classifier" : {
+          "$ref" : "#/$defs/LlmTokenClassifierDef"
+        },
+        "onnx_reranker" : {
+          "$ref" : "#/$defs/OnnxRerankerDef"
+        },
+        "llama_cpp_embedding" : {
+          "$ref" : "#/$defs/LlamaCppEmbeddingDef"
+        },
+        "llama_cpp_reranker" : {
+          "$ref" : "#/$defs/LlamaCppRerankerDef"
+        },
+        "llama_cpp_decision" : {
+          "$ref" : "#/$defs/LlamaCppDecisionDef"
+        },
+        "vllm_decision" : {
+          "$ref" : "#/$defs/VllmDecisionDef"
+        },
+        "gliner_decision" : {
+          "$ref" : "#/$defs/GlinerDecisionDef"
+        }
+      },
+      "additionalProperties" : false,
+      "required" : [ "type" ]
+    },
+    "OnnxClassifierDef" : {
+      "type" : "object",
+      "properties" : {
+        "model_path" : {
+          "type" : "string"
+        },
+        "tokenizer_path" : {
+          "type" : "string"
+        },
+        "config_json_path" : {
+          "type" : "string"
+        },
+        "labels" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "max_sequence_length" : {
+          "type" : "integer"
+        },
+        "classifier_mode" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "OnnxEmbeddingDef" : {
+      "type" : "object",
+      "properties" : {
+        "model_path" : {
+          "type" : "string"
+        },
+        "tokenizer_path" : {
+          "type" : "string"
+        },
+        "config_json_path" : {
+          "type" : "string"
+        },
+        "max_sequence_length" : {
+          "type" : "integer"
+        },
+        "pooling_mode" : {
+          "type" : "string"
+        },
+        "normalize" : {
+          "type" : "boolean"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "OnnxRerankerDef" : {
+      "type" : "object",
+      "properties" : {
+        "model_path" : {
+          "type" : "string"
+        },
+        "tokenizer_path" : {
+          "type" : "string"
+        },
+        "config_json_path" : {
+          "type" : "string"
+        },
+        "max_sequence_length" : {
+          "type" : "integer"
+        },
+        "scoring" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "PipelineDefinition" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "server" : {
+          "type" : "string"
+        },
+        "entry" : {
+          "type" : "string"
+        },
+        "task" : {
+          "type" : "string"
+        },
+        "visible" : {
+          "type" : "boolean"
+        },
+        "modalities" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "steps" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/StepDefinition"
+          }
+        },
+        "remote" : {
+          "$ref" : "#/$defs/RemoteProxyDef"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "RegexDef" : {
+      "type" : "object",
+      "properties" : {
+        "patterns" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/RegexPatternDef"
+          }
+        }
+      },
+      "additionalProperties" : false
+    },
+    "RegexPatternDef" : {
+      "type" : "object",
+      "properties" : {
+        "pattern" : {
+          "type" : "string"
+        },
+        "entity_type" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "RemoteConfig" : {
+      "type" : "object",
+      "properties" : {
+        "default" : {
+          "$ref" : "#/$defs/RemoteEndpoint"
+        },
+        "servers" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/RemoteEndpoint"
+          }
+        }
+      },
+      "additionalProperties" : false
+    },
+    "RemoteEndpoint" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "type" : "string"
+        },
+        "host" : {
+          "type" : "string"
+        },
+        "port" : {
+          "type" : "integer"
+        },
+        "http2_keep_alive_timeout" : {
+          "type" : "integer"
+        },
+        "username" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
+        },
+        "ssl" : {
+          "type" : "boolean"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "RemoteProxyDef" : {
+      "type" : "object",
+      "properties" : {
+        "system_prompt" : {
+          "type" : "string"
+        },
+        "forward_messages" : {
+          "type" : "boolean"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "SpeculativeDef" : {
+      "type" : "object",
+      "properties" : {
+        "n_draft" : {
+          "type" : "integer"
+        },
+        "draft_min" : {
+          "type" : "integer"
+        },
+        "p_min" : {
+          "type" : "number"
+        },
+        "temperature" : {
+          "type" : "number"
+        },
+        "top_k" : {
+          "type" : "integer"
+        },
+        "top_p" : {
+          "type" : "number"
+        },
+        "seed" : {
+          "type" : "integer"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "StepDefinition" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "type" : "string"
+        },
+        "type" : {
+          "type" : "string"
+        },
+        "role" : {
+          "type" : "string"
+        },
+        "next_step" : {
+          "type" : "string"
+        },
+        "config" : {
+          "type" : "object",
+          "additionalProperties" : { }
+        }
+      },
+      "additionalProperties" : false,
+      "required" : [ "type" ]
+    },
+    "TagsDef" : {
+      "anyOf" : [ {
+        "type" : "string"
+      }, {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string"
+          },
+          "reasoning_open" : {
+            "anyOf" : [ {
+              "type" : "string"
+            }, {
+              "type" : "array",
+              "items" : {
+                "type" : "string"
+              }
+            } ]
+          },
+          "reasoning_repeatable" : {
+            "type" : "boolean"
+          },
+          "reasoning_close" : {
+            "anyOf" : [ {
+              "type" : "string"
+            }, {
+              "type" : "array",
+              "items" : {
+                "type" : "string"
+              }
+            } ]
+          },
+          "tool_open" : {
+            "anyOf" : [ {
+              "type" : "string"
+            }, {
+              "type" : "array",
+              "items" : {
+                "type" : "string"
+              }
+            } ]
+          },
+          "tool_close" : {
+            "anyOf" : [ {
+              "type" : "string"
+            }, {
+              "type" : "array",
+              "items" : {
+                "type" : "string"
+              }
+            } ]
+          }
+        },
+        "additionalProperties" : false
+      } ]
+    },
+    "TemplateDefinition" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "type" : "string"
+        },
+        "content" : {
+          "type" : "string"
+        },
+        "file" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "VllmDecisionDef" : {
+      "type" : "object",
+      "properties" : {
+        "family" : {
+          "type" : "string"
+        },
+        "revision" : {
+          "type" : "string"
+        },
+        "device" : {
+          "type" : "string"
+        },
+        "profile" : {
+          "type" : "string"
+        },
+        "engine" : {
+          "type" : "string"
+        },
+        "memory_budget_gib" : {
+          "type" : "number"
+        },
+        "threads" : {
+          "type" : "integer"
+        },
+        "cache_dir" : {
+          "type" : "string"
+        },
+        "offline" : {
+          "type" : "boolean"
+        },
+        "as_classifier" : {
+          "$ref" : "#/$defs/DecisionClassifierDef"
+        },
+        "codes" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "debias" : {
+          "type" : "string"
+        },
+        "prompt" : {
+          "$ref" : "#/$defs/DecisionPromptDef"
+        },
+        "temperatures" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "number"
+          }
+        },
+        "vllm" : {
+          "$ref" : "#/$defs/VllmDef"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "VllmDef" : {
+      "type" : "object",
+      "properties" : {
+        "dtype" : {
+          "type" : "string"
+        },
+        "max_model_len" : {
+          "type" : "integer"
+        },
+        "max_num_seqs" : {
+          "type" : "integer"
+        },
+        "gpu_memory_utilization" : {
+          "type" : "number"
+        },
+        "max_num_batched_tokens" : {
+          "type" : "integer"
+        },
+        "enforce_eager" : {
+          "type" : "boolean"
+        },
+        "trust_remote_code" : {
+          "type" : "boolean"
+        },
+        "quantization" : {
+          "type" : "string"
+        },
+        "seed" : {
+          "type" : "integer"
+        },
+        "enable_prefix_caching" : {
+          "type" : "boolean"
+        },
+        "enable_chunked_prefill" : {
+          "type" : "boolean"
+        },
+        "kv_cache_dtype" : {
+          "type" : "string"
+        },
+        "enable_lora" : {
+          "type" : "boolean"
+        },
+        "max_loras" : {
+          "type" : "integer"
+        },
+        "max_lora_rank" : {
+          "type" : "integer"
+        },
+        "enable_sleep_mode" : {
+          "type" : "boolean"
+        },
+        "tensor_parallel_size" : {
+          "type" : "integer"
+        },
+        "pipeline_parallel_size" : {
+          "type" : "integer"
+        },
+        "distributed_executor_backend" : {
+          "type" : "string"
+        },
+        "prompt_cache" : {
+          "type" : "boolean"
+        },
+        "lora_repo" : {
+          "type" : "string"
+        },
+        "lora_path" : {
+          "type" : "string"
+        },
+        "lora_name" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "WorkspaceDefinition" : {
+      "type" : "object",
+      "properties" : {
+        "workspace" : {
+          "$ref" : "#/$defs/WorkspaceRoot"
+        }
+      },
+      "additionalProperties" : false,
+      "required" : [ "workspace" ]
+    },
+    "WorkspaceRoot" : {
+      "type" : "object",
+      "properties" : {
+        "name" : {
+          "type" : "string"
+        },
+        "remote" : {
+          "$ref" : "#/$defs/RemoteConfig"
+        },
+        "models" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/ModelDefinition"
+          }
+        },
+        "pipelines" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/PipelineDefinition"
+          }
+        },
+        "templates" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/TemplateDefinition"
+          }
+        },
+        "tags" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/TagsDef"
+          }
+        },
+        "includes" : {
+          "$ref" : "#/$defs/IncludesDef"
+        }
+      }
+    }
+  }
+}

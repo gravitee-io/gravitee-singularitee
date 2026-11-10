@@ -29,6 +29,7 @@ import io.gravitee.node.monitoring.monitor.gpu.GpuMonitorEventHandler;
 import io.gravitee.node.opentelemetry.exporter.SpanExporterFactory;
 import io.gravitee.node.plugins.service.ServiceManager;
 import io.gravitee.node.reporter.ReporterManager;
+import io.gravitee.singularitee.standalone.sync.ReleaseSyncComponent;
 import io.gravitee.singularitee.standalone.vertx.GrpcServerComponent;
 import io.gravitee.singularitee.standalone.vertx.HttpApiServerComponent;
 import io.gravitee.singularitee.standalone.vertx.WorkspaceLoaderComponent;
@@ -88,6 +89,8 @@ public class SingulariteeNode extends AbstractNode {
     // No-op unless http.enabled=true. After gRPC so the shared tracer is already started.
     components.add(HttpApiServerComponent.class);
 
+    // Pulls the workspace from Gamma when ai.sync.enabled=true; must precede the loader.
+    components.add(ReleaseSyncComponent.class);
     components.add(WorkspaceLoaderComponent.class);
 
     return components;

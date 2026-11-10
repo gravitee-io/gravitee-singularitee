@@ -75,6 +75,7 @@ import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.service.GraviteePipelineServiceImpl;
 import io.gravitee.singularitee.service.GraviteeVectorServiceImpl;
 import io.gravitee.singularitee.standalone.node.SingulariteeNode;
+import io.gravitee.singularitee.standalone.sync.ReleaseSyncComponent;
 import io.gravitee.singularitee.standalone.vertx.GrpcServerComponent;
 import io.gravitee.singularitee.standalone.vertx.HttpApiServerComponent;
 import io.gravitee.singularitee.standalone.vertx.WorkspaceLoaderComponent;
@@ -761,6 +762,22 @@ public class SingulariteeConfiguration {
   @Bean
   public io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState() {
     return new io.gravitee.singularitee.standalone.vertx.ReadinessState();
+  }
+
+  /** Pulls the workspace from Gamma; see {@link ReleaseSyncComponent}. */
+  @Bean
+  public ReleaseSyncComponent releaseSyncComponent(
+    Configuration configuration,
+    GraviteeModelServiceImpl modelService,
+    PipelineRegistry pipelineRegistry,
+    io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState
+  ) {
+    return new ReleaseSyncComponent(
+      configuration,
+      modelService.modelRegistry(),
+      pipelineRegistry,
+      readinessState
+    );
   }
 
   /** Loads the workspace at boot; see {@link WorkspaceLoaderComponent}. */
