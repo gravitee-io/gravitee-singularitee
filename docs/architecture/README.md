@@ -4,6 +4,8 @@
 
 ## Overview
 
+For the APIM integration, see [Singularitee model resource in Agent Management](agent-management-pii.md).
+
 Singularitee is a [gravitee-node](https://github.com/gravitee-io/gravitee-node) container (Spring 6, Vert.x 5, RxJava 3). It hosts models in-process through engine factories and exposes them through two fronts over the same registries:
 
 - the **gRPC API** (primary, port 9090): five services over Vert.x's HTTP/2 server;

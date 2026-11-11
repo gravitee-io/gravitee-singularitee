@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["capability", "remote"],
+  "properties": {
+    "capability": {
+      "title": "Model type",
+      "type": "string",
+      "enum": ["token-classification", "text-classification"]
+    },
+    "remote": {
+      "type": "object",
+      "title": "Remote model",
+      "properties": {
+        "adapter": {
+          "type": "string",
+          "const": "singularitee"
+        },
+        "endpoint": {
+          "type": "string",
+          "title": "Serving endpoint"
+        },
+        "modelId": {
+          "type": "string",
+          "title": "Model ID"
+        },
+        "authorization": {
+          "type": "string",
+          "title": "Authorization",
+          "format": "password"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "title": "Timeout (ms)",
+          "minimum": 1,
+          "maximum": 60000,
+          "default": 5000
+        }
+      },
+      "required": ["adapter", "endpoint", "modelId"]
+    }
+  }
+}

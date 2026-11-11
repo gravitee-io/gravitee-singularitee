@@ -1,0 +1,54 @@
+= Singularitee Model Resource
+
+APIM resource `singularitee-model` invokes a deployed Singularitee model through
+`POST /v1/classify`. It supports token classification and text classification.
+AIM derives the capability and serving binding from the selected catalog model.
+The plugin owns its HTTP client, lifecycle, credentials and result mapping.
+
+== Build
+
+Use Java 25 to run `mvn verify` in this directory. Focused compatibility tests use
+the published prompt guardrail `5.2.0` and model API `2.2.3` binaries. The plugin
+uses the original `invokeModel(PromptInput)` interface; neither API nor policy
+runtime modifications are required. Only the policy resource picker adds its ID.
+
+The resulting `target/gravitee-resource-singularitee-model-0.1.0-SNAPSHOT.zip`
+contains the resource, released model API `2.2.3` and inference API `1.5.0`.
+Policy and test dependencies are not bundled. Existing text- and token-classification
+resource plugins are neither changed nor bundled. This standalone gateway plugin
+is outside the native Singularitee reactor and CI.
+
+== Configuration
+
+`capability` is `token-classification` or `text-classification`.
+`remote` contains `adapter` (`singularitee`), the HTTP(S) serving `endpoint`,
+`modelId`, optional secret-backed `authorization`, and `timeoutMs` (default 5000,
+maximum 60000). The payload is unchanged for AIM consumers.
+
+The gateway injects `DeploymentContext`. For each invocation the resource copies
+its template engine and evaluates authorization with private password-field access.
+Secret grants remain scoped to the owning deployment's environment/API. Request
+variables and per-user credentials are not supported. Resolved credentials are
+not retained between calls; rotation follows the Secrets Service's cache refresh.
+
+Missing or disabled secrets, empty Bearer credentials and resolution errors fail
+before HTTP. Error messages do not include resolved credentials. Public endpoints
+can omit authorization. The timeout bounds secret resolution and HTTP together.
+The client refuses redirects, limits responses to 1 MiB, and rejects malformed
+results. Token classification requires entity offsets; text classification uses
+label scores.
+
+== Compatibility and release limits
+
+The focused checks exercise the published policy's real resource lookup and
+single-argument invocation, both capabilities, credential rotation and isolation,
+failure handling, and stop/restart without an embedded inference service.
+They use a controlled secret delegate; real provider grants, gateway classloader
+wiring and integrated deployment still need live validation. The validated policy
+target is APIM 4.13 on Java 25. Older combinations are not established here.
+
+Choose the resource's release repository and CI wiring before publishing a
+supported artifact. The manifest follows the resource archetype without a
+`feature` declaration; it does not borrow another plugin's commercial entitlement
+or invent a replacement. Native deployment sync and AIM catalog integration have
+separate review and release prerequisites.
