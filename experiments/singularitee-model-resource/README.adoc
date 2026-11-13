@@ -2,7 +2,7 @@
 
 APIM resource `singularitee-model` invokes a deployed Singularitee model through
 `POST /v1/classify`. It supports token classification and text classification.
-AIM derives the capability and serving binding from the selected catalog model.
+AIM derives the capability and serving binding from the selected published deployment target.
 The plugin owns its HTTP client, lifecycle, credentials and result mapping.
 
 == Build
@@ -50,5 +50,5 @@ target is APIM 4.13 on Java 25. Older combinations are not established here.
 Choose the resource's release repository and CI wiring before publishing a
 supported artifact. The manifest follows the resource archetype without a
 `feature` declaration; it does not borrow another plugin's commercial entitlement
-or invent a replacement. Native deployment sync and AIM catalog integration have
+or invent a replacement. Native deployment sync and AIM resource selection have
 separate review and release prerequisites.

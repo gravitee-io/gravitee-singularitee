@@ -5,8 +5,8 @@
 ## Overview
 
 The Singularitee Gamma module owns deployment targets and immutable release definitions.
-Agent Management (AIM) projects those targets into its model catalog in the same Gravitee
-organization and environment. An API author selects a ready classifier, configures its
+Agent Management (AIM) reads those targets directly for resource selection in the same
+Gravitee organization and environment. No AIM model or source records are created. An API author selects a ready classifier, configures its
 inference secret reference, and attaches the existing prompt guardrail policy. Publishing
 a deployment does not attach policies or redeploy APIs.
 
@@ -14,13 +14,12 @@ a deployment does not attach policies or redeploy APIs.
 flowchart TD
     S[Singularitee deployment release]
     I[Published target inventory and observed readiness]
-    C[AIM model catalog]
     R[API resource and secret reference]
     D[APIM API deployment]
     P[Gateway prompt guardrail policy]
     T[Singularitee model resource]
     N[Singularitee POST /v1/classify]
-    S --> I --> C --> R --> D --> P --> T --> N
+    S --> I --> R --> D --> P --> T --> N
     V[Environment secret backend] --> T
     N --> O[Labels, scores and optional spans]
     O --> P
@@ -33,7 +32,7 @@ flowchart TD
 | Component | Contract |
 | --- | --- |
 | Published inventory | Namespaced bean `singularitee.publishedTargetInventoryV1`, a JDK `Function<Map<String,String>,Map<String,Object>>` |
-| Catalog model | Stable deployment/target identity, release revision, task, serving binding and observed availability |
+| Resource selection | Live deployment/target identity, release revision, task, serving binding and observed availability |
 | Gateway resource | `singularitee-model`, with a selected token- or text-classification capability |
 | Policy result | `ClassifierResults`: labels and scores, plus offsets for token classification |
 
@@ -44,10 +43,11 @@ inference authentication is required. Credentials never cross this bridge.
 
 ## Usage
 
-AIM reads the inventory on catalog access and resource selection/save. It reconciles
-catalog records without a manual provider registration step. A complete authoritative
-inventory can retire targets no longer published. A missing module or a failed or
-incomplete response is not evidence that a target was removed.
+The resource picker calls `GET /resources/singularitee-model/targets` in the current
+AIM environment. Saving a resource resolves its `source.targetId` against the same
+inventory. Neither operation writes catalog records or requires a provider flow.
+After a deployment removes a target, it disappears from the choices. Missing or
+incomplete inventory returns an unavailable error rather than an empty success.
 
 Release YAML establishes membership. Fresh node observations matching the release
 revision establish readiness and model task. Missing, stale or mismatched observations
@@ -92,11 +92,11 @@ policy evaluation. A detected label follows the configured block or log action.
 
 ## Notes
 
-- Deployment-owned catalog records are managed through their deployment. Catalog
-  create, edit and delete operations must preserve that ownership and environment scope.
-- AIM's `DR-5` catalog migration adds the nullable availability column used by deployment
-  filtering. Apply it through the normal module migration process before using this integration.
-- Saved API resources are explicit configuration snapshots until saved and redeployed.
+- Saved API resources retain deployment ID, target ID and revision. They remain explicit
+  configuration snapshots until saved and redeployed; removing a published target does
+  not delete existing proxy references. Enabled resources must resolve a ready target
+  when saved. Disabled resources retain their binding without an inventory lookup, but
+  still require secret references instead of literal credentials.
   A stable serving model ID does not pin weights; immutable serving aliases would be
   required for runtime revision pinning.
 - Token classification requires entity offsets. Text classification consumes label
