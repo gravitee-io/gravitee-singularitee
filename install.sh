@@ -50,16 +50,16 @@ MODELS_DIR="$HOME/.cache/gravitee-singularitee/models"
 # was generated against: the jextract bindings are ABI-specific, and a mismatched
 # dylib crashes the JVM rather than failing to load.
 NATIVE_DIR="${NATIVE_DIR:-$HOME/.llama.cpp}"
-# llama.cpp v0.6.0 publishes its binaries under the nightly tag it promoted, b11429.
-DEFAULT_LLAMA_CPP_VERSION="b11429"
+# llama.cpp v1.0.0 publishes its binaries under the nightly tag it promoted, b12359.
+DEFAULT_LLAMA_CPP_VERSION="b12359"
 LLAMA_CPP_VERSION="${LLAMA_CPP_VERSION:-$DEFAULT_LLAMA_CPP_VERSION}"
 # SHA-256 of the release archives for the PINNED version above, per host. These are
 # native libraries the JVM loads, so a tampered or truncated download executes as us.
 # HTTPS protects the transport, not the artifact. Verified before extraction.
 # Re-pin when bumping LLAMA_CPP_VERSION:
 #   curl -fsSL <url> | shasum -a 256
-LLAMA_CPP_SHA256_macos_arm64="740288ec6887be94280a5dfa25b5e23a78285cab104519e6c7e218904ee82459"
-LLAMA_CPP_SHA256_ubuntu_x64="f6d25dde8f51133143d1453da4fd5f73b145127177612a283bf7995957af3392"
+LLAMA_CPP_SHA256_macos_arm64="82b00abc740160e1b9980e6cc79c117345fa34af058c80e6c0a69aa8ddccde75"
+LLAMA_CPP_SHA256_ubuntu_x64="0bc1f091e8916102b6d8f2cf944233a620e90a0f856c72d0ce41150c65c2e72e"
 # Override to verify a version other than the pinned one (with --llama-version).
 LLAMA_CPP_SHA256="${LLAMA_CPP_SHA256:-}"
 SKIP_BUILD=false
