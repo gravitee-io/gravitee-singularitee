@@ -310,8 +310,8 @@ The script exports `GRAVITEE_HTTP_ENABLED=true`, `GRAVITEE_HTTP_PORT`, `GRAVITEE
 | `--port PORT` | `8080` | Forwarded to `run-server.sh`. |
 | `--skip-build` | off | Do not run `mvn clean install -DskipTests`. |
 | `--no-run` | off | Set everything up and exit without starting the server. |
-| `--llama-version bNNNN` | `b11429` (llama.cpp v0.6.0) | llama.cpp release to download. Must match the llamaj.cpp binding the build was generated against. |
-| `LLAMA_CPP_VERSION` | `b11429` | Same as `--llama-version`. |
+| `--llama-version bNNNN` | `b12359` (llama.cpp v1.0.0) | llama.cpp release to download. Must match the llamaj.cpp binding the build was generated against. |
+| `LLAMA_CPP_VERSION` | `b12359` | Same as `--llama-version`. |
 | `LLAMA_CPP_SHA256` | pinned per host for the default version | Expected digest of the release archive. Required to verify a non-default version; without it the download is installed with a warning. |
 | `NATIVE_DIR` | `~/.llama.cpp` | Where the natives are extracted. A `.llama-cpp-version` stamp records the installed release; the directory is replaced wholesale on a version change. |
 | `HF_TOKEN` | unset | Hinted at the end of setup; read by the server. |
