@@ -194,7 +194,7 @@ download of a multi-GB model.
 | Old behaviour after a code change; ONNX fails on macOS after a `-Pcuda` build | `run-server.sh` launches whatever is in `target/distribution`. | Rebuild with the default profile. |
 | vLLM workspace fails with `Cannot locate a .venv directory` | `-Dvllm4j.venv` is not set; a venv on `PATH` is not enough. | `./scripts/setup-venv.sh -b <backend>`, or `--venv <dir>`. |
 | vLLM on Apple Silicon aborts with `kIOGPUCommandBufferCallbackErrorOutOfMemory` | `gpu_memory_utilization` is a share of total unified memory and the profiling pass allocates a full batch. | Use `examples/vllm/*-mac.yaml`, or shrink `max_model_len`, `max_num_batched_tokens` and `gpu_memory_utilization`. |
-| `NoSuchMethodError` from the llama.cpp binding | The natives in `~/.llama.cpp` do not match the llamaj.cpp release. | Rerun `./install.sh` (it re-pins `b11429`, llama.cpp v0.6.0). |
+| `NoSuchMethodError` from the llama.cpp binding | The natives in `~/.llama.cpp` do not match the llamaj.cpp release. | Rerun `./install.sh` (it re-pins `b12359`, llama.cpp v1.0.0). |
 | Bare model id returns channel markers in `content` | The raw model bypasses the pipeline's `tags:`. | Call the pipeline id (`agent`), not the model id. |
 | A `client-*.yaml` workspace fails fast at start | Its `remote:` endpoints are not up. | Start the `server-*.yaml` first, then the client on other ports (`GRAVITEE_GRPC_PORT=9190 ./run-server.sh --port 8180 --workspace <client>`). |
 | Build fails before compiling with `Incorrectly formatted file` or a license error | Formatting and header checks run first. | `mvn prettier:write license:format -pl <module>`. |
