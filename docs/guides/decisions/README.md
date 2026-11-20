@@ -10,7 +10,7 @@ A decision model reads a **state** and answers **typed questions** without gener
 | --- | --- | --- |
 | `choice` | pick one of several options | `choice`, `probabilities` per option, `confidence` |
 | `score` | place the state on 2 to 10 ordered levels | `score` (expected level), `mode`, `probabilities`, `confidence` |
-| `noul` | yes or no | `probability_true` (`noul` on `/v1/systemone`) |
+| `noul` | yes or no | `probability_true` (`probability` on `/v1/decisions`, where the type is named `predicate`; `noul` on `/v1/systemone`) |
 
 Five kinds of model serve this:
 
@@ -73,23 +73,35 @@ models:
 
 ### Ask questions over HTTP
 
-`POST /v1/decisions` is OpenAI-shaped: `id`, `object`, `created`, `usage.prompt_tokens`, the usual error object, and ordered arrays.
+`POST /v1/decisions` takes and returns the shape of OpenAI's Decisions API, so a client written for it works unchanged: questions are `predicate` (yes/no), `choice` or `score`, and answers come back in question order.
 
 ```bash
 curl -s localhost:8080/v1/decisions -H 'Content-Type: application/json' -d '{
   "model": "judge",
   "input": "Customer message: I was charged twice for my order and nobody has replied.",
   "questions": [
-    {"id": "route", "type": "choice", "instructions": "Which team should handle this?",
-     "options": [{"key": "billing"}, {"key": "shipping"}, {"key": "technical"}]},
-    {"id": "angry", "type": "noul", "instructions": "Is the customer angry?"},
-    {"id": "urgency", "type": "score", "instructions": "How urgent is this?",
-     "levels": ["can wait", "this week", "today", "right now"]}
+    {"type": "choice", "name": "route", "instructions": "Which team should handle this?",
+     "choices": [{"value": "billing"}, {"value": "shipping"}, {"value": "technical"}]},
+    {"type": "predicate", "name": "angry", "instructions": "Is the customer angry?"},
+    {"type": "score", "name": "urgency", "instructions": "How urgent is this?",
+     "levels": [{"label": "can wait"}, {"label": "this week"}, {"label": "today"}, {"label": "right now"}]}
   ]
 }' | jq
 ```
 
-`input` is a string, any JSON value, or an array of chat messages. Options may carry a `description`; a noul may carry `when_true` / `when_false`.
+`input` is a string or an array of messages and tool items; a JSON object is also accepted and reaches the template as is. Message content and `instructions` may be arrays of `input_text` and `input_json` parts: parts are joined as text, an `input_json` part as its JSON. A `name` is optional and echoed on the answer. Choices and levels may carry a `description`; a choice `value` may be a boolean.
+
+A predicate answers `probability`, a choice `choice`, `probabilities` and `confidence`, a score `score`, `probabilities` (each with its level `label`) and `confidence`:
+
+```json
+{"model": "judge",
+ "answers": [
+   {"type": "choice", "name": "route", "choice": "billing",
+    "probabilities": [{"value": "billing", "probability": 0.93}, {"value": "shipping", "probability": 0.05},
+                      {"value": "technical", "probability": 0.02}], "confidence": 0.81},
+   {"type": "predicate", "name": "angry", "probability": 0.64}],
+ "usage": {"input_tokens": 180, "output_tokens": 0, "total_tokens": 180}}
+```
 
 `POST /v1/systemone` takes and returns the shape of TypeSafe's System One API, as llama.cpp's server also serves it, so a client written for it works unchanged. The differences: validation errors are `400` with the error object rather than `422`, `usage.output_tokens` is always `0`, the response `model` echoes the id asked for, and `model` may name a decision pipeline:
 
@@ -125,12 +137,12 @@ When the caller owns the prompt (`prompt.template: none`, or any non-clef model)
 ```bash
 curl -s localhost:8080/v1/decisions -H 'Content-Type: application/json' -d '{
   "model": "judge",
-  "prompts": [{"id": "sentiment", "type": "choice", "option_keys": ["positive", "negative"],
+  "prompts": [{"type": "choice", "name": "sentiment", "option_keys": ["positive", "negative"],
     "prompt": "<|im_start|>user\nIs this review positive or negative? \"The box was crushed.\"\n(A) positive\n(B) negative<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nAnswer: ("}]
 }' | jq
 ```
 
-`prompt_tokens` (an integer array) replaces `prompt` when you tokenize yourself. `/v1/systemone` takes questions only.
+`prompt_tokens` (an integer array) replaces `prompt` when you tokenize yourself. `prompts` is an addition to OpenAI's API; `/v1/systemone` takes questions only.
 
 ### Calibrate
 
@@ -207,7 +219,7 @@ A pipeline whose `role: output` step is a `decide` step has the task `decision` 
         questions: request
 ```
 
-Call it like a model (`"model": "triage"`). A message the guard rejects is not an error: the response is `200` with no answers and `"blocked": {"code": "content_filter", "message": "..."}`, the way a blocked chat completion finishes with `content_filter`. A pipeline with its own questions takes the state only; sending questions to it is a `400`. A decision pipeline never takes rendered `prompts`: its guards only see the state, so the call is refused with `unsupported_input`.
+Call it like a model (`"model": "triage"`). A message the guard rejects is not an error: the response is `200` with `"blocked": {"code": "content_filter", "message": "..."}` and, on `/v1/decisions`, one `refusal` answer per question, the way a blocked chat completion finishes with `content_filter`. A pipeline with its own questions takes the state only; sending questions to it is a `400`. A decision pipeline never takes rendered `prompts`: its guards only see the state, so the call is refused with `unsupported_input`.
 
 ### Reuse it as a classifier
 

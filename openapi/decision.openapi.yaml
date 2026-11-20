@@ -29,8 +29,8 @@ info:
     - Two routes over the same service: `/v1/systemone` takes and returns the
       request and response shape of TypeSafe's System One API, as llama.cpp's
       server also serves it;
-      `/v1/decisions` is OpenAI-shaped (`id`, `object`, `created`, `usage`, the
-      error object) and mirrors the gRPC messages, with ordered arrays.
+      `/v1/decisions` takes and returns the shape of OpenAI's Decisions API, where
+      a yes/no question is a `predicate` and answers are an ordered array.
     - Both paths are served under `/v1` (documented here) and bare.
     - `model` is a decision model id (`llama_cpp_decision`, `vllm_decision`, `gliner_decision`, `remote_decision`) or the
       id of a pipeline whose task is `decision`, that is whose `role: output` step is
@@ -39,8 +39,9 @@ info:
       not decide returns `400` with `code: unsupported_model`.
     - Questions are rendered and answered in request order.
     - Image input is not read yet: any image is refused with `unsupported_modality`.
-    - A decision pipeline halted by a guard answers `200` with no answers and a
-      `blocked` object; it is not an error.
+    - A decision pipeline halted by a guard answers `200` with a `blocked` object; it
+      is not an error. `/v1/systemone` then has no answers, `/v1/decisions` one
+      `refusal` answer per question.
     - The server is opt-in (`http.enabled: false` by default) and listens on port `8080`.
 servers:
   - url: http://localhost:8080
@@ -88,10 +89,14 @@ paths:
     post:
       tags: [Decisions]
       operationId: decide
-      summary: Answer typed questions, OpenAI-shaped
+      summary: Answer typed questions, OpenAI Decisions shape
       description: |
         Send either `input` with `questions` (the server renders the prompts), or
-        `prompts` the caller already rendered (the server only scores them). Sending
+        `prompts` the caller already rendered (the server only scores them); `prompts`,
+        `include_raw_scores`, `blocked` and a score answer's `mode` are additions to
+        OpenAI's API. Content parts are read as text, an `input_json` part as its JSON,
+        a tool call as an assistant message; `prompt_cache_key`, `prompt_cache_options`
+        and `safety_identifier` are accepted and ignored. Sending
         both, or neither, is a `400`. Which mode a model accepts depends on its prompt
         source: a model without a template takes prompts only, a model that decides
         all questions jointly (clef) takes questions only; the other mode answers
@@ -129,7 +134,8 @@ components:
     BadRequest:
       description: |
         Invalid JSON or schema violation, or a malformed question or prompt
-        (`code: invalid_request_error`, the message names it as `questions.<id>: ...`);
+        (`code: invalid_request_error`, the message names it as `questions.<id>: ...`,
+        `questions.<name>: ...` or `questions[<index>]: ...` on `/v1/decisions`);
         unknown or hidden model (`code: model_not_found`); a model or pipeline that does
         not decide (`code: unsupported_model`); an input mode the model refuses
         (`code: unsupported_input`, also rendered prompts sent to a pipeline); an image
@@ -282,6 +288,24 @@ components:
             input_tokens: { type: integer, description: Prompt tokens of all questions. }
             output_tokens: { type: integer, const: 0 }
 
+    PredicateType:
+      type: string
+      enum: [predicate, choice, score]
+      description: "`predicate` is a yes/no question."
+
+    ContentParts:
+      description: A string, or an array of `input_text` and `input_json` parts joined as text.
+      oneOf:
+        - type: string
+        - type: array
+          items:
+            type: object
+            required: [type]
+            properties:
+              type: { type: string, enum: [input_text, input_json] }
+              text: { type: string, description: "`input_text`: the text." }
+              data: { description: "`input_json`: an object or an array, read as JSON text." }
+
     DecisionsRequest:
       type: object
       required: [model]
@@ -292,48 +316,59 @@ components:
           description: Decision model id, or the id of a decision pipeline.
         input:
           description: |
-            The content to evaluate: a string, an array of chat messages
-            (`{role, content}`, text content parts joined), or any other JSON value.
-            Required with `questions`.
+            The content to evaluate: a string, or an array of message items
+            (`{role, content}`, `content` a string or an array of content parts) and tool
+            items (`function_call`, `function_call_output`, `custom_tool_call`,
+            `custom_tool_call_output`). A JSON object is also accepted and given to the
+            template as is. Required with `questions`.
         questions:
           type: array
           minItems: 1
+          maxItems: 400
           items:
             type: object
-            required: [id, type, instructions]
+            required: [type, instructions]
             properties:
-              id: { type: string, minLength: 1 }
-              type: { $ref: "#/components/schemas/QuestionType" }
-              instructions: { $ref: "#/components/schemas/JsonValue" }
-              options:
+              type: { $ref: "#/components/schemas/PredicateType" }
+              name:
+                type: [string, "null"]
+                description: Echoed on the answer; names must be unique.
+              instructions: { $ref: "#/components/schemas/ContentParts" }
+              choices:
                 type: array
-                description: "`choice`: the options, in prompt order."
+                minItems: 2
+                maxItems: 255
+                description: "`choice`: the options, in prompt order; the model may allow fewer."
                 items:
                   type: object
-                  required: [key]
+                  required: [value]
                   properties:
-                    key: { type: string }
-                    description: { $ref: "#/components/schemas/JsonValue" }
+                    value: { type: [string, boolean] }
+                    description: { type: [string, "null"] }
               levels:
                 type: array
                 minItems: 2
                 maxItems: 10
-                description: "`score`: 2 to 10 level descriptions, lowest first."
-              when_true: { $ref: "#/components/schemas/JsonValue" }
-              when_false: { $ref: "#/components/schemas/JsonValue" }
+                description: "`score`: the levels, lowest first."
+                items:
+                  type: object
+                  required: [label]
+                  properties:
+                    label: { type: string }
+                    description: { type: [string, "null"] }
         prompts:
           type: array
           minItems: 1
           description: Prompts the caller rendered; exclusive with `input` and `questions`.
           items:
             type: object
-            required: [id, type]
+            required: [name, type]
             properties:
-              id: { type: string, minLength: 1 }
-              type: { $ref: "#/components/schemas/QuestionType" }
+              name: { type: string, minLength: 1 }
+              type: { $ref: "#/components/schemas/PredicateType" }
               option_keys:
                 type: array
-                description: "`choice`: the option keys, in the order the prompt lists them."
+                description: "`choice`: the option values, in the order the prompt lists them."
                 items: { type: string }
               levels:
                 type: integer
@@ -349,31 +384,29 @@ components:
                 items: { type: integer }
         include_raw_scores: { type: boolean, default: false }
 
-    OptionProbability:
-      type: object
-      required: [key, probability]
-      properties:
-        key: { type: string }
-        probability: { type: number }
-
     DecisionsResponse:
       type: object
-      required: [id, object, created, model, answers, usage]
+      required: [model, answers, usage]
       properties:
-        id: { type: string, description: "`dec_<random hex>`" }
-        object: { type: string, const: decision }
-        created: { type: integer, description: Epoch seconds. }
         model: { type: string }
         answers:
           type: array
-          description: In request order; empty when `blocked` is set.
+          description: In request order.
           items:
             type: object
-            required: [question_id, type]
+            required: [type, name]
             properties:
-              question_id: { type: string }
-              type: { $ref: "#/components/schemas/QuestionType" }
-              choice: { type: string, description: "`choice`: the most probable option." }
+              type:
+                type: string
+                enum: [predicate, choice, score, refusal]
+                description: "`refusal`: the question was not answered, as when a guard halted the pipeline."
+              name:
+                type: [string, "null"]
+                description: The question's name; `null` when it had none.
+              probability: { type: number, description: "`predicate`: the probability of yes." }
+              choice:
+                type: [string, boolean]
+                description: "`choice`: the most probable value."
               score: { type: number, description: "`score`: the expected level index." }
               mode: { type: integer, description: "`score`: the most probable level index." }
               confidence:
@@ -381,14 +414,30 @@ components:
                 description: "`choice` and `score`: 0 when spread like a uniform distribution, 1 when certain."
               probabilities:
                 type: array
-                description: "`choice`: in option order. `score`: keys `\"0\"` to `\"n-1\"`, lowest first."
-                items: { $ref: "#/components/schemas/OptionProbability" }
-              probability_true: { type: number, description: "`noul`: the probability of yes." }
+                description: "`choice`: in option order. `score`: lowest level first."
+                items:
+                  type: object
+                  required: [value, probability]
+                  properties:
+                    value:
+                      type: [string, boolean, integer]
+                      description: "`choice`: the option value. `score`: the level index."
+                    label: { type: string, description: "`score`: the level's label; absent for a rendered prompt." }
+                    probability: { type: number }
               raw_scores: { $ref: "#/components/schemas/RawScores" }
         blocked: { $ref: "#/components/schemas/Blocked" }
         usage:
           type: object
           properties:
-            prompt_tokens: { type: integer }
-            completion_tokens: { type: integer, const: 0 }
+            input_tokens: { type: integer, description: Prompt tokens of all questions. }
+            input_tokens_details:
+              type: object
+              properties:
+                cached_tokens: { type: integer, const: 0 }
+                cache_write_tokens: { type: integer, const: 0 }
+            output_tokens: { type: integer, const: 0 }
+            output_tokens_details:
+              type: object
+              properties:
+                reasoning_tokens: { type: integer, const: 0 }
             total_tokens: { type: integer }

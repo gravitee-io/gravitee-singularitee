@@ -17,6 +17,7 @@ package io.gravitee.singularitee.http.handler;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.protobuf.Value;
 import io.gravitee.singularitee.engine.api.decision.DecisionMessages;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
@@ -51,11 +52,12 @@ final class DecisionSupport {
     return DecisionMessages.toValue(Utils.OBJECT_MAPPER.get().convertValue(node, Object.class));
   }
 
-  /** Whether a JSON value carries an image, as an {@code image_url} content part. */
+  /** Whether a JSON value carries an image, as an {@code image_url} or {@code input_image} part. */
   static boolean hasImagePart(JsonNode node) {
     if (node == null) return false;
     if (node.isObject()) {
-      if ("image_url".equals(node.path("type").asText(null))) return true;
+      String type = node.path("type").asText("");
+      if (type.equals("image_url") || type.equals("input_image")) return true;
       for (JsonNode child : node) if (hasImagePart(child)) return true;
     } else if (node.isArray()) {
       for (JsonNode child : node) if (hasImagePart(child)) return true;
@@ -64,39 +66,73 @@ final class DecisionSupport {
   }
 
   /**
-   * Chat messages as protocol messages, or {@code null} when {@code node} is not an array of
-   * {@code {role, content}} objects. Text parts of a content array are joined.
+   * An array of content parts as one text, parts joined by a newline; any other node as is.
+   * An {@code input_json} part contributes its {@code data} as JSON text.
+   */
+  static JsonNode flattenParts(JsonNode node) {
+    if (!node.isArray() || node.isEmpty()) return node;
+    for (JsonNode part : node) if (!part.isObject() || !part.has("type")) return node;
+    return TextNode.valueOf(partsText(node));
+  }
+
+  private static String partsText(JsonNode parts) {
+    var sb = new StringBuilder();
+    for (JsonNode part : parts) {
+      String text;
+      if (part.has("text")) text = part.path("text").asText("");
+      else if (part.has("data")) text = part.get("data").toString();
+      else if (part.has("refusal")) text = part.path("refusal").asText("");
+      else continue;
+      if (!sb.isEmpty()) sb.append('\n');
+      sb.append(text);
+    }
+    return sb.toString();
+  }
+
+  /**
+   * OpenAI input items as protocol messages, or {@code null} when {@code node} is not an array
+   * of them. Content parts are joined as text, an {@code input_json} part as JSON text. A tool
+   * call becomes an assistant message reading {@code name(arguments)} and its output a tool
+   * message, since a decision prompt shows messages by role and content only.
    */
   static ChatMessageList messages(JsonNode node) {
     if (node == null || !node.isArray() || node.isEmpty()) return null;
     var list = ChatMessageList.newBuilder();
     for (JsonNode m : node) {
-      if (!m.isObject() || !m.has("role")) return null;
-      Role role = switch (m.path("role").asText("").toLowerCase(Locale.ROOT)) {
-        case "system", "developer" -> Role.ROLE_SYSTEM;
-        case "user" -> Role.ROLE_USER;
-        case "assistant" -> Role.ROLE_ASSISTANT;
-        case "tool" -> Role.ROLE_TOOL;
-        default -> null;
-      };
-      if (role == null) return null;
-      JsonNode content = m.path("content");
-      String text;
-      if (content.isArray()) {
-        var sb = new StringBuilder();
-        for (JsonNode part : content) {
-          if (part.has("text")) {
-            if (!sb.isEmpty()) sb.append('\n');
-            sb.append(part.path("text").asText(""));
-          }
+      if (!m.isObject()) return null;
+      var message = ChatMessage.newBuilder();
+      switch (m.path("type").asText("")) {
+        case "function_call", "custom_tool_call" -> {
+          JsonNode arguments = m.has("arguments") ? m.get("arguments") : m.path("input");
+          message
+            .setRole(Role.ROLE_ASSISTANT)
+            .setContent(m.path("name").asText("") + "(" + text(arguments) + ")");
         }
-        text = sb.toString();
-      } else {
-        text = content.isNull() || content.isMissingNode() ? "" : content.asText("");
+        case "function_call_output", "custom_tool_call_output" -> message
+          .setRole(Role.ROLE_TOOL)
+          .setToolCallId(m.path("call_id").asText(""))
+          .setContent(text(m.path("output")));
+        default -> {
+          Role role = switch (m.path("role").asText("").toLowerCase(Locale.ROOT)) {
+            case "system", "developer" -> Role.ROLE_SYSTEM;
+            case "user" -> Role.ROLE_USER;
+            case "assistant" -> Role.ROLE_ASSISTANT;
+            case "tool" -> Role.ROLE_TOOL;
+            default -> null;
+          };
+          if (role == null) return null;
+          JsonNode content = m.path("content");
+          message.setRole(role).setContent(content.isArray() ? partsText(content) : text(content));
+        }
       }
-      list.addMessages(ChatMessage.newBuilder().setRole(role).setContent(text));
+      list.addMessages(message);
     }
     return list.build();
+  }
+
+  private static String text(JsonNode node) {
+    if (node.isNull() || node.isMissingNode()) return "";
+    return node.isValueNode() ? node.asText("") : node.toString();
   }
 
   /**
