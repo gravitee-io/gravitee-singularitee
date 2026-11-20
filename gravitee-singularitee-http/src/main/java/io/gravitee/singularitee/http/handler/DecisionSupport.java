@@ -90,44 +90,69 @@ final class DecisionSupport {
   }
 
   /**
-   * OpenAI input items as protocol messages, or {@code null} when {@code node} is not an array
-   * of them. Content parts are joined as text, an {@code input_json} part as JSON text. A tool
-   * call becomes an assistant message reading {@code name(arguments)} and its output a tool
-   * message, since a decision prompt shows messages by role and content only.
+   * OpenAI input items as protocol messages, or {@code null} when {@code node} is not an item
+   * list: an array whose every element is an object carrying a {@code role} or a {@code type}.
+   * Within an item list, an item of an unknown type or role throws {@link UnreadableItem} rather
+   * than degrading the whole conversation to JSON. Content parts are joined as text, an {@code
+   * input_json} part as JSON text. A tool call becomes an assistant message reading {@code
+   * name(arguments)} and its output a tool message, since a decision prompt shows messages by
+   * role and content only.
    */
   static ChatMessageList messages(JsonNode node) {
     if (node == null || !node.isArray() || node.isEmpty()) return null;
+    for (JsonNode m : node) if (!m.isObject() || !(m.has("role") || m.has("type"))) return null;
     var list = ChatMessageList.newBuilder();
-    for (JsonNode m : node) {
-      if (!m.isObject()) return null;
+    for (int i = 0; i < node.size(); i++) {
+      JsonNode m = node.get(i);
       var message = ChatMessage.newBuilder();
-      switch (m.path("type").asText("")) {
+      String type = m.path("type").asText("");
+      switch (type) {
         case "function_call", "custom_tool_call" -> {
           JsonNode arguments = m.has("arguments") ? m.get("arguments") : m.path("input");
           message
             .setRole(Role.ROLE_ASSISTANT)
             .setContent(m.path("name").asText("") + "(" + text(arguments) + ")");
         }
-        case "function_call_output", "custom_tool_call_output" -> message
-          .setRole(Role.ROLE_TOOL)
-          .setToolCallId(m.path("call_id").asText(""))
-          .setContent(text(m.path("output")));
-        default -> {
-          Role role = switch (m.path("role").asText("").toLowerCase(Locale.ROOT)) {
+        case "function_call_output", "custom_tool_call_output" -> {
+          JsonNode output = m.path("output");
+          message
+            .setRole(Role.ROLE_TOOL)
+            .setToolCallId(m.path("call_id").asText(""))
+            .setContent(output.isArray() ? partsText(output) : text(output));
+        }
+        case "", "message" -> {
+          String name = m.path("role").asText("");
+          Role role = switch (name.toLowerCase(Locale.ROOT)) {
             case "system", "developer" -> Role.ROLE_SYSTEM;
             case "user" -> Role.ROLE_USER;
             case "assistant" -> Role.ROLE_ASSISTANT;
             case "tool" -> Role.ROLE_TOOL;
-            default -> null;
+            default -> throw new UnreadableItem(
+              "input[" + i + "]: unsupported role \"" + name + "\"; " + ROLES
+            );
           };
-          if (role == null) return null;
           JsonNode content = m.path("content");
           message.setRole(role).setContent(content.isArray() ? partsText(content) : text(content));
         }
+        default -> throw new UnreadableItem(
+          "input[" + i + "]: unsupported item type \"" + type + "\"; " + ITEM_TYPES
+        );
       }
       list.addMessages(message);
     }
     return list.build();
+  }
+
+  private static final String ROLES = "accepted roles: user, developer, system, assistant, tool";
+  private static final String ITEM_TYPES =
+    "accepted types: message, function_call, function_call_output, custom_tool_call, custom_tool_call_output";
+
+  /** An item of an {@code input} item list this server cannot read. */
+  static final class UnreadableItem extends RuntimeException {
+
+    UnreadableItem(String message) {
+      super(message, null, false, false);
+    }
   }
 
   private static String text(JsonNode node) {

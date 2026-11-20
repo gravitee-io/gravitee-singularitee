@@ -142,7 +142,7 @@
             "type": "object",
             "required": ["type", "instructions"],
             "properties": {
-              "name": { "type": ["string", "null"], "minLength": 1 },
+              "name": { "type": ["string", "null"] },
               "type": { "enum": ["predicate", "choice", "score"] },
               "choices": {
                 "type": "array",

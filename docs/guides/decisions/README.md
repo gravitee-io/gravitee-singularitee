@@ -73,7 +73,7 @@ models:
 
 ### Ask questions over HTTP
 
-`POST /v1/decisions` takes and returns the shape of OpenAI's Decisions API, so a client written for it works unchanged: questions are `predicate` (yes/no), `choice` or `score`, and answers come back in question order.
+`POST /v1/decisions` takes and returns the shape of OpenAI's Decisions API: questions are `predicate` (yes/no), `choice` or `score`, and answers come back in question order. It differs in a few places (images, what `model` names, ignored fields), listed in the [HTTP API reference](../../api/http/README.md).
 
 ```bash
 curl -s localhost:8080/v1/decisions -H 'Content-Type: application/json' -d '{
@@ -89,7 +89,7 @@ curl -s localhost:8080/v1/decisions -H 'Content-Type: application/json' -d '{
 }' | jq
 ```
 
-`input` is a string or an array of messages and tool items; a JSON object is also accepted and reaches the template as is. Message content and `instructions` may be arrays of `input_text` and `input_json` parts: parts are joined as text, an `input_json` part as its JSON. A `name` is optional and echoed on the answer. Choices and levels may carry a `description`; a choice `value` may be a boolean.
+`input` is a string or an array of messages and tool items, where an item of an unknown type or role is refused with a `400`; a JSON object is also accepted and reaches the template as is. Message content and `instructions` may be arrays of `input_text` and `input_json` parts: parts are joined as text, an `input_json` part as its JSON. A `name` is optional and echoed on the answer. Choices and levels may carry a `description`; a choice `value` may be a boolean.
 
 A predicate answers `probability`, a choice `choice`, `probabilities` and `confidence`, a score `score`, `probabilities` (each with its level `label`) and `confidence`:
 

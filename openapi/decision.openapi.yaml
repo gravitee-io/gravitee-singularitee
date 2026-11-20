@@ -288,7 +288,7 @@ components:
             input_tokens: { type: integer, description: Prompt tokens of all questions. }
             output_tokens: { type: integer, const: 0 }
 
-    PredicateType:
+    DecisionQuestionType:
       type: string
       enum: [predicate, choice, score]
       description: "`predicate` is a yes/no question."
@@ -319,7 +319,8 @@ components:
             The content to evaluate: a string, or an array of message items
             (`{role, content}`, `content` a string or an array of content parts) and tool
             items (`function_call`, `function_call_output`, `custom_tool_call`,
-            `custom_tool_call_output`). A JSON object is also accepted and given to the
+            `custom_tool_call_output`); an item of an unknown type or role is refused
+            with a `400`. A JSON object is also accepted and given to the
             template as is. Required with `questions`.
         questions:
           type: array
@@ -329,10 +330,10 @@ components:
             type: object
             required: [type, instructions]
             properties:
-              type: { $ref: "#/components/schemas/PredicateType" }
+              type: { $ref: "#/components/schemas/DecisionQuestionType" }
               name:
                 type: [string, "null"]
-                description: Echoed on the answer; names must be unique.
+                description: Echoed on the answer; names must be unique and not only whitespace.
               instructions: { $ref: "#/components/schemas/ContentParts" }
               choices:
                 type: array
@@ -365,7 +366,7 @@ components:
             required: [name, type]
             properties:
               name: { type: string, minLength: 1 }
-              type: { $ref: "#/components/schemas/PredicateType" }
+              type: { $ref: "#/components/schemas/DecisionQuestionType" }
               option_keys:
                 type: array
                 description: "`choice`: the option values, in the order the prompt lists them."

@@ -351,6 +351,44 @@ class DecisionRoutesTest {
   }
 
   @Test
+  void decisions_keeps_a_generated_id_clear_of_a_question_name() throws Exception {
+    when(decisions.execute(any())).thenAnswer(inv -> {
+      DecideRequest request = inv.getArgument(0);
+      sent.set(request);
+      DecideResponse.Builder response = DecideResponse.newBuilder();
+      request
+        .getTemplated()
+        .getQuestionsList()
+        .forEach(q ->
+          response.addAnswers(
+            DecisionAnswer.newBuilder()
+              .setQuestionId(q.getId())
+              .setNoul(NoulAnswer.newBuilder().setProbabilityTrue(0.5))
+          )
+        );
+      return Future.succeededFuture(response.build());
+    });
+
+    Resp r = post(
+      "/v1/decisions",
+      """
+      {"model": "decider",
+       "input": "Hello",
+       "questions": [{"type": "predicate", "instructions": "Is it a greeting?"},
+                     {"type": "predicate", "name": "question_0", "instructions": "Is it polite?"}]}
+      """
+    );
+
+    assertThat(r.status()).isEqualTo(200);
+    var questions = sent.get().getTemplated();
+    assertThat(questions.getQuestions(0).getId()).isEqualTo("question_0_");
+    assertThat(questions.getQuestions(1).getId()).isEqualTo("question_0");
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/answers/0/name").isNull()).isTrue();
+    assertThat(n.at("/answers/1/name").asText()).isEqualTo("question_0");
+  }
+
+  @Test
   void decisions_gives_a_boolean_choice_back_as_a_boolean() throws Exception {
     when(decisions.execute(any())).thenReturn(
       Future.succeededFuture(
@@ -396,7 +434,9 @@ class DecisionRoutesTest {
       {"model": "decider",
        "input": [{"role": "user", "content": "refund order 7"},
                  {"type": "function_call", "call_id": "c1", "name": "refund", "arguments": "{\\"order\\":7}"},
-                 {"type": "function_call_output", "call_id": "c1", "output": "done"}],
+                 {"type": "function_call_output", "call_id": "c1", "output": "done"},
+                 {"type": "function_call_output", "call_id": "c1",
+                  "output": [{"type": "input_text", "text": "done"}]}],
        "questions": [{"type": "predicate", "name": "safe", "instructions": "?"}]}
       """
     );
@@ -405,9 +445,56 @@ class DecisionRoutesTest {
     var messages = sent.get().getTemplated().getMessages().getMessagesList();
     assertThat(messages)
       .extracting(m -> m.getRole())
-      .containsExactly(Role.ROLE_USER, Role.ROLE_ASSISTANT, Role.ROLE_TOOL);
+      .containsExactly(Role.ROLE_USER, Role.ROLE_ASSISTANT, Role.ROLE_TOOL, Role.ROLE_TOOL);
     assertThat(messages.get(1).getContent()).isEqualTo("refund({\"order\":7})");
     assertThat(messages.get(2).getContent()).isEqualTo("done");
+    assertThat(messages.get(3).getContent()).isEqualTo("done");
+  }
+
+  @Test
+  void decisions_refuses_an_item_it_cannot_read() throws Exception {
+    for (var c : List.of(
+      List.of(
+        "{\"type\": \"reasoning\", \"summary\": []}",
+        "unsupported item type \\\"reasoning\\\""
+      ),
+      List.of(
+        "{\"type\": \"message\", \"role\": \"robot\", \"content\": \"hi\"}",
+        "unsupported role \\\"robot\\\""
+      )
+    )) {
+      Resp r = post(
+        "/v1/decisions",
+        """
+        {"model": "decider",
+         "input": [{"role": "user", "content": "refund order 7"},
+                   {"type": "function_call_output", "call_id": "c1", "output": "done"},
+                   %s],
+         "questions": [{"type": "predicate", "name": "safe", "instructions": "?"}]}
+        """.formatted(c.get(0))
+      );
+
+      assertThat(r.status()).as(c.get(0)).isEqualTo(400);
+      assertThat(r.body()).contains("input[2]: " + c.get(1)).contains("\"param\":\"input\"");
+    }
+    assertThat(sent.get()).isNull();
+  }
+
+  @Test
+  void decisions_passes_input_that_is_not_an_item_list_as_json() throws Exception {
+    for (String input : List.of("{\"ticket\": 7}", "[1, 2]", "[{\"a\": 1}]")) {
+      sent.set(null);
+      Resp r = post(
+        "/v1/decisions",
+        """
+        {"model": "decider", "input": %s,
+         "questions": [{"type": "predicate", "name": "safe", "instructions": "?"}]}
+        """.formatted(input)
+      );
+
+      assertThat(r.status()).as(input).isEqualTo(200);
+      assertThat(sent.get().getTemplated().hasJson()).as(input).isTrue();
+    }
   }
 
   @Test
@@ -416,6 +503,8 @@ class DecisionRoutesTest {
       "{\"type\": \"noul\", \"name\": \"a\", \"instructions\": \"?\"}",
       "{\"type\": \"choice\", \"name\": \"a\", \"instructions\": \"?\"}",
       "{\"type\": \"choice\", \"name\": \"a\", \"instructions\": \"?\", \"choices\": [{\"value\": \"only\"}]}",
+      "{\"type\": \"choice\", \"name\": \"a\", \"instructions\": \"?\", \"choices\": [{\"value\": true}, {\"value\": \"true\"}]}",
+      "{\"type\": \"choice\", \"name\": \"a\", \"instructions\": \"?\", \"choices\": [{\"value\": \"billing\"}, {\"value\": \"billing\"}]}",
       "{\"type\": \"score\", \"name\": \"a\", \"instructions\": \"?\", \"levels\": [\"low\", \"high\"]}",
       "{\"type\": \"predicate\", \"name\": \"a\"}"
     )) {
@@ -427,6 +516,71 @@ class DecisionRoutesTest {
       assertThat(r.status()).as(question).isEqualTo(400);
     }
     assertThat(sent.get()).isNull();
+  }
+
+  @Test
+  void decisions_refuses_a_repeated_question_name() throws Exception {
+    for (String name : List.of("a", "")) {
+      Resp r = post(
+        "/v1/decisions",
+        """
+        {"model": "decider", "input": "x", "questions": [
+          {"type": "choice", "name": "%1$s", "instructions": "?", "choices": [{"value": true}, {"value": false}]},
+          {"type": "predicate", "name": "%1$s", "instructions": "?"}]}
+        """.formatted(name)
+      );
+
+      assertThat(r.status()).as("name = \"%s\"", name).isEqualTo(400);
+      assertThat(r.body()).contains("\\\"name\\\" must be unique");
+    }
+    assertThat(sent.get()).isNull();
+  }
+
+  @Test
+  void decisions_refuses_a_whitespace_only_question_name() throws Exception {
+    Resp r = post(
+      "/v1/decisions",
+      """
+      {"model": "decider", "input": "x",
+       "questions": [{"type": "predicate", "name": "  ", "instructions": "?"}]}
+      """
+    );
+
+    assertThat(r.status()).isEqualTo(400);
+    assertThat(r.body()).contains("questions[0]: \\\"name\\\" must not be only whitespace");
+    assertThat(sent.get()).isNull();
+  }
+
+  @Test
+  void decisions_sends_an_empty_name_under_a_generated_id_and_echoes_it() throws Exception {
+    when(decisions.execute(any())).thenAnswer(inv -> {
+      DecideRequest request = inv.getArgument(0);
+      sent.set(request);
+      return Future.succeededFuture(
+        DecideResponse.newBuilder()
+          .addAnswers(
+            DecisionAnswer.newBuilder()
+              .setQuestionId(request.getTemplated().getQuestions(0).getId())
+              .setNoul(NoulAnswer.newBuilder().setProbabilityTrue(0.4))
+          )
+          .build()
+      );
+    });
+
+    Resp r = post(
+      "/v1/decisions",
+      """
+      {"model": "decider", "input": "x",
+       "questions": [{"type": "predicate", "name": "", "instructions": "?"}]}
+      """
+    );
+
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(sent.get().getTemplated().getQuestions(0).getId()).isEqualTo("question_0");
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/answers/0/name").isTextual()).isTrue();
+    assertThat(n.at("/answers/0/name").asText()).isEmpty();
+    assertThat(n.at("/answers/0/probability").asDouble()).isEqualTo(0.4);
   }
 
   @Test

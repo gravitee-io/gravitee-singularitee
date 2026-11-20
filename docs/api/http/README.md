@@ -257,7 +257,8 @@ curl localhost:8080/v1/systemone \
 #### POST /v1/decisions
 Spec: [decision.openapi.yaml](../../../openapi/decision.openapi.yaml).
 The request and response shape of OpenAI's Decisions API: `model`, `input` (a string, or an
-array of messages and tool items) and `questions`, each with `type` (`predicate`, `choice`,
+array of messages and tool items; an item the server cannot read is refused with a `400`)
+and `questions`, each with `type` (`predicate`, `choice`,
 `score`), `instructions`, an optional `name`, and `choices` (2 to 255 `value` / `description`
 objects, a value being a string or a boolean) for a choice or `levels` (2 to 10 `label` /
 `description` objects, lowest first) for a score. Answers come back in question order; `usage` is

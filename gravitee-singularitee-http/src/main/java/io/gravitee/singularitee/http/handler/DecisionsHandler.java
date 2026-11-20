@@ -46,6 +46,7 @@ import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -107,9 +108,15 @@ public final class DecisionsHandler implements Handler<RoutingContext> {
     );
     if (!DecisionSupport.target(rc, model, modelRegistry, pipelineRegistry, request)) return;
     var asked = new ArrayList<Asked>();
-    String error = hasPrompts
-      ? raw(payload.path("prompts"), request, asked)
-      : templated(payload, request, asked);
+    String error;
+    try {
+      error = hasPrompts
+        ? raw(payload.path("prompts"), request, asked)
+        : templated(payload, request, asked);
+    } catch (DecisionSupport.UnreadableItem e) {
+      HandlerSupport.badRequest(rc, e.getMessage(), "input");
+      return;
+    }
     if (error != null) {
       if (error.equals(DecisionSupport.NO_IMAGES)) DecisionSupport.unsupportedModality(rc, error);
       else HandlerSupport.badRequest(rc, error, hasPrompts ? "prompts" : "questions");
@@ -140,10 +147,16 @@ public final class DecisionsHandler implements Handler<RoutingContext> {
     else input.setJson(DecisionSupport.value(state));
 
     List<String> ids = ids(questions);
+    var names = new HashSet<String>();
     for (int i = 0; i < questions.size(); i++) {
       JsonNode q = questions.get(i);
       String name = q.path("name").asText(null);
-      String where = name != null ? "questions." + name : "questions[" + i + "]";
+      if (!unnamed(name) && name.isBlank()) {
+        return "questions[" + i + "]: \"name\" must not be only whitespace";
+      }
+      String where = unnamed(name) ? "questions[" + i + "]" : "questions." + name;
+      // Answers map back to their question by name, so a repeated one would mix them up.
+      if (name != null && !names.add(name)) return where + ": \"name\" must be unique";
       JsonNode instructions = q.path("instructions");
       if (instructions.isMissingNode() || instructions.isNull()) {
         return where + ": \"instructions\" must be provided";
@@ -159,13 +172,16 @@ public final class DecisionsHandler implements Handler<RoutingContext> {
           var choice = ChoiceQuestion.newBuilder();
           for (JsonNode c : q.path("choices")) {
             JsonNode value = c.path("value");
+            // The option key is text, so true and "true" would collide on the wire.
+            if (values.put(value.asText(""), value) != null) {
+              return where + ": choice values must be distinct as text";
+            }
             var option = DecisionOption.newBuilder().setKey(value.asText(""));
             JsonNode description = c.path("description");
             if (!description.isMissingNode() && !description.isNull()) {
               option.setDescription(DecisionSupport.value(description));
             }
             choice.addOptions(option);
-            values.put(value.asText(""), value);
           }
           question.setChoice(choice);
         }
@@ -198,8 +214,9 @@ public final class DecisionsHandler implements Handler<RoutingContext> {
   }
 
   /**
-   * The protocol id of each question: its name, or {@code question_<index>} when unnamed, since
-   * the protocol needs a unique id where OpenAI leaves the name optional.
+   * The protocol id of each question: its name, or {@code question_<index>} when unnamed or its name
+   * is empty, since the protocol needs a unique non-blank id where OpenAI leaves the name
+   * optional.
    */
   private static List<String> ids(JsonNode questions) {
     var names = new ArrayList<String>();
@@ -207,13 +224,17 @@ public final class DecisionsHandler implements Handler<RoutingContext> {
     var ids = new ArrayList<String>(names.size());
     for (int i = 0; i < names.size(); i++) {
       String id = names.get(i);
-      if (id == null) {
+      if (unnamed(id)) {
         id = "question_" + i;
         while (names.contains(id)) id += "_";
       }
       ids.add(id);
     }
     return ids;
+  }
+
+  private static boolean unnamed(String name) {
+    return name == null || name.isEmpty();
   }
 
   private static String raw(JsonNode prompts, DecideRequest.Builder request, List<Asked> asked) {
