@@ -61,7 +61,7 @@ service objects the gRPC server exposes; it holds no inference logic of its own.
 | `http.port` / `http.host` | int / string | `8080` / `0.0.0.0` | HTTP listener. |
 | `http.secured`, `http.ssl.*` | boolean / block | `false` | TLS for HTTP. |
 | `http.auth.enabled`, `http.auth.tokens` | boolean / list | `false` | Bearer tokens. |
-| `http.expose-pipelines` | boolean | `true` | List pipelines on `/v1/models` and accept pipeline ids as `model`. |
+| `http.expose-pipelines` | boolean | `true` | List pipelines on `/v1/models` and `/v1/models/{id}`. Inference routes resolve pipeline ids either way. |
 
 Every key is documented in [Configuration](../reference/configuration.md) and accepts a `-D` system property or a `GRAVITEE_`-prefixed environment variable
 (`grpc.port` becomes `GRAVITEE_GRPC_PORT`). Defaults live in

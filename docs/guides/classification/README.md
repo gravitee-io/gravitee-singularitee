@@ -21,7 +21,7 @@ A decision model (`llama_cpp_decision`, `vllm_decision`, `gliner_decision`) decl
 
 ## Key types
 
-- `ClassifierEngine` (engine): `rxClassify(request)`, `rxClassify(request, labels)` for per-request GLiNER schemas, `rxClassifyBatch`, `rxClassifyPresplit`.
+- `ClassifierEngine` (engine-api): `rxClassify(request)`, `rxClassify(request, labels)` for per-request GLiNER schemas, `rxClassifyBatch`, `rxClassifyPresplit`.
 - `OnnxClassifierEngine`, `GlinerClassifierEngine` / `GlinerNerEngine`, `RegexClassifierEngine`, `CompositeClassifierEngine`.
 - `ClassifyStepExecutor`: the `classify` pipeline step.
 - `ClassifyHandler` (http): `POST /v1/classify`.

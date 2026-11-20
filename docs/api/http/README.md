@@ -91,7 +91,7 @@ message. Invalid JSON is a `400` as well.
 | 405 | `invalid_request_error` | `method_not_allowed` | Known path, wrong method. |
 | 413 | `invalid_request_error` | `request_too_large` | Body larger than `http.max-body-size` (default 10 MiB). |
 | 500 | `server_error` | `server_error` | Decisions only: the model produced no usable scores. |
-| 500 | `internal_error` | `internal_error` | Unexpected failure. The message is generic, `Internal error (ref 1a2b3c4d)`; the server log carries the full error under the same ref. |
+| 500 | `internal_error` | `internal_error` | Unexpected failure. The message is generic, `Internal error (ref 1a2b3c4d)`; the server log carries the full error under the same ref. A failure that escapes every handler reaches the router's catch-all and reads plain `Internal error`, with no ref. |
 | 503 | `server_error` | `model_not_ready` | Workspace still loading. |
 
 Failures that happen during generation are not HTTP errors: Chat and Completions end the choice
@@ -108,6 +108,11 @@ a full write queue, so a slow client throttles its own stream.
 
 **Cancel on disconnect.** Closing the connection cancels generation on the engine.
 
+**Metadata.** On Chat Completions, Completions and Responses with a pipeline target, each
+non-null scalar entry of the request's `metadata` object becomes the pipeline context key
+`meta.<key>` (as a string), readable by steps and templates. The `meta.` prefix keeps it from
+overwriting a context key the pipeline writes. A bare model target ignores `metadata`.
+
 **Authentication.** `http.auth.enabled: true` requires `Authorization: Bearer <token>` on every
 route except `/health`. Tokens are compared as SHA-256 digests in constant time. Binding to a
 non-loopback host without auth logs a warning at startup.
@@ -120,8 +125,8 @@ returns `503` `model_not_ready` until the workspace has loaded; poll `/v1/models
 `CANCELLED`, `STALLED` and `START_FAILED` map to `stop`.
 
 **Modalities.** `/v1/models` reports `input_modalities` for entries that read more than text.
-A request attaching `image_url` or `input_audio` parts to a target that does not accept them is
-refused with `unsupported_modality` before inference. Media must be a `data:` URL or bare base64;
+A request attaching `image_url`, `input_image` (both count as images) or `input_audio` parts to
+a target that does not accept them is refused with `unsupported_modality` before inference. Media must be a `data:` URL or bare base64;
 `http(s)://` URLs are rejected. Decodable formats: JPEG, PNG, GIF, BMP, WAV.
 
 ### Endpoints
@@ -165,8 +170,9 @@ curl localhost:8080/v1/completions \
 Spec: [text-generation.openapi.yaml](../../../openapi/text-generation.openapi.yaml).
 Typed `response.*` SSE events, `instructions`, `input` as a string or item list (including
 `function_call` / `function_call_output` replay items), stored conversations on pipeline targets
-(`previous_response_id`, `store`), and `gravitee.progress` events from pipelines with a `todo`
-step (see [Engine-managed to-dos](../../guides/todos/README.md)).
+(`previous_response_id`, `store`), and progress events (type `gravitee.progress` by default,
+renamed with `http.events.progress-type`) from pipelines with a `todo` step (see
+[Engine-managed to-dos](../../guides/todos/README.md)).
 
 `text.format` is the structured output field: the same three types as `response_format`, with
 `name`, `schema` and `strict` flattened on the format object (no nested `json_schema`). The same
@@ -229,7 +235,9 @@ it: `model`, `state` (a string, or any JSON value given to the template as is), 
 an object keyed by id, each with `type` (`choice`, `score`, `noul`), `instructions` and
 `criteria` (an object of option to description for `choice`, 2 to 10 levels for `score`,
 optional `true` / `false` descriptions for `noul`). Answers come back keyed by id; `usage` is `input_tokens` and
-`output_tokens` (always 0). Templated input only.
+`output_tokens` (always 0). Templated input only. A non-empty `videos` is a `400`
+`invalid_request_error` with `param` `videos`; a non-empty `images` (or an image part in `state`)
+is refused with `unsupported_modality`.
 
 Where it differs from TypeSafe's API: a validation error is `400` with the error object above,
 not `422`; `usage.output_tokens` is always `0`, since nothing is generated; the response `model`
@@ -321,7 +329,9 @@ BASE_URL=http://localhost:8080/v1 API_KEY=sk-local-changeme uv run --with reques
 | `http.idleTimeout` | int (s) | `0` | Connection idle timeout; 0 disables. |
 | `http.tcpKeepAlive` | boolean | `true` | TCP keep-alive. |
 | `http.secured` / `http.ssl.*` | boolean / block | `false` | TLS; same structure as `grpc.ssl`. |
-| `http.expose-pipelines` | boolean | `true` | List pipelines on `/v1/models` and accept pipeline ids as `model`. |
+| `http.max-body-size` | long (bytes) | `10485760` | Largest request body; larger bodies answer `413` `request_too_large`. |
+| `http.expose-pipelines` | boolean | `true` | List pipelines on `/v1/models` and `/v1/models/{id}`. Inference routes resolve pipeline ids either way. |
+| `http.events.progress-type` | string | `gravitee.progress` | Event type string of progress events on the Responses stream. Presentation only; the proto event is unchanged. |
 | `http.auth.enabled` | boolean | `false` | Bearer auth. |
 | `http.auth.type` | string | `bearer` | Only `bearer` is supported. |
 | `http.auth.tokens` | list | unset | Accepted tokens; an empty list with auth enabled fails startup. |
@@ -333,8 +343,9 @@ BASE_URL=http://localhost:8080/v1 API_KEY=sk-local-changeme uv run --with reques
   pipeline.
 - Chat Completions is stateless (full message replay). Only Responses on a pipeline target stores
   conversations.
-- `gravitee.progress` is a vendor extension on the Responses stream and is never an output item,
-  so it cannot be replayed back as history. Chat Completions drops progress events.
+- The progress event (`gravitee.progress` by default, see `http.events.progress-type`) is a
+  vendor extension on the Responses stream and is never an output item, so it cannot be replayed
+  back as history. Chat Completions drops progress events.
 - The Responses API keeps reasoning streaming live even when `tools` hold the content back.
 - Decision questions are rendered and answered in request order. Image input to decisions is
   refused with `unsupported_modality` until a decision backend reads images.

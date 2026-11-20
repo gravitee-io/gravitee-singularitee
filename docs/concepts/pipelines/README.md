@@ -4,8 +4,8 @@
 
 ## Overview
 
-A pipeline is declared in workspace YAML as `entry` plus a list of `steps`, compiled to the
-`Pipeline` proto at load time and executed by `PipelineExecutor`. Each step is dispatched to
+A pipeline is declared in workspace YAML as `entry` plus a list of `steps`, compiled to a
+`PipelineModel` at load time and executed by `PipelineExecutor`. Each step is dispatched to
 its `StepExecutor`, which reads and writes the `PipelineContext` and returns the id of the
 next step, or nothing, which ends the walk. Callers invoke a pipeline with the `InferPipeline`
 RPC, or over HTTP by passing the pipeline id as `model`, and receive one stream of
@@ -23,13 +23,14 @@ step is silent and only mutates the context.
 
 | Type | Module | Role |
 | --- | --- | --- |
-| `PipelineModel`, `StepModel`, `StepTypes` | `engine` (`pipeline.model`) | The compiled graph: a server-internal Java model, never on the wire. `StepRole` stays a proto enum (`inference.proto`) because it labels streamed events. |
+| `PipelineModel`, `StepModel`, `StepTypes` | `engine-api` (`pipeline.model`) | The compiled graph: a server-internal Java model, never on the wire. `StepRole` stays a proto enum (`inference.proto`) because it labels streamed events. |
 | `PipelineExecutor` | `engine` | Builds the context from the request, emits `CREATED`, walks the graph, ends the stream with a finish reason. Also the local `sub_pipeline` callback. |
-| `PipelineContext` | `engine` | Per-request scratchpad: string fields, `messages()`, `generatedMessages()`, `verdicts()`, tools, todo plan, usage totals, halt state. |
-| `StepDispatcher`, `StepExecutorFactory`, `StepExecutor<C>` | `engine` | Type-to-executor table; each step runs inside an `ai.step` span. |
-| `StepContext` | `engine` | What every executor receives: the context, the pipeline, the response stream, tracer and metrics, and `rxNextStep(stepId)` which reads the step's `next_step` edge. |
-| `BreakStepEvaluator`, `ConditionEvaluatorFactory` | `engine` | The shared `condition:` block of `break` and `loop`. |
-| `JinjaRenderer`, `JinjaContextHelper` | `engine` | Render `{{ ... }}` templates in step configs against the context. |
+| `PipelineContext` | `engine-api` | Per-request scratchpad: string fields, `messages()`, `generatedMessages()`, `verdicts()`, tools, todo plan, usage totals, halt state. |
+| `StepDispatcher`, `StepExecutorFactory` | `engine` | Type-to-executor table; each step runs inside a `singularitee.step` span. |
+| `StepExecutor<C>` | `engine-api` | The contract each step plugin implements. |
+| `StepContext` | `engine-api` | What every executor receives: the context, the pipeline, the response stream, tracer and metrics, and `rxNextStep(stepId)` which reads the step's `next_step` edge. |
+| `BreakStepEvaluator`, `ConditionEvaluatorFactory` | `engine-api` | The shared `condition:` block of `break` and `loop`. |
+| `TemplateRenderer`, `TemplateContextHelper` | `engine-api` | Render `{{ ... }}` templates in step configs against the context; `JinjaTemplateRenderer` in `engine` is the implementation. |
 
 ## Usage
 
@@ -157,9 +158,9 @@ Envelope keys only; per-step keys are in the [step reference](../../reference/st
 | `entry` | string | required | Id of the first step. |
 | `steps[].id` | string | required | Step id and context-field prefix. |
 | `steps[].type` | string | required | One of the thirteen step types. |
-| `steps[].role` | `output` / `thinking` / `internal` | `output` | `infer` only. |
+| `steps[].role` | `output` / `thinking` / `internal` | unset | `infer` only. Unset streams and appends like `output`, but only an explicit `role: output` marks the pipeline's output step (task inheritance, `structured_output`). An unrecognised value is read as `output`. |
 | `steps[].next_step` | string | unset | Outgoing edge; unset makes the step terminal. |
-| `steps[].config` | map | required | Type-specific block. |
+| `steps[].config` | map | unset | Type-specific block. Whether it may be omitted depends on the step type. |
 | `task`, `visible`, `modalities` | publication | derived | See [Workspaces](../../workspaces/README.md). |
 | `server` | string | unset | Declares the pipeline as a proxy to one on a remote endpoint. |
 
@@ -169,7 +170,7 @@ Envelope keys only; per-step keys are in the [step reference](../../reference/st
   unset, which `empty` / `not_empty` conditions can test.
 - Halt checks run before and after every step, so a halt inside a loop body or a child
   pipeline stops the parent at the next edge.
-- With OpenTelemetry enabled each run opens an `ai.pipeline` span and each step an `ai.step`
+- With OpenTelemetry enabled each run opens a `singularitee.pipeline` span and each step a `singularitee.step`
   span (`step.id`, `step.type`); model calls nest under the active step.
 - Pipelines with a `todo` step get the server tools registered on the context before the walk,
   and may restore a plan from a stored conversation or a session key.

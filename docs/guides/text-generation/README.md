@@ -18,10 +18,10 @@ The stream is `CREATED`, then `OUTPUT_TEXT_DELTA` events, then `COMPLETED` (usag
 
 ## Key types
 
-- `TextGenEngine` (inference-api): `rxAddSequence`, `rxStream`, `chatTemplateString`, `contextSize`.
-- `TextGenRequest`: `prompt` or `messages`, sampling fields, `stop`, `reasoningTags` / `toolCallTags`, `templateContext`, `lora`.
-- `InferStepExecutor` (engine): renders the step prompt with Jinja, streams through `TokenCaptureStream`, writes `{step_id}.output`, appends the assistant turn, accumulates usage.
-- `Jinja4jChatTemplateRenderer`: renders messages through the model's own chat template; `JinjaRenderer`: renders step-level templates against the pipeline context.
+- `TextGenEngine` (engine-api): `rxAddSequence`, `rxStream`, `chatTemplateString`, `contextSize`.
+- `TextGenRequest`: `prompt` or `messages`, sampling fields, `stop`, `reasoningTags` / `toolCallTags`, `templateContext`, `loraName` / `loraPath` (vLLM only).
+- `InferStepExecutor` (infer plugin): renders the step prompt with Jinja, streams through `TokenCaptureStream`, writes `{step_id}.output`, appends the assistant turn, accumulates usage.
+- `DelegatingChatTemplateRenderer` (engine): renders messages through the model's own chat template; `TemplateRenderer` (engine-api, implemented by `JinjaTemplateRenderer` in engine): renders step-level templates against the pipeline context.
 - Protos: `InferRequest`, `InferPipelineRequest`, `InferResponse`, `SamplingParams`, `TagConfig` (`inference.proto`). The step's own config is `InferStepConfig`, a record in the infer plugin.
 
 ## Usage
@@ -115,7 +115,7 @@ Dialects with several markers list them (`examples/llama/gpt-oss-20b.yaml`), and
 
 ### Control the prompt
 
-Override the messages with Jinja templates over the pipeline context, or set a default system prompt that applies only when the caller sends none:
+Override the messages with Jinja templates over the pipeline context, or add a step system prompt that is merged into the caller's system turn (caller first), or prepended as one when the caller sends none:
 
 ```yaml
 config:
@@ -133,7 +133,7 @@ To bypass the chat template entirely (you then own every special token), give a 
 
 ### Override sampling per request
 
-Request-level `sampling_params` (gRPC) or `max_tokens` / `temperature` / `top_p` (HTTP) win over the step's `sampling` block field by field; a zero value keeps the step value, except `temperature`, where `0` asks for greedy decoding and only an unset or negative value keeps the step value. On a pipeline they apply to the first infer step reached.
+Request-level `sampling_params` (gRPC) or `max_tokens` / `temperature` / `top_p` (HTTP) win over the step's `sampling` block field by field; a zero value keeps the step value, except `temperature`, where `0` asks for greedy decoding and only an unset or negative value keeps the step value. On a pipeline they apply to every infer step.
 
 ## Options
 
@@ -145,12 +145,12 @@ Keys used in this guide. The full list is in the [infer step reference](../../re
 | `output_field` | string | `<step_id>.output` | Context key receiving the generated text. |
 | `prompt.messages` | list | caller's messages | Jinja-templated message list. |
 | `prompt.template` / `template_file` / `template_id` | string | unset | Raw Jinja prompt; bypasses the chat template. |
-| `system` | string | unset | Default system prompt, used only when the request has no system message. |
+| `system` | string | unset | Step system prompt (Jinja). Appended to the caller's system turn, caller first; prepended as a system turn when the request has none. |
 | `sampling.max_tokens` / `temperature` / `top_p` / `stop` | mixed | engine defaults | Sampling and stop strings. |
 | `tags` | map or id | unset | `reasoning_open` / `reasoning_close` / `tool_open` / `tool_close` (string or list), `reasoning_repeatable`. |
 | `strip_thinking` | bool | `false` | Remove the reasoning span instead of streaming it as `THINKING`. |
 | `context` | map | empty | Extra chat-template variables (`enable_thinking`, `reasoning_effort`). |
-| `role` (step level) | string | `output` | `output` streams; `thinking` streams tagged as reasoning; `internal` streams nothing and is not added to the conversation. |
+| `role` (step level) | string | unset | `output` streams; `thinking` streams tagged as reasoning; `internal` streams nothing and is not added to the conversation. Unset streams and appends like `output`, but only an explicit `role: output` marks the pipeline's output step (task inheritance, `structured_output`). |
 
 ## Notes
 

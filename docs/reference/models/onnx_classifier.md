@@ -95,7 +95,8 @@ Sequence-level with an explicit label list (`examples/classifier/toxicity-bert.y
   sibling in the same repository directory (an `onnx/` folder often carries external data
   files), `config_json_path`, and the tokenizer: a single file, every file under a directory
   prefix, or the well-known tokenizer files at the repository root (`tokenizer.json`,
-  `tokenizer_config.json`, `special_tokens_map.json`, `vocab.txt`). `download.exclude`
+  `tokenizer_config.json`, `special_tokens_map.json`, `vocab.txt`, `vocab.json`, `merges.txt`,
+  `sentencepiece.bpe.model`). `download.exclude`
   narrows the sibling and tokenizer listings; the named files themselves are always fetched.
   A `.complete-tokenizer` marker is written once the tokenizer files are all on disk, and only
   that marker makes the next start reuse the cached tokenizer directory.

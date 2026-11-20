@@ -4,16 +4,16 @@
 
 ## Overview
 
-Every string a pipeline turns into model input is a Jinja template rendered by jinja4j (`io.gravitee.jinja4j:jinja4j`, version `jinja4j.version` in the root `pom.xml`), a Java port of the minijinja/Jinja2 dialect with auto-escaping turned off. Two renderers share one `Environment`: `JinjaRenderer` for step-level strings (message contents, raw templates, `system`, guard messages, `loopback_message`, tool-select label templates) and `Jinja4jChatTemplateRenderer` for chat templates (the model's own GGUF template or a step `chat_template` override). Tool-extraction templates use the same environment through `ToolCallExtractor`. Compiled templates are cached by source string.
+Every string a pipeline turns into model input is a Jinja template rendered by jinja4j (`io.gravitee.jinja4j:jinja4j`, version `jinja4j.version` in the root `pom.xml`), a Java port of the minijinja/Jinja2 dialect with auto-escaping turned off. `JinjaTemplateRenderer` owns the `Environment` and the compiled-template cache (keyed by source string) and renders step-level strings (message contents, raw templates, `system`, guard messages, `loopback_message`, tool-select label templates, decide prompts). Step chat templates (the model's own GGUF template or a step `chat_template` override) go through `DelegatingChatTemplateRenderer`, which flattens messages and tools and delegates to that same renderer. Tool-extraction templates render through it too, via `ToolCallExtractor`.
 
-The `templates:` section names reusable Jinja sources once. A template is referenced by id from `infer.prompt.template_id`, `llm_guard.prompt.template_id` and `infer.chat_template`; the loader substitutes the content before the pipeline reaches the proto, so the engine never sees an id.
+The `templates:` section names reusable Jinja sources once. A template is referenced by id from `infer.prompt.template_id`, `llm_guard.prompt.template_id`, `infer.chat_template` and `decide.prompts.<id>.template`; the step codec substitutes the content at load, so the executor never sees an id.
 
 ## Key types
 
 - `TemplateDefinition` (`WorkspaceDefinition`): `id` plus `content` or `file`.
-- `YamlWorkspaceLoader.buildTemplateRegistry` / `resolveTemplate`: registry construction and `template_id > template_file > template` resolution.
-- `JinjaRenderer`, `Jinja4jChatTemplateRenderer`, `JinjaContextHelper`, `PromptAssembler`: rendering and context building.
-- `ToolCallExtractor`: tool-extraction templates; built-ins ship under `gravitee-singularitee-engine/src/main/resources/tool-extraction/`.
+- `YamlWorkspaceLoader.buildTemplateRegistry`: registry construction. `InferStepCodec` / `LlmGuardStepCodec` `resolveTemplate`: `template_id > template_file > template` resolution.
+- `JinjaTemplateRenderer`, `DelegatingChatTemplateRenderer`, `TemplateContextHelper`, `PromptAssembler`: rendering and context building.
+- `ToolCallExtractor`: tool-extraction templates; built-ins ship under `gravitee-singularitee-engine-api/src/main/resources/tool-extraction/`.
 
 ## Usage
 
@@ -107,7 +107,7 @@ workspace:
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
 | `id` | string | required | Reference name. An entry without id is skipped with a warning; duplicate ids overwrite earlier ones. |
-| `content` | string | unset | Inline Jinja source. Mutually exclusive with `file` (both set fails the load). |
+| `content` | string | unset | Inline Jinja source. Mutually exclusive with `file` (both set fails the load). An entry with neither `content` nor `file` is skipped with a warning. |
 | `file` | string | unset | Path to the source. Relative paths resolve against the workspace file's directory when the file exists there, otherwise against `${gravitee.home}/templates`; a relative path may not escape its base. Absolute paths are read as given and logged. |
 
 `includes.templates:` lists files (globs allowed, expanded alphabetically) under the workspace's `templates/` folder; only their `workspace.templates` lists are merged. Templates from includes are registered before any pipeline is parsed, so a pipeline file may reference a template declared in another file.
@@ -116,15 +116,16 @@ workspace:
 
 | Reference | Rendered by | Renders | Notes |
 | --- | --- | --- | --- |
-| `infer.prompt.template_id` / `template_file` / `template` | `JinjaRenderer` | A bare prompt string sent as-is | Bypasses the chat template: the template owns every special token. `template_id` wins, then `template_file`, then `template`; two set at once fail the load. `template_file` resolves against `${gravitee.home}/templates` on a running server. |
-| `infer.prompt.messages[].content` | `JinjaRenderer` | One message body | The resolved messages still go through the chat template. |
-| `infer.system` | `JinjaRenderer` | A system turn merged with the caller's | Rendered per request, so `{{ todos }}` and step outputs are live. |
-| `infer.chat_template` | `Jinja4jChatTemplateRenderer` | The full prompt from `messages` | A `templates:` id or inline source; replaces the model's GGUF template for that step. |
+| `infer.prompt.template_id` / `template_file` / `template` | `JinjaTemplateRenderer` | A bare prompt string sent as-is | Bypasses the chat template: the template owns every special token. `template_id` wins, then `template_file`, then `template`; two set at once fail the load. `template_file` resolves against `${gravitee.home}/templates` on a running server. |
+| `infer.prompt.messages[].content` | `JinjaTemplateRenderer` | One message body | The resolved messages still go through the chat template. |
+| `infer.system` | `JinjaTemplateRenderer` | A system turn merged with the caller's | Rendered per request, so `{{ todos }}` and step outputs are live. |
+| `infer.chat_template` | `DelegatingChatTemplateRenderer` | The full prompt from `messages` | A `templates:` id or inline source; replaces the model's GGUF template for that step. |
 | `infer.tool_extraction_template` | `ToolCallExtractor` | A JSON array of calls from `{{ output }}` and `{{ tools }}` | Built-in names: `chatml-json`, `xml-function`, `gemma-call`, `glm-name-json`, `harmony`. Unset tries the first three in order. Any other value is inline source, not a `templates:` id. |
-| `llm_guard.prompt.*` | `JinjaRenderer` | Screening prompt or messages | Same resolution as `infer.prompt`. |
-| `guard.message`, `llm_guard.message`, `regex_guard.message` | `JinjaRenderer` | The failure message on `reject` | Sees the guard's own fields (`{{ <id>.label }}`, `{{ <id>.verdict }}`). |
-| `loop.loopback_message.content` | `JinjaRenderer` | A corrective turn | Render failure skips the injection. |
-| `tool_select.label_template`, `description_template` | `JinjaRenderer` | One label or description per tool | Context is only `{{ tool.name }}` and `{{ tool.description }}`. |
+| `llm_guard.prompt.*` | `JinjaTemplateRenderer` | Screening prompt or messages | Same resolution as `infer.prompt`. |
+| `guard.message`, `llm_guard.message`, `regex_guard.message` | `JinjaTemplateRenderer` | The failure message on `reject` | Sees the guard's own fields (`{{ <id>.label }}`, `{{ <id>.verdict }}`). |
+| `loop.loopback_message.content` | `JinjaTemplateRenderer` | A corrective turn | Render failure skips the injection. |
+| `tool_select.label_template`, `description_template` | `JinjaTemplateRenderer` | One label or description per tool | Context is only `{{ tool.name }}` and `{{ tool.description }}`. |
+| `decide.prompts.<id>.template` | `JinjaTemplateRenderer` | One raw decision prompt | A `templates:` id or inline Jinja; a bare name that is no declared id fails the load. Rendered with the base context. |
 | `workspace.tags[]` | none | Marker strings, not templates | Listed here because it is the other workspace-level registry steps reference by id. |
 
 ### Two prompt paths for `infer`
@@ -138,23 +139,24 @@ When the engine exposes no chat template (remote metadata not yet fetched) the s
 
 ### Variables
 
-Base context (`JinjaContextHelper.buildBaseContext`), available to every step template:
+Base context (`TemplateContextHelper.buildBaseContext`), available to every step template:
 
 | Variable | Shape |
 | --- | --- |
 | `prompt` | Last user message or bare prompt. |
 | `system` | First system turn's content, or empty. |
 | `history` | `role: content` lines. |
-| `messages` | `[{role, content, tool_calls?, tool_call_id?, name?}]`; tool-call arguments are parsed maps. |
+| `messages` | `[{role, content}]`. An `infer` chat template receives `[{role, content, tool_calls?, tool_call_id?, name?}]` instead, tool-call arguments as parsed maps. |
 | `generated_messages` | `[{role: assistant, content, step}]`, thinking removed. |
 | `verdicts` | `[{verdict, details, step}]`. |
 | `tool_names` | `[string]`. |
+| `tool_calls` | `[{name, arguments, description}]`: the tool calls extracted so far, `arguments` as JSON text. Also `{{ <step_id>.tool_calls }}` on the step that produced them. |
 | `todos` | `[{id, title, status, proof}]`. |
 | `constraints` | string. |
 | `<step_id>` | Map of that step's context fields. |
-| request `context` entries | Strings, nested on the first dot. |
+| request `context` entries | Dotted keys only, as strings nested on the first dot; undotted keys are not exposed. |
 
-Added for `infer` (`PromptAssembler.buildJinjaContext`) and `llm_guard`:
+Added for `infer` (`PromptAssembler.buildJinjaContext`); `llm_guard` adds only its step `context:` entries:
 
 | Variable | Shape |
 | --- | --- |
@@ -190,7 +192,7 @@ There is no persona layer: `WorkspaceDefinition` has no `persona` key and the lo
 - Raw templates receive the caller's text unescaped. A chat template receives message text with the model's special tokens neutralised (`<|im_start|>` becomes `<\|im_start|>`), so a user cannot forge a turn; the same escaping is applied to tool names, descriptions and arguments.
 - `chat_template` and `tool_extraction_template` resolve differently: the first looks a `templates:` id up and otherwise treats the value as inline source; the second knows only the five built-in names and otherwise treats the value as inline source. A `templates:` id passed to `tool_extraction_template` is compiled as a literal template.
 - `template_file` on a step and `file` on a template entry do not share a base: the step path resolves against `${gravitee.home}/templates` on a running server, the entry path prefers the workspace directory. Prefer `templates:` entries with `file` and reference them by id.
-- `--debug` logs every rendered prompt at TRACE together with a dump of the rendering context (`JinjaContextHelper.dump`), long values truncated.
+- `--debug` logs every rendered prompt at TRACE together with a dump of the rendering context (`TemplateContextHelper.dump`), long values truncated.
 
 ## See also
 

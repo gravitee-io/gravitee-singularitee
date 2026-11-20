@@ -15,13 +15,13 @@ A guard is a step placed before (or between) generation steps. Three step types 
 | Action | Effect |
 | --- | --- |
 | `reject` | Halt with `FINISH_REASON_GUARD_BLOCKED` (`finish_reason: content_filter` on HTTP) and return `message`. |
-| `warn` | Log, set `guard_triggered`, continue. |
+| `warn` | Log, set the `__guard_triggered` context field to the step id, continue. |
 | `redact` | Mask the matched spans, write the result to `output_field`, rewrite the prompt and user messages so nothing downstream sees the original. `llm_guard` does not support it and falls back to `warn`. |
 
 ## Key types
 
-- `GuardStepExecutor`, `LlmGuardStepExecutor`, `RegexGuardStepExecutor` (engine).
-- `GuardStepConfig`, `LlmGuardStepConfig`, `RegexGuardStepConfig`: the guard plugins' config records; `GuardAction` is an engine model enum shared by all three.
+- `GuardStepExecutor`, `LlmGuardStepExecutor`, `RegexGuardStepExecutor`: one per plugin module (`guard`, `llm-guard`, `regex-guard`).
+- `GuardStepConfig`, `LlmGuardStepConfig`, `RegexGuardStepConfig`: the guard plugins' config records; `GuardAction` is an `engine-api` model enum shared by all three.
 - `FinishReason.FINISH_REASON_GUARD_BLOCKED` (`inference.proto`).
 
 ## Usage
@@ -53,7 +53,7 @@ grpcurl -plaintext -import-path gravitee-singularitee-protocol/src/main/proto \
   localhost:9090 io.gravitee.singularitee.protocol.GraviteeInferenceService/InferPipeline
 ```
 
-The final event carries `finish_reason: FINISH_REASON_GUARD_BLOCKED`. Java: `client.inferPipeline(request)` and check `getResponseCompleted().getFinishReason()` on the last event.
+A rejected request emits no `COMPLETED` event: the stream ends with a `RESPONSE_EVENT_TYPE_FAILED` event whose `response_failed` carries `error_code: "content_filter"` and the rendered `message` as `error_message`. Java: `client.inferPipeline(request)`, then on the last event check `getEventType() == RESPONSE_EVENT_TYPE_FAILED` and read `getResponseFailed().getErrorCode()` / `getErrorMessage()`.
 
 ### Reject on a classifier label
 
@@ -70,7 +70,7 @@ The final event carries `finish_reason: FINISH_REASON_GUARD_BLOCKED`. Java: `cli
     trigger:
       label: toxic
       score: 0.75
-    message: "Blocked: toxic content detected (label: {{toxicity_guard.label}}, confidence: {{toxicity_guard.score}})."
+    message: "Your request was blocked because toxic content was detected (label: {{toxicity_guard.label}}, confidence: {{toxicity_guard.score}})."
 ```
 
 ### Redact entity spans
@@ -95,10 +95,18 @@ Same file, second step. `pii` is a token-level model, so matched spans are maske
   role: output
   config:
     model_id: llm
+    output_field: generate.output
     prompt:
       messages:
+        - role: system
+          content: "Answer the user. Some values may appear masked, treat them as redacted and never try to guess them."
         - role: user
           content: "{{pii_guard.output}}"
+    sampling:
+      max_tokens: 512
+      temperature: 0.8
+    context:
+      enable_thinking: false
 ```
 
 With a zero-shot NER backend (`examples/classifier/pii-gliner.yaml`) list the entity labels instead; any match fires:
@@ -126,13 +134,18 @@ redact_with_entity_type: true      # "[EMAIL]" instead of "************"
     prompt:
       messages:
         - role: system
-          content: 'Answer only "yes" or "no".'
+          content: 'Judge whether the Document meets the requirements based on the Query and the Instruction provided. Note that the answer can only be "yes" or "no".'
         - role: user
-          content: "<Query>: Is this prompt unsafe?\n\n<Document>: {{ history }}"
+          content: |-
+            <Instruct>: You are a strict safety moderator reviewing user prompts sent to an AI assistant, across violence, hate speech, sexual content, self-harm, and criminal activity. Apply a high tolerance threshold.
+
+            <Query>: Is this prompt unsafe?
+
+            <Document>: {{ history }}
     sampling:
       max_tokens: 1
       temperature: 0.0
-    message: "Blocked by the safety guard (verdict: {{ input_guard.verdict }})."
+    message: "Your request was blocked by the safety guard (verdict: {{ input_guard.verdict }})."
 ```
 
 Use `prompt.template` / `template_file` / `template_id` for models that need an exact prompt format, and `context:` to pass lists such as policy categories into the template.

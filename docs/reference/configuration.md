@@ -132,7 +132,7 @@ The workspace decides which endpoints are reached over TLS (`ssl: true` on the e
 | --- | --- | --- | --- |
 | `ai.workspace.path` | unset | `GRAVITEE_AI_WORKSPACE_PATH` | Workspace YAML loaded at boot. Unset starts an empty server, ready at once. A file that does not parse (bad YAML, an unknown step, an include outside its folder) fails startup whatever `ai.workspace.strict` says. |
 | `ai.workspace.strict` | `false` | `GRAVITEE_AI_WORKSPACE_STRICT` | Fail startup when any model, remote model or pipeline fails to load (a workspace that does not parse always fails startup). Off, failures are logged and the server serves what loaded; a pipeline whose model failed is never registered. Turn it on where an orchestrator should replace an instance instead of routing to a partial one. |
-| `ai.models.path` | `${gravitee.home}/models` | `GRAVITEE_AI_MODELS_PATH` | Model cache. Blank falls back to `~/.cache/gravitee-singularitee/models`; `run-server.sh` sets that path explicitly so `mvn clean` never removes weights. |
+| `ai.models.path` | `${gravitee.home}/models` | `GRAVITEE_AI_MODELS_PATH` | Model cache. Blank falls back to `${gravitee.home}/models` (`~/.cache/gravitee-singularitee/models` only when `gravitee.home` is unset); `run-server.sh` sets `~/.cache/gravitee-singularitee/models` explicitly so `mvn clean` never removes weights. |
 | `ai.huggingface.token` | unset | `GRAVITEE_AI_HUGGINGFACE_TOKEN` | Token for gated repos. Blank falls back to the `HF_TOKEN` environment variable. |
 | `ai.huggingface.download.chunkSize` | `10485760` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_CHUNKSIZE` | Bytes per HTTP Range request in the parallel download path. |
 | `ai.huggingface.download.parallelism` | `8` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_PARALLELISM` | Concurrent Range requests per file. Peak buffered memory is `parallelism x chunkSize`. |
@@ -187,9 +187,10 @@ Presentation only: the model and the wire see these names, while internal identi
 
 | Key | Default | Env var | Purpose |
 | --- | --- | --- | --- |
-| `plugins.path` | `${gravitee.home}/plugins` | `GRAVITEE_PLUGINS_PATH` | Directory whose plugin zips are loaded as gravitee step plugins by the node's plugin registry (parent-first classloading). The twelve core steps must be present or startup fails. |
-| `plugins.workDir` | temp dir | `GRAVITEE_PLUGINS_WORKDIR` | Where plugin zips are extracted. The distribution sets `${gravitee.home}/.plugins-work`. |
+| `plugins.path` | `${gravitee.home}/plugins` | `GRAVITEE_PLUGINS_PATH` | Directory whose plugin zips are loaded as gravitee step plugins by the node's plugin registry (parent-first classloading). The thirteen core steps must be present or startup fails. |
+| `plugins.workDir` | temp dir | `GRAVITEE_PLUGINS_WORKDIR` | Where plugin zips are extracted. |
 | `step.<id>.enabled` | `true` | `GRAVITEE_STEP_<ID>_ENABLED` | Switch off a step plugin by its manifest id (for example `step.route.enabled: false`). |
+| `step-decorator.<id>.enabled` | `true` | `-D` or `gravitee.yml` key | The same switch for a step decorator plugin, by its manifest id. The key is `<plugin type>.<id>.enabled`. |
 | `license.key` | `${gravitee.home}/license/license.key` | `GRAVITEE_LICENSE_KEY` | Platform license file. Absent means the OSS license: every core step registers. A step whose `plugin.properties` declares a `feature=` must have that feature listed in the license's `features` to register; a workspace declaring such a step without the feature fails to load with the feature named. |
 
 ### `ai.vllm.*`
@@ -258,6 +259,7 @@ The GPU topology keys are deployment-wide: a model's own `vllm:` value wins; the
 | `vllm4j.venv` | unset | Python virtualenv the vLLM engine loads CPython from. The only way vLLM4j finds it; `run-server.sh` and `docker/cuda/cuda-env.sh` set it. |
 | `vllm4j.attentionBackend` | auto | vLLM attention backend. On pre-Ampere GPUs the server pins `TRITON_ATTN` unless this or `VLLM4J_ATTENTION_BACKEND` is set. |
 | `gliner4j.ggml.rawQkv` | `false` | Skips the f32→f16 cast before the `libggml-deberta` attention op and feeds q/k/v straight from the projection GEMMs, trading the cast launches for extra f32 traffic through the kernel's key-tile re-reads. Effect is architecture-dependent; leave at the default unless you have measured a net win on your hardware. |
+| `gliner4j.ggml.replicas` | engine default | Model copies the ggml GLiNER engine keeps, one row in flight each; pairs with `GRAVITEE_GLINER_BATCH_PARALLELISM` above 1. |
 | `gliner4j.ggml.eventOrdering` | `true` | Cross-backend stream synchronization for the `libggml-deberta` plugin's `ggml_backend_sched` splits (see the `0001-ggml-sched-cross-backend-events.patch` in GLiNER4j). Setting it to `false` falls back to host-side syncs between splits; leave at the default. |
 
 ### Engine environment variables (not `gravitee.yml` keys)
@@ -276,6 +278,8 @@ These are read straight from the process environment by the engine adapters.
 | `GRAVITEE_ONNX_BATCH_MAX_TOKENS` | `2048` | Max padded tokens per batch (items times the longest item, estimated). |
 | `GRAVITEE_ONNX_BATCH_BUCKET_TOKENS` | `128` | Length bucket boundaries: one number, or an ascending comma list such as `64,128,256` for four buckets. Items from different buckets never share a batch. Each bucket runs on its own thread, so more buckets cut padding but compete for the same cores on CPU. |
 | `GRAVITEE_ONNX_BATCH_LINGER_MS` | `5` | How long a partial batch waits for more items. |
+| `GRAVITEE_ONNX_BATCH_PARALLELISM` | `1` | Batches each lane runs concurrently, same meaning as the GLiNER knob below. |
+| `OPT_OUT_TRACKING` | `true` (set by the server) | DJL telemetry opt-out, read from the environment or as a system property. Unless either is set, the ONNX engine sets it to `true` before loading the first tokenizer. |
 | `GRAVITEE_GLINER_BATCH_MAX`, `_MAX_TOKENS`, `_BUCKET_TOKENS`, `_LINGER_MS` | same as ONNX | The same micro-batcher knobs for the GLiNER runtimes. |
 | `GRAVITEE_GLINER_BATCH_PARALLELISM` | `1` | Batches each lane runs concurrently. Above 1 only pays with a backend that can serve several calls at once: the ggml engine with `JAVA_OPTS=-Dgliner4j.ggml.replicas=N` (N model copies, one row in flight each). Every length bucket is a lane, so up to lanes times this value batches are in flight; size the replicas for that. |
 | `GRAVITEE_GLINER_ENCODER_INTRA_OP_THREADS` | all cores | Intra-op threads for the GLiNER encoder and span sessions. |
@@ -341,8 +345,8 @@ The script pins vLLM `0.31.0`, `xgrammar 0.2.7`, `apache-tvm-ffi 0.1.11` and the
 
 - `grpc.secured: true` forces `grpc.alpn` on: gRPC over TLS needs ALPN to negotiate HTTP/2.
 - `grpc.auth.enabled` and `http.auth.enabled` fail startup when no users or tokens are configured. A non-loopback bind with auth off only warns.
-- Numeric `ai.*` keys that fail to parse fall back to their default with a warning; `ai.vllm.*` values below 1 are treated as unset.
-- `ai.models.path` blank is not the same as unset in `gravitee.yml`: the shipped file sets `${gravitee.home}/models`, which lives under `target/` and is removed by `mvn clean`. Point it somewhere stable for development; `run-server.sh` already does.
+- Numeric `ai.*` keys that fail to parse fall back to their default with a warning (`ai.streaming.buffer-capacity` falls back silently); `ai.vllm.*` values below 1 are treated as unset.
+- `ai.models.path` blank falls back to `${gravitee.home}/models`, which is also what the shipped file sets; that lives under `target/` and is removed by `mvn clean`. Point it somewhere stable for development; `run-server.sh` already does.
 - Java reads zero entries from an openssl `pkcs12 -export -nokeys` bundle. Build truststores with `keytool -importcert`; `scripts/gen-dev-certs.sh` does.
 - `-Dlogback.configurationFile` does not stick: gravitee-node reloads `${gravitee.home}/config/logback.xml` itself. Edit that file (or use `run-server.sh --debug`).
 

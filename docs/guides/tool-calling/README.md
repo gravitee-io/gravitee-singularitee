@@ -34,11 +34,11 @@ executed by a `todo` step and never reach the client; see [Todos](../todos/READM
 | --- | --- | --- |
 | `ToolDefinition`, `ToolParameterDef` | `protocol` | A tool on the wire; `template` overrides the default JSON-schema rendering. |
 | `TagConfig` | `protocol` | `open_tag`, `close_tag`, alternatives, `repeatable`; YAML `tags:` with `tool_open` / `tool_close` (string or list). |
-| `ToolCallExtractor` | `engine` (`engine/tools`) | Template-driven extraction; built-ins under `src/main/resources/tool-extraction/`. Fail-open. |
-| `ToolCallOutcomeRecorder` | `engine` | Writes the signal fields, detects marker residue, runs markerless extraction. |
-| `ToolMarkerResidues` | `engine` | Per-dialect detection of leaked tool markers in the answer text. |
-| `ToolSelectStepExecutor` | `engine` | Zero-shot shortlist of the caller's tools (`KEY_SELECTED_TOOLS`). |
-| `PromptAssembler.injectableTools` | `engine` | Applies `inject_tools`, the shortlist, condensed descriptions and `server_tools`. |
+| `ToolCallExtractor` | `engine-api` (`engine.api.tools`) | Template-driven extraction; built-ins under `src/main/resources/tool-extraction/`. Fail-open. |
+| `ToolCallOutcomeRecorder` | `infer` plugin | Writes the signal fields, detects marker residue, runs markerless extraction. |
+| `ToolMarkerResidues` | `engine-api` | Per-dialect detection of leaked tool markers in the answer text. |
+| `ToolSelectStepExecutor` | `tool_select` plugin | Zero-shot shortlist of the caller's tools (`KEY_SELECTED_TOOLS`). |
+| `PromptAssembler.injectableTools` | `infer` plugin | Applies `inject_tools`, the shortlist, condensed descriptions and `server_tools`. |
 | `ResponseCompleted.tool_calls`, `ToolCall` | `protocol` | Delivery over gRPC. |
 | `ToolCallResolver`, `ChatCompletionsFormatter`, `ResponsesFormatter` | `http` | OpenAI rendering, `call_<id>` assignment, argument coercion, fail-open text. |
 
@@ -204,7 +204,7 @@ Keys this guide uses. Full tables: [`infer`](../../reference/steps/infer.md),
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
 | `infer.inject_tools` | bool | `true` | Render the caller's tools into this step's prompt. |
-| `infer.server_tools` | bool | `true` | Also inject the server tools of a todo pipeline (proto `expose_server_tools`). |
+| `infer.server_tools` | bool | `true` | Also inject the server tools of a todo pipeline. |
 | `infer.tags.tool_open`, `tool_close` | string or list | unset | Tool span markers; lists give alternatives, longest match wins. |
 | `infer.tool_extraction_template` | built-in name or Jinja | unset (built-ins in order) | `chatml-json`, `xml-function`, `gemma-call`, `glm-name-json`, `harmony`, or inline source. |
 | `tool_select.model_id` | string | required | A `gliner_classifier` model. |

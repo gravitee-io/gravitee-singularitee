@@ -23,12 +23,12 @@ and Grafana stack with a provisioned dashboard.
 
 ## Key types
 
-- `InferenceMetrics` (engine): the Micrometer recorder. Wraps a possibly-null `MeterRegistry`; every `record*` call is a no-op when metrics are off.
+- `InferenceMetrics` (engine-api): the Micrometer recorder. Wraps a possibly-null `MeterRegistry`; every `record*` call is a no-op when metrics are off.
 - `ServiceInstrumentation` (grpc): wraps the unary RPCs, opening the `singularitee.<op>` child span and recording `ai_<op>_requests_total` and `ai_<op>_latency_seconds`.
 - `GrpcServerComponent` and `HttpApiServerComponent` (standalone): open the `SERVER` span per call, attributes `rpc.system` and `rpc.method` (gRPC) or `http.route` (HTTP).
 - `PipelineExecutor`: opens `singularitee.pipeline` with `pipeline.id`.
-- `StepDispatcher`: opens `singularitee.step` with `step.id` and `step.type`.
-- `ModelBoundStepExecutor`: opens `singularitee.model.<op>` (`CLIENT` kind) with `model.id` and `op`, and times it into `ai_model_call_seconds`.
+- `TracingStepDecorator` (engine, a platform decorator): opens `singularitee.step` with `step.id` and `step.type`.
+- `ModelBoundStepExecutor`: opens `singularitee.model.<op>` (`CLIENT` kind) with `model.id`, `op` and the engine type and class, and times it into `ai_model_call_seconds`.
 - `io.gravitee.node.api.opentelemetry.Tracer`: the gravitee-node tracer; a no-op instance when tracing is disabled.
 
 ## Usage
@@ -66,12 +66,12 @@ Run the bundled stack:
 
 ```bash
 docker compose -f examples/observability/docker-compose.yml up -d
-# Grafana    http://localhost:3000  (admin / admin), dashboard "Singularitee / GPU & Inference"
-# Prometheus http://localhost:9091
+# Grafana    http://localhost:3000  (admin / admin), dashboard "Singularitee - GPU & Reasoning"
+# Prometheus http://localhost:9090  (host networking, its default port; also the default grpc.port on the same host)
 ```
 
-The bundled Prometheus scrapes `host.docker.internal:18092`; edit
-`examples/observability/prometheus/prometheus.yml` for another target.
+The bundled Prometheus scrapes `localhost:18092` (host networking; `host.docker.internal:18092` is the
+Docker Desktop alternative); edit `examples/observability/prometheus/prometheus.yml` for another target.
 
 ### View traces in Jaeger
 
@@ -127,11 +127,11 @@ The full key tables are in [Configuration](../../reference/configuration.md#serv
 
 | Span | Kind | Attributes | Opened by |
 | --- | --- | --- | --- |
-| (server span) | `SERVER` | `rpc.system=grpc`, `rpc.method=<path>`; or `rpc.system=http`, `http.route=<path>` | `GrpcServerComponent`, `HttpApiServerComponent`; continues an inbound `traceparent`. |
+| (server span) | `SERVER` | `rpc.system=grpc`, `rpc.method=<path>`; or `rpc.system=http`, `http.route=<path>`; both set `http.response.status_code`, and `openinference.span.kind=AGENT` when OpenInference is on | `GrpcServerComponent`, `HttpApiServerComponent`; continues an inbound `traceparent`. |
 | `singularitee.pipeline` | `INTERNAL` | `pipeline.id` | `PipelineExecutor`, per `InferPipeline`. |
-| `singularitee.step` | `INTERNAL` | `step.id`, `step.type`, `model.id` when model-bound | `StepDispatcher`, per executed step. |
-| `singularitee.model.<op>` | `CLIENT` | `model.id`, `op` | `ModelBoundStepExecutor`, per engine call. `<op>` is the executor class name lower-cased without its suffix: `infer`, `classify`, `embed`, `guard`, `llmguard`, `toolselect`. |
-| `singularitee.embed`, `singularitee.embed.batch`, `singularitee.text_similarity`, `singularitee.text_rerank`, `singularitee.classify`, `singularitee.classify.batch` | `INTERNAL` | `model.id` | `ServiceInstrumentation`, per direct unary RPC. |
+| `singularitee.step` | `INTERNAL` | `step.id`, `step.type`, `model.id` when model-bound | `TracingStepDecorator`, per executed step. |
+| `singularitee.model.<op>` | `CLIENT` | `model.id`, `op`, `singularitee.model.engine_type`, `singularitee.model.engine` | `ModelBoundStepExecutor`, per engine call. `<op>` is the executor class name lower-cased without its suffix: `infer`, `classify`, `embed`, `guard`, `llmguard`, `toolselect`, `decide`. |
+| `singularitee.embed`, `singularitee.embed.batch`, `singularitee.text_similarity`, `singularitee.text_rerank`, `singularitee.classify`, `singularitee.classify.batch`, `singularitee.decide` | `INTERNAL` | `model.id` | `ServiceInstrumentation`, per direct unary RPC. |
 
 Streaming `Infer` is recorded in metrics but opens no child span of its own under the server span.
 
@@ -173,6 +173,7 @@ as a confidence in `[0, 1]` (`ConfidenceSignal.confidence`) can score the spans 
 | `ai_infer_latency_seconds` | timer | `model` | End-to-end `Infer` latency. |
 | `ai_classify_requests_total` / `ai_classify_latency_seconds` | counter / timer | `model` (`status`) | `Classify` and `ClassifyBatch`. |
 | `ai_embed_requests_total` / `ai_embed_latency_seconds` | counter / timer | `model` (`status`) | `Embed`, `EmbedBatch`, `TextSimilarity`. |
+| `ai_decide_requests_total` / `ai_decide_latency_seconds` | counter / timer | `model` (`status`) | `Decide`. |
 | `ai_rerank_requests_total` / `ai_rerank_latency_seconds` | counter / timer | `model` (`status`) | `TextRerank`. |
 | `ai_pipeline_requests_total` | counter | `pipeline`, `status` | `InferPipeline` RPCs. The `pipeline` label is kept apart from `model`. |
 | `ai_pipeline_latency_seconds` | timer | `pipeline` | End-to-end pipeline latency. |
