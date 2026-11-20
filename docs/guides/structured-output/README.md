@@ -23,8 +23,8 @@ The format travels with the request; nothing is declared in the workspace:
    `/v1/responses`. Types `text`, `json_object` and `json_schema` only; `choice`, `regex` and
    `grammar` are gRPC only.
 
-**Scope.** On a pipeline, the format applies to the `role: output` step only. Other steps
-(guards, routers, internal steps) never inherit it. On a bare model id it applies directly.
+**Scope.** On a pipeline, the format applies only to a step with an explicit `role: output`; a step with no role
+does not receive it. Other steps (guards, routers, internal steps) never inherit it. On a bare model id it applies directly.
 
 **Engines.**
 

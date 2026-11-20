@@ -24,12 +24,12 @@ A pipeline is `entry` plus a list of `steps`. `PipelineExecutor` walks the graph
 
 ## Key types
 
-- `StepDefinition` (`WorkspaceDefinition`): the YAML envelope; `config` is deserialised into the `StepConfig` record selected by `type`.
-- `StepTypes` (engine): the core type strings; `StepRoleKey`: YAML slug to `StepRole`.
-- `StepModel` (engine): `id`, `type`, `role` and the plugin-owned `config` object.
-- `StepExecutorPlugin` / `StepConfigCodec` (plugin-api, engine): how a plugin contributes a type.
+- `StepDefinition` (`WorkspaceDefinition`): the YAML envelope; `config` is kept as a raw map and handed to the `StepConfigCodec` of the plugin that provides `type`, which parses and validates it at load.
+- `StepTypes` (engine-api): the core type strings; `StepRoleKey` (workspace): YAML slug to `StepRole`.
+- `StepModel` (engine-api): `id`, `type`, `role` and the plugin-owned `config` object.
+- `StepExecutorPlugin` (plugin-api) / `StepConfigCodec` (engine-api): how a plugin contributes a type.
 - `StepExecutor<C>` / `ModelBoundStepExecutor<C, E>`: the executor contract. Model-bound executors look the model up in `ModelRegistry` and check the engine type before running.
-- `StepContext`: what every executor receives: the `PipelineContext`, the `Pipeline` (for the `edges` map), the response stream, tracer and metrics.
+- `StepContext`: what every executor receives: the `PipelineContext`, the `PipelineModel` (for the `edges` map), the response stream, tracer and metrics.
 - `BreakStepEvaluator` / `ConditionEvaluatorFactory` / `ScoreResolver`: the `condition:` block shared by `break` and `loop`.
 
 ## Usage
@@ -48,7 +48,7 @@ steps:
 
   - id: generate
     type: infer
-    role: output              # infer only: output | thinking | internal
+    role: output              # output | thinking | internal
     config:
       model_id: llm
 ```
@@ -63,27 +63,30 @@ Step order in the list has no execution meaning. Execution is defined by `entry`
 | --- | --- | --- | --- |
 | `id` | string | required | Step id. Must match `[A-Za-z_][A-Za-z0-9_]*` (the loader rejects anything else) because it prefixes the step's context fields (`<id>.output`) and is a Jinja identifier (`{{ generate.output }}`). |
 | `type` | string | required | One of `infer`, `classify`, `embed`, `route`, `guard`, `llm_guard`, `loop`, `break`, `sub_pipeline`, `regex_guard`, `tool_select`, `todo`, `decide`, or any type an installed plugin provides. Case-insensitive. |
-| `role` | string | `output` | `infer` steps only: `output`, `thinking` or `internal`. Unknown values fall back to `output`. Other step types ignore it. |
-| `next_step` | string | unset | Linear edge, stored in `Pipeline.edges`. Unset makes the step terminal. `loop` reads it as its exit edge. |
+| `role` | string | unspecified | `output`, `thinking` or `internal`. Unknown values fall back to `output`. Omitted, the role is `STEP_ROLE_UNSPECIFIED`, see below. Streaming and conversation semantics apply to `infer`; `role: output` on any step type marks the step a pipeline's `task` is derived from. |
+| `next_step` | string | unset | Linear edge, stored in `PipelineModel.edges`. Unset makes the step terminal. `loop` reads it as its exit edge. |
 | `config` | object | per type | The type-specific block. Unknown keys are ignored (`@JsonIgnoreProperties(ignoreUnknown = true)`), so a typo silently drops the option. |
 
 ### `role` semantics (infer steps)
 
 | `role` | Streamed to the client | Appended to `messages` | Typical use |
 | --- | --- | --- | --- |
-| `output` | yes, tagged `STEP_ROLE_OUTPUT` | yes, as an assistant turn | The answer. Also the step a pipeline's `task` and `modalities` are derived from. |
+| `output` | yes, tagged `STEP_ROLE_OUTPUT` | yes, as an assistant turn | The answer. Also the step a pipeline's `task` is derived from (the last `role: output` step, else the entry step), and the only step a request's structured output constraint applies to. |
+| unset | yes, tagged `STEP_ROLE_OUTPUT` | yes, as an assistant turn | Streams and appends like `output`, but is not the output step for `task` derivation and never receives the request's structured output constraint. |
 | `thinking` | yes, tagged `STEP_ROLE_THINKING` | yes | Visible deliberation that the client renders as reasoning. |
 | `internal` | no (only `stream_thinking: true` forwards its reasoning deltas) | no; its answer is kept as narration for a later tool-call halt | Graders, routers, planners whose verdict must not enter the conversation. |
+
+A pipeline's `modalities` are not tied to a role: they are the union over every model-bound step.
 
 In every role the full raw text is written to `output_field` and appended to `generated_messages`. A `thinking` or `output` step whose reasoning is routed (`tags.reasoning_*` without `strip_thinking`) appends only the answer part to the conversation.
 
 ### How the next step is chosen
 
-1. The executor returns a step id. Linear steps return `Pipeline.edges[id]` (the YAML `next_step`); `route`, `loop` and `todo` return their own targets.
+1. The executor returns a step id. Linear steps return `PipelineModel.edges[id]` (the YAML `next_step`); `route`, `loop` and `todo` return their own targets.
 2. An empty result ends the walk. The pipeline finishes with the last engine finish reason (`stop`, `length`, `tool_calls`, ...) or `FINISH_REASON_STOP`.
-3. A halted context ends the walk regardless of the returned id: `break` and `loop` halt with `BREAK_CONDITION`, guards with `GUARD_BLOCKED` (delivered as a `FAILED` event with `error_code: content_filter`), `todo` with `BREAK_CONDITION` (ask_user) or `TOOL_CALLS` (client tool calls).
+3. A halted context ends the walk regardless of the returned id: `break` halts with `BREAK_CONDITION`, guards with `GUARD_BLOCKED` (delivered as a `FAILED` event with `error_code: content_filter`), `todo` with `BREAK_CONDITION` (ask_user) or `TOOL_CALLS` (client tool calls).
 4. A returned id that names no step logs a warning and ends the walk.
-5. A model-bound step whose `model_id` is unknown, or bound to the wrong engine type, logs a warning, does nothing and follows `next_step`.
+5. A model-bound step whose `model_id` is not loaded, or is bound to the wrong engine type, fails (`ModelBoundStepExecutor` returns an error) rather than being skipped, so a guard can never let a request through unchecked. The error ends the walk as in rule 6. `route` is the exception: it logs a warning and falls through to `default_step`.
 6. An exception inside an executor is logged and ends the walk (`StepDispatcher` uses `onErrorComplete`); the client receives `COMPLETED` with whatever streamed so far.
 
 ### Conditions (`break` and `loop`)
@@ -98,14 +101,14 @@ In every role the full raw text is written to `output_field` and appended to `ge
 | `not_empty` | field is non-null and non-blank | nothing |
 | `empty` | field is null or blank | nothing |
 
-`input_field` is a flat context key (`generate.tool_parse_failed`, `todos.remaining`). For `score_above` / `score_below`, `ScoreResolver` reads `<input_field>.score`, then `<parent>.score` when `input_field` ends in a segment such as `.label`, then parses the field value itself as a float; anything unparsable counts as `0`. An unknown `type` never matches.
+`input_field` is a flat context key (`generate.tool_parse_failed`, `todos.remaining`). For `score_above` / `score_below`, `ScoreResolver` reads `<input_field>.score`, then `<parent>.score` when `input_field` ends in a segment such as `.label`, then parses the field value itself as a float; anything unparsable counts as `0`. An unknown or blank `type` fails the workspace load. A step with no `condition` block never matches.
 
 ## Notes
 
 - `match_value` is stored as text; YAML parses bare `YES`/`NO`/`true`/`false` as booleans and the loader maps them back to `YES`/`NO`. Quote the value to avoid surprises.
 - All context fields are strings; numbers are written with `Long.toString` / `String.valueOf`, booleans as `"true"` / `"false"`.
-- Threshold and score YAML values equal to `0` are treated as unset by the loader (`if (x > 0) set(x)`), so a trigger score of `0` means "any score".
-- Keys the proto defines but the YAML loader never maps are not settable from a workspace; each page lists them.
+- Threshold and score YAML values equal to `0` are treated as unset by the step codecs, so a trigger score of `0` means "any score".
+- Step configs are plugin-owned Java records, not wire types: a page lists exactly the YAML keys its codec reads.
 
 ## See also
 

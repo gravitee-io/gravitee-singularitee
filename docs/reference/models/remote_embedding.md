@@ -66,7 +66,7 @@ workspace:
 | `servers[].id` | string | unset | Name referenced by `server:`. Entries without an id are ignored. |
 | `servers[].host` / `.port` | string / int | unset | gRPC coordinates of the other Singularitee. |
 | `servers[].ssl` | boolean | `false` | TLS with ALPN HTTP/2. Trust and client-certificate material come from `grpc.client.ssl.*` in `gravitee.yml`; the JVM default trust store applies when nothing is configured. |
-| `servers[].username` / `.password` | string | unset | HTTP Basic credentials sent as gRPC metadata; on when `username` is non-blank. The server logs a warning when credentials travel over a plaintext endpoint. |
+| `servers[].username` / `.password` | string | unset | HTTP Basic credentials sent as gRPC metadata; on when `username` is non-blank. On a standalone server, credentials on a plaintext endpoint to a non-loopback host refuse the endpoint (ERROR, its models are skipped); a client-side workspace only logs a warning. |
 | `servers[].http2_keep_alive_timeout` | int | `-1` (always alive) | Seconds an idle HTTP/2 connection is held; positive values go to the Vert.x client. |
 
 The same keys apply to `default:`. Credentials match the `grpc.auth.users.<name>` entries of

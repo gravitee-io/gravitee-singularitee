@@ -23,12 +23,13 @@ A pipeline that contains a `todo` step gets three things:
 | Type | Where | Purpose |
 | --- | --- | --- |
 | `TodoStepConfig` | `plugins/todo` | Consumes todo calls; goes to `handled_step` after consuming, `next_step` otherwise. |
-| `TodoStepExecutor` | `engine` | Executes calls, records turns, clears consumed calls, emits `PROGRESS`, halts for `ask_user` or client-bound calls. |
+| `TodoStepExecutor` | `plugins/todo` | Executes calls, records turns, clears consumed calls, emits `PROGRESS`, halts for `ask_user` or client-bound calls. |
 | `TodoTools` | `engine-api` | The three tool definitions; `DELEGABLE = {ask_user}`. |
 | `ServerToolNames` | `engine-api` | The deployment's display names for those tools (`ai.tools.*.name`), carried on the `PipelineContext`; canonical by default. |
-| `PipelineContext.TodoItem`, `TodoStatus` | `engine` | `{id, title, status, proof}`; `pending`, `in_progress`, `done`. |
+| `PipelineContext.TodoItem`, `TodoStatus` | `engine-api` | `{id, title, status, proof}`; `pending`, `in_progress`, `done`. |
 | `ResponseProgress`, `TodoItem` | `inference.proto` | The progress payload. |
-| `TodoSessionStore`, `ConversationStore` | `engine` | Cross-turn persistence (session key, `previous_response_id`). |
+| `TodoSessionStore` | `engine-api` | Cross-turn todo persistence (session key). |
+| `ConversationStore` | `engine` | Cross-turn conversation persistence (`previous_response_id`). |
 
 ## Usage
 

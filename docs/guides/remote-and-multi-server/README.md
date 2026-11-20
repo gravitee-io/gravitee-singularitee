@@ -25,11 +25,11 @@ load their own native libraries) and composes across processes from a client wor
 | Type | Module | Purpose |
 | --- | --- | --- |
 | `RemoteTextGenEngine` | `engine-remote` | `TextGenEngine` over the streaming `Infer` RPC; reads chat template, BOS/EOS and `input_modalities` from a lazy `GetModel` probe. |
-| `RemoteClassifierEngine`, `RemoteEmbeddingEngine`, `RemoteRerankerEngine` | `engine-remote` | Proxies over `Classify`, `Embed`, `TextRerank`. |
+| `RemoteClassifierEngine`, `RemoteEmbeddingEngine`, `RemoteRerankerEngine`, `RemoteDecisionEngine` | `engine-remote` | Proxies over `Classify`, `Embed`, `TextRerank`, `Decide`. |
 | `RemotePipelineCallback` | `engine-remote` | Runs a `sub_pipeline` step on a remote endpoint via `InferPipeline`. |
 | `ClientPipelineExecutor` | `engine-remote` | Builds an executor from a workspace; `Result(executor, clients, pipelineIds, modelRegistry)` is `AutoCloseable`. |
-| `ClientLocalModelRegistrar` | `engine-remote` | Registers `regex` and `composite_classifier`, which run in-process anywhere. |
-| `WorkspaceDefinition.RemoteEndpoint`, `ModelType.isRemote()` | `workspace` | The `remote:` block and the four remote constants. |
+| `ClientLocalModelRegistrar` | `engine-remote` | Registers `regex`, `llm_token_classifier` and `composite_classifier`, which run in-process anywhere. |
+| `WorkspaceDefinition.RemoteEndpoint`, `ModelType.isRemote()` | `workspace` | The `remote:` block and the five remote constants. |
 | `GrpcClientSslConfig` | `standalone` | `grpc.client.ssl.*`: outbound trust and client certificate. |
 
 ## Usage
@@ -48,8 +48,11 @@ workspace:
     - id: llm
       type: remote_llm
   includes:
+    templates:
+      - tool-system.yaml
     pipelines:
       - infer.yaml
+      - tool-calling.yaml
 ```
 
 Two servers, named endpoints (`examples/modular/client-safety-llamacpp.yaml`):
@@ -95,12 +98,13 @@ curl -s localhost:8180/v1/chat/completions -H 'content-type: application/json' \
 Embedded:
 
 ```java
-try (var result = ClientPipelineExecutor.create(Path.of("examples/modular/client-safety-llamacpp.yaml"))) {
+try (var result = ClientPipelineExecutor.create(
+    Path.of("examples/modular/client-safety-llamacpp.yaml"), pluginsDir)) {
   result.executor().executePipeline(request, responseStream, callerContext);
 }
 ```
 
-Inside a Vert.x application pass its instance: `ClientPipelineExecutor.createFromString(yaml, vertx)`.
+From an inline YAML string: `ClientPipelineExecutor.createFromString(yaml, pluginsDir)`. Inside a Vert.x application pass its instance: `createFromString(yaml, vertx, pluginsDir)`, or `createFromString(yaml, vertx, templatesPath, pluginsDir)` to resolve `template_file` paths against a templates directory.
 
 Credentials and TLS on an endpoint:
 
@@ -161,7 +165,7 @@ Full tables: [Workspaces](../../workspaces/README.md),
 | `endpoint.username`, `endpoint.password` | string | unset | Basic auth metadata; on when `username` is non-blank. |
 | `endpoint.http2_keep_alive_timeout` | seconds | `-1` (forever) | Idle HTTP/2 connection timeout. |
 | `model.type` | enum | required | `remote_llm`, `remote_classifier`, `remote_embedding`, `remote_reranker`, `remote_decision`. |
-| `model.server` | string | `default` | Endpoint id; startup fails if neither it nor a `default` endpoint exists. |
+| `model.server` | string | `default` | Endpoint id. When neither it nor a `default` endpoint exists, the embedded executor fails at creation; a server logs a WARN and skips the model (fails startup with `ai.workspace.strict: true`). |
 | `model.modalities` | list | probed | Override for proxies whose remote cannot be probed. |
 | `grpc.client.ssl.truststore.*`, `.keystore.*` | `type`, `path`, `password` (`keyPath` for PEM) | JVM default / unset | Outbound trust and identity. |
 | `grpc.client.ssl.trustAll`, `.verifyHostname` | bool | `false`, `true` | Development shortcuts. |
@@ -171,8 +175,10 @@ Full tables: [Workspaces](../../workspaces/README.md),
 - Endpoints are plaintext unless `ssl: true`. An endpoint with credentials must set `ssl: true`
   unless its host is loopback (`localhost` or a loopback IP literal such as `127.0.0.1` or `::1`; a host name is never treated as loopback); otherwise it is refused at load,
   and the remote models behind it are not registered.
-- Startup is fail-fast: every remote model is checked with `GetModel`; a missing model or an
-  unreachable server throws `IllegalStateException` before anything is published.
+- The embedded `ClientPipelineExecutor` is fail-fast: every remote model is checked with
+  `GetModel`; a missing model or an unreachable server throws `IllegalStateException` before
+  anything is published. A server does not probe: it registers remote models lazily, so a
+  remote that is down or still booting surfaces as a per-request error and the next call retries.
 - Remote model entries carry no engine config. Sampling and templates are configured on the
   serving workspace and in pipeline steps.
 - `remote_llm` renders prompts locally with the remote model's own chat template, fetched
@@ -180,7 +186,7 @@ Full tables: [Workspaces](../../workspaces/README.md),
   `ssl: true` with server verification or its host is loopback; over plaintext to another host
   it is ignored with a warning, and steps send structured messages for the remote to render
   (or render with their own `chat_template:`).
-- `regex` and `composite_classifier` need no server: they are registered in-process by
+- `regex`, `llm_token_classifier` and `composite_classifier` need no server: they are registered in-process by
   `ClientLocalModelRegistrar` wherever the workspace runs.
 - Build dev truststores with `keytool -importcert`, not `openssl pkcs12 -nokeys`; Java reads
   zero entries from openssl cert-only bundles. `scripts/gen-dev-certs.sh` does it right.

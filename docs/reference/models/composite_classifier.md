@@ -51,14 +51,14 @@ workspace:
 | `models` | list of string | unset | Ids of classifier models in the same workspace, invoked in this order. Empty or missing skips the composite with a WARN. |
 
 Members may be `regex`, another `composite_classifier`, `onnx_classifier`,
-`gliner_classifier`, `gliner_ner` or `remote_classifier`: anything registered as a
+`gliner_classifier`, `gliner_ner`, `llm_token_classifier` or `remote_classifier`: anything registered as a
 `ClassifierEngine`. `name`, `memory_check` and `download` are ignored; `task`, `visible` and
 `modalities` apply as on any entry.
 
 ## Notes
 
 - **Order of registration.** Local engine models load first, then remote proxies, then
-  `regex` models, then composites; a composite can therefore reference any of them, and a
+  `regex` and `llm_token_classifier` models, then composites; a composite can therefore reference any of them, and a
   composite declared earlier in the list. A member id that is not registered, or that is not
   a classifier, skips the composite with a WARN naming the member.
 - **One split for everyone.** A huge input is chunked once at about 4096 estimated tokens

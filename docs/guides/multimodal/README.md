@@ -144,7 +144,7 @@ Full tables: [`llama_cpp`](../../reference/models/llama_cpp.md),
 
 ## Notes
 
-- No `mmproj_path` means the model reports `["text"]`, and HTTP and gRPC refuse media with
+- No `mmproj_path` means the model is text-only (`/v1/models` omits `input_modalities` for it), and HTTP and gRPC refuse media with
   `unsupported_modality` before the engine sees it: if a VLM refuses an image, check
   `mmproj_path`.
 - Marker count must equal attachment count: the renderer prepends one marker per attachment, so

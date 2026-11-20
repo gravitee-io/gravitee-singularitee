@@ -47,7 +47,7 @@ workspace:
 | `pipeline_id` | string | required | Id of the pipeline to run. Must exist in the local `PipelineRegistry`, or on `server`. |
 | `input_field` | string | `prompt` | Context key sent as the sub-pipeline's prompt when messages are not forwarded. |
 | `output_field` | string | `<id>.output` | Context key receiving the sub-pipeline's streamed text. |
-| `server` | string | unset | Id of a `workspace.remote.servers[]` endpoint; runs the pipeline there. Proto `remote_id`. An unknown id fails the request. |
+| `server` | string | unset | Id of a `workspace.remote.servers[]` endpoint; runs the pipeline there (`SubPipelineStepConfig.remoteId`). An unknown id, or a local `pipeline_id` that is not loaded, makes the step error: the walk ends as for any step error (see [How the next step is chosen](./README.md#how-the-next-step-is-chosen)). |
 | `system_prompt` | string | unset | System message for the sub-pipeline. With `forward_messages` it replaces any existing system turn; without, it is sent ahead of the `input_field` text as a two-message conversation. Plain text, not a Jinja template. |
 | `forward_messages` | bool | `false` | Send the parent's full conversation (`messages`) instead of the flat prompt. |
 

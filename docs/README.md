@@ -8,6 +8,7 @@
 | --- | --- |
 | [Getting Started](./getting-started/README.md) | How do I build, run and call it for the first time? |
 | [Concepts](./concepts/README.md) | What is a workspace, a model, a pipeline, a template? Which engine backs what? |
+| [Pipelines](./concepts/pipelines/README.md) | How is a pipeline walked: the DAG, the shared context, roles, termination? |
 | [Architecture](./architecture/README.md) | How is it put together, how does a request execute, how does a pipeline run? |
 | [Workspaces](./workspaces/README.md) | How do I write the YAML that declares what a server publishes? |
 | [Reference](#reference) | What is every key, every option, every default? |

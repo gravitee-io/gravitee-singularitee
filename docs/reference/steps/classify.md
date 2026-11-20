@@ -23,7 +23,7 @@
   config:
     output_field: prompt
     condition:
-      type: score_below       # reads intent.score
+      type: score_below       # reads intent.label.score
       input_field: intent.label
       threshold: 0.4
 ```
@@ -35,7 +35,7 @@
 | `model_id` | string | required | Logical id of a published classifier model. |
 | `input_field` | string | `prompt` | Context key holding the text to classify. An empty value skips the step with a warning. |
 | `output_field` | string | `<id>.label` | Context key receiving the top label. The score lands in `<output_field>.score`. |
-| `threshold` | float | unset | Carried on the wire (`ClassifyStepConfig.threshold`) for downstream readers; the executor itself does not filter on it. Values of `0` are not sent. |
+| `threshold` | float | unset | Kept on `ClassifyStepConfig.threshold`; the executor does not filter on it. `0` or a negative value is stored as `0`. |
 
 ## Context fields
 
@@ -50,7 +50,7 @@ Writes:
 
 ## Notes
 
-- With the default `output_field`, Jinja sees `{{ intent.label }}` and `{{ intent.score }}`: `intent.label.score` is flattened to `intent = {label: ..., "label.score": ...}` and the nested key is unreachable by dot navigation. Keep `output_field` to a single dot (`<id>.label`) when templates need the score.
+- Jinja nests context keys on the first dot only, so `output_field: intent.label` gives `intent = {label: ..., "label.score": ...}`. The label is `{{ intent.label }}`; the score is reachable as `{{ intent['label.score'] }}`, and conditions read it through the flat key `intent.label.score`.
 - The full per-label score map is not written to the context; only the top entry is. Use [`guard`](./guard.md) with `triggers` to test several labels.
 
 ## See also

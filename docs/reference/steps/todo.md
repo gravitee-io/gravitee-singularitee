@@ -61,7 +61,7 @@ From `examples/pipelines/todo-agent.yaml`:
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `handled_step` | string | `next_step` | Step to branch to after consuming a plan call (usually the `infer` step that produced it, or the gate after it). Proto `handled_step_id`. |
+| `handled_step` | string | `next_step` | Step to branch to after consuming a plan call (usually the `infer` step that produced it, or the gate after it). |
 
 ## Context fields
 

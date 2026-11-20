@@ -52,9 +52,9 @@ Build truststores with `keytool -importcert`; `scripts/gen-dev-certs.sh` produce
 
 | Status | When | Example message |
 | --- | --- | --- |
-| `NOT_FOUND` (5) | Unknown model or pipeline id. | `Model not found: <id>`, `Pipeline not found: <id>` |
+| `NOT_FOUND` (5) | Unknown model or pipeline id. | `Model not found: <id>`; `Pipeline not found: <id>` from `GetPipeline` only. |
 | `INVALID_ARGUMENT` (3) | Target of the wrong kind, or a rejected argument. | `Model '<id>' is not an embedding model`, `Model <id> is not a classifier`, `Model '<id>' is neither an embedding nor a reranker model`, `Vectors must have the same length` |
-| `RESOURCE_EXHAUSTED` (8) | A slow client fell too far behind the stream buffer. | the buffer's message |
+| `RESOURCE_EXHAUSTED` (8) | The call failed with a bounded buffer overflow (`MissingBackpressureException`). | the buffer's message |
 | `INTERNAL` (13) | Any other failure: engine, native, I/O, or an error the server did not write for the caller. | `Internal error (ref 1a2b3c4d)`; the server log carries the full error under the same ref. |
 
 Streaming RPCs
@@ -70,11 +70,21 @@ stream with no events at all, and a failure during generation (guard block, engi
 CREATED -> (OUTPUT_TEXT_DELTA | PROGRESS)* -> COMPLETED | FAILED
 ```
 
-Each event carries `step_role`. Direct `Infer` emits `STEP_ROLE_UNSPECIFIED` or `STEP_ROLE_OUTPUT`;
-`InferPipeline` tags reasoning as `STEP_ROLE_THINKING`, tool-call payload as `STEP_ROLE_TOOL`, the
+`CREATED` is not guaranteed before a terminal event. Direct `Infer` writes `CREATED` together
+with the first token, so a request refused up front (request-level LoRA, unsupported media) or
+an engine failure before the first token ends with `FAILED` alone. `InferPipeline` can likewise
+end with `FAILED` alone (unsupported media, unknown `previous_response_id`, a failed execution).
+An `InferPipeline` naming an unknown `pipeline_id` ends with a single `COMPLETED` event carrying
+`FINISH_REASON_UNSPECIFIED` and no usage.
+
+Each event carries `step_role`. Direct `Infer` stamps reasoning-channel tokens
+`STEP_ROLE_THINKING`, tool-channel tokens `STEP_ROLE_TOOL`, and leaves every other event
+`STEP_ROLE_UNSPECIFIED`; it never emits `STEP_ROLE_OUTPUT`. `InferPipeline` tags reasoning as `STEP_ROLE_THINKING`, tool-call payload as `STEP_ROLE_TOOL`, the
 answer as `STEP_ROLE_OUTPUT`, and never streams `STEP_ROLE_INTERNAL` steps (except their thinking
 channel when the step sets `stream_thinking: true`). A client disconnect cancels generation.
-Slow consumers are cancelled after `ai.streaming.buffer-capacity` tokens of lag.
+On direct `Infer`, a consumer that lags more than `ai.streaming.buffer-capacity` tokens has its
+generation cancelled and the stream ends with `FAILED`, `error_code: stream_overflow`, not a
+gRPC status.
 
 ### GraviteeInferenceService
 
@@ -143,9 +153,9 @@ counts as an image.
 | --- | --- | --- |
 | `RESPONSE_EVENT_TYPE_CREATED` | `ResponseCreated` | `response_id`, `model` |
 | `RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA` | `ResponseOutputTextDelta` | `delta`, `item_index`, `part_index`, `repeated PositionLogprobs logprobs` (only with `top_logprobs > 0`) |
-| `RESPONSE_EVENT_TYPE_PROGRESS` | `ResponseProgress` | `step_id`, `repeated TodoItem todos { id, title, status, proof }`, `completed`, `total` |
+| `RESPONSE_EVENT_TYPE_PROGRESS` | `ResponseProgress` | `step_id`, `repeated TodoItem todos { id, title, status, proof }`, `completed`, `total`, `Elicitation elicitation { kind, question, repeated options, map<string,string> metadata }` (set when the `todo` step pauses to ask the user something; `kind` is `ask` from the core `ask_user` tool) |
 | `RESPONSE_EVENT_TYPE_COMPLETED` | `ResponseCompleted` | `TokenUsage usage { prompt_tokens, completion_tokens, reasoning_tokens, tool_tokens }`, `InferencePerformance performance`, `FinishReason finish_reason`, `repeated ToolCall tool_calls { name, arguments_json, coercible_args, id }` |
-| `RESPONSE_EVENT_TYPE_FAILED` | `ResponseFailed` | `error_code` (`content_filter`, `previous_response_not_found`, `invalid_request_error`, `unsupported_modality`, `server_error`), `error_message`. A `server_error` message is generic, `Inference failed (ref 1a2b3c4d)`; the server log carries the full error under the same ref. |
+| `RESPONSE_EVENT_TYPE_FAILED` | `ResponseFailed` | `error_code` (`content_filter`, `previous_response_not_found`, `invalid_request_error`, `unsupported_modality`, `server_error`, `stream_overflow`), `error_message`. Direct `Infer` uses `stream_overflow` when the token stream fails mid-generation (buffer overflow from a slow consumer, or an engine error). A `server_error` message is generic, `Inference failed (ref 1a2b3c4d)`; the server log carries the full error under the same ref. |
 
 `FinishReason`:
 
@@ -157,7 +167,7 @@ counts as an image.
 | `FINISH_REASON_GUARD_BLOCKED` | A guard step blocked the request. |
 | `FINISH_REASON_BREAK_CONDITION` | A `break` step halted the pipeline. |
 | `FINISH_REASON_MAX_ITERATIONS` | A `loop` step hit `max_iterations`. |
-| `FINISH_REASON_CANCELLED` | Client disconnect or slow-consumer cancellation. |
+| `FINISH_REASON_CANCELLED` | The engine cancelled the sequence before it finished. A slow consumer on direct `Infer` gets `FAILED` `stream_overflow` instead. |
 | `FINISH_REASON_STALLED` | The backend stalled and the sequence was force-failed; output is truncated. |
 | `FINISH_REASON_START_FAILED` | A queued sequence could not start when a slot freed up; no output was generated. |
 
@@ -189,8 +199,10 @@ own) answer `INVALID_ARGUMENT`.
 | `TextRerank` | `TextRerankRequest { model_id, query, repeated documents, top_k }` | `TextRerankResponse { repeated TextRerankResult { index, score }, total_tokens }` |
 
 `SimilarityMode` is `SIMILARITY_MODE_CROSS` (every pair; `scores` is a flat row-major
-`input_count x candidate_count` matrix) or `SIMILARITY_MODE_ZIPPED` (positional pairs; equal
-lengths required). `top_k: 0` returns every candidate, sorted. `TextRerank` accepts an embedding
+`input_count x candidate_count` matrix) or `SIMILARITY_MODE_ZIPPED` (positional pairs, one score
+per input). gRPC does not check zipped lengths: extra candidates are ignored, and fewer
+candidates than inputs fails the call with `INTERNAL`. Only the HTTP front refuses a mismatch
+with a `400`. `top_k: 0` returns every candidate, sorted. `TextRerank` accepts an embedding
 model (cosine ranking) or a reranker model (cross-encoder scoring).
 
 ### GraviteeDecisionService
@@ -213,7 +225,7 @@ Which of the two a model accepts is in `GetModelResponse.decision`.
 | `RawPrompt` | `question_id`, `oneof kind { RawChoice { option_keys }, RawScore { levels }, RawNoul }`, `oneof body { text, TokenList tokens }`. Text is tokenized with special tokens parsed and no BOS. |
 | `DecisionAnswer` | `question_id`, `oneof result { ChoiceAnswer { choice, probabilities, confidence }, ScoreAnswer { score, mode, probabilities, confidence }, NoulAnswer { probability_true } }`, `repeated RawScores raw_scores` (one per scoring variant, before temperature, only with `include_raw_scores`). |
 | `OptionProbability` | `key`, `probability`; choice options in prompt order, score levels keyed `"0".."n-1"`. |
-| `DecisionBlocked` | `code` (`content_filter`), `message`, `step_id`: set when a guard halted the pipeline. This is a successful response, not an error. |
+| `DecisionBlocked` | `code` (`content_filter`), `message`, `step_id` (always empty): set when a guard halted the pipeline. This is a successful response, not an error. |
 
 `usage.prompt_tokens` counts every prompt token evaluated; nothing is generated. Questions are
 rendered and answered in request order. `DecideBatch` asks the same questions about each state;
@@ -224,7 +236,7 @@ states; too many states, a missing state or a malformed question refuses the who
 
 | Status | When |
 | --- | --- |
-| `NOT_FOUND` | Unknown model or pipeline id. |
+| `NOT_FOUND` | Unknown model or pipeline id; both answer `Model not found: <id>`. |
 | `INVALID_ARGUMENT` | Malformed question or prompt; the message names it (`questions.<id>: ...`). |
 | `FAILED_PRECONDITION` | Not a decision target, an input mode the model's prompt source refuses, `raw` input to a pipeline, or media (images are not read yet). |
 | `INTERNAL` | The model produced no usable scores (a joint head that could not use the decision order), or an engine failure, reported as `Internal error (ref 1a2b3c4d)`. |
@@ -242,9 +254,9 @@ states; too many states, a missing state or a malformed question refuses the who
 | Field | Purpose |
 | --- | --- |
 | `model_id`, `model_name` | Logical id and HuggingFace repo or path. |
-| `model_type` | `ModelType` enum: `LLAMA_CPP`, `VLLM`, `ONNX_CLASSIFIER`, `ONNX_EMBEDDING`, `GLINER_CLASSIFIER`, `GLINER_NER`, `ONNX_RERANKER`, `LLAMA_CPP_EMBEDDING`, `LLAMA_CPP_RERANKER`, `LLAMA_CPP_DECISION`, `VLLM_DECISION`. |
-| `status` | `MODEL_STATUS_ACTIVE` or `MODEL_STATUS_ERROR`. |
-| `chat_template`, `bos_token`, `eos_token` | Template metadata, so a remote client can render prompts locally. |
+| `model_type` | `ModelType` enum: `LLAMA_CPP`, `VLLM`, `ONNX_CLASSIFIER`, `ONNX_EMBEDDING`, `GLINER_CLASSIFIER`, `GLINER_NER`, `ONNX_RERANKER`, `LLAMA_CPP_EMBEDDING`, `LLAMA_CPP_RERANKER`, `LLAMA_CPP_DECISION`, `VLLM_DECISION`, `GLINER_DECISION`. |
+| `status` | Always `MODEL_STATUS_ACTIVE`. The enum also defines `MODEL_STATUS_ERROR`, which is never set. |
+| `chat_template`, `bos_token`, `eos_token` | Template metadata of a text-generation model, so a remote client can render prompts locally. Set by `GetModel` only; `ListModels` entries leave them empty. |
 | `task` | `text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`, `decision`; empty when unknown. |
 | `hidden` | `true` for `visible: false` entries. |
 | `input_modalities` | `text` plus `image` and/or `audio`; empty reads as text-only. |
@@ -259,10 +271,7 @@ states; too many states, a missing state or a malformed question refuses the who
 | `ListPipelines` | `ListPipelinesRequest {}` | `ListPipelinesResponse { repeated GetPipelineResponse pipelines }` |
 
 `Pipeline { pipeline_id, pipeline_name, task, hidden, input_modalities }`: discovery metadata only. The DAG (steps, edges, step configs) is server-internal, built from the workspace YAML, and never crosses the wire.
-Steps are not on the wire. (Historical note: each step used to carry one of
-`infer_config`, `classify_config`, `embed_config`, `route_config`, `sub_pipeline`,
-`guard_config`, `break_config`, `loop_config`, `llm_guard_config`, `regex_guard_config`,
-`tool_select_config`, `todo_config`. The step vocabulary is documented in
+The step vocabulary is documented in
 [Pipelines](../../concepts/pipelines/README.md).
 
 ### grpcurl
@@ -327,6 +336,7 @@ grpcurl -cacert certs/ca.pem -import-path $PROTO -proto io/gravitee/singularitee
 | `grpc.compressionSupported` | boolean | `false` | gRPC message compression. |
 | `grpc.idleTimeout` | int (s) | `0` | Connection idle timeout; 0 disables. |
 | `grpc.tcpKeepAlive` | boolean | `true` | TCP keep-alive. |
+| `grpc.max-message-size` | long (bytes) | `262144` | Largest inbound gRPC message; raise it for base64 media. |
 | `grpc.secured` | boolean | `false` | Enable TLS. |
 | `grpc.ssl.sni` | boolean | `false` | Server Name Indication. |
 | `grpc.ssl.clientAuth` | string | `NONE` | `NONE`, `REQUEST`, `REQUIRED` (mTLS). |

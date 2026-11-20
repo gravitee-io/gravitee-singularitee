@@ -38,8 +38,10 @@ for that type; remote types become lazy gRPC proxies; `regex`, `composite_classi
 Engine factories are registered only when the engine library is on the classpath
 (`SingulariteeConfiguration`): llama.cpp types probe `io.gravitee.llama.cpp.LlamaModel`, `vllm`
 probes `io.gravitee.vllm.engine.VllmEngine`, ONNX types probe `ai.onnxruntime.OrtEnvironment`,
-GLiNER types probe `io.gravitee.lab.gliner4j.runtime.BaseRuntime`. A distribution flavour that
-lacks a library skips the type at boot with "no factory for type".
+`gliner_classifier` / `gliner_ner` probe `io.gravitee.lab.gliner4j.runtime.BaseRuntime`,
+`vllm_decision` probes `io.gravitee.vllm.decision.VllmDecider` and `gliner_decision` probes
+`io.gravitee.lab.gliner4j.GLiNER4jDecider`. A distribution flavour that lacks a library has no
+factory for the type, and a load request for it is refused with `Unsupported model type: <MODEL_TYPE_X>`.
 
 ## Common keys
 
@@ -72,10 +74,12 @@ safetensors falls back to `.bin`, which is refused unless `ai.vllm.allow-pickle-
 - A model whose type block cannot be parsed is skipped with `Skipping model '<name>'` and the
   rest of the workspace loads. A model whose weights fail to resolve is skipped at boot with
   `failed to load`; the server still starts.
-- Numeric keys left out parse as `0` and are forwarded as "engine default"; a numeric key
-  cannot be set to `0` explicitly. Plain booleans default to `false`; nullable booleans
-  (`offload_kqv`, `use_mlock`, `prompt_cache`, `enable_prefix_caching`, `enable_sleep_mode`)
-  distinguish unset from `false`.
+- In the engine blocks, numeric keys left out parse as `0` and are forwarded as "engine
+  default"; such a key cannot be set to `0` explicitly. Plain booleans default to `false`;
+  nullable booleans (`offload_kqv`, `use_mlock`, `prompt_cache`, `enable_prefix_caching`,
+  `enable_sleep_mode`, `vllm_decision.offline`, `llm_token_classifier.structured_output`)
+  distinguish unset from `false`. `llm_token_classifier.chunk_tokens` and `repeat_min_length`
+  are nullable integers, so `0` is a real value there.
 - Unknown keys anywhere are ignored, not rejected.
 
 ## Downloads and cache

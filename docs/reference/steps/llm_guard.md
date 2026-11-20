@@ -64,7 +64,7 @@ config:
 | `message` | string | unset | Jinja template rendered on `reject` and returned as the failure message. |
 | `context` | map | unset | Typed Jinja variables merged into the rendering context for the prompt and the message, and forwarded to the engine's chat template (`reasoning_effort`, `enable_thinking`). |
 | `tags` | object or string | unset | The judge model's reasoning and tool-call markers, same shape as [`infer`'s `tags`](./infer.md#tags). A bare string references a workspace `tags:` entry by id. Set it when the judge is a channel dialect such as Harmony, so the engine strips its analysis and only the answer reaches the verdict. |
-| `input_field` | string | ignored | Present in the YAML record but not mapped (the proto field is retired); the prompt decides what is screened. |
+| `input_field` | string | ignored | Accepted by the codec but not carried into `LlmGuardStepConfig`; the prompt decides what is screened. |
 
 ## Context fields
 

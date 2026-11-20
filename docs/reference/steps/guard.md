@@ -49,14 +49,14 @@ From `examples/pipelines/guard.yaml`:
 | --- | --- | --- | --- |
 | `model_id` | string | required | Logical id of a published classifier model. |
 | `input_field` | string | `prompt` | Context key to classify. `prompt` (or unset) means the request itself, inspected per `scope`; any other key is classified alone. |
-| `scope` | string | `conversation` | Turns inspected when the guard reads the request (`input_field` unset or `prompt`): `last_user`, `user_turns`, or `conversation` (every user, assistant and tool turn; system turns are excluded). Each turn is checked on its own and any match fires. Refused alongside any other `input_field`. A request sent as a bare prompt is inspected as that prompt. |
-| `on_empty` | string | `reject`; `skip` for `warn` and `redact` | What to do when there is no text to inspect (a blank field, or no turn in scope with text, such as an image-only message): `reject` halts with `FINISH_REASON_GUARD_BLOCKED` and the rendered `message`, `skip` passes to the next step. |
+| `scope` | string | `conversation` | Turns inspected when the guard reads the request (`input_field` unset or `prompt`): `last_user`, `user_turns`, or `conversation` (every user, assistant and tool turn; system turns are excluded). Each turn is checked on its own and any match fires. Refused alongside any other `input_field`. An unknown value fails the workspace load. A request sent as a bare prompt is inspected as that prompt. |
+| `on_empty` | string | `reject`; `skip` for `warn` and `redact` | What to do when there is no text to inspect (a blank field, or no turn in scope with text, such as an image-only message): `reject` halts with `FINISH_REASON_GUARD_BLOCKED` and the rendered `message`, `skip` passes to the next step (with `action: redact`, it first sets `output_field` to `""`). An unknown value fails the workspace load. |
 | `output_field` | string | `<id>.redacted` | `redact` only: context key receiving the redacted text (the original text when nothing matched). |
 | `action` | string | `reject` | `reject`, `warn` or `redact`. Unknown values fall back to `reject`. |
-| `trigger` | `{label, score}` | unset | Single trigger. Ignored when `triggers` is non-empty. Also fills the deprecated proto fields `trigger_label` / `trigger_score`. |
+| `trigger` | `{label, score}` | unset | Single trigger. Ignored when `triggers` is non-empty. |
 | `triggers` | list of `{label, score}` | unset | Several triggers; any match fires. |
 | `triggers[].label` | string | required | Classifier label to watch. |
-| `triggers[].score` | float | `0` (any score) | Minimum score. `0` is not sent and means any score. |
+| `triggers[].score` | float | `0` (any score) | Minimum score. `0` or a negative value is stored as `0` and means any score. |
 | `message` | string | unset | Jinja template rendered on `reject` and returned as the failure message. `{{ <id>.label }}` and `{{ <id>.score }}` are available. |
 | `redact_with_entity_type` | bool | `false` | `redact` only: replace each span with `[LABEL]` (upper-cased) instead of `************`. |
 
