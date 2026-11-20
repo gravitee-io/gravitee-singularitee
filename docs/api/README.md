@@ -42,7 +42,7 @@ service objects the gRPC server exposes; it holds no inference logic of its own.
 | Visibility | `visible: false` entries are omitted from `ListModels` / `ListPipelines` but `GetModel`, `GetPipeline`, `Infer` and `InferPipeline` still answer for them. | `visible: false` entries are absent from `/v1/models`, `404` on `/v1/models/{id}`, and `400` `model_not_found` on every other route. |
 | Multimodal | `ChatMessage.media` with `MediaContent { media_type, data }`. | `image_url` / `input_audio` content parts; media the target cannot read is refused with `unsupported_modality`. |
 | Discovery | `ListModels`, `GetModel`, `ListPipelines`, `GetPipeline`. | `GET /v1/models`, `GET /v1/models/{id}`; pipelines listed when `http.expose-pipelines: true`. |
-| Decisions | `GraviteeDecisionService/Decide` and `DecideBatch` with a `model_id` or a `pipeline_id`; a guard halt sets `DecideResponse.blocked`. | `POST /v1/systemone` (TypeSafe's System One shape) and `POST /v1/decisions` (OpenAI-shaped); a guard halt answers `200` with `blocked`. |
+| Decisions | `GraviteeDecisionService/Decide` and `DecideBatch` with a `model_id` or a `pipeline_id`; a guard halt sets `DecideResponse.blocked`. | `POST /v1/systemone` (TypeSafe's System One shape) and `POST /v1/decisions` (OpenAI's Decisions API shape); a guard halt answers `200` with `blocked`. |
 
 ### Picking a front
 - Gateway connectors and server-to-server composition use gRPC through `SingulariteeClient`

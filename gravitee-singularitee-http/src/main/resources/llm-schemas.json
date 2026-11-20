@@ -137,17 +137,39 @@
         "questions": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 400,
           "items": {
             "type": "object",
-            "required": ["id", "type", "instructions"],
+            "required": ["type", "instructions"],
             "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "type": { "enum": ["choice", "score", "noul"] },
-              "options": {
+              "name": { "type": ["string", "null"] },
+              "type": { "enum": ["predicate", "choice", "score"] },
+              "choices": {
                 "type": "array",
-                "items": { "type": "object", "required": ["key"], "properties": { "key": { "type": "string" } } }
+                "minItems": 2,
+                "maxItems": 255,
+                "items": {
+                  "type": "object",
+                  "required": ["value"],
+                  "properties": {
+                    "value": { "type": ["string", "boolean"] },
+                    "description": { "type": ["string", "null"] }
+                  }
+                }
               },
-              "levels": { "type": "array", "minItems": 2, "maxItems": 10 }
+              "levels": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 10,
+                "items": {
+                  "type": "object",
+                  "required": ["label"],
+                  "properties": {
+                    "label": { "type": "string" },
+                    "description": { "type": ["string", "null"] }
+                  }
+                }
+              }
             }
           }
         },
@@ -156,10 +178,10 @@
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["id", "type"],
+            "required": ["name", "type"],
             "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "type": { "enum": ["choice", "score", "noul"] },
+              "name": { "type": "string", "minLength": 1 },
+              "type": { "enum": ["predicate", "choice", "score"] },
               "option_keys": { "type": "array", "items": { "type": "string" } },
               "levels": { "type": "integer", "minimum": 2, "maximum": 10 },
               "prompt": { "type": "string" },

@@ -28,11 +28,11 @@
 #     "model": "judge",
 #     "input": "Customer message: I was charged twice for my order and nobody has replied.",
 #     "questions": [
-#       {"id": "route", "type": "choice", "instructions": "Which team should handle this?",
-#        "options": [{"key": "billing"}, {"key": "shipping"}, {"key": "technical"}]},
-#       {"id": "angry", "type": "noul", "instructions": "Is the customer angry?"},
-#       {"id": "urgency", "type": "score", "instructions": "How urgent is this?",
-#        "levels": ["can wait", "this week", "today", "right now"]}
+#       {"type": "choice", "name": "route", "instructions": "Which team should handle this?",
+#        "choices": [{"value": "billing"}, {"value": "shipping"}, {"value": "technical"}]},
+#       {"type": "predicate", "name": "angry", "instructions": "Is the customer angry?"},
+#       {"type": "score", "name": "urgency", "instructions": "How urgent is this?",
+#        "levels": [{"label": "can wait"}, {"label": "this week"}, {"label": "today"}, {"label": "right now"}]}
 #     ]
 #   }' | jq
 #

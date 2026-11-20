@@ -74,8 +74,8 @@ curl -s localhost:8080/v1/decisions -H 'Content-Type: application/json' -d '{
   "model": "judge",
   "input": "I was charged twice for my order.",
   "questions": [
-    {"id": "team", "type": "choice", "instructions": "Which team?",
-     "options": [{"key": "billing"}, {"key": "shipping"}]}
+    {"type": "choice", "name": "team", "instructions": "Which team?",
+     "choices": [{"value": "billing"}, {"value": "shipping"}]}
   ]
 }' | jq
 ```
