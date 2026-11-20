@@ -15,6 +15,29 @@ No workspace is baked into the images by default. Mount one and point
 `GRAVITEE_AI_WORKSPACE_PATH` at it. The intended topology is one model (or one engine) per
 process and GPU, composed over gRPC by a workspace that declares `remote:` endpoints.
 
+```mermaid
+flowchart TB
+    client["Clients"] -->|"Singularitee API"| a
+    client -->|"Singularitee API"| b
+    client -->|"Singularitee API"| c
+    subgraph a["Image: onnx-cpu or onnx-cuda"]
+        a1["Singularitee server<br/>gRPC :9090, HTTP :8080"] --> a2["ONNX Runtime, GLiNER"]
+    end
+    subgraph b["Image: llamacpp-cuda"]
+        b1["Singularitee server<br/>gRPC :9090, HTTP :8080"] --> b2["llama.cpp CUDA libraries"]
+    end
+    subgraph c["Image: vllm-cuda"]
+        c1["Singularitee server<br/>gRPC :9090, HTTP :8080"] --> c2["Python, vLLM"]
+    end
+```
+
+This page is the reference for the images. Two companion pages walk through them:
+
+| Page | Contents |
+| --- | --- |
+| [Backend setups](./backends.md) | Choosing a backend, building its distribution, running it on a host or in its image. |
+| [Model images](./model-images.md) | Baking a workspace and its weights into an image: a PII classifier on ONNX Runtime, an LLM on llama.cpp, a vLLM model. |
+
 | Dockerfile | Engine | Base image | Distribution profile | Model types |
 | --- | --- | --- | --- | --- |
 | `Dockerfile` | all, CPU | `graviteeio/java:25-debian` | default | every type; local development |
@@ -180,6 +203,8 @@ llama.cpp twin is several times faster on the same machine.
 
 ## See also
 
+- [Backend setups](./backends.md): one walk-through per backend.
+- [Model images](./model-images.md): self-contained images with a workspace and weights.
 - [Configuration](../../reference/configuration.md): every key the images accept through `GRAVITEE_*`.
 - [Getting started](../../getting-started/README.md): boot order and the readiness gate.
 - [Workspaces](../../workspaces/README.md): the YAML `GRAVITEE_AI_WORKSPACE_PATH` points at.
