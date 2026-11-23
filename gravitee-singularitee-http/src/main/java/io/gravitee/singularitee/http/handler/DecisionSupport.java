@@ -33,6 +33,7 @@ import io.gravitee.singularitee.protocol.Role;
 import io.gravitee.singularitee.service.DecisionTargetException;
 import io.vertx.ext.web.RoutingContext;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * What the two decision routes share: JSON to protocol values, chat-message states, and the
@@ -52,12 +53,16 @@ final class DecisionSupport {
     return DecisionMessages.toValue(Utils.OBJECT_MAPPER.get().convertValue(node, Object.class));
   }
 
-  /** Whether a JSON value carries an image, as an {@code image_url} or {@code input_image} part. */
+  /**
+   * Whether a JSON value carries an image, as an {@code image_url} or {@code input_image} part.
+   * The {@code data} of an {@code input_json} part is plain data and is not searched.
+   */
   static boolean hasImagePart(JsonNode node) {
     if (node == null) return false;
     if (node.isObject()) {
       String type = node.path("type").asText("");
       if (type.equals("image_url") || type.equals("input_image")) return true;
+      if (type.equals("input_json")) return false;
       for (JsonNode child : node) if (hasImagePart(child)) return true;
     } else if (node.isArray()) {
       for (JsonNode child : node) if (hasImagePart(child)) return true;
@@ -73,6 +78,41 @@ final class DecisionSupport {
     if (!node.isArray() || node.isEmpty()) return node;
     for (JsonNode part : node) if (!part.isObject() || !part.has("type")) return node;
     return TextNode.valueOf(partsText(node));
+  }
+
+  private static final Set<String> PART_TYPES = Set.of(
+    "input_text",
+    "input_json",
+    "output_text",
+    "refusal",
+    "text"
+  );
+
+  /**
+   * The first content part of {@code parts} this server cannot read, as an error message, or
+   * {@code null}. A file or audio part is refused rather than dropped from the prompt.
+   */
+  static String unreadablePart(JsonNode parts) {
+    if (!parts.isArray()) return null;
+    for (int i = 0; i < parts.size(); i++) {
+      JsonNode type = parts.get(i).path("type");
+      if (type.isTextual() && !PART_TYPES.contains(type.asText())) {
+        return (
+          "[" +
+          i +
+          "]: unsupported content part type \"" +
+          type.asText() +
+          "\"; accepted types: input_text, input_json, output_text, refusal"
+        );
+      }
+    }
+    return null;
+  }
+
+  private static String checkedPartsText(JsonNode parts, String where) {
+    String unreadable = unreadablePart(parts);
+    if (unreadable != null) throw new UnreadableItem(where + unreadable);
+    return partsText(parts);
   }
 
   private static String partsText(JsonNode parts) {
@@ -118,7 +158,9 @@ final class DecisionSupport {
           message
             .setRole(Role.ROLE_TOOL)
             .setToolCallId(m.path("call_id").asText(""))
-            .setContent(output.isArray() ? partsText(output) : text(output));
+            .setContent(
+              output.isArray() ? checkedPartsText(output, "input[" + i + "].output") : text(output)
+            );
         }
         case "", "message" -> {
           String name = m.path("role").asText("");
@@ -132,7 +174,13 @@ final class DecisionSupport {
             );
           };
           JsonNode content = m.path("content");
-          message.setRole(role).setContent(content.isArray() ? partsText(content) : text(content));
+          message
+            .setRole(role)
+            .setContent(
+              content.isArray()
+                ? checkedPartsText(content, "input[" + i + "].content")
+                : text(content)
+            );
         }
         default -> throw new UnreadableItem(
           "input[" + i + "]: unsupported item type \"" + type + "\"; " + ITEM_TYPES

@@ -264,9 +264,9 @@ objects, a value being a string or a boolean) for a choice or `levels` (2 to 10 
 `description` objects, lowest first) for a score. Answers come back in question order; `usage` is
 `input_tokens`, `output_tokens` (always 0) and `total_tokens`.
 
-Where it differs from OpenAI's API: images are refused with `unsupported_modality`, and for now
-so is any JSON object in `input` or `questions` whose `type` is `image_url` or `input_image`, even
-as plain data inside an `input_json` part (a known limitation, to be lifted later); choice values
+Where it differs from OpenAI's API: an `input_image` or `image_url` part is refused with
+`unsupported_modality` (the `data` of an `input_json` part is plain data and is never read as an
+image); a content part of another type, such as a file or audio part, is a `400`; choice values
 must be distinct as text, so `true` and `"true"` cannot share a question; content
 parts are read as text, an `input_json` part as its JSON, and a tool call as an assistant message;
 `prompt_cache_key`, `prompt_cache_options` and `safety_identifier` are accepted and ignored;

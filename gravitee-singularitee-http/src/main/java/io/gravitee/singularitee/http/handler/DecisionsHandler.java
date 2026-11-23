@@ -158,6 +158,11 @@ public final class DecisionsHandler implements Handler<RoutingContext> {
       if (instructions.isMissingNode() || instructions.isNull()) {
         return where + ": \"instructions\" must be provided";
       }
+      if (instructions.isArray() && instructions.isEmpty()) {
+        return where + ": \"instructions\" must not be an empty array";
+      }
+      String unreadable = DecisionSupport.unreadablePart(instructions);
+      if (unreadable != null) return where + ": instructions" + unreadable;
       var question = DecisionQuestion.newBuilder()
         .setId(ids.get(i))
         .setInstructions(DecisionSupport.value(DecisionSupport.flattenParts(instructions)));

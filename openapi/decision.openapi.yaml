@@ -38,10 +38,11 @@ info:
       hidden id returns `400` with `code: model_not_found`; anything else that does
       not decide returns `400` with `code: unsupported_model`.
     - Questions are rendered and answered in request order.
-    - Image input is not read yet: any image is refused with `unsupported_modality`.
-      For now this also refuses any JSON object in `input` or `questions` whose `type` is
-      `image_url` or `input_image`, even as plain data inside an `input_json` part; this
-      limitation is to be lifted later.
+    - Image input is not read yet: an `input_image` or `image_url` part is refused with
+      `unsupported_modality`. The `data` of an `input_json` part is plain data: keys such
+      as `role`, `type` or `image_url` inside it create no message and no image.
+    - A content part of another type, such as a file or audio part, is refused with a
+      `400` rather than dropped from the prompt.
     - A decision pipeline halted by a guard answers `200` with a `blocked` object; it
       is not an error. `/v1/systemone` then has no answers, `/v1/decisions` one
       `refusal` answer per question.

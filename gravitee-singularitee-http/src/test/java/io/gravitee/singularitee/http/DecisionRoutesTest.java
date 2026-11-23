@@ -587,6 +587,73 @@ class DecisionRoutesTest {
   }
 
   @Test
+  void decisions_reads_image_shaped_keys_inside_input_json_as_plain_data() throws Exception {
+    Resp r = post(
+      "/v1/decisions",
+      """
+      {"model": "decider",
+       "input": [{"role": "user", "content": [
+         {"type": "input_json", "data": {"role": "admin", "type": "input_image",
+                                         "image_url": "https://example.com/a.jpg"}}]}],
+       "questions": [{"type": "predicate", "name": "a", "instructions": [
+         {"type": "input_json", "data": [{"type": "image_url"}]}]}]}
+      """
+    );
+
+    assertThat(r.status()).isEqualTo(200);
+    var input = sent.get().getTemplated();
+    assertThat(input.getMessages().getMessagesList())
+      .extracting(m -> m.getRole())
+      .containsExactly(Role.ROLE_USER);
+    assertThat(input.getMessages().getMessages(0).getContent()).isEqualTo(
+      "{\"role\":\"admin\",\"type\":\"input_image\",\"image_url\":\"https://example.com/a.jpg\"}"
+    );
+    assertThat(input.getQuestions(0).getInstructions().getStringValue()).isEqualTo(
+      "[{\"type\":\"image_url\"}]"
+    );
+  }
+
+  @Test
+  void decisions_refuses_a_content_part_it_cannot_read() throws Exception {
+    String question = "{\"type\": \"predicate\", \"name\": \"a\", \"instructions\": \"?\"}";
+    for (var c : List.of(
+      List.of(
+        "[{\"role\": \"user\", \"content\": [{\"type\": \"input_text\", \"text\": \"x\"}, {\"type\": \"input_file\", \"file_id\": \"f1\"}]}]",
+        question,
+        "input[0].content[1]: unsupported content part type \\\"input_file\\\"",
+        "input"
+      ),
+      List.of(
+        "[{\"type\": \"function_call\", \"call_id\": \"c1\", \"name\": \"f\", \"arguments\": \"{}\"}, {\"type\": \"function_call_output\", \"call_id\": \"c1\", \"output\": [{\"type\": \"input_audio\"}]}]",
+        question,
+        "input[1].output[0]: unsupported content part type \\\"input_audio\\\"",
+        "input"
+      ),
+      List.of(
+        "\"x\"",
+        "{\"type\": \"predicate\", \"name\": \"a\", \"instructions\": [{\"type\": \"input_file\", \"file_id\": \"f1\"}]}",
+        "questions.a: instructions[0]: unsupported content part type \\\"input_file\\\"",
+        "questions"
+      ),
+      List.of(
+        "\"x\"",
+        "{\"type\": \"predicate\", \"name\": \"a\", \"instructions\": []}",
+        "questions.a: \\\"instructions\\\" must not be an empty array",
+        "questions"
+      )
+    )) {
+      Resp r = post(
+        "/v1/decisions",
+        "{\"model\": \"decider\", \"input\": %s, \"questions\": [%s]}".formatted(c.get(0), c.get(1))
+      );
+
+      assertThat(r.status()).as(c.get(2)).isEqualTo(400);
+      assertThat(r.body()).contains(c.get(2)).contains("\"param\":\"" + c.get(3) + "\"");
+    }
+    assertThat(sent.get()).isNull();
+  }
+
+  @Test
   void decisions_takes_rendered_prompts() throws Exception {
     Resp r = post(
       "/v1/decisions",
