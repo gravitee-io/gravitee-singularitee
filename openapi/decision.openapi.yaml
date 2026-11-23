@@ -39,6 +39,9 @@ info:
       not decide returns `400` with `code: unsupported_model`.
     - Questions are rendered and answered in request order.
     - Image input is not read yet: any image is refused with `unsupported_modality`.
+      For now this also refuses any JSON object in `input` or `questions` whose `type` is
+      `image_url` or `input_image`, even as plain data inside an `input_json` part; this
+      limitation is to be lifted later.
     - A decision pipeline halted by a guard answers `200` with a `blocked` object; it
       is not an error. `/v1/systemone` then has no answers, `/v1/decisions` one
       `refusal` answer per question.
@@ -339,7 +342,9 @@ components:
                 type: array
                 minItems: 2
                 maxItems: 255
-                description: "`choice`: the options, in prompt order; the model may allow fewer."
+                description: |
+                  `choice`: the options, in prompt order; the model may allow fewer. Values
+                  must be distinct as text, so `true` and `"true"` cannot share a question.
                 items:
                   type: object
                   required: [value]
