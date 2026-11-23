@@ -256,6 +256,10 @@ curl localhost:8080/v1/systemone \
 
 #### POST /v1/decisions
 Spec: [decision.openapi.yaml](../../../openapi/decision.openapi.yaml).
+
+> **Breaking change.** The request and response shape of this endpoint changed to follow
+> OpenAI's Decisions API. Requests in the previous shape are no longer accepted.
+
 The request and response shape of OpenAI's Decisions API: `model`, `input` (a string, or an
 array of messages and tool items; an item the server cannot read is refused with a `400`)
 and `questions`, each with `type` (`predicate`, `choice`,
