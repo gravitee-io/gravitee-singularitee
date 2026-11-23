@@ -537,22 +537,7 @@ class DecisionRoutesTest {
   }
 
   @Test
-  void decisions_refuses_a_whitespace_only_question_name() throws Exception {
-    Resp r = post(
-      "/v1/decisions",
-      """
-      {"model": "decider", "input": "x",
-       "questions": [{"type": "predicate", "name": "  ", "instructions": "?"}]}
-      """
-    );
-
-    assertThat(r.status()).isEqualTo(400);
-    assertThat(r.body()).contains("questions[0]: \\\"name\\\" must not be only whitespace");
-    assertThat(sent.get()).isNull();
-  }
-
-  @Test
-  void decisions_sends_an_empty_name_under_a_generated_id_and_echoes_it() throws Exception {
+  void decisions_sends_a_blank_name_under_a_generated_id_and_echoes_it() throws Exception {
     when(decisions.execute(any())).thenAnswer(inv -> {
       DecideRequest request = inv.getArgument(0);
       sent.set(request);
@@ -567,20 +552,22 @@ class DecisionRoutesTest {
       );
     });
 
-    Resp r = post(
-      "/v1/decisions",
-      """
-      {"model": "decider", "input": "x",
-       "questions": [{"type": "predicate", "name": "", "instructions": "?"}]}
-      """
-    );
+    for (String name : List.of("", "  ")) {
+      Resp r = post(
+        "/v1/decisions",
+        """
+        {"model": "decider", "input": "x",
+         "questions": [{"type": "predicate", "name": "%s", "instructions": "?"}]}
+        """.formatted(name)
+      );
 
-    assertThat(r.status()).isEqualTo(200);
-    assertThat(sent.get().getTemplated().getQuestions(0).getId()).isEqualTo("question_0");
-    JsonNode n = mapper.readTree(r.body());
-    assertThat(n.at("/answers/0/name").isTextual()).isTrue();
-    assertThat(n.at("/answers/0/name").asText()).isEmpty();
-    assertThat(n.at("/answers/0/probability").asDouble()).isEqualTo(0.4);
+      assertThat(r.status()).as("name = \"%s\"", name).isEqualTo(200);
+      assertThat(sent.get().getTemplated().getQuestions(0).getId()).isEqualTo("question_0");
+      JsonNode n = mapper.readTree(r.body());
+      assertThat(n.at("/answers/0/name").isTextual()).isTrue();
+      assertThat(n.at("/answers/0/name").asText()).isEqualTo(name);
+      assertThat(n.at("/answers/0/probability").asDouble()).isEqualTo(0.4);
+    }
   }
 
   @Test

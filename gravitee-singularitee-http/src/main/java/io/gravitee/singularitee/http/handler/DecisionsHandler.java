@@ -151,9 +151,6 @@ public final class DecisionsHandler implements Handler<RoutingContext> {
     for (int i = 0; i < questions.size(); i++) {
       JsonNode q = questions.get(i);
       String name = q.path("name").asText(null);
-      if (!unnamed(name) && name.isBlank()) {
-        return "questions[" + i + "]: \"name\" must not be only whitespace";
-      }
       String where = unnamed(name) ? "questions[" + i + "]" : "questions." + name;
       // Answers map back to their question by name, so a repeated one would mix them up.
       if (name != null && !names.add(name)) return where + ": \"name\" must be unique";
@@ -215,7 +212,7 @@ public final class DecisionsHandler implements Handler<RoutingContext> {
 
   /**
    * The protocol id of each question: its name, or {@code question_<index>} when unnamed or its name
-   * is empty, since the protocol needs a unique non-blank id where OpenAI leaves the name
+   * is blank, since the protocol needs a unique non-blank id where OpenAI leaves the name
    * optional.
    */
   private static List<String> ids(JsonNode questions) {
@@ -234,7 +231,7 @@ public final class DecisionsHandler implements Handler<RoutingContext> {
   }
 
   private static boolean unnamed(String name) {
-    return name == null || name.isEmpty();
+    return name == null || name.isBlank();
   }
 
   private static String raw(JsonNode prompts, DecideRequest.Builder request, List<Asked> asked) {

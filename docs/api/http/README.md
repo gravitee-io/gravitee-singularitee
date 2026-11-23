@@ -268,7 +268,9 @@ Where it differs from OpenAI's API: images are refused with `unsupported_modalit
 parts are read as text, an `input_json` part as its JSON, and a tool call as an assistant message;
 `prompt_cache_key`, `prompt_cache_options` and `safety_identifier` are accepted and ignored;
 `model` names a decision model or a decision pipeline; a JSON object is accepted as `input` and
-given to the template as is. Three additions: `prompts` the caller already rendered, in place of
+given to the template as is. On a pipeline target the decide step reads the user text only: other
+messages and tool items are not shown to the model, and an input without a user message is a
+`400`. Three additions: `prompts` the caller already rendered, in place of
 `input` and `questions` (`name`, `type`, `prompt` text or `prompt_tokens`; `option_keys` for a
 choice, `levels` for a score), mixing the two being a `400`; `include_raw_scores`; and `mode`, the
 most probable level, on a score answer.

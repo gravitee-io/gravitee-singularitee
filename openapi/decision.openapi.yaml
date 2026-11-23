@@ -333,7 +333,7 @@ components:
               type: { $ref: "#/components/schemas/DecisionQuestionType" }
               name:
                 type: [string, "null"]
-                description: Echoed on the answer; names must be unique and not only whitespace.
+                description: Echoed on the answer; names must be unique. A blank name counts as unnamed.
               instructions: { $ref: "#/components/schemas/ContentParts" }
               choices:
                 type: array
