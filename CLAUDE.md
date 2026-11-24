@@ -261,12 +261,14 @@ passes here and only fails at boot.
 **End-to-end tests** (`gravitee-singularitee-standalone-e2e`) boot the built distribution through
 `run-server.sh` on a workspace of their own and drive it over HTTP, one test class per backend
 over a shared contract (`SpanOffsetsContract`: span offsets, `token`, guard redaction). They are
-optional: a backend runs only when its model is already in the models directory, or when
-`SINGULARITEE_E2E` names it, which also lets the server download the model.
+opt-in: the module skips its tests unless the `e2e` profile is on (`task test:e2e` sets it), so
+`mvn test` never boots a server. Under the profile a backend runs only when its model is already
+in the models directory, or when `SINGULARITEE_E2E` names it, which also lets the server download
+the model; the others are reported as skipped, with the reason.
 
 ```bash
 mvn -o install -DskipTests                                    # they test target/distribution, so build first
-task test:e2e                                                 # backends whose models are cached
+task test:e2e                                                 # backends whose models are cached (mvn ... test -Pe2e)
 SINGULARITEE_E2E=regex,onnx task test:e2e                     # named backends, downloading as needed
 SINGULARITEE_E2E_URL=http://gpu-host:8080 task test:e2e       # a server that is already running
 ```

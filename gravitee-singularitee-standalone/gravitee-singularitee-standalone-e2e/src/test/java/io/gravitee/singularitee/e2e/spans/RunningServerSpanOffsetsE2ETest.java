@@ -15,8 +15,6 @@
  */
 package io.gravitee.singularitee.e2e.spans;
 
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
-
 import io.gravitee.singularitee.e2e.SingulariteeServer;
 import java.util.List;
 
@@ -58,10 +56,14 @@ class RunningServerSpanOffsetsE2ETest extends SpanOffsetsContract {
   }
 
   @Override
-  SingulariteeServer startServer() {
+  String skipReason() {
     String url = System.getenv(URL);
-    assumeTrue(url != null && !url.isBlank(), URL + " is not set");
-    return SingulariteeServer.attach(url.strip());
+    return url == null || url.isBlank() ? URL + " is not set" : null;
+  }
+
+  @Override
+  SingulariteeServer startServer() {
+    return SingulariteeServer.attach(System.getenv(URL).strip());
   }
 
   private static String env(String name, String fallback) {

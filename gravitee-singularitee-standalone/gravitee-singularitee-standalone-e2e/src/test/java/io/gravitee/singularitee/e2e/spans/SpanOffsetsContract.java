@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -62,6 +63,7 @@ abstract class SpanOffsetsContract {
   static final String SENTENCE = BEFORE + EMAIL + AFTER;
 
   private SingulariteeServer server;
+  private String skip;
 
   /** The key naming this backend in {@code SINGULARITEE_E2E}. */
   abstract String backend();
@@ -90,16 +92,28 @@ abstract class SpanOffsetsContract {
     return 800;
   }
 
-  /** Starts the server this backend is tested on, or aborts when the backend does not run. */
+  /** Why this backend does not run, or {@code null} when it does. */
+  String skipReason() {
+    return E2e.skipReason(backend(), repositories());
+  }
+
+  /** Starts the server this backend is tested on. */
   SingulariteeServer startServer() throws Exception {
-    String skip = E2e.skipReason(backend(), repositories());
-    assumeTrue(skip == null, skip);
     return SingulariteeServer.start(resource("workspaces/" + workspace()), List.of(model()));
   }
 
   @BeforeAll
   void start() throws Exception {
-    server = startServer();
+    skip = skipReason();
+    if (skip == null) {
+      server = startServer();
+    }
+  }
+
+  /** Per test, so a backend that does not run is counted as skipped, with its reason. */
+  @BeforeEach
+  void runsOnlyWhenSelected() {
+    assumeTrue(skip == null, skip);
   }
 
   @AfterAll

@@ -23,7 +23,7 @@
     <parent>
         <groupId>io.gravitee.singularitee</groupId>
         <artifactId>gravitee-singularitee-standalone</artifactId>
-        <version>1.12.2</version>
+        <version>1.12.3</version>
     </parent>
 
     <artifactId>gravitee-singularitee-standalone-e2e</artifactId>
@@ -35,7 +35,18 @@
         <!-- Tests only: nothing to publish. -->
         <maven.deploy.skip>true</maven.deploy.skip>
         <maven.javadoc.skip>true</maven.javadoc.skip>
+        <!-- Opt-in: these tests boot real servers, so they run only with -Pe2e. -->
+        <skipTests>true</skipTests>
     </properties>
+
+    <profiles>
+        <profile>
+            <id>e2e</id>
+            <properties>
+                <skipTests>false</skipTests>
+            </properties>
+        </profile>
+    </profiles>
 
     <dependencies>
         <!-- Orders the reactor: the distribution is assembled before these tests run. Its

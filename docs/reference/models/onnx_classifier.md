@@ -90,7 +90,8 @@ Sequence-level with an explicit label list (`examples/classifier/toxicity-bert.y
   (special tokens included), summed over the chunks of a split input; `completion_tokens` is
   always 0.
 - **`TOKEN` mode is NER.** There is no separate NER value; token mode returns `start`/`end`
-  character spans and the engine's task becomes `token-classification`.
+  spans and the engine's task becomes `token-classification`. Offsets are Java string indices
+  (UTF-16 code units), and `token` is the input text between them, not the tokenizer's piece.
 - **What gets downloaded.** `OnnxModelResolver` fetches `model_path` together with every
   sibling in the same repository directory (an `onnx/` folder often carries external data
   files), `config_json_path`, and the tokenizer: a single file, every file under a directory

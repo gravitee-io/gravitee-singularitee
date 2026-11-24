@@ -27,6 +27,7 @@ import io.gravitee.singularitee.inference.onnx.bert.config.OnnxBertConfig;
 import io.gravitee.singularitee.inference.onnx.bert.resource.OnnxBertResource;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterAll;
@@ -131,6 +132,32 @@ public class OnnxBertTokenClassificationTest extends OnnxBertBaseTest {
     assertEquals("Laura", text.substring(results.get(0).start(), results.get(0).end()));
     assertEquals("Houston", text.substring(results.get(1).start(), results.get(1).end()));
     assertEquals("Texas", text.substring(results.get(2).start(), results.get(2).end()));
+  }
+
+  @Test
+  public void token_boundary_splits_are_string_indices_past_characters_outside_the_bmp() {
+    // No sentence or clause boundary: the splitter has to cut on token ends.
+    String text = "😀 Houston ".repeat(40).strip();
+    var chunkedModel = new OnnxBertClassifierModel(
+      new OnnxBertConfig(
+        TOKEN_ONNX_BERT_RESOURCE,
+        NativeMath.INSTANCE,
+        Map.of(CLASSIFIER_MODE, TOKEN, MAX_SEQUENCE_LENGTH, 8)
+      )
+    );
+
+    var chunks = chunkedModel.split(text);
+
+    assertTrue(chunks.size() > 1, "the input must be split: " + chunks);
+    chunks.forEach(c -> assertEquals(c.text(), text.substring(c.start(), c.end())));
+    // Cuts fall between tokens and the tail is kept: the chunks hold the words of the input.
+    assertEquals(
+      List.of(text.split("\\s+")),
+      chunks
+        .stream()
+        .flatMap(c -> Arrays.stream(c.text().strip().split("\\s+")))
+        .toList()
+    );
   }
 
   @Test
