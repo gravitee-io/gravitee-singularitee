@@ -1,3 +1,10 @@
+## [1.12.3](https://github.com/gravitee-io/gravitee-singularitee/compare/1.12.2...1.12.3) (2026-11-24)
+
+
+### Bug Fixes
+
+* **http:** align /v1/decisions with OpenAI Decisions API shape ([#28](https://github.com/gravitee-io/gravitee-singularitee/issues/28)) ([fdc4d87](https://github.com/gravitee-io/gravitee-singularitee/commit/fdc4d8751078bee21e4391696e00f3fb48e6de86))
+
 ## [1.12.2](https://github.com/gravitee-io/gravitee-singularitee/compare/1.12.1...1.12.2) (2026-11-09)
 
 
