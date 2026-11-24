@@ -1,3 +1,15 @@
+# [1.13.0](https://github.com/gravitee-io/gravitee-singularitee/compare/1.12.3...1.13.0) (2026-11-24)
+
+
+### Bug Fixes
+
+* **spans:** implement UTF-16 span offset support with E2E tests ([#29](https://github.com/gravitee-io/gravitee-singularitee/issues/29)) ([b8b723c](https://github.com/gravitee-io/gravitee-singularitee/commit/b8b723c27bf5076449e2b9ba6856c3d03bdeb6bf))
+
+
+### Features
+
+* **deps:** update llama.cpp to v1.0.0 (llamaj.cpp 2.12.0) ([65471aa](https://github.com/gravitee-io/gravitee-singularitee/commit/65471aa299baf1cdc1fa9264fdfce59061f32ac0))
+
 ## [1.12.3](https://github.com/gravitee-io/gravitee-singularitee/compare/1.12.2...1.12.3) (2026-11-24)
 
 
