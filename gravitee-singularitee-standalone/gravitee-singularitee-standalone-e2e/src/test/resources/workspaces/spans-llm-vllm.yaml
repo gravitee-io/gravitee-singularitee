@@ -1,0 +1,65 @@
+# A generative model listing the entities it finds, on vLLM. Needs the vLLM venv
+# (scripts/setup-venv.sh). The model and classifier blocks are those of
+# examples/vllm/pii-nordic-llm.yaml.
+workspace:
+  name: e2e-spans-llm-vllm
+
+  includes:
+    pipelines:
+      - redact.yaml
+
+  models:
+    - id: llm
+      name: unified-analytics/nordic-pii-spans-qwen3.5-4b-BF16
+      type: vllm
+      visible: false
+      memory_check: warn
+      vllm:
+        dtype: auto
+        max_model_len: 4096
+        max_num_seqs: 8
+        gpu_memory_utilization: 0.5
+        enable_chunked_prefill: true
+
+    - id: pii
+      type: llm_token_classifier
+      llm_token_classifier:
+        model_id: llm
+        # The prompt the model was trained with (prompt.json in the repository), verbatim.
+        system_prompt: >-
+          Find all personal data in the user's text. Answer with JSON only:
+          {"spans":[{"label":"...","text":"...","ref":"p1"}]}. List the spans in the order they
+          appear and copy each text exactly as written. ref numbers the people (p1, p2, ...) so
+          that every mention of the same person, and data that belongs to them, gets the same
+          ref. Labels: PERSON, ADDRESS, PHONE, EMAIL, NATIONAL_ID, DATE_OF_BIRTH, AGE, GENDER,
+          HEALTH, SPECIAL_CATEGORY, CRIMINAL, BANK_ACCOUNT, PAYMENT_CARD, ID_DOCUMENT,
+          LICENSE_PLATE, IP_ADDRESS, USERNAME, EMPLOYEE_ID. If there is none, answer
+          {"spans":[]}.
+        labels:
+          - PERSON
+          - ADDRESS
+          - PHONE
+          - EMAIL
+          - NATIONAL_ID
+          - DATE_OF_BIRTH
+          - AGE
+          - GENDER
+          - HEALTH
+          - SPECIAL_CATEGORY
+          - CRIMINAL
+          - BANK_ACCOUNT
+          - PAYMENT_CARD
+          - ID_DOCUMENT
+          - LICENSE_PLATE
+          - IP_ADDRESS
+          - USERNAME
+          - EMPLOYEE_ID
+        answer:
+          spans: spans
+          label: label
+          text: text
+          metadata: [ref]
+        structured_output: true
+        max_tokens: 1500
+        context:
+          enable_thinking: false

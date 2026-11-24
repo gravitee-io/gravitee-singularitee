@@ -1,0 +1,28 @@
+# Shared by every spans-*.yaml workspace: redacts whatever the workspace's 'pii' model finds
+# in the last user turn, then hands the redacted text back without any generation.
+workspace:
+  pipelines:
+    - id: redact
+      entry: guard
+      steps:
+        - id: guard
+          type: guard
+          next_step: echo
+          config:
+            model_id: pii
+            scope: last_user
+            action: redact
+            output_field: guard.output
+
+        # No step returns a context field as the answer without a model, so this one always
+        # rejects and carries the redacted text in its message. The test reads it there.
+        - id: echo
+          type: regex_guard
+          role: output
+          config:
+            input_field: guard.output
+            action: reject
+            patterns:
+              - name: ANY
+                pattern: '(?s).+'
+            message: "{{ guard.output }}"

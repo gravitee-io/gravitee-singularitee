@@ -93,12 +93,13 @@ public abstract class OnnxBertInference<INPUT, OUTPUT>
     return tokenizer.encode(text, false, false).getIds().length;
   }
 
-  /** Exclusive character end-offset of each content token in {@code text}. */
+  /** Exclusive end of each content token in {@code text}, as a {@code String} index. */
   private int[] tokenEndOffsets(String text) {
     CharSpan[] spans = tokenizer.encode(text, false, false).getCharTokenSpans();
+    CodePointOffsets offsets = CodePointOffsets.of(text);
     int[] ends = new int[spans.length];
     for (int i = 0; i < spans.length; i++) {
-      ends[i] = spans[i].getEnd();
+      ends[i] = offsets.toStringIndex(spans[i].getEnd());
     }
     return ends;
   }

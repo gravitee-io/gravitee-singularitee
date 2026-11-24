@@ -1,0 +1,15 @@
+# Deterministic span source: no model, no native library.
+workspace:
+  name: e2e-spans-regex
+
+  includes:
+    pipelines:
+      - redact.yaml
+
+  models:
+    - id: pii
+      type: regex
+      regex:
+        patterns:
+          - pattern: '(?U)\b[\p{L}\p{Nd}._%+-]+@[\p{L}\p{Nd}.-]+\.\p{L}{2,}\b'
+            entity_type: EMAIL

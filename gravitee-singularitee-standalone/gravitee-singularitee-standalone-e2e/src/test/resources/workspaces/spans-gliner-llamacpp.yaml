@@ -1,0 +1,19 @@
+# GLiNER entity extraction on llama.cpp.
+workspace:
+  name: e2e-spans-gliner-llamacpp
+
+  includes:
+    pipelines:
+      - redact.yaml
+
+  models:
+    - id: pii
+      name: gravitee-io/gliner4j-gliner2-privacy-filter-PII-multi-llamacpp
+      type: gliner_ner
+      memory_check: disabled
+      gliner_ner:
+        variant: f16
+        threshold: 0.4
+        entities:
+          - name: email
+            description: Email address

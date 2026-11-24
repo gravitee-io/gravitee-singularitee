@@ -36,5 +36,6 @@
         <module>gravitee-singularitee-standalone-bootstrap</module>
         <module>gravitee-singularitee-standalone-container</module>
         <module>gravitee-singularitee-standalone-distribution</module>
+        <module>gravitee-singularitee-standalone-e2e</module>
     </modules>
 </project>

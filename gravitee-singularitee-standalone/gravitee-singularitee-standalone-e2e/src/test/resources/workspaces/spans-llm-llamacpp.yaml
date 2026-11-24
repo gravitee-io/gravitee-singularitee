@@ -1,0 +1,35 @@
+# A generative model listing the entities it finds, on llama.cpp. The model is small on
+# purpose: the test is about where the spans land, not about recall.
+workspace:
+  name: e2e-spans-llm-llamacpp
+
+  includes:
+    pipelines:
+      - redact.yaml
+
+  models:
+    - id: llm
+      name: Qwen/Qwen3-0.6B-GGUF
+      type: llama_cpp
+      visible: false
+      memory_check: disabled
+      llama_cpp:
+        path: Qwen3-0.6B-Q8_0.gguf
+        n_ctx: 4096
+        n_seq_max: 2
+        n_gpu_layers: 999
+
+    - id: pii
+      type: llm_token_classifier
+      llm_token_classifier:
+        model_id: llm
+        system_prompt: >-
+          Find every email address in the user's text. Answer with JSON only:
+          {"spans":[{"label":"EMAIL","text":"..."}]}. Copy each address exactly as written.
+          If there is none, answer {"spans":[]}.
+        labels:
+          - EMAIL
+        structured_output: true
+        max_tokens: 200
+        context:
+          enable_thinking: false

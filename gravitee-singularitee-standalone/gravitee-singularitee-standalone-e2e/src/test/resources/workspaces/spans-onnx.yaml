@@ -1,0 +1,19 @@
+# ONNX Runtime token classifier (BERT word pieces through the HuggingFace tokenizer).
+workspace:
+  name: e2e-spans-onnx
+
+  includes:
+    pipelines:
+      - redact.yaml
+
+  models:
+    - id: pii
+      name: gravitee-io/bert-small-pii-detection
+      type: onnx_classifier
+      memory_check: disabled
+      onnx_classifier:
+        model_path: model.onnx
+        tokenizer_path: tokenizer.json
+        config_json_path: config.json
+        max_sequence_length: 512
+        classifier_mode: TOKEN
