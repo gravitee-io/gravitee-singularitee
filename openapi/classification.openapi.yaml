@@ -51,8 +51,8 @@ paths:
       summary: Classify text
       description: |
         Sequence classification (one label set per input), token classification
-        (NER and PII spans with character offsets), and zero-shot classification
-        via per-request `labels` (GLiNER models; labels without a `name` are ignored).
+        (NER and PII spans with offsets in UTF-16 code units), and zero-shot classification
+        via per-request `labels` (GLiNER models; a label with a blank `name` is ignored, one without `name` is a `400`).
         Each input is classified independently; results are returned in input order.
       requestBody:
         required: true
@@ -69,6 +69,7 @@ paths:
                 $ref: "#/components/schemas/ClassifyResponse"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/NotReady" }
 
@@ -87,14 +88,21 @@ components:
       description: |
         Invalid JSON or schema violation (`code: invalid_request_error`), missing
         `model` or empty `input` (`param` names the field), unknown or hidden model
-        (`code: model_not_found`), or a model that is not a classifier
-        (`code: unsupported_model`).
+        (`code: model_not_found`), a model that is not a classifier
+        (`code: unsupported_model`), or labels a decision classifier refuses, such as
+        duplicate names or too many (`code: invalid_request_error`).
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
     Unauthorized:
       description: "Missing or invalid bearer token (`code: invalid_api_key`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooLarge:
+      description: "Body larger than `http.max-body-size` (`type: invalid_request_error`, `code: request_too_large`)."
       content:
         application/json:
           schema:
@@ -138,6 +146,7 @@ components:
                 - model_not_ready
                 - not_found
                 - method_not_allowed
+                - request_too_large
                 - internal_error
                 - null
 
@@ -192,7 +201,7 @@ components:
                       items: { type: number }
               spans:
                 type: array
-                description: Present only for token-classification results (entries that carry a character offset).
+                description: Present only for token-classification results (entries that carry an offset).
                 items:
                   type: object
                   required: [label, score, start]

@@ -210,7 +210,7 @@ Build arguments and runtime variables of the images are listed in
 - A workspace naming a type its flavour does not carry is refused at load with `Unsupported model type: <MODEL_TYPE_X>`. The server still starts; set `GRAVITEE_AI_WORKSPACE_STRICT=true` to fail startup instead.
 - `target/distribution` holds one flavour at a time. After a `-Pdist-onnx` or `-Pcuda` build, rebuild without profiles before going back to local development, or `run-server.sh` launches the narrowed distribution.
 - The llama.cpp bindings are per platform, and so is the distribution that carries them. `Class not found for runtime linux_x86_64: io.gravitee.llama.cpp.linux.x86_64.llama_h` at model load means the `llamaj.cpp` jar in `lib/` has no bindings for the platform the image runs on (a jar built locally on macOS carries only `macosx.aarch64`). Assemble the distribution with a jar that carries the Linux bindings.
-- llama.cpp and llamaj.cpp are pinned together (`v0.6.0`, nightly `b11429`, with `2.11.0`); so are the vLLM image and `scripts/setup-venv.sh` (`0.31.0`). See the notes in [Deployment](./README.md#notes).
+- llama.cpp and llamaj.cpp are pinned together (`v1.0.0`, nightly `b12359`, with `2.12.0`); so are the vLLM image and `scripts/setup-venv.sh` (`0.31.0`). See the notes in [Deployment](./README.md#notes).
 - The ONNX images also serve the GLiNER types; there is no separate GLiNER flavour.
 
 ## See also

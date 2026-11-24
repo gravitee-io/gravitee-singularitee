@@ -108,7 +108,7 @@ Point the same loader at your own file with `YamlWorkspaceLoader.load(path, temp
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `workspace.name` | string | unset | Informational; logged at load. |
+| `workspace.name` | string | unset | Informational; logged at load. Unset, it falls back to the `name` of the first `includes.models` file that has one. |
 | `workspace.remote` | object | unset | `default:` endpoint and/or `servers:` list. See below. |
 | `workspace.models` | list | `[]` | Model entries. |
 | `workspace.pipelines` | list | `[]` | Pipeline entries. |
@@ -126,7 +126,7 @@ Point the same loader at your own file with `YamlWorkspaceLoader.load(path, temp
 | `endpoint.id` | string | unset | Name referenced by `server:` (not needed on `default`). |
 | `endpoint.host` / `endpoint.port` | string / int | unset | gRPC address. |
 | `endpoint.ssl` | bool | `false` | Reach the endpoint over TLS. Trust material and any client certificate come from `grpc.client.ssl.*` in `gravitee.yml`. |
-| `endpoint.username` / `endpoint.password` | string | unset | HTTP Basic credentials sent as gRPC metadata. Require `ssl: true` unless `host` is loopback; a plaintext endpoint with credentials is refused at load. |
+| `endpoint.username` / `endpoint.password` | string | unset | HTTP Basic credentials sent as gRPC metadata. Require `ssl: true` unless `host` is loopback; a plaintext endpoint with credentials is refused at load: the endpoint is dropped with an ERROR and its models fail to register (startup fails only under `ai.workspace.strict`). |
 | `endpoint.http2_keep_alive_timeout` | int | `-1` | Seconds an idle HTTP/2 connection is held; `-1` keeps it open indefinitely. |
 
 ### Common model keys
@@ -182,7 +182,7 @@ Built-in templates and the variables available are in [Templates](../reference/t
 
 | Key | Resolved in | Purpose |
 | --- | --- | --- |
-| `includes.models[]` | `<workspace dir>/models/` | Each file contributes only its `workspace.models`. |
+| `includes.models[]` | `<workspace dir>/models/` | Each file contributes its `workspace.models`. When the root file declares no `remote:` block, the first included model file that has one supplies it; the same holds for `name`. |
 | `includes.pipelines[]` | `<workspace dir>/pipelines/` | Each file contributes only its `workspace.pipelines`. |
 | `includes.templates[]` | `<workspace dir>/templates/` | Each file contributes only its `workspace.templates`. |
 

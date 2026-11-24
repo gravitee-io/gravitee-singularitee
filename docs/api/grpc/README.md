@@ -143,8 +143,8 @@ invalid_request_error`. Engine support and the JSON Schema subset are in
 
 `ChatMessage { Role role, string content, repeated MediaContent media, repeated ToolCall tool_calls, string tool_call_id, string name }`.
 `Role` is `ROLE_SYSTEM`, `ROLE_USER`, `ROLE_ASSISTANT`, `ROLE_TOOL`. `MediaContent { MediaType media_type, bytes data }`
-carries base64 text as bytes; `MediaType` is `IMAGE_JPEG`, `IMAGE_PNG`, `IMAGE_GIF`, `IMAGE_BMP`, `AUDIO_WAV` or `APPLICATION_OCTET`. Media the target does not accept
-(see `input_modalities`) fails the stream with `error_code: unsupported_modality`; `APPLICATION_OCTET`
+carries base64 text as bytes; `MediaType` is `MEDIA_TYPE_IMAGE_JPEG`, `MEDIA_TYPE_IMAGE_PNG`, `MEDIA_TYPE_IMAGE_GIF`, `MEDIA_TYPE_IMAGE_BMP`, `MEDIA_TYPE_AUDIO_WAV` or `MEDIA_TYPE_APPLICATION_OCTET`. Media the target does not accept
+(see `input_modalities`) fails the stream with `error_code: unsupported_modality`; `MEDIA_TYPE_APPLICATION_OCTET`
 counts as an image.
 
 `InferResponse { ResponseEventType event_type, oneof event, StepRole step_role }`:
@@ -155,7 +155,7 @@ counts as an image.
 | `RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA` | `ResponseOutputTextDelta` | `delta`, `item_index`, `part_index`, `repeated PositionLogprobs logprobs` (only with `top_logprobs > 0`) |
 | `RESPONSE_EVENT_TYPE_PROGRESS` | `ResponseProgress` | `step_id`, `repeated TodoItem todos { id, title, status, proof }`, `completed`, `total`, `Elicitation elicitation { kind, question, repeated options, map<string,string> metadata }` (set when the `todo` step pauses to ask the user something; `kind` is `ask` from the core `ask_user` tool) |
 | `RESPONSE_EVENT_TYPE_COMPLETED` | `ResponseCompleted` | `TokenUsage usage { prompt_tokens, completion_tokens, reasoning_tokens, tool_tokens }`, `InferencePerformance performance`, `FinishReason finish_reason`, `repeated ToolCall tool_calls { name, arguments_json, coercible_args, id }` |
-| `RESPONSE_EVENT_TYPE_FAILED` | `ResponseFailed` | `error_code` (`content_filter`, `previous_response_not_found`, `invalid_request_error`, `unsupported_modality`, `server_error`, `stream_overflow`), `error_message`. Direct `Infer` uses `stream_overflow` when the token stream fails mid-generation (buffer overflow from a slow consumer, or an engine error). A `server_error` message is generic, `Inference failed (ref 1a2b3c4d)`; the server log carries the full error under the same ref. |
+| `RESPONSE_EVENT_TYPE_FAILED` | `ResponseFailed` | `error_code` (`content_filter`, `previous_response_not_found`, `invalid_request_error`, `unsupported_modality`, `server_error`, `stream_overflow`), `error_message`. Direct `Infer` uses `stream_overflow` when the token stream fails mid-generation (buffer overflow from a slow consumer, or an engine error). A `server_error` message is generic, `Inference failed (ref 1a2b3c4d)` on `Infer` and `Pipeline failed (ref 1a2b3c4d)` on `InferPipeline`; the server log carries the full error under the same ref. |
 
 `FinishReason`:
 
@@ -254,7 +254,7 @@ states; too many states, a missing state or a malformed question refuses the who
 | Field | Purpose |
 | --- | --- |
 | `model_id`, `model_name` | Logical id and HuggingFace repo or path. |
-| `model_type` | `ModelType` enum: `LLAMA_CPP`, `VLLM`, `ONNX_CLASSIFIER`, `ONNX_EMBEDDING`, `GLINER_CLASSIFIER`, `GLINER_NER`, `ONNX_RERANKER`, `LLAMA_CPP_EMBEDDING`, `LLAMA_CPP_RERANKER`, `LLAMA_CPP_DECISION`, `VLLM_DECISION`, `GLINER_DECISION`. |
+| `model_type` | `ModelType` enum. Reflects the engine kind, not the workspace `type`: `MODEL_TYPE_LLAMA_CPP` for any text-generation model, `MODEL_TYPE_ONNX_CLASSIFIER` for any classifier, `MODEL_TYPE_ONNX_EMBEDDING` for any embedder, `MODEL_TYPE_ONNX_RERANKER` for any reranker; decision models report `MODEL_TYPE_LLAMA_CPP_DECISION`, `MODEL_TYPE_VLLM_DECISION` or `MODEL_TYPE_GLINER_DECISION`. The other enum values are defined but not returned. Use `task` to tell models apart. |
 | `status` | Always `MODEL_STATUS_ACTIVE`. The enum also defines `MODEL_STATUS_ERROR`, which is never set. |
 | `chat_template`, `bos_token`, `eos_token` | Template metadata of a text-generation model, so a remote client can render prompts locally. Set by `GetModel` only; `ListModels` entries leave them empty. |
 | `task` | `text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`, `decision`; empty when unknown. |

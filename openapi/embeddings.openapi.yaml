@@ -73,6 +73,7 @@ paths:
                 $ref: "#/components/schemas/EmbeddingsResponse"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/NotReady" }
 
@@ -100,6 +101,7 @@ paths:
                 $ref: "#/components/schemas/RerankResponse"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/NotReady" }
 
@@ -128,6 +130,7 @@ paths:
                 $ref: "#/components/schemas/SimilarityResponse"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/NotReady" }
 
@@ -154,6 +157,12 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     Unauthorized:
       description: "Missing or invalid bearer token (`code: invalid_api_key`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooLarge:
+      description: "Body larger than `http.max-body-size` (`type: invalid_request_error`, `code: request_too_large`)."
       content:
         application/json:
           schema:
@@ -197,6 +206,7 @@ components:
                 - model_not_ready
                 - not_found
                 - method_not_allowed
+                - request_too_large
                 - internal_error
                 - null
 

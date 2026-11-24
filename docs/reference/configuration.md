@@ -188,7 +188,7 @@ Presentation only: the model and the wire see these names, while internal identi
 | Key | Default | Env var | Purpose |
 | --- | --- | --- | --- |
 | `plugins.path` | `${gravitee.home}/plugins` | `GRAVITEE_PLUGINS_PATH` | Directory whose plugin zips are loaded as gravitee step plugins by the node's plugin registry (parent-first classloading). The thirteen core steps must be present or startup fails. |
-| `plugins.workDir` | temp dir | `GRAVITEE_PLUGINS_WORKDIR` | Where plugin zips are extracted. |
+| `plugins.workDir` | `<plugins.path>/.work` | `GRAVITEE_PLUGINS_WORKDIR` | Where plugin zips are extracted. |
 | `step.<id>.enabled` | `true` | `GRAVITEE_STEP_<ID>_ENABLED` | Switch off a step plugin by its manifest id (for example `step.route.enabled: false`). |
 | `step-decorator.<id>.enabled` | `true` | `-D` or `gravitee.yml` key | The same switch for a step decorator plugin, by its manifest id. The key is `<plugin type>.<id>.enabled`. |
 | `license.key` | `${gravitee.home}/license/license.key` | `GRAVITEE_LICENSE_KEY` | Platform license file. Absent means the OSS license: every core step registers. A step whose `plugin.properties` declares a `feature=` must have that feature listed in the license's `features` to register; a workspace declaring such a step without the feature fails to load with the feature named. |

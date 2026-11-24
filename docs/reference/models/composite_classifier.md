@@ -52,7 +52,8 @@ workspace:
 
 Members may be `regex`, another `composite_classifier`, `onnx_classifier`,
 `gliner_classifier`, `gliner_ner`, `llm_token_classifier` or `remote_classifier`: anything registered as a
-`ClassifierEngine`. `name`, `memory_check` and `download` are ignored; `task`, `visible` and
+`ClassifierEngine`. `name` is the display name (falls back to `id`); `memory_check` and `download` are
+ignored; `task`, `visible` and
 `modalities` apply as on any entry.
 
 ## Notes

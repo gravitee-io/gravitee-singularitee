@@ -79,11 +79,11 @@ message. Invalid JSON is a `400` as well.
 
 | HTTP | `type` | `code` | When |
 | --- | --- | --- | --- |
-| 400 | `invalid_request_error` | `invalid_request_error` | Invalid JSON, schema violation, missing `model` / `input` / `query` / `documents` / `candidates`, `zipped` length mismatch, remote media URL. |
-| 400 | `invalid_request_error` | `invalid_request_error` | Structured output that is malformed or cannot be enforced (`param` is `response_format`, `response_format.json_schema` or `text.format`), see [Chat Completions](#post-v1chatcompletions). |
+| 400 | `invalid_request_error` | `invalid_request_error` | Invalid JSON, schema violation, missing `model` / `input` / `query` / `documents` / `candidates`, `zipped` length mismatch, remote media URL, `labels` a decision classifier refuses on `/v1/classify`. |
+| 400 | `invalid_request_error` | `invalid_request_error` | Structured output with a missing `name` or `schema`, combined with `tools`, or that cannot be enforced (`param` is `response_format`, `response_format.json_schema` or `text.format`), see [Chat Completions](#post-v1chatcompletions). |
 | 400 | `invalid_request_error` | `model_not_found` | `model` does not resolve or is hidden. |
 | 400 | `invalid_request_error` | `unsupported_model` | The model exists but serves another task. |
-| 400 | `invalid_request_error` | `unsupported_modality` | Image or audio attached to a target that reads text only (`param` is `messages` or `input`). Decisions refuse every image for now. |
+| 400 | `invalid_request_error` | `unsupported_modality` | Image or audio attached to a target that reads text only (`param` is `messages` or `input`). Decisions refuse every image for now, with `param` null. |
 | 400 | `invalid_request_error` | `unsupported_input` | Decisions only: templated input to a model without a prompt template, or rendered prompts to a model that decides jointly or to a pipeline. |
 | 401 | `invalid_request_error` | `invalid_api_key` | Missing or wrong bearer token; `WWW-Authenticate: Bearer` is set. |
 | 404 | `invalid_request_error` | `model_not_found` | `GET /v1/models/{id}` for an unknown or hidden id. |
@@ -97,7 +97,8 @@ message. Invalid JSON is a `400` as well.
 Failures that happen during generation are not HTTP errors: Chat and Completions end the choice
 with `finish_reason: "content_filter"` (guard block) or `"stop"`; the Responses API returns
 `status: "failed"` with `error.code` `previous_response_not_found` or `server_error`. A decision
-pipeline halted by a guard answers `200` with no answers and a `blocked` object.
+pipeline halted by a guard answers `200` with a `blocked` object: `/v1/systemone` with empty
+`answers`, `/v1/decisions` with one `refusal` answer per question.
 
 **Streaming.** `stream: true` switches the response to `text/event-stream`. The stream opens
 with a `: stream-open` comment frame, then `data: <json>\n\n` frames. Chat Completions and
@@ -142,11 +143,12 @@ tool calls arrive as whole `delta.tool_calls` chunks.
 `{"type":"text"}` (no constraint), `{"type":"json_object"}`, or
 `{"type":"json_schema","json_schema":{"name","strict","schema"}}`. `name` is required; `strict`
 is accepted and changes nothing, decoding enforces the schema either way. On a pipeline the
-format applies to the `role: output` step only. The request is refused with `400` `invalid_request_error` before anything
+format applies to the `role: output` step only. A `response_format` that is not an object, has
+no `type` or names an unknown `type` is a schema violation (`400` `invalid_request_error`,
+`param` null). The request is also refused with `400` `invalid_request_error` before anything
 is queued, with `param` `response_format` (or `response_format.json_schema` for a missing `name`
-or `schema`), when the field is malformed, the `type` is unknown, a schema keyword cannot be
-enforced, the target engine cannot enforce the format, the pipeline has no text-generation
-output step, or `tools` is also present. See
+or `schema`), when a schema keyword cannot be enforced, the target engine cannot enforce the
+format, the pipeline has no text-generation output step, or `tools` is also present. See
 [Structured output](../../guides/structured-output/README.md).
 
 ```bash

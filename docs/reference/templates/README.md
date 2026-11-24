@@ -162,7 +162,7 @@ Added for `infer` (`PromptAssembler.buildJinjaContext`); `llm_guard` adds only i
 | --- | --- |
 | `add_generation_prompt` | `true`. |
 | `bos_token`, `eos_token` | The engine's tokens, or empty strings. |
-| `tools` | `[{type: function, function: {name, description, parameters}}]`; absent with `inject_tools: false`; filtered by `tool_select`; server tools appended unless `server_tools: false`. |
+| `tools` | `[{type: function, function: {name, description, parameters}}]`; absent with `inject_tools: false`, server tools included; filtered by `tool_select`; server tools appended unless `server_tools: false`. |
 | step `context:` entries | Typed values (bool, number, string, list, map), overlaid last. |
 | `reasoning_effort` | Request value, else the step `context` value. |
 

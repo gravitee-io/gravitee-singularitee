@@ -202,8 +202,8 @@ ARG BASE_IMAGE=singularitee:llama-base
 
 FROM debian:bookworm-slim AS llama-natives
 # Keep both in step with install.sh (LLAMA_CPP_VERSION, LLAMA_CPP_SHA256_ubuntu_x64).
-ARG LLAMA_CPP_VERSION=b11429
-ARG LLAMA_CPP_SHA256=f6d25dde8f51133143d1453da4fd5f73b145127177612a283bf7995957af3392
+ARG LLAMA_CPP_VERSION=b12359
+ARG LLAMA_CPP_SHA256=0bc1f091e8916102b6d8f2cf944233a620e90a0f856c72d0ce41150c65c2e72e
 RUN apt-get update && apt-get install --yes --no-install-recommends curl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 # The loader expects the libraries flat, without llama.cpp's own tool implementations.

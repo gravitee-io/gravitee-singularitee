@@ -74,7 +74,7 @@ Writes:
 
 | Field | Value |
 | --- | --- |
-| `<id>.iterations` | Number of retries taken so far (incremented each time the condition fails). |
+| `<id>.iterations` | Number of times the condition failed so far, the pass that takes the fallback included (so `max_iterations: 3` allows two loop-backs). |
 | `<id>.max_iterations_reached` | `true` once the ceiling is hit. |
 
 Also appends `loopback_message` to `messages` and installs or clears the retry sampling override on the `PipelineContext`.

@@ -33,7 +33,7 @@ A pipeline is a directed graph of steps that the engine walks reactively. The sa
 | `grpc` | gRPC service implementations, engine-adapter factories, HuggingFace resolvers. |
 | `http` | OpenAI-compatible HTTP API. Pure translation, no inference logic. |
 | `client` | `SingulariteeClient`: thin gRPC client, the only dependency a caller needs. |
-| `standalone` | `bootstrap` (classloader entry point), `container` (`SingulariteeNode`, Spring config, server components), `distribution` (assembly). |
+| `standalone` | `bootstrap` (classloader entry point), `container` (`SingulariteeNode`, Spring config, server components), `distribution` (assembly), `e2e` (black-box tests against the built distribution). |
 
 ## Boot order
 
@@ -111,7 +111,7 @@ YAML `config:` block, and the `StepExecutor` built from the parent-owned
 diagnostics), so a plugin step is always observed. `StepPlugins.assemble` turns the plugins
 the registry discovered into the engine's executors and codecs. Rules enforced at boot: two
 providers for one type is a misassembly and fails; a core type without an executor fails
-("core step types without an executor"); a step can be switched off with
+("Core step types without an executor: [...]"); a step can be switched off with
 `step.<id>.enabled: false`; and a step whose manifest
 `feature` the platform license does not enable stays unregistered, so a workspace declaring it fails to load with the feature
 named (node licensing, the same `LicenseManager` the rest of Gravitee uses). Steps never cross

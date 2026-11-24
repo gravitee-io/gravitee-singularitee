@@ -64,8 +64,8 @@ A step that keeps the caller's conversation and only adds its own instructions (
 | `tags` | object or string | unset | Reasoning and tool-call markers, see below. A bare string references a workspace `tags:` entry by id. |
 | `context` | map | unset | Typed Jinja variables (`enable_thinking: false`, `reasoning_effort: medium`, lists, maps). Merged into the rendering context and forwarded as `template_context` when the engine renders the messages itself. |
 | `system` | string | unset | Jinja template prepended as a system turn. When the request already has a system message the two are merged into that turn (caller first, blank line, step text). |
-| `inject_tools` | bool | `true` | `false` hides the caller's tools: `{{ tools }}` is undefined in raw templates and empty for chat templates. |
-| `server_tools` | bool | `true` | `false` hides the server-owned todo tools (`set_todos`, `complete_todo`, `ask_user`) from this step. |
+| `inject_tools` | bool | `true` | `false` hides every tool from this step, the caller's and the server-owned todo tools alike (`server_tools` is not consulted): `{{ tools }}` is undefined in raw templates and empty for chat templates. |
+| `server_tools` | bool | `true` | `false` hides the server-owned todo tools (`set_todos`, `complete_todo`, `ask_user`) from this step while keeping the caller's. |
 | `strip_thinking` | bool | `false` | `true` removes the span between the reasoning tags from the stream, the step output and the conversation. `false` routes it to the THINKING stream and keeps it in `output_field`. |
 | `stream_thinking` | bool | `false` | For `role: internal` only: forward THINKING deltas to the client while content and tool deltas stay suppressed. |
 | `trim_history` | bool | `true` | Drop older turns so prompt plus `max_tokens` fits the engine's context window (`ChatWindowTrimmer`). Leading system turns are pinned, an assistant tool call and its tool results trim as one unit, the newest turn is always kept (head-truncated with `[...trimmed]` when it alone overflows). No effect when the engine reports no context size. |

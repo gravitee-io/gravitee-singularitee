@@ -88,8 +88,11 @@ base64 string as UTF-8 bytes.
 Live demos (server in one shell, demo in another):
 
 ```bash
-task run:vision && task vision     # webcam: SPACE asks, q quits
-task run:audio  && task audio      # push-to-talk: ENTER starts/stops, q quits
+task run:vision    # shell 1
+task vision        # shell 2, webcam: SPACE asks, q quits
+
+task run:audio     # shell 1
+task audio         # shell 2, push-to-talk: ENTER starts/stops, q quits
 ```
 
 Both scripts read `BASE_URL` (default `http://localhost:8080/v1`), `MODEL`, `API_KEY`,

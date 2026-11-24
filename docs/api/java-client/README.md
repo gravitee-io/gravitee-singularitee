@@ -207,15 +207,16 @@ Disposing the `Flowable` subscription cancels the RPC, which cancels generation 
 | Idle timeout | `0` | Disabled: streams may sit quiet between tokens. |
 | HTTP/2 keep-alive | 30 s (`-1` disables) | Periodic pings keep NATs and load balancers from dropping idle connections. |
 | Retry backoff | Fibonacci x 200 ms, capped at 5 s | Only on `ConnectException`, `StreamResetException` and gRPC `UNAVAILABLE` (a server still loading). Each retry sends the request again. Any other error propagates at once; a checked exception is wrapped in `RuntimeException`. |
-| Overall retry timeout | 10 s | Hard cap across all attempts; surfaces as `TimeoutException` naming the server (`no answer from <host>:<port> within 10000 ms: the server is unreachable or still loading`). |
+| Overall retry timeout | 10 s | Hard cap across all attempts. Unary calls surface a `TimeoutException` naming the server (`no answer from <host>:<port> within 10000 ms: the server is unreachable or still loading`); streaming calls surface a plain `TimeoutException`. |
 | `ssl` | `false` | TLS with ALPN HTTP/2 negotiation. |
 | `tls` (`ClientTlsOptions`) | `null` | Trust and key material; `null` means the JVM default trust store. `trustAll` disables verification; `verifyHostname` defaults to true through the factories. |
 | `username` / `password` | `null` | Basic auth metadata on every call. |
 
 ## Notes
 - Retries cover only connection establishment. A stream that has started is never re-issued.
-- The 10 s retry timeout wraps the whole retry chain; it does not cut a stream that has already
-  delivered events.
+- On unary calls the 10 s timeout wraps the whole retry chain. On `infer` / `inferPipeline` it
+  applies to every event: the first event, and each one after it, must arrive within 10 s of the
+  previous one, or the stream fails with a `TimeoutException`.
 - `ssl: true` without `tls` is right for a publicly trusted certificate and wrong for a private CA;
   pass `ClientTlsOptions.trusting(...)` for the latter.
 - Workspaces declare the same connection settings under `remote:` (`host`, `port`, `ssl`,

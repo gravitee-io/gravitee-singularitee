@@ -112,7 +112,7 @@ http:
 # Every pipeline step is a gravitee plugin (a zip carrying plugin.properties with
 # type=step) discovered from plugins.path by the node's plugin registry and loaded
 # through a parent-first class loader: engine APIs, models and native libraries always
-# resolve from the main class loader. The twelve core steps ship in this directory; a
+# resolve from the main class loader. The thirteen core steps ship in this directory; a
 # missing core step fails startup. A plugin can be switched off with
 # step.<id>.enabled: false. A step that declares a license feature additionally needs that feature enabled.
 #plugins:
@@ -252,8 +252,8 @@ services:
 
   # --- OpenTelemetry tracing (server-side spans) ---
   # Disabled by default. When enabled, the gRPC server emits a SERVER span per RPC
-  # (continuing any inbound W3C traceparent) with nested ai.pipeline, ai.step and
-  # ai.model.<op> spans, exported via OTLP to a collector (Jaeger, Tempo, and similar).
+  # (continuing any inbound W3C traceparent) with nested singularitee.pipeline,
+  # singularitee.step and singularitee.model.<op> spans, exported via OTLP to a collector (Jaeger, Tempo, and similar).
   # Keys under services.tracing.otel.* are accepted as aliases.
   opentelemetry:
     enabled: false

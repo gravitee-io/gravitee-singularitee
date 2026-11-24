@@ -18,7 +18,7 @@ Ground rules that hold for any model:
 ## Key types
 
 - `TagsDef` (`tags:` on an `infer` step): `reasoning_open` / `reasoning_close` / `tool_open` / `tool_close`, each a string or a list; `reasoning_repeatable`.
-- Built-in extraction templates: `chatml-json`, `xml-function`, `gemma-call`, `glm-name-json`, `harmony`. Omitted, the built-ins are tried in order.
+- Built-in extraction templates: `chatml-json`, `xml-function`, `gemma-call` (tried in that order when none is configured), plus `glm-name-json` and `harmony`, used only when named explicitly.
 - `chat_template`: per-step override, a workspace template id or inline source.
 - `llama_cpp` block: `flash_attn_type`, `cache_type_k` / `cache_type_v`, `mtp`, `n_ctx`, `n_seq_max`. Keys are in [llama_cpp](../../reference/models/llama_cpp.md).
 
