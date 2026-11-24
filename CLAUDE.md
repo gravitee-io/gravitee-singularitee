@@ -11,7 +11,7 @@ untested here (CUDA, vLLM on Linux) it says so.
 
 ## 1. Setup
 
-Prereqs: **Java 25** (`.java-version` pins 25.0.4), Maven, and, for the demo tasks,
+Prereqs: **Java 25** (the build compiles with `maven.compiler.release` 25; `install.sh` checks the major version), Maven, and, for the demo tasks,
 [go-task](https://taskfile.dev) (`brew install go-task`) and [uv](https://docs.astral.sh/uv/).
 
 ```bash
@@ -74,7 +74,7 @@ vLLM4j reads, so a venv merely on `PATH` is not enough) plus the `libpython`/`li
 preloads. `--venv` or `$VLLM_VENV` point elsewhere. Maven can bootstrap it instead:
 `mvn verify -Pvllm-integration,metal`, or `-Dvllm.venv.path=` to reuse one.
 
-On Apple Silicon use `examples/vllm/*-mac.yaml`: the others are sized for datacenter cards (40 to 80 GB), and
+On Apple Silicon use `examples/vllm/*-mac.yaml`: the others are sized for datacenter cards (24 to 80 GB), and
 Metal applies `gpu_memory_utilization` to *total* unified memory rather than what is free.
 
 ---
@@ -110,7 +110,7 @@ Look here **before** reading code:
 | `README.md` | What the project is, quick start, the workspace format at a glance. |
 | `docs/architecture/README.md` | Execution model, module breakdown, how pipelines work, boot order. |
 | `docs/` | Everything else. `docs/README.md` is the index. |
-| `openapi/` | One OpenAPI spec per HTTP API type (text-generation, embeddings incl. rerank and similarity, classification, discovery). |
+| `openapi/` | One OpenAPI spec per HTTP API type (text-generation, embeddings incl. rerank and similarity, classification, decision, discovery). |
 
 ```
 docs/
@@ -129,7 +129,7 @@ docs/
 │   ├── http/            OpenAI-compatible endpoints, envelope, SSE, auth
 │   └── java-client/     SingulariteeClient
 ├── guides/<topic>/      task-oriented: text-generation, classification, embeddings-and-reranking,
-│                        guards-and-redaction, routing, loops-and-cot, tool-calling, todos,
+│                        guards-and-redaction, routing, loops-and-cot, tool-calling, todos, decisions, structured-output,
 │                        sub-pipelines, multimodal, remote-and-multi-server
 └── operations/          deployment, observability, validated models
 ```
@@ -253,7 +253,7 @@ task test:examples                              # loads every examples/**.yaml t
 mvn -o -pl <module> test -Dtest=<Class>         # one class
 ```
 
-`ExamplesWorkspaceTest` (79 tests) parses and resolves **every** example. It is the fastest
+`ExamplesWorkspaceTest` (one test per example file, plus a few structural checks) parses and resolves **every** example. It is the fastest
 guard against breaking a workspace; run it after touching `examples/` or the loader. It
 validates *structure only*: it never resolves weights, so a wrong HuggingFace repo name still
 passes here and only fails at boot.
@@ -306,7 +306,7 @@ grpcurl -plaintext -import-path gravitee-singularitee-protocol/src/main/proto \
 constant with its wire name, a config record in `WorkspaceDefinition`, the proto message in
 `model.proto`, and an engine-adapter factory in `grpc`. Factories are registered only when a
 **probe class** resolves on the classpath (`SingulariteeConfiguration`), which is how one
-distribution flavour can omit an engine and fail with "no factory for type" rather than
+distribution flavour can omit an engine and fail with "Unsupported model type" rather than
 `NoClassDefFoundError`.
 
 **Add a pipeline step**: a step is a gravitee plugin module under
@@ -354,7 +354,8 @@ any such failure fail startup instead.
 poll `/v1/models`.
 
 **`n_ctx` is per sequence.** Total KV = `n_ctx × n_seq_max`. `examples/llama/qwen3-30b.yaml`
-(131072 × 2) OOMs on a 36 GB machine while the *larger* `qwen3.6-35b` (131072 × 1) runs fine.
+ships `n_seq_max: 1` for that reason: at 2 (131072 × 2) it OOMs on a 36 GB machine, while the
+*larger* `qwen3.6-35b` (131072 × 1) runs fine.
 When a model won't fit, check `n_seq_max` before blaming the weights.
 
 **A raw model id is not the pipeline.** `/v1/models` advertises both. Calling the bare model
@@ -394,7 +395,7 @@ GPU-only ONNX Runtime behind that fails on macOS. Rebuild before testing.
 the per-engine images; local development wants the default.
 
 **Keep the venv's vLLM version in step with the image.** `scripts/setup-venv.sh` pins vLLM
-`0.31.0` (vLLM4j `0.6.0`), matching `Dockerfile.vllm-cuda`'s `VLLM_IMAGE`; vLLM4j is compiled
+`0.31.0` (vLLM4j `0.7.0`), matching `Dockerfile.vllm-cuda`'s `VLLM_IMAGE`; vLLM4j is compiled
 against a specific vLLM Python API, so a drifting venv fails at model load rather than at build.
 `vllm_decision` also needs `vllm-srun` (`setup-venv.sh -r`), pinned by `SR_RUNTIME_REF` in both
 the script and the Dockerfile. See [Engines](#engines-llamacpp-is-the-default) for the setup itself.

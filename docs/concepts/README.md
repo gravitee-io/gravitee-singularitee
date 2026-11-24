@@ -47,7 +47,7 @@ includes exactly one of them.
 | `vllm_decision` | decision model (vLLM Semantic Router Decision 1.0 / 2.0, or any vLLM model with `family: custom`) | vllm_srun or vLLM, through vLLM4j | `decision` | [vllm_decision](../reference/models/vllm_decision.md) |
 | `gliner_decision` | decision model (a GLiNER2 bundle such as GLiNER2.5-Decide, one classification task per question) | GLiNER (gliner4j on llama.cpp or ONNX Runtime) | `decision` | [gliner_decision](../reference/models/gliner_decision.md) |
 | `regex` | token classifier, pure Java | none (in-process) | `token-classification` | [regex](../reference/models/regex.md) |
-| `composite_classifier` | union of classifiers, pure Java | none (in-process) | widest of its members | [composite_classifier](../reference/models/composite_classifier.md) |
+| `composite_classifier` | union of classifiers, pure Java | none (in-process) | `token-classification` if any member is token-level, else `text-classification` | [composite_classifier](../reference/models/composite_classifier.md) |
 | `llm_token_classifier` | token classifier over a generative model, pure Java | the generating model's (in-process wrapper) | `token-classification` | [llm_token_classifier](../reference/models/llm_token_classifier.md) |
 | `remote_llm` | proxy | gRPC to another Singularitee | `text-generation` | [remote_llm](../reference/models/remote_llm.md) |
 | `remote_classifier` | proxy | gRPC to another Singularitee | `text-classification` unless declared | [remote_classifier](../reference/models/remote_classifier.md) |
@@ -66,15 +66,15 @@ noul) about a state in one forward pass and returns probabilities, not text; see
 llama.cpp is the default engine and the one to develop against: cross-platform, no Python,
 set up by `install.sh`. ONNX Runtime and GLiNER need nothing beyond the build. vLLM is opt-in
 and Linux/CUDA-first. An engine factory is registered only when its library is on the
-classpath, which is how a per-engine distribution reports "no factory for type" instead of a
-class-loading error.
+classpath, which is how a per-engine distribution reports "Unsupported model type: MODEL_TYPE_<NAME>"
+instead of a class-loading error.
 
 ### Tasks and modalities
 
 Every published entry advertises a task, the slug `/v1/models` reports and callers route on:
 `text-generation`, `text-classification`, `token-classification`, `feature-extraction`,
 `reranking`, `decision`. A model answers it from its engine; a pipeline inherits the model behind its
-`role: output` step. `task:` on an entry overrides it; any other value fails the workspace at
+last step declared `role: output` (the entry step when none is; an unset role does not count). `task:` on an entry overrides it; any other value fails the workspace at
 load. Nothing is ever advertised as "pipeline".
 
 Modalities are what an entry accepts as input (`text`, `image`, `audio`). They are detected,
@@ -97,7 +97,7 @@ pipeline, hide the models it is built from.
 | Mode | Where the DAG runs | Where the models run | How |
 | --- | --- | --- | --- |
 | Server-side pipeline | on the server | on the server | call a pipeline id (`InferPipeline`, or `model: <pipeline-id>` over HTTP) |
-| Direct model | no DAG | on the server | call a model id (`Infer`, `Classify`, `Embed`, `Rerank`) |
+| Direct model | no DAG | on the server | call a model id (`Infer`, `Classify`, `Embed`, `TextRerank`, `Decide`) |
 | Client-side pipeline | in the calling process (`ClientPipelineExecutor`) | on one or more remote servers | a workspace with `remote:` endpoints and `remote_*` models |
 
 A direct call to a text model returns the raw token stream: channel markers and tool-call

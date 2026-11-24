@@ -70,6 +70,8 @@ workspace:
     pipelines:                      # resolved in ./pipelines/; globs allowed
       - infer.yaml
       - tool-calling.yaml
+      - cot.yaml
+      - reasoning.yaml
 ```
 
 A client workspace whose models live on other servers (adapted from `examples/modular/client-safety-llamacpp.yaml`, with a default endpoint, TLS and credentials added to show every key):
@@ -98,7 +100,7 @@ workspace:
 
 Validate a workspace without starting a server: `task test:examples` runs
 `ExamplesWorkspaceTest`, which loads every file under `examples/` through the real loader.
-Point the same loader at your own file with `YamlWorkspaceLoader.load(path, templatesPath)`.
+Point the same loader at your own file with `YamlWorkspaceLoader.load(path, templatesPath, codecs)`, where `codecs` maps each step type to the `StepConfigCodec` of its plugin.
 
 ## Options
 
@@ -106,7 +108,7 @@ Point the same loader at your own file with `YamlWorkspaceLoader.load(path, temp
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `workspace.name` | string | unset | Informational; logged at load. |
+| `workspace.name` | string | unset | Informational; logged at load. Unset, it falls back to the `name` of the first `includes.models` file that has one. |
 | `workspace.remote` | object | unset | `default:` endpoint and/or `servers:` list. See below. |
 | `workspace.models` | list | `[]` | Model entries. |
 | `workspace.pipelines` | list | `[]` | Pipeline entries. |
@@ -124,7 +126,7 @@ Point the same loader at your own file with `YamlWorkspaceLoader.load(path, temp
 | `endpoint.id` | string | unset | Name referenced by `server:` (not needed on `default`). |
 | `endpoint.host` / `endpoint.port` | string / int | unset | gRPC address. |
 | `endpoint.ssl` | bool | `false` | Reach the endpoint over TLS. Trust material and any client certificate come from `grpc.client.ssl.*` in `gravitee.yml`. |
-| `endpoint.username` / `endpoint.password` | string | unset | HTTP Basic credentials sent as gRPC metadata. Require `ssl: true` unless `host` is loopback; a plaintext endpoint with credentials is refused at load. |
+| `endpoint.username` / `endpoint.password` | string | unset | HTTP Basic credentials sent as gRPC metadata. Require `ssl: true` unless `host` is loopback; a plaintext endpoint with credentials is refused at load: the endpoint is dropped with an ERROR and its models fail to register (startup fails only under `ai.workspace.strict`). |
 | `endpoint.http2_keep_alive_timeout` | int | `-1` | Seconds an idle HTTP/2 connection is held; `-1` keeps it open indefinitely. |
 
 ### Common model keys
@@ -161,9 +163,9 @@ Point the same loader at your own file with `YamlWorkspaceLoader.load(path, temp
 | --- | --- | --- | --- |
 | `id` | string | required | Must match `[A-Za-z_][A-Za-z0-9_]*`: it becomes a Jinja identifier (`{{ generate.output }}`). Hyphens are rejected. |
 | `type` | string | required | One of the [step types](../reference/steps/README.md). Selects the shape of `config:`. |
-| `role` | string | `output` | `output`: the step's output is the response; `thinking`: reasoning-only; `internal`: neither. Unset parses as `output`. |
+| `role` | string | unset | `output`: the step's output is the response; `thinking`: reasoning-only; `internal`: neither. Unset streams and appends like `output`, but only an explicit `role: output` marks the pipeline's output step (task inheritance, `structured_output`). An unrecognised value is read as `output`. |
 | `next_step` | string | unset | Successor for linear chains; routing steps carry their own edges in `config`. |
-| `config` | object | required | Step configuration; keys per type are in the reference. |
+| `config` | object | unset | Step configuration; keys per type are in the reference. Unset hands the codec an empty map, so it is required only when the step type has required keys. |
 
 ### Templates
 
@@ -171,7 +173,7 @@ Point the same loader at your own file with `YamlWorkspaceLoader.load(path, temp
 | --- | --- | --- | --- |
 | `id` | string | required | Referenced by a step's `prompt.template_id` or `chat_template`. (`tool_extraction_template` takes a built-in name or inline source, not a template id.) |
 | `content` | string | unset | Inline Jinja source. |
-| `file` | string | unset | Path to a `.jinja` or `.jinja2` file, relative to the workspace file's directory. Exactly one of `content` or `file`. |
+| `file` | string | unset | Path to a `.jinja` or `.jinja2` file, resolved against the workspace file's directory first, then `${gravitee.home}/templates`. Exactly one of `content` or `file`. |
 
 Templates are materialised at load time; the engine only ever sees the resolved source.
 Built-in templates and the variables available are in [Templates](../reference/templates/README.md).
@@ -180,7 +182,7 @@ Built-in templates and the variables available are in [Templates](../reference/t
 
 | Key | Resolved in | Purpose |
 | --- | --- | --- |
-| `includes.models[]` | `<workspace dir>/models/` | Each file contributes only its `workspace.models`. |
+| `includes.models[]` | `<workspace dir>/models/` | Each file contributes its `workspace.models`. When the root file declares no `remote:` block, the first included model file that has one supplies it; the same holds for `name`. |
 | `includes.pipelines[]` | `<workspace dir>/pipelines/` | Each file contributes only its `workspace.pipelines`. |
 | `includes.templates[]` | `<workspace dir>/templates/` | Each file contributes only its `workspace.templates`. |
 
@@ -199,13 +201,13 @@ than globbing a folder that holds several.
 
 `task`, `visible` and `modalities` work the same on a model and on a pipeline.
 
-- `task` is the slug `/v1/models` and `ListModels` advertise: `text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`. Any other value fails the load. Unset, a model reports its engine's task and a pipeline inherits from its output step. Nothing is ever advertised as `pipeline`; a multimodal generation model stays `text-generation`.
+- `task` is the slug `/v1/models` and `ListModels` advertise: `text-generation`, `text-classification`, `token-classification`, `feature-extraction`, `reranking`, `decision`. Any other value fails the load. Unset, a model reports its engine's task and a pipeline inherits from its output step. Nothing is ever advertised as `pipeline`; a multimodal generation model stays `text-generation`.
 - `visible: false` removes the entry from the listings, from lookup by id and from HTTP resolution (`model_not_found`). It stays callable as a pipeline's model, as a sub-pipeline and over gRPC from another server. Publish the pipeline, hide its parts. `http.expose-pipelines: false` hides every pipeline at once; `visible` is the per-entry switch.
 - `modalities` lists what the entry accepts: `text`, `image`, `audio`. Unset, it is detected: llama.cpp asks the loaded projector, vLLM reads `vision_config` / `audio_config` from the checkpoint's `config.json`, a `remote_llm` reads its `GetModel` probe, a pipeline takes the union over its model-bound steps. Declare it only where detection cannot run (a `remote_*` proxy, a vLLM model whose weights were never resolved locally). The HTTP API refuses media the target cannot read with `400 unsupported_modality`. Any other slug fails the load.
 
 ## Notes
 
-**Load-time errors.** These stop the workspace with an `IllegalArgumentException` naming the offending entry:
+**Load-time errors.** The loader throws these naming the offending entry; at boot `WorkspaceLoaderComponent` wraps them in an `IllegalStateException` (`Workspace <path> failed to parse: <message>`) that fails startup:
 
 | Error | Trigger |
 | --- | --- |
@@ -217,7 +219,9 @@ than globbing a folder that holds several.
 | `prompt.template_id '...' not found in workspace templates` | Reference to an undeclared template. |
 | `Template '<id>': content and file are mutually exclusive` | Both set on a template. Neither set logs a WARN and skips it. |
 | `workspace tags entries require an id` / `duplicate workspace tags id` / `unknown tags id '...'` | Malformed or dangling tag-set references. |
-| `Refusing <field> '...': resolves outside <dir>` | A `file:` or `template_file:` path escaping the workspace directory. |
+| `Refusing template file '...': resolves outside <dir>` | A template's `file:` escaping its base directory. |
+| `Step '<id>': refusing template_file '...': resolves outside <dir>` | An `infer` step's `prompt.template_file` escaping its base directory. |
+| `Refusing include '...': resolves outside <dir>` | An `includes:` entry escaping its folder. |
 
 **Load failures are not fatal.** A model whose files cannot be resolved (wrong repo, wrong
 `path`) is logged as `failed to load` by `WorkspaceLoaderComponent` and the server comes up

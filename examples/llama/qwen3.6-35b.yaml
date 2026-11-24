@@ -21,7 +21,7 @@
 #
 # One model (id: llm) and one pipeline (id: agent), so the same client config and
 # curls work across every example file. Prose, measurements and caveats for this
-# model live in docs/models/README.md.
+# model live in docs/operations/models/README.md.
 #
 # n_ctx is PER SEQUENCE: total KV allocated is n_ctx * n_seq_max.
 # Listed because it runs and is fast, not because it is recommended.

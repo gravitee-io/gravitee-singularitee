@@ -115,6 +115,7 @@ The axis here is fine-tuned versus zero-shot:
 | `pii-bert.yaml` | `pii` | `onnx_classifier` (TOKEN) | Retrain. Fast and cheap; detects only what it was trained on. |
 | `pii-arabic.yaml` | `pii` | `onnx_classifier` (TOKEN) | Retrain. OpenMed 560M Arabic token classifier; heavy on CPU. The model repo is private: needs an `HF_TOKEN` with gravitee-io read access. |
 | `pii-gliner.yaml` | `pii` | `gliner_ner` | Edit the entity list. Zero-shot; heavier per call. |
+| `pii-gliner-llamacpp.yaml` | `pii` | `gliner_ner` | Edit the entity list. The same model as `pii-gliner.yaml` on GLiNER4j's llama.cpp/ggml engine (a GGUF bundle, `variant: f16`, `q8_0` or `q4_0`). |
 | `pii-nordic-llm.yaml` | `pii` | `llm_token_classifier` over `llama_cpp` | Retrain. A Qwen3.5-4B fine-tuned to list Norwegian and Swedish PII (18 categories); the slowest per call, the widest coverage. `vllm/pii-nordic-llm.yaml` is the same classifier on vLLM. |
 | `toxicity-bert.yaml` | `toxicity` | `onnx_classifier` (SEQUENCE) | Retrain. Multilingual, `{non-toxic, toxic}`. |
 | `guardrails-gliner.yaml` | `gliguard` | `gliner_classifier` | Edit the safety labels. A policy change is a YAML edit, not a training run. |

@@ -54,11 +54,11 @@ A one-shot branch (`examples/pipelines/todo-agent.yaml`): `max_iterations: 1` wi
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `next_step` (envelope) | string | unset | Exit edge taken when the condition holds. Proto `next_step_id`. |
-| `loopback_step` | string | required | Step to jump back to on retry. Proto `target_step_id`. |
-| `max_iterations` | int | `0` | Retry ceiling. Only positive values are sent; `0` leaves the loop unbounded. Always set it. |
+| `next_step` (envelope) | string | unset | Exit edge taken when the condition holds (`LoopStepConfig.nextStepId`). |
+| `loopback_step` | string | required | Step to jump back to on retry (`LoopStepConfig.targetStepId`). |
+| `max_iterations` | int | required | Retry ceiling. Must be greater than `0`; omitted or `0` fails the workspace load (`max_iterations must be positive`). |
 | `fallback_step` | string | `next_step` | Step taken when the ceiling is reached. |
-| `condition.type` | string | required | `equals`, `contains`, `label_equals`, `score_above`, `score_below`, `not_empty`, `empty`. See [conditions](./README.md#conditions-break-and-loop). |
+| `condition.type` | string | required in a `condition` block | `equals`, `contains`, `label_equals`, `score_above`, `score_below`, `not_empty`, `empty`. See [conditions](./README.md#conditions-break-and-loop). An unknown or blank value fails the workspace load. Without a `condition` block the condition never holds, so the loop retries until the ceiling. |
 | `condition.input_field` | string | required | Flat context key to evaluate. |
 | `condition.match_value` | string | unset | Reference for `equals`, `contains`, `label_equals`. Bare YAML booleans are normalised to `YES` / `NO`. |
 | `condition.threshold` | float | `0` | Reference for `score_above`, `score_below`. |
@@ -74,7 +74,7 @@ Writes:
 
 | Field | Value |
 | --- | --- |
-| `<id>.iterations` | Number of retries taken so far (incremented each time the condition fails). |
+| `<id>.iterations` | Number of times the condition failed so far, the pass that takes the fallback included (so `max_iterations: 3` allows two loop-backs). |
 | `<id>.max_iterations_reached` | `true` once the ceiling is hit. |
 
 Also appends `loopback_message` to `messages` and installs or clears the retry sampling override on the `PipelineContext`.

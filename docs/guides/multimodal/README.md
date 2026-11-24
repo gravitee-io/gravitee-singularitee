@@ -88,8 +88,11 @@ base64 string as UTF-8 bytes.
 Live demos (server in one shell, demo in another):
 
 ```bash
-task run:vision && task vision     # webcam: SPACE asks, q quits
-task run:audio  && task audio      # push-to-talk: ENTER starts/stops, q quits
+task run:vision    # shell 1
+task vision        # shell 2, webcam: SPACE asks, q quits
+
+task run:audio     # shell 1
+task audio         # shell 2, push-to-talk: ENTER starts/stops, q quits
 ```
 
 Both scripts read `BASE_URL` (default `http://localhost:8080/v1`), `MODEL`, `API_KEY`,
@@ -144,7 +147,7 @@ Full tables: [`llama_cpp`](../../reference/models/llama_cpp.md),
 
 ## Notes
 
-- No `mmproj_path` means the model reports `["text"]`, and HTTP and gRPC refuse media with
+- No `mmproj_path` means the model is text-only (`/v1/models` omits `input_modalities` for it), and HTTP and gRPC refuse media with
   `unsupported_modality` before the engine sees it: if a VLM refuses an image, check
   `mmproj_path`.
 - Marker count must equal attachment count: the renderer prepends one marker per attachment, so

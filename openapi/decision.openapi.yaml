@@ -86,6 +86,7 @@ paths:
                 $ref: "#/components/schemas/SystemOneResponse"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "500": { $ref: "#/components/responses/ServerError" }
         "503": { $ref: "#/components/responses/NotReady" }
 
@@ -121,6 +122,7 @@ paths:
                 $ref: "#/components/schemas/DecisionsResponse"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "500": { $ref: "#/components/responses/ServerError" }
         "503": { $ref: "#/components/responses/NotReady" }
 
@@ -150,6 +152,12 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     Unauthorized:
       description: "Missing or invalid bearer token (`code: invalid_api_key`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooLarge:
+      description: "Body larger than `http.max-body-size` (`type: invalid_request_error`, `code: request_too_large`)."
       content:
         application/json:
           schema:
@@ -197,6 +205,7 @@ components:
                 - model_not_ready
                 - not_found
                 - method_not_allowed
+                - request_too_large
                 - server_error
                 - internal_error
                 - null
@@ -255,6 +264,9 @@ components:
         images:
           type: array
           description: Refused for now (`unsupported_modality`).
+        videos:
+          type: array
+          description: "A non-empty array is refused (`400` `invalid_request_error`, `param: videos`)."
         include_raw_scores: { type: boolean, default: false }
 
     SystemOneResponse:
@@ -337,7 +349,7 @@ components:
               type: { $ref: "#/components/schemas/DecisionQuestionType" }
               name:
                 type: [string, "null"]
-                description: Echoed on the answer; names must be unique. A blank name counts as unnamed.
+                description: Echoed on the answer; names must be unique. A blank name counts as unnamed, but the same blank name twice is still refused.
               instructions: { $ref: "#/components/schemas/ContentParts" }
               choices:
                 type: array

@@ -30,7 +30,7 @@ Stop when a classifier is not confident enough:
     output_field: prompt
     condition:
       type: score_below
-      input_field: intent.label     # resolves intent.score
+      input_field: intent.label     # resolves intent.label.score
       threshold: 0.4
 ```
 
@@ -39,10 +39,10 @@ Stop when a classifier is not confident enough:
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
 | `output_field` | string | unset | Context field reported as the pipeline's output on halt (`PipelineContext.breakOutputField`). |
-| `condition.type` | string | required | `equals`, `contains`, `label_equals`, `score_above`, `score_below`, `not_empty`, `empty`. See [conditions](./README.md#conditions-break-and-loop). |
+| `condition.type` | string | required in a `condition` block | `equals`, `contains`, `label_equals`, `score_above`, `score_below`, `not_empty`, `empty`. See [conditions](./README.md#conditions-break-and-loop). An unknown or blank value fails the workspace load. Without a `condition` block the step never halts. |
 | `condition.input_field` | string | required | Flat context key to evaluate. |
 | `condition.match_value` | string | unset | Reference for `equals`, `contains`, `label_equals`. Bare YAML booleans become `YES` / `NO`. |
-| `condition.threshold` | float | `0` | Reference for `score_above`, `score_below`. `0` is not sent. |
+| `condition.threshold` | float | `0` | Reference for `score_above`, `score_below`. |
 
 ## Context fields
 

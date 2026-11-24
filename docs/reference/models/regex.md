@@ -47,7 +47,8 @@ workspace:
 | `patterns[].pattern` | string | unset | A `java.util.regex` pattern. Blank entries are dropped. |
 | `patterns[].entity_type` | string | `MATCH` | Label attached to matches of that pattern; surfaces as `[EMAIL]`-style replacement text under `redact_with_entity_type`. |
 
-`name`, `memory_check` and `download` are accepted and ignored; `task`, `visible` and
+`name` is the display name (falls back to `id`); `memory_check` and `download` are accepted
+and ignored; `task`, `visible` and
 `modalities` apply as on any entry.
 
 ## Notes

@@ -19,11 +19,11 @@ is either a single field (`input_field`, default `prompt`) or, with
 
 | Type | Module | Purpose |
 | --- | --- | --- |
-| `SubPipelineStepExecutor` | `engine` | Builds the child request, runs the callback, writes `output_field`, propagates halts. |
-| `SubPipelineStepExecutor.PipelineExecutorCallback` | `engine` | `executePipeline(request, responseStream, callerContext)`; one local, one per remote endpoint. |
+| `SubPipelineStepExecutor` | `plugins/sub-pipeline` | Builds the child request, runs the callback, writes `output_field`, propagates halts. |
+| `PipelineExecutorCallback` | `engine-api` (`engine.api.pipeline.executor`) | `executePipeline(request, responseStream, callerContext)`; one local, one per remote endpoint. |
 | `RemotePipelineCallback` | `engine-remote` | Streams `SingulariteeClient.inferPipeline` into the parent's response stream. |
-| `SubPipelineStepConfig` | `protocol` | `pipeline_id`, `input_field`, `output_field`, `remote_id` (YAML `server`), `system_prompt`, `forward_messages`. |
-| `TokenCaptureStream.forwardAll` | `engine` | Accumulates the child's tokens and keeps its last event for the finish-reason check. |
+| `SubPipelineStepConfig` | `plugins/sub-pipeline` | Java record: `pipelineId`, `inputField`, `outputField`, `remoteId` (YAML `server`), `systemPrompt`, `forwardMessages`. |
+| `TokenCaptureStream.forwardAll` | `engine-api` | Accumulates the child's tokens and keeps its last event for the finish-reason check. |
 
 ## Usage
 

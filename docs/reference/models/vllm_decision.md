@@ -1,6 +1,6 @@
 # vllm_decision
 
-> A decision model on vLLM: a vLLM Semantic Router model (Decision 1.0 or 2.0) run by its own runtime, or any causal model vLLM serves scored on label codes (`family: custom`). Typed questions answered in one forward pass.
+> A decision model on vLLM: a vLLM Semantic Router model (Decision 1.0, 2.0 or 3) run by its own runtime, or any causal model vLLM serves scored on label codes (`family: custom`). Typed questions answered in one forward pass.
 
 ## Overview
 

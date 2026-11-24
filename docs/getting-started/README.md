@@ -29,7 +29,7 @@ Linux/CUDA-first; see [vLLM](#vllm) below.
 
 ### 1. Prerequisites
 
-- Java 25 (`.java-version` pins `25.0.4`). The FFM-based engines need `--enable-preview --enable-native-access=ALL-UNNAMED`; `gravitee.sh` adds both.
+- Java 25 (the build compiles with `maven.compiler.release` 25 and `install.sh` checks it). The FFM-based engines need `--enable-preview --enable-native-access=ALL-UNNAMED`; `gravitee.sh` adds both.
 - Maven.
 - Optional: [go-task](https://taskfile.dev) (`brew install go-task`) and [uv](https://docs.astral.sh/uv/) for the `task` shortcuts and demo scripts.
 - A supported host: macOS on Apple Silicon or Linux on x86_64, the two llamaj.cpp ships bindings for.
@@ -123,9 +123,10 @@ already running in another shell.
 
 | Task | Does |
 | --- | --- |
+| `task install`, `task list` | First-time setup (wraps `./install.sh`); list every runnable workspace (wraps `./run-server.sh --list`). |
 | `task build`, `task test`, `task test:examples` | Build, full suite, load every `examples/**.yaml` through the loader. |
 | `task run -- <file>`, `task run:debug -- <file>` | Any workspace, optionally with TRACE prompts. |
-| `task run:qwen`, `task run:gpt-oss`, `task run:vision`, `task run:audio` | Generation models (`VLLM=1` picks the `examples/vllm/` twin where one exists). |
+| `task run:qwen`, `task run:gpt-oss`, `task run:gpt-oss-mac`, `task run:vision`, `task run:audio` | Generation models (`VLLM=1` picks the `examples/vllm/` twin where one exists). |
 | `task run:pii`, `task run:guardrails`, `task run:intent`, `task run:embedding`, `task run:reranker` | Single classifier, embedding or reranker workspaces. |
 | `task run:guard`, `task run:tool-router`, `task run:gliner-router`, `task run:embedding-router`, `task run:cot` | Pipeline examples. |
 | `task certs`, `task run:mtls-safety`, `task run:mtls-llm`, `task mtls-check` | The mutual-TLS server pair. |
@@ -152,7 +153,7 @@ default (`vllm.setupVenv.skip=true`).
 
 `run-server.sh` detects a vLLM workspace, finds `~/.venv-gravitee-ai/.venv` (or `--venv` /
 `$VLLM_VENV`) and passes `-Dvllm4j.venv`, the only thing vLLM4j reads. On Apple Silicon use
-the `*-mac.yaml` files: the others are sized for an 80 GB card.
+the `*-mac.yaml` files: the others target CUDA cards, from 24 GB (`mistral-7b.yaml`) and 40 GB (`qwen3.8-27b.yaml`) up to 80 GB (`gpt-oss-20b-80gb.yaml`).
 
 ## Options
 

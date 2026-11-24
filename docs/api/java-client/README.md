@@ -11,7 +11,7 @@ stream has delivered its first event, failures propagate unchanged.
 
 ## Key types
 - `SingulariteeClient`: the client. Constructors take host and port plus optional Vert.x instance, keep-alive interval, Basic credentials, TLS flag and `ClientTlsOptions`.
-- `ClientTlsOptions`: record `(TrustOptions trust, KeyCertOptions keyCert, boolean trustAll, boolean verifyHostname)` with factories `trusting(trust)` and `mutual(trust, keyCert)`.
+- `ClientTlsOptions`: record `(TrustOptions trust, KeyCertOptions keyCert, boolean trustAll, boolean verifyHostname)` with factories `trusting(trust)` and `mutual(trust, keyCert)`; `isMutual()` is true when a client certificate is configured.
 - `BasicAuthGrpcClient`: package-private decorator that adds `authorization: Basic ...` to every request.
 - `ClientPipelineExecutor` (`gravitee-singularitee-engine-remote`): runs a pipeline DAG locally over `remote_*` model proxies that call this client. See [Remote models and multi-server](../../guides/remote-and-multi-server/README.md).
 
@@ -93,6 +93,7 @@ client certificate. Passing `null` for `tls` uses the JVM default trust store.
 | `decide(DecideRequest)` | `Single<DecideResponse>` | `GraviteeDecisionService/Decide` |
 | `decideBatch(DecideBatchRequest)` | `Single<DecideBatchResponse>` | `GraviteeDecisionService/DecideBatch` |
 | `shutdown()` / `close()` | void | Closes the gRPC client and, for owned instances, Vert.x. |
+| `isSecureChannel()` | boolean | No RPC. Whether responses can be trusted to come from the named server: TLS that verifies the server certificate, or a server on this machine. Plaintext to another host, or TLS with `trustAll`, is not. |
 
 Request and response types are the generated protobuf classes in
 `io.gravitee.singularitee.protocol`; their fields are listed in the [gRPC API](../grpc/README.md).
@@ -152,7 +153,9 @@ if (response.hasBlocked()) {
 ```
 
 A guard that halts a decision pipeline sets `blocked` on a successful response; failures arrive
-as `GrpcErrorException` with `NOT_FOUND`, `INVALID_ARGUMENT`, `FAILED_PRECONDITION` or `INTERNAL`.
+as `io.vertx.grpc.client.InvalidStatusException`, whose `actualStatus()` is `NOT_FOUND`,
+`INVALID_ARGUMENT`, `FAILED_PRECONDITION` or `INTERNAL`. The exception carries the status code
+only, not the server's message. This holds for every unary method.
 
 ### Streaming
 
@@ -203,16 +206,17 @@ Disposing the `Flowable` subscription cancels the RPC, which cancels generation 
 | Connect timeout | 5000 ms | Fail fast against unreachable hosts; the HTTP/2 pool reconnects on the next RPC. |
 | Idle timeout | `0` | Disabled: streams may sit quiet between tokens. |
 | HTTP/2 keep-alive | 30 s (`-1` disables) | Periodic pings keep NATs and load balancers from dropping idle connections. |
-| Retry backoff | Fibonacci x 200 ms, capped at 5 s | Only on `ConnectException`, `StreamResetException` and gRPC `UNAVAILABLE` (a server still loading). Each retry sends the request again. |
-| Overall retry timeout | 10 s | Hard cap across all attempts; surfaces as `TimeoutException` naming the server (`no answer from <host>:<port> within 10000 ms: the server is unreachable or still loading`). |
+| Retry backoff | Fibonacci x 200 ms, capped at 5 s | Only on `ConnectException`, `StreamResetException` and gRPC `UNAVAILABLE` (a server still loading). Each retry sends the request again. Any other error propagates at once; a checked exception is wrapped in `RuntimeException`. |
+| Overall retry timeout | 10 s | Hard cap across all attempts. Unary calls surface a `TimeoutException` naming the server (`no answer from <host>:<port> within 10000 ms: the server is unreachable or still loading`); streaming calls surface a plain `TimeoutException`. |
 | `ssl` | `false` | TLS with ALPN HTTP/2 negotiation. |
 | `tls` (`ClientTlsOptions`) | `null` | Trust and key material; `null` means the JVM default trust store. `trustAll` disables verification; `verifyHostname` defaults to true through the factories. |
 | `username` / `password` | `null` | Basic auth metadata on every call. |
 
 ## Notes
 - Retries cover only connection establishment. A stream that has started is never re-issued.
-- The 10 s retry timeout wraps the whole retry chain; it does not cut a stream that has already
-  delivered events.
+- On unary calls the 10 s timeout wraps the whole retry chain. On `infer` / `inferPipeline` it
+  applies to every event: the first event, and each one after it, must arrive within 10 s of the
+  previous one, or the stream fails with a `TimeoutException`.
 - `ssl: true` without `tls` is right for a publicly trusted certificate and wrong for a private CA;
   pass `ClientTlsOptions.trusting(...)` for the latter.
 - Workspaces declare the same connection settings under `remote:` (`host`, `port`, `ssl`,

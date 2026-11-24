@@ -18,7 +18,7 @@ Ground rules that hold for any model:
 ## Key types
 
 - `TagsDef` (`tags:` on an `infer` step): `reasoning_open` / `reasoning_close` / `tool_open` / `tool_close`, each a string or a list; `reasoning_repeatable`.
-- Built-in extraction templates: `chatml-json`, `xml-function`, `gemma-call`, `glm-name-json`, `harmony`. Omitted, the built-ins are tried in order.
+- Built-in extraction templates: `chatml-json`, `xml-function`, `gemma-call` (tried in that order when none is configured), plus `glm-name-json` and `harmony`, used only when named explicitly.
 - `chat_template`: per-step override, a workspace template id or inline source.
 - `llama_cpp` block: `flash_attn_type`, `cache_type_k` / `cache_type_v`, `mtp`, `n_ctx`, `n_seq_max`. Keys are in [llama_cpp](../../reference/models/llama_cpp.md).
 
@@ -39,7 +39,7 @@ models:
     llama_cpp:
       path: Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf
       n_ctx: 131072
-      n_seq_max: 2
+      n_seq_max: 1
       n_gpu_layers: 999
       flash_attn_type: ENABLED      # required for a quantized V cache
       cache_type_k: q8_0
@@ -48,6 +48,7 @@ models:
 
 pipelines:
   - id: agent
+    name: Qwen3-30B Agent Pipeline
     entry: agent
     steps:
       - id: agent
@@ -66,8 +67,8 @@ pipelines:
           # extraction: chatml-json built-in (default order), nothing to set
 ```
 
-`n_ctx` is per sequence: 131072 x 2 does not fit beside the weights on a 36 GB machine;
-lower `n_seq_max` to 1 there.
+`n_ctx` is per sequence: raising `n_seq_max` to 2 (131072 x 2) does not fit beside the weights
+on a 36 GB machine, which is why the file ships `n_seq_max: 1`.
 
 ### Gemma 4 26B-A4B QAT (channel markers)
 
@@ -137,10 +138,11 @@ Closing a call is `<|call|>`, which is also an EOS token: generation stops on it
 longer `<|call|><|start|>assistant<|channel|>final<|message|>` form covers the turn that
 continues past the call. Longest match wins, so listing both is safe.
 
-Reasoning effort is set by system-prompt text (`Reasoning: low`), not a template flag. `low`
-is fast but writes malformed JSON for tool arguments often enough to break agent turns, so
-`medium` is the default here. The configuration is identical for gpt-oss-120b on larger
-hardware.
+Reasoning effort is the step's `context.reasoning_effort` (a request's own `reasoning_effort`
+overrides it). `low` is fast but writes malformed JSON for tool arguments often enough to break agent turns, so
+`medium` is the default here. `eog_ramp_start: 0.75` makes a length-limited answer end on a sentence
+(see [llama_cpp](../../reference/models/llama_cpp.md)). The configuration is identical for
+gpt-oss-120b on larger hardware.
 
 ```yaml
 models:
@@ -150,16 +152,19 @@ models:
     memory_check: warn
     llama_cpp:
       path: gpt-oss-20b-MXFP4.gguf
-      n_ctx: 32768
+      n_ctx: 128000
       n_seq_max: 1
-      n_gpu_layers: 999
+      n_gpu_layers: 99999
       flash_attn_type: ENABLED
       cache_type_k: q8_0
       cache_type_v: q8_0
       mtp: false
+      eog_ramp_start: 0.75
+      eog_ramp_max_bias: 100.0
 
 pipelines:
   - id: agent
+    name: gpt-oss-20b Agent Pipeline
     entry: agent
     steps:
       - id: agent
@@ -168,8 +173,21 @@ pipelines:
         config:
           model_id: llm
           output_field: agent.output
+          context:
+            # medium, not low: at low this model writes malformed JSON for tool
+            # arguments often enough to break agent flows
+            reasoning_effort: medium
           tags:
-            reasoning_open: "<|channel|>analysis<|message|>"
+            # a chained transition (analysis straight into a commentary preamble)
+            # emits its whole header as one run, so every run-anchored form is listed
+            reasoning_repeatable: true
+            reasoning_open:
+              - "<|end|><|start|>assistant<|channel|>analysis<|message|>"
+              - "<|end|><|start|>assistant<|channel|>commentary<|message|>"
+              - "<|start|>assistant<|channel|>analysis<|message|>"
+              - "<|start|>assistant<|channel|>commentary<|message|>"
+              - "<|channel|>analysis<|message|>"
+              - "<|channel|>commentary<|message|>"
             # folded closes: reasoning ends into the final-answer header, whichever
             # terminator got it there, plus the bare header for the turn after a
             # tool call, which opens no span of its own
@@ -177,16 +195,20 @@ pipelines:
               - "<|end|><|start|>assistant<|channel|>final<|message|>"
               - "<|call|><|start|>assistant<|channel|>final<|message|>"
               - "<|channel|>final<|message|>"
+              # bare terminator as a safety net; longest match keeps the folded forms winning
+              - "<|end|>"
             # every header order and every run anchor (see above)
             tool_open:
               - "<|end|><|start|>assistant<|channel|>commentary to=functions."
               - "<|end|><|start|>assistant<|channel|>analysis to=functions."
+              - "<|end|><|start|>assistant<|channel|>final to=functions."
               - "<|call|><|start|>assistant<|channel|>commentary to=functions."
               - "<|end|><|start|>assistant to=functions."
               - "<|start|>assistant<|channel|>commentary to=functions."
               - "<|start|>assistant to=functions."
               - "<|channel|>commentary to=functions."
               - "<|channel|>analysis to=functions."
+              - "<|channel|>final to=functions."
             # longest first: the call may continue into the final channel, or end on
             # <|call|> as EOS
             tool_close:
@@ -205,7 +227,7 @@ unreliably.
 
 ```yaml
 models:
-  - id: qwen-small
+  - id: llm
     name: Qwen/Qwen2.5-0.5B-Instruct-GGUF
     type: llama_cpp
     memory_check: warn
@@ -218,14 +240,16 @@ models:
       mtp: false
 
 pipelines:
-  - id: small
-    entry: gen
+  - id: agent
+    name: Small Tasks Pipeline
+    entry: agent
     steps:
-      - id: gen
+      - id: agent
         type: infer
         role: output
         config:
-          model_id: qwen-small
+          model_id: llm
+          output_field: agent.output
           context:
             enable_thinking: false
           tags:
@@ -242,11 +266,12 @@ zero; extraction runs on plain completions when a template is explicitly configu
 Validated end to end with the `lmstudio-community` conversion.
 
 Both tested GGUF conversions have incomplete EOG lists, so the model may role-play past its
-tool call; the extraction template cuts at the first turn marker. Keep sampling modest.
+tool call; the extraction template cuts at the first turn marker. Keep sampling modest. The `sampling.stop` strings
+`<|observation|>` and `<|user|>` end the call where the GGUF does not flag them as end of generation.
 
 ```yaml
 models:
-  - id: glm
+  - id: llm
     name: lmstudio-community/GLM-4-9B-0414-GGUF
     type: llama_cpp
     memory_check: warn
@@ -259,19 +284,28 @@ models:
       mtp: false
 
 pipelines:
-  - id: glm-fast
+  - id: agent
+    name: GLM-4-9B Agent Pipeline
     entry: agent
     steps:
       - id: agent
         type: infer
         role: output
         config:
-          model_id: glm
+          model_id: llm
           output_field: agent.output
+          # no tags: the whole message is the call
           tool_extraction_template: glm-name-json
           sampling:
             temperature: 0.6
             top_p: 0.85
+            # GLM ends a tool call with <|observation|> and expects the runtime to supply
+            # the result; the GGUF does not flag it end-of-generation, so without a stop
+            # string the model writes a fabricated observation itself. <|user|> is the
+            # same hazard for the next turn.
+            stop:
+              - "<|observation|>"
+              - "<|user|>"
           # optional: compact tool schemas (about half the tool-block tokens) via a
           # workspace template override of the official chat template:
           # chat_template: glm-compact

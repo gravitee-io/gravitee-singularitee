@@ -25,10 +25,10 @@ continues a real dialogue: the model sees its previous attempt and the feedback 
 | Type | Purpose |
 | --- | --- |
 | `LoopStepExecutor` | Exit check, iteration counter, loopback message, retry sampling override. |
-| `BreakStepExecutor` / `BreakStepEvaluator` | Condition evaluation shared by both steps; `evaluate` signals the halt for `break`. |
-| `LoopStepConfig`, `BreakStepConfig`, `StepCondition`, `ConditionKind` | The loop and break plugins' config records; the condition types are engine model classes shared by both. |
+| `BreakStepExecutor` / `BreakStepEvaluator` | `BreakStepEvaluator.evaluate` returns whether the condition holds and is shared by both steps; `BreakStepExecutor` calls `signalHalt` when it does. |
+| `LoopStepConfig`, `BreakStepConfig`, `StepCondition`, `ConditionKind` | The loop and break plugins' config records; the condition types are `engine-api` model classes shared by both. |
 | `StepRole` | `STEP_ROLE_THINKING` / `OUTPUT` / `INTERNAL`, set per infer step with `role:`. |
-| `JinjaRenderer` | Renders `loopback_message.content` against the full pipeline context. |
+| `TemplateRenderer` | Renders `loopback_message.content` against the full pipeline context (`engine-api` interface, `JinjaTemplateRenderer` in `engine`). |
 
 ## Usage
 
@@ -182,14 +182,15 @@ Keys this guide uses. Full tables: [`loop`](../../reference/steps/loop.md),
 | `break.condition` | block | required | Same shape as the loop condition. |
 | `break.output_field` | string | unset | Field returned as the final response. |
 | `condition.type` | enum | required | `equals`, `contains`, `label_equals`, `score_above`, `score_below`, `not_empty`, `empty`. |
-| `infer.role` (step level) | enum | `output` | `output`, `thinking`, `internal`. |
+| `infer.role` (step level) | enum | unset | `output`, `thinking`, `internal`. Unset streams and appends like `output` but does not mark the pipeline's output step. |
 | `infer.strip_thinking` | bool | `false` | Drop the reasoning span from the stream and the stored output. |
 
 ## Notes
 
 - The loopback message is rendered with Jinja; a render failure or an empty result skips the
   injection with a warning and the loop continues.
-- `max_iterations: 3` allows three passes back through the body; the counter is per loop
+- `max_iterations: 3` allows three attempts in total: the counter increments on each unmet
+  check, so two checks loop back and the third falls back. The counter is per loop
   step id and persists for the request, so two gates looping into the same step count
   separately.
 - `role: internal` output is neither streamed nor appended to the conversation, which keeps a

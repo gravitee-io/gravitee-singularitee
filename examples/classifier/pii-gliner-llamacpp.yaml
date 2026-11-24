@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 
-# PII detection · GLiNER2 zero-shot, 42 entity types — llama.cpp/ggml engine
+# PII detection · GLiNER2 zero-shot, 42 entity types, llama.cpp/ggml engine
 #
 # Standalone workspace. Run it with:
 #   ./run-server.sh --workspace examples/classifier/pii-gliner-llamacpp.yaml

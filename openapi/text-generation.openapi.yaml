@@ -92,6 +92,7 @@ paths:
                 $ref: "#/components/schemas/ChatCompletionChunk"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/NotReady" }
 
@@ -124,6 +125,7 @@ paths:
                 $ref: "#/components/schemas/CompletionResponse"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/NotReady" }
 
@@ -180,6 +182,7 @@ paths:
                   - $ref: "#/components/schemas/GraviteeProgressEvent"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/NotReady" }
 
@@ -197,18 +200,25 @@ components:
     BadRequest:
       description: |
         Invalid JSON or schema violation (`code: invalid_request_error`), missing
-        `model` (`param: model`), unresolved or hidden model (`code: model_not_found`),
-        wrong model task (`code: unsupported_model`), media the target cannot read
-        (`code: unsupported_modality`, `param: messages` or `input`), or a remote
-        media URL (`code: invalid_request_error`), or a structured output format that is
-        malformed or cannot be enforced (`code: invalid_request_error`, `param:
-        response_format`, `response_format.json_schema` or `text.format`).
+        `model` (`param: model`), unresolved or hidden model, or a model serving
+        another task (`code: model_not_found`), media the target cannot read
+        (`code: unsupported_modality`, `param: messages` or `input`), a remote
+        media URL (`code: invalid_request_error`), or a structured output format with a
+        missing `name` or `schema`, combined with `tools`, or that cannot be enforced
+        (`code: invalid_request_error`, `param: response_format`,
+        `response_format.json_schema` or `text.format`).
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
     Unauthorized:
       description: "Missing or invalid bearer token (`code: invalid_api_key`)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooLarge:
+      description: "Body larger than `http.max-body-size` (`type: invalid_request_error`, `code: request_too_large`)."
       content:
         application/json:
           schema:
@@ -247,12 +257,12 @@ components:
               enum:
                 - invalid_request_error
                 - model_not_found
-                - unsupported_model
                 - unsupported_modality
                 - invalid_api_key
                 - model_not_ready
                 - not_found
                 - method_not_allowed
+                - request_too_large
                 - internal_error
                 - null
 
@@ -340,6 +350,7 @@ components:
         frequency_penalty: { type: number }
         seed: { type: integer }
         stop:
+          description: Applied on a bare model target only; a pipeline target ignores it.
           oneOf:
             - type: string
             - type: array

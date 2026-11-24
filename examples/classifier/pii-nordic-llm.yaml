@@ -37,7 +37,7 @@ workspace:
 
   models:
     - id: nordic-pii-spans
-      name: unified-analytics/nordic-pii-spans-qwen3.5-4b
+      name: gravitee-io/nordic-pii-spans-qwen3.5-4b
       type: llama_cpp
       visible: false
       llama_cpp:

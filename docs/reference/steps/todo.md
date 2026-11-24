@@ -4,7 +4,7 @@
 
 ## Overview
 
-The presence of a `todo` step anywhere in a pipeline registers the todo tool definitions, so every `infer` step injects them (unless `server_tools: false`). `TodoStepExecutor` then reads the tool calls extracted by the previous `infer` step and splits them into server-owned calls and client-bound calls. Server-owned calls are executed against the plan on the `PipelineContext`: `set_todos` installs or non-destructively updates the plan and locks it, `complete_todo` marks an item done with its `note` as proof, `ask_user` pauses. Each executed call is appended to the conversation as an assistant tool-call turn followed by a tool result turn, removed from the calls sent to the client, and a `PROGRESS` event with the plan snapshot is streamed. Then:
+The presence of a `todo` step anywhere in a pipeline registers the todo tool definitions, so every `infer` step injects them (unless the step sets `server_tools: false` or `inject_tools: false`). `TodoStepExecutor` then reads the tool calls extracted by the previous `infer` step and splits them into server-owned calls and client-bound calls. Server-owned calls are executed against the plan on the `PipelineContext`: `set_todos` installs or non-destructively updates the plan and locks it, `complete_todo` marks an item done with its `note` as proof, `ask_user` pauses. Each executed call is appended to the conversation as an assistant tool-call turn followed by a tool result turn, removed from the calls sent to the client, and a `PROGRESS` event with the plan snapshot is streamed. Then:
 
 - an `ask_user` call streams its question as the visible answer and halts with `BREAK_CONDITION` (plain `stop` over HTTP), the plan being saved for the next turn;
 - remaining client-bound calls halt with `TOOL_CALLS` so the client executes them, with any narration the generating step produced streamed first;
@@ -61,7 +61,7 @@ From `examples/pipelines/todo-agent.yaml`:
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `handled_step` | string | `next_step` | Step to branch to after consuming a plan call (usually the `infer` step that produced it, or the gate after it). Proto `handled_step_id`. |
+| `handled_step` | string | `next_step` | Step to branch to after consuming a plan call (usually the `infer` step that produced it, or the gate after it). |
 
 ## Context fields
 

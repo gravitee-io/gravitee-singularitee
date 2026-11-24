@@ -136,7 +136,8 @@ A large MoE model with quantised KV cache (`examples/llama/qwen3.6-35b.yaml`):
   `download.exclude` has no effect on this type. Files land in `<cache>/<org>/<model>/`.
 - **Only one speculative flavour.** `mtp`, `draft_path` and `eagle3_path` are three ways to
   produce draft tokens; configuring more than one fails the load with an
-  `IllegalArgumentException`. The `speculative:` block is forwarded only with `mtp: true`.
+  `IllegalArgumentException`. `mtp: true` together with `mmproj_path` also fails the load.
+  The `speculative:` block is forwarded only with `mtp: true`.
 - **Prefix caching needs rewindable attention.** Hybrid or linear-attention models
   (Qwen3-Next / Qwen3.6, Kimi-Linear, Granite-4.0-H, Falcon-H1, LFM2, Nemotron-Nano-v2)
   report reuse but re-prefill every turn. Check that a warm turn's `ttft` agrees with its

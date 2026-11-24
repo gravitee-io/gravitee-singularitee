@@ -8,27 +8,50 @@ The repository ships one CUDA image definition per engine (ONNX Runtime with GLi
 llama.cpp, vLLM) plus a CPU image for development. Each engine loads its own native CUDA
 libraries, so they are not co-located: each image carries only its engine's jars (the
 `dist-*` Maven profiles) and `SingulariteeConfiguration` registers an engine only when its
-probe class is on the classpath. A vLLM image asked for a `llama_cpp` model fails with
-"no factory for type", not with a `NoClassDefFoundError`.
+probe class is on the classpath. A vLLM image asked for a `llama_cpp` model is refused with
+`Unsupported model type: MODEL_TYPE_LLAMA_CPP`, not a `NoClassDefFoundError`.
 
 No workspace is baked into the images by default. Mount one and point
 `GRAVITEE_AI_WORKSPACE_PATH` at it. The intended topology is one model (or one engine) per
 process and GPU, composed over gRPC by a workspace that declares `remote:` endpoints.
 
+```mermaid
+flowchart TB
+    client["Clients"] -->|"Singularitee API"| a
+    client -->|"Singularitee API"| b
+    client -->|"Singularitee API"| c
+    subgraph a["Image: onnx-cpu or onnx-cuda"]
+        a1["Singularitee server<br/>gRPC :9090, HTTP :8080"] --> a2["ONNX Runtime, GLiNER"]
+    end
+    subgraph b["Image: llamacpp-cuda"]
+        b1["Singularitee server<br/>gRPC :9090, HTTP :8080"] --> b2["llama.cpp CUDA libraries"]
+    end
+    subgraph c["Image: vllm-cuda"]
+        c1["Singularitee server<br/>gRPC :9090, HTTP :8080"] --> c2["Python, vLLM"]
+    end
+```
+
+This page is the reference for the images. Two companion pages walk through them:
+
+| Page | Contents |
+| --- | --- |
+| [Backend setups](./backends.md) | Choosing a backend, building its distribution, running it on a host or in its image. |
+| [Model images](./model-images.md) | Baking a workspace and its weights into an image: a PII classifier on ONNX Runtime, an LLM on llama.cpp, a vLLM model. |
+
 | Dockerfile | Engine | Base image | Distribution profile | Model types |
 | --- | --- | --- | --- | --- |
 | `Dockerfile` | all, CPU | `graviteeio/java:25-debian` | default | every type; local development |
-| `Dockerfile.onnx-cpu` | ONNX Runtime, GLiNER | `graviteeio/java:25-debian` | `-Pdist-onnx` | `onnx_classifier`, `onnx_embedding`, `onnx_reranker`, `gliner_classifier`, `gliner_ner` |
+| `Dockerfile.onnx-cpu` | ONNX Runtime, GLiNER | `graviteeio/java:25-debian` | `-Pdist-onnx` | `onnx_classifier`, `onnx_embedding`, `onnx_reranker`, `gliner_classifier`, `gliner_ner`, `gliner_decision` |
 | `Dockerfile.onnx-cuda` | ONNX Runtime, GLiNER | `nvidia/cuda:<v>-cudnn-runtime-ubuntu<v>` | `-Pcuda,dist-onnx` | same as above, CUDA execution provider |
-| `Dockerfile.llamacpp-cuda` | llama.cpp | `nvidia/cuda:<v>-cudnn-runtime-ubuntu<v>` plus the libs from `LLAMA_LIBS_IMAGE` | `-Pcuda,dist-llama` | `llama_cpp`, `llama_cpp_embedding`, `llama_cpp_reranker` |
-| `Dockerfile.llamacpp-cuda` with `-Pcuda,dist-llama-onnx` | llama.cpp + ONNX Runtime, GLiNER | same image | `-Pcuda,dist-llama-onnx` | llama.cpp types plus `onnx_*`, `gliner_classifier`, `gliner_ner` on the CUDA execution provider (one image for an LLM + guardrails) |
+| `Dockerfile.llamacpp-cuda` | llama.cpp | `nvidia/cuda:<v>-cudnn-runtime-ubuntu<v>` plus the libs from `LLAMA_LIBS_IMAGE` | `-Pcuda,dist-llama` | `llama_cpp`, `llama_cpp_embedding`, `llama_cpp_reranker`, `llama_cpp_decision` |
+| `Dockerfile.llamacpp-cuda` with `-Pcuda,dist-llama-onnx` | llama.cpp + ONNX Runtime, GLiNER | same image | `-Pcuda,dist-llama-onnx` | llama.cpp types plus `onnx_*`, `gliner_classifier`, `gliner_ner`, `gliner_decision` on the CUDA execution provider (one image for an LLM + guardrails) |
 | `Dockerfile.llama-cuda` | builder only | `nvidia/cuda:<v>-devel-ubuntu<v>` | none | compiles llama.cpp with `GGML_CUDA` into `/llama-libs` and gliner4j's `libggml-deberta` plugin into `/llama-libs/plugins` (`GLINER4J_REF`); consumed by the line above |
 | `Dockerfile.vllm-cuda` | vLLM | `vllm/vllm-openai:v0.31.0-cu129` | `-Pdist-vllm` | `vllm`, `vllm_decision` |
 
 ## Key types
 
 - `docker/cuda/entrypoint.sh`: sets `GRAVITEE_HOME`, sources `cuda-env.sh`, prints `nvidia-smi` diagnostics, falls back to a baked `workspace.yaml` when `GRAVITEE_AI_WORKSPACE_PATH` is unset, then execs `gravitee.sh`.
-- `docker/cuda/cuda-env.sh`: shared by the three CUDA images; each block is conditional on its payload. Extends `LD_LIBRARY_PATH`, exports `LLAMA_CPP_LIB_PATH` when the llama.cpp natives are present, and turns `VLLM4J_VENV` into `-Dvllm4j.venv` on `JAVA_OPTS` with `libpython` preloaded.
+- `docker/cuda/cuda-env.sh`: shared by the three CUDA images; each block is conditional on its payload. Extends `LD_LIBRARY_PATH`, exports `LLAMA_CPP_LIB_PATH` when the llama.cpp natives are present, and turns `VLLM4J_VENV` into `-Dvllm4j.venv` on `JAVA_OPTS` with `libpython` and `libjsig` preloaded.
 - `SingulariteeConfiguration`: classpath probes that decide which engine factories register.
 - `scripts/setup-venv.sh`: the host-side vLLM virtualenv for development and build machines (`metal`, `cuda`, `cpu`).
 - `scripts/gen-dev-certs.sh`: throwaway CA, server and client certificates for the mutual-TLS example.
@@ -117,13 +140,16 @@ workspace:
 
 | Arg | Default | Dockerfiles | Purpose |
 | --- | --- | --- | --- |
-| `CUDA_VERSION` | `12.9.2` | `*-cuda` | CUDA base image version. |
-| `UBUNTU_VERSION` | `24.04` | `*-cuda` | Ubuntu base release. |
+| `CUDA_VERSION` | `12.9.2` | `onnx-cuda`, `llamacpp-cuda`, `llama-cuda` | CUDA base image version. |
+| `UBUNTU_VERSION` | `24.04` | `onnx-cuda`, `llamacpp-cuda`, `llama-cuda` | Ubuntu base release. |
 | `TEMURIN_APT_CODENAME` | `noble` | `onnx-cuda`, `llamacpp-cuda` | Adoptium repository codename for the JDK. |
 | `LLAMA_LIBS_IMAGE` | `llama-cpp-cuda:local` | `llamacpp-cuda` | Image holding the prebuilt llama.cpp CUDA libraries. |
 | `LLAMACPP_VERSION` | `v1.0.0` | `llama-cuda` | llama.cpp tag to compile. Must match the llamaj.cpp binding (`2.12.0`). |
+| `GLINER4J_REPO` | `https://github.com/gravitee-io/GLiNER4j.git` | `llama-cuda` | Repository the `libggml-deberta` plugin is built from. |
+| `GLINER4J_REF` | `main` | `llama-cuda` | Branch, tag or commit of `GLINER4J_REPO` to build. |
 | `CUDA_ARCHITECTURES` | `70-real;...;121-real;90-virtual` | `llama-cuda` | Target GPU architectures. Trim to the cards you deploy for a faster build. |
 | `VLLM_IMAGE` | `vllm/vllm-openai:v0.31.0-cu129` | `vllm-cuda` | Base image. Keep its vLLM version equal to `scripts/setup-venv.sh`'s `VLLM_VERSION`. The `cu129` tag runs on driver r525+; the default CUDA 13 tags need r580+. |
+| `SR_RUNTIME_REF` | `de4b2f2c63fcc662f62766f9c5922c4d5d4efed3` | `vllm-cuda` | `vllm-srun` commit `vllm_decision` runs on. Keep it equal to `scripts/setup-venv.sh`'s. |
 | `BAKE_MODEL` | unset | `vllm-cuda` | HuggingFace repo to download into the image. |
 | `BAKE_WORKSPACE` | unset | `vllm-cuda` | Path under `examples/` copied to `${GRAVITEEIO_HOME}/workspace.yaml` and used when `GRAVITEE_AI_WORKSPACE_PATH` is unset. |
 
@@ -166,7 +192,7 @@ llama.cpp twin is several times faster on the same machine.
 
 - One model per process and GPU. llama.cpp, vLLM and ONNX Runtime each load their own native CUDA libraries; several engines or several large models in one JVM compete for GPU memory and can conflict on library versions. Give each its own process and compose them with `remote_*` models.
 - Weights are not in the images (unless `BAKE_MODEL` is set). They download on first boot into `GRAVITEE_AI_MODELS_PATH`; persist that directory.
-- Each image serves only its own engine. A workspace naming another engine's type fails at load with "no factory for type".
+- Each image serves only its own engine. A workspace naming another engine's type is refused at load with `Unsupported model type: <MODEL_TYPE_X>`.
 - Keep `LLAMACPP_VERSION` and the llamaj.cpp dependency in lockstep (`v1.0.0` with `2.12.0`). The FFM bindings are ABI-specific; a mismatch is a runtime `NoSuchMethodError`. `docker/cuda/README.md` shows how to read the pinned build out of the llamaj.cpp jar.
 - Keep `VLLM_IMAGE` and `scripts/setup-venv.sh`'s `VLLM_VERSION` equal (`0.31.0`), and `SR_RUNTIME_REF` equal in both (the `vllm-srun` commit `vllm_decision` runs on). vLLM4j is compiled against one vLLM Python API and fails at model load, not at build, when they drift.
 - Images run as `graviteeio` with the install read-only to it: code, plugins, native libraries and scripts are owned by root, and only `logs/`, `models/`, `plugins/.work` (re-extracted on every start) and `HOME` (`/home/graviteeio` on the CUDA images, for kernel and Python caches) are writable, owned by `graviteeio` and group `root` so an arbitrary runtime uid in group `root` works too. Mounted volumes for `models/` must be writable by that uid; otherwise the CUDA entrypoint falls back to a private, non-persistent temporary directory.
@@ -177,6 +203,8 @@ llama.cpp twin is several times faster on the same machine.
 
 ## See also
 
+- [Backend setups](./backends.md): one walk-through per backend.
+- [Model images](./model-images.md): self-contained images with a workspace and weights.
 - [Configuration](../../reference/configuration.md): every key the images accept through `GRAVITEE_*`.
 - [Getting started](../../getting-started/README.md): boot order and the readiness gate.
 - [Workspaces](../../workspaces/README.md): the YAML `GRAVITEE_AI_WORKSPACE_PATH` points at.

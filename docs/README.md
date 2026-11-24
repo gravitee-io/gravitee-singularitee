@@ -8,6 +8,7 @@
 | --- | --- |
 | [Getting Started](./getting-started/README.md) | How do I build, run and call it for the first time? |
 | [Concepts](./concepts/README.md) | What is a workspace, a model, a pipeline, a template? Which engine backs what? |
+| [Pipelines](./concepts/pipelines/README.md) | How is a pipeline walked: the DAG, the shared context, roles, termination? |
 | [Architecture](./architecture/README.md) | How is it put together, how does a request execute, how does a pipeline run? |
 | [Workspaces](./workspaces/README.md) | How do I write the YAML that declares what a server publishes? |
 | [Reference](#reference) | What is every key, every option, every default? |
@@ -60,6 +61,8 @@ One page per model type, one page per step type, one page for templates, one for
 | Page | Contents |
 | --- | --- |
 | [Deployment](./operations/deployment/README.md) | Docker images per engine, build arguments, one model per process. |
+| [Backend setups](./operations/deployment/backends.md) | Choosing a backend (llama.cpp, ONNX Runtime with GLiNER, vLLM), its dependencies, its distribution and its image. |
+| [Model images](./operations/deployment/model-images.md) | Self-contained images that carry a workspace and its weights, with a PII classifier worked end to end. |
 | [Observability](./operations/observability/README.md) | OpenTelemetry spans and Prometheus metrics. |
 | [Validated models](./operations/models/README.md) | Models run end to end, with measurements. |
 

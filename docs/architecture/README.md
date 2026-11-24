@@ -33,7 +33,7 @@ A pipeline is a directed graph of steps that the engine walks reactively. The sa
 | `grpc` | gRPC service implementations, engine-adapter factories, HuggingFace resolvers. |
 | `http` | OpenAI-compatible HTTP API. Pure translation, no inference logic. |
 | `client` | `SingulariteeClient`: thin gRPC client, the only dependency a caller needs. |
-| `standalone` | `bootstrap` (classloader entry point), `container` (`SingulariteeNode`, Spring config, server components), `distribution` (assembly). |
+| `standalone` | `bootstrap` (classloader entry point), `container` (`SingulariteeNode`, Spring config, server components), `distribution` (assembly), `e2e` (black-box tests against the built distribution). |
 
 ## Boot order
 
@@ -53,7 +53,7 @@ node never reports ready with a safety step silently absent.
 | Mode | Invocation | Where the DAG runs | Where models live |
 | --- | --- | --- | --- |
 | Server-side pipeline | `InferPipeline` RPC, or HTTP with a pipeline id as `model` | Server | Server |
-| Direct model | `Infer`, `Classify`, `Embed`, `Rank`, `Decide` RPCs, or HTTP with a model id | n/a | Server |
+| Direct model | `Infer`, `Classify`, `Embed`, `TextRerank`, `Decide` RPCs, or HTTP with a model id | n/a | Server |
 | Client-side pipeline | `ClientPipelineExecutor` with a workspace declaring `remote:` endpoints | Client process | One or more remote servers |
 
 In client-side mode the workspace declares `remote_*` models bound to named endpoints. `ClientPipelineExecutor` walks the DAG locally and each model call travels over gRPC to the server that hosts it. A multi-server client points different models at different endpoints inside one DAG (`examples/modular/client-safety-vllm.yaml`).
@@ -62,11 +62,11 @@ In client-side mode the workspace declares `remote_*` models bound to named endp
 
 A pipeline is an `entry` step plus a list of `steps`. Linear steps follow their `next_step` edge; routing, looping, guard and todo steps name their own targets. Every step reads and writes a shared `PipelineContext`: the `prompt`, the running `messages` list, per-step outputs (`<step_id>.output`), diagnostic fields, and usage. A step that yields no next step is terminal.
 
-**Termination** (`finish_reason`): normal exhaustion gives `STOP`; a `break` or `loop` condition gives `BREAK_CONDITION`; a guard rejection gives `GUARD_BLOCKED`. `CANCELLED` (client disconnect or slow consumer) and `STALLED` (backend decode failure) stay distinct on gRPC. Over HTTP these are mapped onto the closed OpenAI set: `GUARD_BLOCKED` becomes `content_filter` with HTTP 400, `CANCELLED` and `STALLED` render as `stop`.
+**Termination** (`finish_reason`): normal exhaustion gives `STOP`; a `break` condition, or a `todo` step pausing on `ask_user`, gives `BREAK_CONDITION`; a guard rejection gives `GUARD_BLOCKED`, which ends the stream with a `FAILED` event (`error_code: content_filter`) rather than a completion. `CANCELLED` (client disconnect or slow consumer) and `STALLED` (backend decode failure) stay distinct on gRPC. Over HTTP these are mapped onto the closed OpenAI set: `GUARD_BLOCKED` becomes `content_filter`, `CANCELLED` and `STALLED` render as `stop`.
 
 **Diagnostics as context fields**: each step publishes what happened (`<step>.finish_reason`, `<step>.tool_parse_ok`, `<step>.label`, `<step>.iterations`, ...), so loop and break conditions can drive self-repair. The full catalogue is in [Context fields](../reference/context-fields.md).
 
-**Infer roles** shape the conversation: `output` appends the response as an assistant turn; `thinking` keeps reasoning out of history; `internal` holds grader or router verdicts that never reach the client.
+**Infer roles** shape the conversation: `output` appends the response as an assistant turn; `thinking` streams on the thinking channel and is appended like `output`; `internal` holds grader or router verdicts that never reach the client or the history. For any non-`internal` role the tagged reasoning span is stripped from the appended turn.
 
 ### Step types
 
@@ -111,7 +111,7 @@ YAML `config:` block, and the `StepExecutor` built from the parent-owned
 diagnostics), so a plugin step is always observed. `StepPlugins.assemble` turns the plugins
 the registry discovered into the engine's executors and codecs. Rules enforced at boot: two
 providers for one type is a misassembly and fails; a core type without an executor fails
-("core step types without an executor"); a step can be switched off with
+("Core step types without an executor: [...]"); a step can be switched off with
 `step.<id>.enabled: false`; and a step whose manifest
 `feature` the platform license does not enable stays unregistered, so a workspace declaring it fails to load with the feature
 named (node licensing, the same `LicenseManager` the rest of Gravitee uses). Steps never cross
@@ -124,11 +124,12 @@ metadata.
 workspace:
   name: <string>
   remote:                         # client-side or multi-server only
-    default: { host, port, username?, password? }
-    servers: [ { id, host, port, username?, password? } ]
+    default: { host, port, username?, password?, ssl?, http2_keep_alive_timeout? }
+    servers: [ { id, host, port, username?, password?, ssl?, http2_keep_alive_timeout? } ]
   models:    [ ... ]              # type + <type>: block; task?, visible?, modalities?
   pipelines: [ ... ]              # entry + steps; task?, visible?, modalities?
   templates: [ { id, content | file } ]
+  tags:      [ ... ]              # named reasoning/tool tag sets a step references by id
   includes:                       # pull shared definitions from sibling folders
     models:    [ "*.yaml" ]       # ./models/
     pipelines: [ "*.yaml" ]       # ./pipelines/
@@ -153,7 +154,7 @@ Run **one model (or one engine) per process**. llama.cpp, vLLM and ONNX Runtime 
 
 Module `gravitee-singularitee-http`, lifecycle `HttpApiServerComponent`, enabled by `http.enabled`. It shares the registries and engines with gRPC and adds no inference logic: it translates JSON to proto, drives the same local services, and so inherits metrics, tracing and cancel-on-disconnect.
 
-- Endpoints: `POST /v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/embeddings`, `/v1/classify`, `/v1/rerank`, `/v1/similarity`; `GET /v1/models`, `/v1/models/{id}`. Each is also served without the `/v1` prefix.
+- Endpoints: `POST /v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/embeddings`, `/v1/classify`, `/v1/rerank`, `/v1/similarity`, `/v1/decisions`, `/v1/systemone`; `GET /v1/models`, `/v1/models/{id}`. Each is also served without the `/v1` prefix.
 - Streaming: SSE with a terminal `[DONE]`, back-pressure coupling the token `Flowable` to the HTTP write queue; a disconnect cancels the sequence or pipeline.
 - Resolution: `model` names a text-generation model or a pipeline; `pipeline:` forces the pipeline, otherwise a model wins and a bare pipeline id is the fallback. Unknown and hidden ids both give `model_not_found`.
 - Validation and errors: lenient JSON-schema validation (required, type, enum enforced; unknown fields accepted), optional Bearer auth, OpenAI error envelope.
@@ -164,7 +165,7 @@ Conventions and endpoint details: [HTTP API](../api/http/README.md); schemas: [o
 
 Opt-in through `services.metrics` and `services.opentelemetry`.
 
-- Tracing: a SERVER span per gRPC call (continuing an inbound W3C `traceparent`) with nested `singularitee.pipeline`, `singularitee.step` and `singularitee.model.<op>` spans; direct RPCs get `singularitee.infer`, `singularitee.classify`, `singularitee.embed`. Client-side execution is not traced.
-- Metrics (Micrometer, Prometheus at `/_node/metrics/prometheus`): `ai_infer_requests_total`, `ai_infer_latency_seconds`, `ai_pipeline_requests_total`, `ai_pipeline_latency_seconds`, `ai_classify_requests_total`, `ai_embed_requests_total`, `ai_model_call_seconds{model,op}`, `ai_tokens_total{model,kind}`.
+- Tracing: a SERVER span per gRPC call (continuing an inbound W3C `traceparent`) with nested `singularitee.pipeline`, `singularitee.step` and `singularitee.model.<op>` spans; direct unary RPCs get `singularitee.classify`, `singularitee.classify.batch`, `singularitee.embed`, `singularitee.embed.batch`, `singularitee.text_similarity`, `singularitee.text_rerank` and `singularitee.decide`. Client-side execution is not traced.
+- Metrics (Micrometer, Prometheus at `/_node/metrics/prometheus`): `ai_infer_requests_total`, `ai_infer_latency_seconds`, `ai_pipeline_requests_total`, `ai_pipeline_latency_seconds`, `ai_classify_requests_total`, `ai_embed_requests_total`, `ai_model_call_seconds{model,op}`, `ai_tokens_total{model,kind}`, `ai_finish_reasons_total{model,reason}`, `ai_failure_signals_total{source,kind,signal}`.
 
 Details: [Observability](../operations/observability/README.md).

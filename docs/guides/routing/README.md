@@ -15,7 +15,7 @@ A `route` step reads a context field (`prompt` by default), resolves it to a lab
 
 ## Key types
 
-- `RouteStepExecutor` (engine), including `rxWarmupEmbeddings`, which embeds every rule's sentences at workspace load.
+- `RouteStepExecutor` (route plugin), including `rxWarmupEmbeddings`, which embeds every rule's sentences at workspace load.
 - `RouteStepConfig`, `RouteStepConfig.RouteRule`, `RoutingStrategy`: the route plugin's config records.
 - `ClassifierEngine` and `EmbeddingEngine` behind the first two strategies.
 
@@ -52,7 +52,7 @@ Java: `client.inferPipeline(InferPipelineRequest.newBuilder().setPipelineId("gli
 
 ### Route on a classifier label
 
-`examples/pipelines/gliner-router.yaml`. The router is a zero-shot classifier, so the route set is the YAML label list; every `rules[].label` must appear verbatim in the model's `labels[].name`:
+`examples/pipelines/gliner-router.yaml` (abridged here). The router is a zero-shot classifier, so the route set is the YAML label list; every `rules[].label` must appear verbatim in the model's `labels[].name`:
 
 ```yaml
 models:
@@ -106,7 +106,7 @@ pipelines:
 
 ### Route on example sentences
 
-`examples/pipelines/embedding-router.yaml`. Each rule carries sentences; they are embedded once at load and the single nearest sentence decides, so one sharp example beats several vague ones:
+`examples/pipelines/embedding-router.yaml` (abridged here). Each rule carries sentences; they are embedded once at load and the single nearest sentence decides, so one sharp example beats several vague ones:
 
 ```yaml
 - id: route

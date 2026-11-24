@@ -63,9 +63,9 @@ A step that keeps the caller's conversation and only adds its own instructions (
 | `sampling` | object | unset | Step-level sampling, see below. |
 | `tags` | object or string | unset | Reasoning and tool-call markers, see below. A bare string references a workspace `tags:` entry by id. |
 | `context` | map | unset | Typed Jinja variables (`enable_thinking: false`, `reasoning_effort: medium`, lists, maps). Merged into the rendering context and forwarded as `template_context` when the engine renders the messages itself. |
-| `system` | string | unset | Jinja template prepended as a system turn. When the request already has a system message the two are merged into that turn (caller first, blank line, step text). Proto field `system_prompt`. |
-| `inject_tools` | bool | `true` | `false` hides the caller's tools: `{{ tools }}` is undefined in raw templates and empty for chat templates. |
-| `server_tools` | bool | `true` | `false` hides the server-owned todo tools (`set_todos`, `complete_todo`, `ask_user`) from this step. Proto field `expose_server_tools`. |
+| `system` | string | unset | Jinja template prepended as a system turn. When the request already has a system message the two are merged into that turn (caller first, blank line, step text). |
+| `inject_tools` | bool | `true` | `false` hides every tool from this step, the caller's and the server-owned todo tools alike (`server_tools` is not consulted): `{{ tools }}` is undefined in raw templates and empty for chat templates. |
+| `server_tools` | bool | `true` | `false` hides the server-owned todo tools (`set_todos`, `complete_todo`, `ask_user`) from this step while keeping the caller's. |
 | `strip_thinking` | bool | `false` | `true` removes the span between the reasoning tags from the stream, the step output and the conversation. `false` routes it to the THINKING stream and keeps it in `output_field`. |
 | `stream_thinking` | bool | `false` | For `role: internal` only: forward THINKING deltas to the client while content and tool deltas stay suppressed. |
 | `trim_history` | bool | `true` | Drop older turns so prompt plus `max_tokens` fits the engine's context window (`ChatWindowTrimmer`). Leading system turns are pinned, an assistant tool call and its tool results trim as one unit, the newest turn is always kept (head-truncated with `[...trimmed]` when it alone overflows). No effect when the engine reports no context size. |
@@ -79,7 +79,7 @@ Exactly one of the three template keys may be set; setting two fails the workspa
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
 | `prompt.messages` | list of `{role, content}` | unset | Replaces the conversation. Each `content` is a Jinja template; `role` defaults to `user`. The result still goes through the chat template. |
-| `prompt.template` | string | unset | Inline raw Jinja template. The rendered string is sent as a bare prompt, bypassing the chat template. Proto field `raw_template`. |
+| `prompt.template` | string | unset | Inline raw Jinja template. The rendered string is sent as a bare prompt, bypassing the chat template. |
 | `prompt.template_file` | string | unset | Path to a raw template file. Resolved relative to `${gravitee.home}/templates` on a running server (the workspace directory when the loader is given no templates path). Must stay under that base unless absolute. |
 | `prompt.template_id` | string | unset | Id of a `templates:` entry; resolved to its content at load time. Unknown ids fail the load. |
 
@@ -96,7 +96,7 @@ Step values apply only when non-zero, except `temperature`, where `0` is greedy.
 | `sampling.frequency_penalty` | float | `0` | Frequency penalty. |
 | `sampling.stop` | list of string | unset | Stop strings; mapped to `InferStepConfig.stop`. |
 
-`SamplingParams.seed` and `top_logprobs` exist on the wire and can be set per request, but have no YAML key on the step. `LoraConfig` (`lora_name`, `lora_path`) is likewise a proto-only field of `InferStepConfig`: the workspace loader never sets it, so adapters are selected in the model's `llama_cpp.lora_path` / `vllm.lora_path`, or per raw `Infer` request when `ai.inference.request-lora.enabled` is set.
+`SamplingParams.seed` and `top_logprobs` exist on the wire and can be set per request, but have no YAML key on the step. `InferStepConfig.lora` (`lora_name`, `lora_path`) likewise has no YAML key: `InferStepCodec` never sets it, so adapters are selected in the model's `llama_cpp.lora_path` / `vllm.lora_path`, or per raw `Infer` request when `ai.inference.request-lora.enabled` is set.
 
 ### `tags`
 
@@ -120,7 +120,7 @@ Writes:
 | Field | Value |
 | --- | --- |
 | `<output_field>` | The full generated text. A bare tool payload captured by the engine is re-wrapped in the step's tool tags (default `<tool_call>...</tool_call>`). |
-| `<id>.finish_reason` | `stop`, `length`, `tool_calls`, `guard_blocked`, `break_condition`, `max_iterations`, `cancelled`, `stalled`, `start_failed` or `unspecified`. |
+| `<id>.finish_reason` | `stop`, `length`, `tool_calls`, `guard_blocked`, `break_condition`, `max_iterations`, `cancelled`, `stalled` or `start_failed`. Not written when the engine reports no finish reason. |
 | `<id>.prompt_tokens`, `<id>.completion_tokens`, `<id>.reasoning_tokens` | Usage reported by the engine. |
 | `<id>.prompt_ms` | Prompt evaluation time in milliseconds. |
 | `<id>.thinking_unclosed` | `true` when the generation ended inside an unclosed reasoning span, or produced engine-classified reasoning with no answer and no tool span. |
@@ -129,6 +129,8 @@ Writes:
 | `<id>.tool_call_count` | Number of extracted calls. |
 | `<id>.parse_error` | The extraction template or JSON error, when one occurred. |
 | `<id>.attempted_tool` | The leading identifier of the failed span (`functions.` prefix removed), so a repair loop can name the wrong tool. |
+| `<id>.perplexity`, `<id>.mean_logprob`, `<id>.answer_*`, `<id>.min_margin`, ... | Confidence signals, one field per signal, written only when logprobs were captured. The full list is in [Context fields](../context-fields.md#per-step-fields). |
+| `__tool_call_step` | This step's id, when it extracted at least one tool call. Hidden from Jinja; it lets templates read the calls as `{{ <id>.tool_calls }}`. |
 
 Also appends the text to `generated_messages`, appends an assistant turn to `messages` for `output` and `thinking` roles, stores the extracted tool calls for the final event, and accumulates usage and performance into the pipeline totals.
 
