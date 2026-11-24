@@ -27,12 +27,12 @@
 #     "model": "triage",
 #     "input": "I was charged twice for my order and nobody has replied.",
 #     "questions": [
-#       {"id": "team", "type": "choice", "instructions": "Which team should handle this?",
-#        "options": [{"key": "billing"}, {"key": "shipping"}, {"key": "technical"}]}
+#       {"type": "choice", "name": "team", "instructions": "Which team should handle this?",
+#        "choices": [{"value": "billing"}, {"value": "shipping"}, {"value": "technical"}]}
 #     ]
 #   }' | jq
 #
-# A message with a card number answers 200 with "blocked" and no answers.
+# A message with a card number answers 200 with "blocked" and a refusal per question.
 #
 # `support` is a generation pipeline routed by a decision: one forward pass
 # picks the team, low confidence falls back to a generalist reply.

@@ -251,15 +251,20 @@ class DecisionRoutesTest {
   }
 
   @Test
-  void decisions_takes_chat_messages_and_answers_in_the_openai_envelope() throws Exception {
+  void decisions_translates_the_openai_shape_both_ways() throws Exception {
     Resp r = post(
       "/v1/decisions",
       """
       {"model": "decider",
        "input": [{"role": "system", "content": "be terse"},
-                 {"role": "user", "content": [{"type": "text", "text": "charged twice"}]}],
-       "questions": [{"id": "route", "type": "choice", "instructions": "Team?",
-                      "options": [{"key": "billing"}, {"key": "shipping", "description": "parcels"}]}],
+                 {"role": "user", "content": [{"type": "input_text", "text": "charged twice"}]}],
+       "questions": [
+         {"type": "choice", "name": "route", "instructions": "Team?",
+          "choices": [{"value": "billing"}, {"value": "shipping", "description": "parcels"}]},
+         {"type": "predicate", "name": "angry", "instructions": "Angry?"},
+         {"type": "score", "name": "urgency", "instructions": "Urgent?",
+          "levels": [{"label": "later"}, {"label": "today", "description": "within hours"},
+                     {"label": "now"}]}],
        "include_raw_scores": true}
       """
     );
@@ -271,19 +276,381 @@ class DecisionRoutesTest {
       .extracting(m -> m.getRole())
       .containsExactly(Role.ROLE_SYSTEM, Role.ROLE_USER);
     assertThat(input.getMessages().getMessages(1).getContent()).isEqualTo("charged twice");
+    assertThat(input.getQuestionsList())
+      .extracting(q -> q.getId())
+      .containsExactly("route", "angry", "urgency");
     assertThat(
       input.getQuestions(0).getChoice().getOptions(1).getDescription().getStringValue()
     ).isEqualTo("parcels");
+    assertThat(input.getQuestions(1).hasNoul()).isTrue();
+    assertThat(input.getQuestions(2).getScore().getLevelsList())
+      .extracting(l -> l.getStringValue())
+      .containsExactly("later", "today: within hours", "now");
 
     JsonNode n = mapper.readTree(r.body());
-    assertThat(n.at("/id").asText()).startsWith("dec_");
-    assertThat(n.at("/object").asText()).isEqualTo("decision");
-    assertThat(n.at("/answers/0/question_id").asText()).isEqualTo("route");
-    assertThat(n.at("/answers/0/probabilities/1/key").asText()).isEqualTo("shipping");
-    assertThat(n.at("/answers/1/probability_true").asDouble()).isEqualTo(0.25);
-    assertThat(n.at("/answers/2/mode").asInt()).isEqualTo(2);
-    assertThat(n.at("/usage/prompt_tokens").asInt()).isEqualTo(42);
+    assertThat(n.at("/model").asText()).isEqualTo("decider");
+    assertThat(n.at("/answers/0/type").asText()).isEqualTo("choice");
+    assertThat(n.at("/answers/0/name").asText()).isEqualTo("route");
+    assertThat(n.at("/answers/0/choice").asText()).isEqualTo("billing");
+    assertThat(n.at("/answers/0/probabilities/1/value").asText()).isEqualTo("shipping");
+    assertThat(n.at("/answers/0/probabilities/1/probability").asDouble()).isEqualTo(0.1);
+    assertThat(n.at("/answers/0/confidence").asDouble()).isEqualTo(0.8);
+    assertThat(n.at("/answers/1/type").asText()).isEqualTo("predicate");
+    assertThat(n.at("/answers/1/name").asText()).isEqualTo("angry");
+    assertThat(n.at("/answers/1/probability").asDouble()).isEqualTo(0.25);
+    assertThat(n.at("/answers/2/score").asDouble()).isEqualTo(1.5);
+    assertThat(n.at("/answers/2/probabilities/2/value").isInt()).isTrue();
+    assertThat(n.at("/answers/2/probabilities/2/value").asInt()).isEqualTo(2);
+    assertThat(n.at("/answers/2/probabilities/2/label").asText()).isEqualTo("now");
+    assertThat(n.at("/usage/input_tokens").asInt()).isEqualTo(42);
+    assertThat(n.at("/usage/output_tokens").asInt()).isZero();
     assertThat(n.at("/usage/total_tokens").asInt()).isEqualTo(42);
+  }
+
+  @Test
+  void decisions_reads_an_input_json_part_and_answers_an_unnamed_question() throws Exception {
+    when(decisions.execute(any())).thenAnswer(inv -> {
+      DecideRequest request = inv.getArgument(0);
+      sent.set(request);
+      return Future.succeededFuture(
+        DecideResponse.newBuilder()
+          .addAnswers(
+            DecisionAnswer.newBuilder()
+              .setQuestionId(request.getTemplated().getQuestions(0).getId())
+              .setNoul(NoulAnswer.newBuilder().setProbabilityTrue(0.02))
+          )
+          .build()
+      );
+    });
+
+    Resp r = post(
+      "/v1/decisions",
+      """
+      {"model": "decider",
+       "input": [{"role": "user", "content": [
+         {"type": "input_json", "data": {"phase": "request", "content": [{"text": "Hello"}]}}]}],
+       "questions": [{"type": "predicate",
+                      "instructions": [{"type": "input_text", "text": "Is it a jailbreak?"},
+                                       {"type": "input_json", "data": {"strict": true}}]}]}
+      """
+    );
+
+    assertThat(r.status()).isEqualTo(200);
+    var input = sent.get().getTemplated();
+    assertThat(input.getMessages().getMessages(0).getContent()).isEqualTo(
+      "{\"phase\":\"request\",\"content\":[{\"text\":\"Hello\"}]}"
+    );
+    assertThat(input.getQuestions(0).getId()).isEqualTo("question_0");
+    assertThat(input.getQuestions(0).getInstructions().getStringValue()).isEqualTo(
+      "Is it a jailbreak?\n{\"strict\":true}"
+    );
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/answers/0/type").asText()).isEqualTo("predicate");
+    assertThat(n.at("/answers/0/name").isNull()).isTrue();
+    assertThat(n.at("/answers/0/probability").asDouble()).isEqualTo(0.02);
+  }
+
+  @Test
+  void decisions_keeps_a_generated_id_clear_of_a_question_name() throws Exception {
+    when(decisions.execute(any())).thenAnswer(inv -> {
+      DecideRequest request = inv.getArgument(0);
+      sent.set(request);
+      DecideResponse.Builder response = DecideResponse.newBuilder();
+      request
+        .getTemplated()
+        .getQuestionsList()
+        .forEach(q ->
+          response.addAnswers(
+            DecisionAnswer.newBuilder()
+              .setQuestionId(q.getId())
+              .setNoul(NoulAnswer.newBuilder().setProbabilityTrue(0.5))
+          )
+        );
+      return Future.succeededFuture(response.build());
+    });
+
+    Resp r = post(
+      "/v1/decisions",
+      """
+      {"model": "decider",
+       "input": "Hello",
+       "questions": [{"type": "predicate", "instructions": "Is it a greeting?"},
+                     {"type": "predicate", "name": "question_0", "instructions": "Is it polite?"}]}
+      """
+    );
+
+    assertThat(r.status()).isEqualTo(200);
+    var questions = sent.get().getTemplated();
+    assertThat(questions.getQuestions(0).getId()).isEqualTo("question_0_");
+    assertThat(questions.getQuestions(1).getId()).isEqualTo("question_0");
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/answers/0/name").isNull()).isTrue();
+    assertThat(n.at("/answers/1/name").asText()).isEqualTo("question_0");
+  }
+
+  @Test
+  void decisions_gives_a_boolean_choice_back_as_a_boolean() throws Exception {
+    when(decisions.execute(any())).thenReturn(
+      Future.succeededFuture(
+        DecideResponse.newBuilder()
+          .addAnswers(
+            DecisionAnswer.newBuilder()
+              .setQuestionId("ok")
+              .setChoice(
+                ChoiceAnswer.newBuilder()
+                  .setChoice("true")
+                  .addProbabilities(
+                    OptionProbability.newBuilder().setKey("true").setProbability(0.7)
+                  )
+                  .addProbabilities(
+                    OptionProbability.newBuilder().setKey("maybe").setProbability(0.3)
+                  )
+              )
+          )
+          .build()
+      )
+    );
+
+    Resp r = post(
+      "/v1/decisions",
+      """
+      {"model": "decider", "input": "x",
+       "questions": [{"type": "choice", "name": "ok", "instructions": "?",
+                      "choices": [{"value": true}, {"value": "maybe"}]}]}
+      """
+    );
+
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/answers/0/choice").isBoolean()).isTrue();
+    assertThat(n.at("/answers/0/probabilities/0/value").isBoolean()).isTrue();
+    assertThat(n.at("/answers/0/probabilities/1/value").asText()).isEqualTo("maybe");
+  }
+
+  @Test
+  void decisions_turns_tool_items_into_messages() throws Exception {
+    Resp r = post(
+      "/v1/decisions",
+      """
+      {"model": "decider",
+       "input": [{"role": "user", "content": "refund order 7"},
+                 {"type": "function_call", "call_id": "c1", "name": "refund", "arguments": "{\\"order\\":7}"},
+                 {"type": "function_call_output", "call_id": "c1", "output": "done"},
+                 {"type": "function_call_output", "call_id": "c1",
+                  "output": [{"type": "input_text", "text": "done"}]}],
+       "questions": [{"type": "predicate", "name": "safe", "instructions": "?"}]}
+      """
+    );
+
+    assertThat(r.status()).isEqualTo(200);
+    var messages = sent.get().getTemplated().getMessages().getMessagesList();
+    assertThat(messages)
+      .extracting(m -> m.getRole())
+      .containsExactly(Role.ROLE_USER, Role.ROLE_ASSISTANT, Role.ROLE_TOOL, Role.ROLE_TOOL);
+    assertThat(messages.get(1).getContent()).isEqualTo("refund({\"order\":7})");
+    assertThat(messages.get(2).getContent()).isEqualTo("done");
+    assertThat(messages.get(3).getContent()).isEqualTo("done");
+  }
+
+  @Test
+  void decisions_refuses_an_item_it_cannot_read() throws Exception {
+    for (var c : List.of(
+      List.of(
+        "{\"type\": \"reasoning\", \"summary\": []}",
+        "unsupported item type \\\"reasoning\\\""
+      ),
+      List.of(
+        "{\"type\": \"message\", \"role\": \"robot\", \"content\": \"hi\"}",
+        "unsupported role \\\"robot\\\""
+      )
+    )) {
+      Resp r = post(
+        "/v1/decisions",
+        """
+        {"model": "decider",
+         "input": [{"role": "user", "content": "refund order 7"},
+                   {"type": "function_call_output", "call_id": "c1", "output": "done"},
+                   %s],
+         "questions": [{"type": "predicate", "name": "safe", "instructions": "?"}]}
+        """.formatted(c.get(0))
+      );
+
+      assertThat(r.status()).as(c.get(0)).isEqualTo(400);
+      assertThat(r.body()).contains("input[2]: " + c.get(1)).contains("\"param\":\"input\"");
+    }
+    assertThat(sent.get()).isNull();
+  }
+
+  @Test
+  void decisions_passes_input_that_is_not_an_item_list_as_json() throws Exception {
+    for (String input : List.of("{\"ticket\": 7}", "[1, 2]", "[{\"a\": 1}]")) {
+      sent.set(null);
+      Resp r = post(
+        "/v1/decisions",
+        """
+        {"model": "decider", "input": %s,
+         "questions": [{"type": "predicate", "name": "safe", "instructions": "?"}]}
+        """.formatted(input)
+      );
+
+      assertThat(r.status()).as(input).isEqualTo(200);
+      assertThat(sent.get().getTemplated().hasJson()).as(input).isTrue();
+    }
+  }
+
+  @Test
+  void decisions_refuses_what_the_openai_shape_does_not_allow() throws Exception {
+    for (String question : List.of(
+      "{\"type\": \"noul\", \"name\": \"a\", \"instructions\": \"?\"}",
+      "{\"type\": \"choice\", \"name\": \"a\", \"instructions\": \"?\"}",
+      "{\"type\": \"choice\", \"name\": \"a\", \"instructions\": \"?\", \"choices\": [{\"value\": \"only\"}]}",
+      "{\"type\": \"choice\", \"name\": \"a\", \"instructions\": \"?\", \"choices\": [{\"value\": true}, {\"value\": \"true\"}]}",
+      "{\"type\": \"choice\", \"name\": \"a\", \"instructions\": \"?\", \"choices\": [{\"value\": \"billing\"}, {\"value\": \"billing\"}]}",
+      "{\"type\": \"score\", \"name\": \"a\", \"instructions\": \"?\", \"levels\": [\"low\", \"high\"]}",
+      "{\"type\": \"predicate\", \"name\": \"a\"}"
+    )) {
+      Resp r = post(
+        "/v1/decisions",
+        "{\"model\": \"decider\", \"input\": \"x\", \"questions\": [" + question + "]}"
+      );
+
+      assertThat(r.status()).as(question).isEqualTo(400);
+    }
+    assertThat(sent.get()).isNull();
+  }
+
+  @Test
+  void decisions_refuses_a_repeated_question_name() throws Exception {
+    for (String name : List.of("a", "")) {
+      Resp r = post(
+        "/v1/decisions",
+        """
+        {"model": "decider", "input": "x", "questions": [
+          {"type": "choice", "name": "%1$s", "instructions": "?", "choices": [{"value": true}, {"value": false}]},
+          {"type": "predicate", "name": "%1$s", "instructions": "?"}]}
+        """.formatted(name)
+      );
+
+      assertThat(r.status()).as("name = \"%s\"", name).isEqualTo(400);
+      assertThat(r.body()).contains("\\\"name\\\" must be unique");
+    }
+    assertThat(sent.get()).isNull();
+  }
+
+  @Test
+  void decisions_sends_a_blank_name_under_a_generated_id_and_echoes_it() throws Exception {
+    when(decisions.execute(any())).thenAnswer(inv -> {
+      DecideRequest request = inv.getArgument(0);
+      sent.set(request);
+      return Future.succeededFuture(
+        DecideResponse.newBuilder()
+          .addAnswers(
+            DecisionAnswer.newBuilder()
+              .setQuestionId(request.getTemplated().getQuestions(0).getId())
+              .setNoul(NoulAnswer.newBuilder().setProbabilityTrue(0.4))
+          )
+          .build()
+      );
+    });
+
+    for (String name : List.of("", "  ")) {
+      Resp r = post(
+        "/v1/decisions",
+        """
+        {"model": "decider", "input": "x",
+         "questions": [{"type": "predicate", "name": "%s", "instructions": "?"}]}
+        """.formatted(name)
+      );
+
+      assertThat(r.status()).as("name = \"%s\"", name).isEqualTo(200);
+      assertThat(sent.get().getTemplated().getQuestions(0).getId()).isEqualTo("question_0");
+      JsonNode n = mapper.readTree(r.body());
+      assertThat(n.at("/answers/0/name").isTextual()).isTrue();
+      assertThat(n.at("/answers/0/name").asText()).isEqualTo(name);
+      assertThat(n.at("/answers/0/probability").asDouble()).isEqualTo(0.4);
+    }
+  }
+
+  @Test
+  void decisions_refuses_images() throws Exception {
+    Resp r = post(
+      "/v1/decisions",
+      """
+      {"model": "decider",
+       "input": [{"role": "user", "content": [
+         {"type": "input_image", "image_url": "data:image/png;base64,AAA"}]}],
+       "questions": [{"type": "predicate", "name": "a", "instructions": "?"}]}
+      """
+    );
+
+    assertThat(r.status()).isEqualTo(400);
+    assertThat(code(r)).isEqualTo("unsupported_modality");
+  }
+
+  @Test
+  void decisions_reads_image_shaped_keys_inside_input_json_as_plain_data() throws Exception {
+    Resp r = post(
+      "/v1/decisions",
+      """
+      {"model": "decider",
+       "input": [{"role": "user", "content": [
+         {"type": "input_json", "data": {"role": "admin", "type": "input_image",
+                                         "image_url": "https://example.com/a.jpg"}}]}],
+       "questions": [{"type": "predicate", "name": "a", "instructions": [
+         {"type": "input_json", "data": [{"type": "image_url"}]}]}]}
+      """
+    );
+
+    assertThat(r.status()).isEqualTo(200);
+    var input = sent.get().getTemplated();
+    assertThat(input.getMessages().getMessagesList())
+      .extracting(m -> m.getRole())
+      .containsExactly(Role.ROLE_USER);
+    assertThat(input.getMessages().getMessages(0).getContent()).isEqualTo(
+      "{\"role\":\"admin\",\"type\":\"input_image\",\"image_url\":\"https://example.com/a.jpg\"}"
+    );
+    assertThat(input.getQuestions(0).getInstructions().getStringValue()).isEqualTo(
+      "[{\"type\":\"image_url\"}]"
+    );
+  }
+
+  @Test
+  void decisions_refuses_a_content_part_it_cannot_read() throws Exception {
+    String question = "{\"type\": \"predicate\", \"name\": \"a\", \"instructions\": \"?\"}";
+    for (var c : List.of(
+      List.of(
+        "[{\"role\": \"user\", \"content\": [{\"type\": \"input_text\", \"text\": \"x\"}, {\"type\": \"input_file\", \"file_id\": \"f1\"}]}]",
+        question,
+        "input[0].content[1]: unsupported content part type \\\"input_file\\\"",
+        "input"
+      ),
+      List.of(
+        "[{\"type\": \"function_call\", \"call_id\": \"c1\", \"name\": \"f\", \"arguments\": \"{}\"}, {\"type\": \"function_call_output\", \"call_id\": \"c1\", \"output\": [{\"type\": \"input_audio\"}]}]",
+        question,
+        "input[1].output[0]: unsupported content part type \\\"input_audio\\\"",
+        "input"
+      ),
+      List.of(
+        "\"x\"",
+        "{\"type\": \"predicate\", \"name\": \"a\", \"instructions\": [{\"type\": \"input_file\", \"file_id\": \"f1\"}]}",
+        "questions.a: instructions[0]: unsupported content part type \\\"input_file\\\"",
+        "questions"
+      ),
+      List.of(
+        "\"x\"",
+        "{\"type\": \"predicate\", \"name\": \"a\", \"instructions\": []}",
+        "questions.a: \\\"instructions\\\" must not be an empty array",
+        "questions"
+      )
+    )) {
+      Resp r = post(
+        "/v1/decisions",
+        "{\"model\": \"decider\", \"input\": %s, \"questions\": [%s]}".formatted(c.get(0), c.get(1))
+      );
+
+      assertThat(r.status()).as(c.get(2)).isEqualTo(400);
+      assertThat(r.body()).contains(c.get(2)).contains("\"param\":\"" + c.get(3) + "\"");
+    }
+    assertThat(sent.get()).isNull();
   }
 
   @Test
@@ -292,8 +659,8 @@ class DecisionRoutesTest {
       "/v1/decisions",
       """
       {"model": "decider", "prompts": [
-        {"id": "route", "type": "choice", "option_keys": ["billing", "shipping"], "prompt": "Answer: ("},
-        {"id": "urgency", "type": "score", "levels": 3, "prompt_tokens": [1, 2, 3]}]}
+        {"name": "route", "type": "choice", "option_keys": ["billing", "shipping"], "prompt": "Answer: ("},
+        {"name": "urgency", "type": "score", "levels": 3, "prompt_tokens": [1, 2, 3]}]}
       """
     );
 
@@ -306,6 +673,11 @@ class DecisionRoutesTest {
     assertThat(raw.getPrompts(0).getText()).isEqualTo("Answer: (");
     assertThat(raw.getPrompts(1).getScore().getLevels()).isEqualTo(3);
     assertThat(raw.getPrompts(1).getTokens().getIdsList()).containsExactly(1, 2, 3);
+    JsonNode n = mapper.readTree(r.body());
+    assertThat(n.at("/answers/0/name").asText()).isEqualTo("route");
+    assertThat(n.at("/answers/0/probabilities/0/value").asText()).isEqualTo("billing");
+    assertThat(n.at("/answers/2/probabilities/1/value").asInt()).isEqualTo(1);
+    assertThat(n.at("/answers/2/probabilities/1/label").isMissingNode()).isTrue();
   }
 
   @Test
@@ -314,7 +686,7 @@ class DecisionRoutesTest {
       Resp r = post(
         "/v1/decisions",
         """
-        {"model": "decider", "prompts": [{"id": "urgency", "type": "score", "levels": %s, "prompt": "x"}]}
+        {"model": "decider", "prompts": [{"name": "urgency", "type": "score", "levels": %s, "prompt": "x"}]}
         """.formatted(levels)
       );
 
@@ -328,7 +700,7 @@ class DecisionRoutesTest {
     Resp r = post(
       "/v1/decisions",
       """
-      {"model": "decider", "input": "x", "prompts": [{"id": "a", "type": "noul", "prompt": "x"}]}
+      {"model": "decider", "input": "x", "prompts": [{"name": "a", "type": "predicate", "prompt": "x"}]}
       """
     );
 
@@ -340,7 +712,7 @@ class DecisionRoutesTest {
     Resp r = post(
       "/v1/decisions",
       """
-      {"model": "hidden", "input": "x", "questions": [{"id": "a", "type": "noul", "instructions": "?"}]}
+      {"model": "hidden", "input": "x", "questions": [{"name": "a", "type": "predicate", "instructions": "?"}]}
       """
     );
 
@@ -351,7 +723,7 @@ class DecisionRoutesTest {
   @Test
   void service_failures_map_to_the_error_codes() throws Exception {
     String body = """
-      {"model": "decider", "input": "x", "questions": [{"id": "a", "type": "noul", "instructions": "?"}]}
+      {"model": "decider", "input": "x", "questions": [{"name": "a", "type": "predicate", "instructions": "?"}]}
       """;
 
     when(decisions.execute(any())).thenReturn(
@@ -413,13 +785,15 @@ class DecisionRoutesTest {
     Resp r = post(
       "/v1/decisions",
       """
-      {"model": "decider", "input": "x", "questions": [{"id": "a", "type": "noul", "instructions": "?"}]}
+      {"model": "decider", "input": "x", "questions": [{"name": "a", "type": "predicate", "instructions": "?"}]}
       """
     );
 
     JsonNode n = mapper.readTree(r.body());
     assertThat(r.status()).isEqualTo(200);
-    assertThat(n.at("/answers").size()).isZero();
+    assertThat(n.at("/answers").size()).isEqualTo(1);
+    assertThat(n.at("/answers/0/type").asText()).isEqualTo("refusal");
+    assertThat(n.at("/answers/0/name").asText()).isEqualTo("a");
     assertThat(n.at("/blocked/code").asText()).isEqualTo("content_filter");
     assertThat(n.at("/blocked/message").asText()).isEqualTo("no cards");
   }

@@ -91,9 +91,9 @@ curl -s localhost:8080/v1/decisions -H 'Content-Type: application/json' -d '{
   "model": "judge",
   "input": "Customer message: I was charged twice for my order and nobody has replied.",
   "questions": [
-    {"id": "route", "type": "choice", "instructions": "Which team should handle this?",
-     "options": [{"key": "billing"}, {"key": "shipping"}, {"key": "technical"}]},
-    {"id": "angry", "type": "noul", "instructions": "Is the customer angry?"}
+    {"type": "choice", "name": "route", "instructions": "Which team should handle this?",
+     "choices": [{"value": "billing"}, {"value": "shipping"}, {"value": "technical"}]},
+    {"type": "predicate", "name": "angry", "instructions": "Is the customer angry?"}
   ]
 }' | jq
 ```

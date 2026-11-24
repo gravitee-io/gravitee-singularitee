@@ -256,33 +256,59 @@ curl localhost:8080/v1/systemone \
 
 #### POST /v1/decisions
 Spec: [decision.openapi.yaml](../../../openapi/decision.openapi.yaml).
-The OpenAI-shaped decision route: the same envelope conventions as the other routes and the
-gRPC message shape in JSON, with ordered arrays instead of keyed objects. Send either `input` (a
-string, any JSON value, or an array of chat messages) with `questions`, or `prompts` the caller
-already rendered (`prompt` text or `prompt_tokens`; `option_keys` for a choice, `levels` for a
-score). Mixing the two is a `400`.
+
+> **Breaking change.** The request and response shape of this endpoint changed to follow
+> OpenAI's Decisions API. Requests in the previous shape are no longer accepted.
+
+The request and response shape of OpenAI's Decisions API: `model`, `input` (a string, or an
+array of messages and tool items; an item the server cannot read is refused with a `400`)
+and `questions`, each with `type` (`predicate`, `choice`,
+`score`), `instructions`, an optional `name`, and `choices` (2 to 255 `value` / `description`
+objects, a value being a string or a boolean) for a choice or `levels` (2 to 10 `label` /
+`description` objects, lowest first) for a score. Answers come back in question order; `usage` is
+`input_tokens`, `output_tokens` (always 0) and `total_tokens`.
+
+Where it differs from OpenAI's API: an `input_image` or `image_url` part is refused with
+`unsupported_modality` (the `data` of an `input_json` part is plain data and is never read as an
+image); a content part of another type, such as a file or audio part, is a `400`; choice values
+must be distinct as text, so `true` and `"true"` cannot share a question; content
+parts are read as text, an `input_json` part as its JSON, and a tool call as an assistant message;
+`prompt_cache_key`, `prompt_cache_options` and `safety_identifier` are accepted and ignored;
+`model` names a decision model or a decision pipeline; a JSON object is accepted as `input` and
+given to the template as is. On a pipeline target the decide step reads the user text only: other
+messages and tool items are not shown to the model, and an input without a user message is a
+`400`. Three additions: `prompts` the caller already rendered, in place of
+`input` and `questions` (`name`, `type`, `prompt` text or `prompt_tokens`; `option_keys` for a
+choice, `levels` for a score), mixing the two being a `400`; `include_raw_scores`; and `mode`, the
+most probable level, on a score answer.
 
 ```bash
 curl localhost:8080/v1/decisions \
   -H 'Authorization: Bearer sk-local-changeme' -H 'content-type: application/json' \
   -d '{"model":"judge","input":"I was charged twice.","questions":[
-       {"id":"route","type":"choice","instructions":"Which team?","options":[{"key":"billing"},{"key":"shipping"}]},
-       {"id":"angry","type":"noul","instructions":"Is the customer angry?"}]}'
+       {"type":"choice","name":"route","instructions":"Which team?","choices":[{"value":"billing"},{"value":"shipping"}]},
+       {"type":"predicate","name":"angry","instructions":"Is the customer angry?"},
+       {"type":"score","name":"urgency","instructions":"How urgent?","levels":[{"label":"later"},{"label":"today"},{"label":"now"}]}]}'
 ```
 
 ```json
-{"id":"dec_99d4...","object":"decision","created":1791476945,"model":"judge",
+{"model":"judge",
  "answers":[
-   {"question_id":"route","type":"choice","choice":"billing","confidence":0.86,
-    "probabilities":[{"key":"billing","probability":0.93},{"key":"shipping","probability":0.07}]},
-   {"question_id":"angry","type":"noul","probability_true":0.64}],
- "usage":{"prompt_tokens":180,"completion_tokens":0,"total_tokens":180}}
+   {"type":"choice","name":"route","choice":"billing",
+    "probabilities":[{"value":"billing","probability":0.93},{"value":"shipping","probability":0.07}],"confidence":0.86},
+   {"type":"predicate","name":"angry","probability":0.64},
+   {"type":"score","name":"urgency","score":1.7,"mode":2,
+    "probabilities":[{"value":0,"label":"later","probability":0.08},{"value":1,"label":"today","probability":0.13},
+                     {"value":2,"label":"now","probability":0.79}],"confidence":0.55}],
+ "usage":{"input_tokens":255,"input_tokens_details":{"cached_tokens":0,"cache_write_tokens":0},
+          "output_tokens":0,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":255}}
 ```
 
-A score answer carries `score` (expected level), `mode`, `confidence` and `probabilities`.
-`include_raw_scores: true` adds `raw_scores` to each answer on both routes: one array per scoring
-variant, before temperature. When the target is a pipeline halted by a guard, both routes answer
-`200` with empty `answers` and `"blocked": {"code": "content_filter", "message": "..."}`.
+An unnamed question answers with `"name": null`. `include_raw_scores: true` adds `raw_scores` to
+each answer on both routes: one array per scoring variant, before temperature. When the target is
+a pipeline halted by a guard, both routes answer `200` with
+`"blocked": {"code": "content_filter", "message": "..."}`; `/v1/systemone` then has empty
+`answers`, `/v1/decisions` one `{"type": "refusal", "name": ...}` per question.
 
 #### GET /v1/models, GET /v1/models/{model}
 Spec: [discovery.openapi.yaml](../../../openapi/discovery.openapi.yaml).

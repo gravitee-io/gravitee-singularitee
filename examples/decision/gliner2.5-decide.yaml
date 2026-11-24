@@ -31,13 +31,13 @@
 #     "model": "decide",
 #     "input": "Someone changed the password on my account last night and moved money out of it.",
 #     "questions": [
-#       {"id": "intent", "type": "choice", "instructions": "What does the customer want?",
-#        "options": [{"key": "billing_issue", "description": "A wrong, double or unexpected charge"},
-#                    {"key": "account_security", "description": "Someone else got into the account"},
-#                    {"key": "order_status", "description": "Where an order or a parcel is"}]},
-#       {"id": "handoff", "type": "noul", "instructions": "Does the customer ask for a human agent?"},
-#       {"id": "urgency", "type": "score", "instructions": "How urgent is this?",
-#        "levels": ["low", "normal", "high"]}
+#       {"type": "choice", "name": "intent", "instructions": "What does the customer want?",
+#        "choices": [{"value": "billing_issue", "description": "A wrong, double or unexpected charge"},
+#                    {"value": "account_security", "description": "Someone else got into the account"},
+#                    {"value": "order_status", "description": "Where an order or a parcel is"}]},
+#       {"type": "predicate", "name": "handoff", "instructions": "Does the customer ask for a human agent?"},
+#       {"type": "score", "name": "urgency", "instructions": "How urgent is this?",
+#        "levels": [{"label": "low"}, {"label": "normal"}, {"label": "high"}]}
 #     ]
 #   }' | jq
 #
