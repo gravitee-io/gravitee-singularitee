@@ -28,6 +28,7 @@ import io.gravitee.singularitee.inference.api.classifier.ClassifierResult;
 import io.gravitee.singularitee.inference.api.classifier.ClassifierResults;
 import io.gravitee.singularitee.inference.api.text.RecursiveTextSplitter.Chunk;
 import io.gravitee.singularitee.inference.onnx.FloatTensor;
+import io.gravitee.singularitee.inference.onnx.bert.CodePointOffsets;
 import io.gravitee.singularitee.inference.onnx.bert.OnnxBertInference;
 import io.gravitee.singularitee.inference.onnx.bert.config.OnnxBertConfig;
 import java.util.*;
@@ -38,7 +39,7 @@ import java.util.function.Function;
  *
  * <p>{@code CLASSIFIER_MODE} selects the head: {@code SEQUENCE} applies a sigmoid per label and
  * returns labels sorted by score; {@code TOKEN} applies a softmax per token and returns one
- * result per content token with its character span, dropping labels in
+ * result per content token with the input text it covers and its span in {@code String} indices, dropping labels in
  * {@code DISCARDED_LABELS}. Labels come from {@code id2label} in {@code config.json} when
  * present, else {@code CLASSIFIER_LABELS}, else the class index. Inputs longer than the
  * sequence budget are split on semantic boundaries; see {@link #inferAll(List)}.
@@ -104,7 +105,7 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
     if (chunkTexts.size() > 1 && !acceptsBatches()) {
       return oneAtATime(chunkTexts, this::classifyTokens);
     }
-    return getTokenResults(encodeAll(chunkTexts));
+    return getTokenResults(chunkTexts, encodeAll(chunkTexts));
   }
 
   /** Runs each text on its own, for a graph that pins its batch size to 1. */
@@ -200,7 +201,10 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
     return new ClassifierResults(rows, tokens);
   }
 
-  private List<ClassifierResults> getTokenResults(EncodingResults encodingResult) {
+  private List<ClassifierResults> getTokenResults(
+    List<String> texts,
+    EncodingResults encodingResult
+  ) {
     try (OrtSession.Result result1 = encodingResult.result()) {
       TokenInput input = this.getTokenLogits(result1.get(0));
       var results = new ArrayList<ClassifierResults>(input.batchSize());
@@ -208,18 +212,23 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
       for (int i = 0; i < input.batchSize(); i++) {
         final Encoding encoding = encodingResult.encoding().get(i);
 
-        final String[] tokens = encoding.getTokens();
+        final String text = texts.get(i);
         final CharSpan[] spans = encoding.getCharTokenSpans();
+        // The tokenizer counts code points; spans are String indices.
+        final CodePointOffsets offsets = CodePointOffsets.of(text);
 
         long rowBase = i * input.logits().stride(0);
         int numLabels = input.logits().dim(2);
         var result = new ArrayList<ClassifierResult>();
-        for (int j = 1; j < tokens.length - 1; j++) {
-          final String sanitizedToken = tokens[j].trim();
+        for (int j = 1; j < spans.length - 1; j++) {
+          int start = offsets.toStringIndex(spans[j].getStart());
+          int end = offsets.toStringIndex(spans[j].getEnd());
+          // The input the token covers, not the tokenizer's piece (lower-cased, "##" prefixed).
           var classifierResult = computeTokenProb(
             input.logits().row(rowBase + (long) j * numLabels, numLabels),
-            sanitizedToken,
-            spans[j]
+            text.substring(start, end),
+            start,
+            end
           );
           if (!discarded.contains(classifierResult.label())) {
             result.add(classifierResult);
@@ -232,7 +241,7 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
     }
   }
 
-  private ClassifierResult computeTokenProb(float[] logit, String token, CharSpan span) {
+  private ClassifierResult computeTokenProb(float[] logit, String token, int start, int end) {
     float[] probabilities = config.gioMath().softmax(logit);
 
     int argMax = 0;
@@ -245,13 +254,7 @@ public class OnnxBertClassifierModel extends OnnxBertInference<String, Classifie
       }
     }
 
-    return new ClassifierResult(
-      computeLabel(probabilities, argMax),
-      maxProb,
-      token,
-      span.getStart(),
-      span.getEnd()
-    );
+    return new ClassifierResult(computeLabel(probabilities, argMax), maxProb, token, start, end);
   }
 
   private List<ClassifierResults> getSequenceResults(EncodingResults encodingResult) {

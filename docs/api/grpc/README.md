@@ -168,7 +168,7 @@ Tags 4 and 5 are reserved and never emitted.
 
 `ClassifyResponse { top_label, top_score, map<string,float> all_scores, repeated ClassifyResult results, TokenUsage usage }`;
 `ClassifyResult { label, score, optional token, optional start, optional end, map<string,string> metadata }`
-carries character offsets for token-classification models, and `metadata` engine-specific facts
+carries offsets in UTF-16 code units (Java string indices) for token-classification models, and `metadata` engine-specific facts
 (an `llm_token_classifier` span's `ref`, the person it belongs to). `usage` is set only by models
 that count tokens (`onnx_classifier`, `gliner_ner`, `gliner_classifier`, `llm_token_classifier`,
 decision classifiers):

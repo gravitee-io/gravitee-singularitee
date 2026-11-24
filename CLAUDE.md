@@ -94,7 +94,7 @@ Metal applies `gpu_memory_utilization` to *total* unified memory rather than wha
 | `grpc` | gRPC service impls, engine-adapter factories, HuggingFace resolvers. |
 | `http` | OpenAI-compatible HTTP/JSON API. Pure translation, no inference logic. |
 | `client` | `SingulariteeClient`: thin gRPC client, the only dep a gateway connector needs. |
-| `standalone` | `bootstrap` (classloader), `container` (node, Spring, components), `distribution` (assembly). |
+| `standalone` | `bootstrap` (classloader), `container` (node, Spring, components), `distribution` (assembly), `e2e` (black-box tests against the built distribution). |
 
 Non-module directories: `examples/` (runnable workspaces), `docs/` (see below),
 `docker/`.
@@ -257,6 +257,26 @@ mvn -o -pl <module> test -Dtest=<Class>         # one class
 guard against breaking a workspace; run it after touching `examples/` or the loader. It
 validates *structure only*: it never resolves weights, so a wrong HuggingFace repo name still
 passes here and only fails at boot.
+
+**End-to-end tests** (`gravitee-singularitee-standalone-e2e`) boot the built distribution through
+`run-server.sh` on a workspace of their own and drive it over HTTP, one test class per backend
+over a shared contract (`SpanOffsetsContract`: span offsets, `token`, guard redaction). They are
+opt-in: the module skips its tests unless the `e2e` profile is on (`task test:e2e` sets it), so
+`mvn test` never boots a server. Under the profile a backend runs only when its model is already
+in the models directory, or when `SINGULARITEE_E2E` names it, which also lets the server download
+the model; the others are reported as skipped, with the reason.
+
+```bash
+mvn -o install -DskipTests                                    # they test target/distribution, so build first
+task test:e2e                                                 # backends whose models are cached (mvn ... test -Pe2e)
+SINGULARITEE_E2E=regex,onnx task test:e2e                     # named backends, downloading as needed
+SINGULARITEE_E2E_URL=http://gpu-host:8080 task test:e2e       # a server that is already running
+```
+
+Keys: `regex`, `onnx`, `gliner-onnx`, `gliner-llamacpp`, `llm-llamacpp`, `llm-vllm`, or `all`.
+`regex` needs no model, so it runs only when named. `GRAVITEE_AI_MODELS_PATH` moves the models
+directory, `SINGULARITEE_E2E_BOOT_TIMEOUT` (seconds, default 900) bounds a boot, and server logs
+land in the module's `target/e2e-logs/`. `llm-vllm` is untested on macOS.
 
 Don't use `mvn -q` when you need to read a result: it hides the surefire summary.
 

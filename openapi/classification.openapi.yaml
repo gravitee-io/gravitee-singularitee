@@ -200,8 +200,8 @@ components:
                     label: { type: string }
                     score: { type: number }
                     token: { type: string, description: Matched text; absent when the engine does not report it. }
-                    start: { type: integer, description: "Character offset, inclusive." }
-                    end: { type: integer, description: "Character offset, exclusive; absent when the engine does not report it." }
+                    start: { type: integer, description: "Offset into the input in UTF-16 code units (a Java or JavaScript string index), inclusive." }
+                    end: { type: integer, description: "Offset in UTF-16 code units, exclusive; absent when the engine does not report it." }
                     metadata:
                       type: object
                       description: >-

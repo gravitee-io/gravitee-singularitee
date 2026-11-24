@@ -228,5 +228,5 @@ exec env \
   GRAVITEE_HTTP_ENABLED=true \
   GRAVITEE_HTTP_PORT="$PORT" \
   GRAVITEE_AI_WORKSPACE_PATH="$WORKSPACE" \
-  GRAVITEE_AI_MODELS_PATH="$HOME/.cache/gravitee-singularitee/models" \
+  GRAVITEE_AI_MODELS_PATH="${GRAVITEE_AI_MODELS_PATH:-$HOME/.cache/gravitee-singularitee/models}" \
   "$DIST/bin/gravitee.sh"

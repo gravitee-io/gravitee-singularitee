@@ -62,6 +62,11 @@ tasks:
     cmds:
       - mvn -o -pl gravitee-singularitee-workspace test -Dtest=ExamplesWorkspaceTest
 
+  test:e2e:
+    desc: Black-box tests on the built distribution (backends whose models are cached, or named in SINGULARITEE_E2E)
+    cmds:
+      - mvn -o -pl gravitee-singularitee-standalone/gravitee-singularitee-standalone-e2e test -Pe2e
+
   install:
     desc: First-time setup (natives, build, then run; wraps ./install.sh)
     cmds:
