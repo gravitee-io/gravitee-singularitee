@@ -296,6 +296,7 @@ These are read straight from the process environment by the engine adapters.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `HF_TOKEN` | unset | Fallback for `ai.huggingface.token`. |
+| any `NAME` a workspace references as `${env:NAME}` | unset | Value of a `remote:` endpoint's `username` or `password`, read when the workspace loads. Unset or empty fails that endpoint; see [Workspaces](../workspaces/README.md#remote-endpoints). |
 | `LLAMA_CPP_LIB_PATH` | unset | Directory llamaj.cpp loads the llama.cpp natives from before falling back to `~/.llama.cpp`; GLiNER ggml bundles use the same natives and look for the `libggml-deberta` plugin in its `plugins/` sub-directory. The CUDA image sets it. |
 | `GLINER4J_DEBERTA_KERNEL` | `auto` | Attention kernel of the `libggml-deberta` plugin: `auto` times every variant the GPU holds at first use (logged as `DEBERTA plugin: autotune …`) and keeps the fastest correct one; `turing`, `ampere` (shared-memory kernels) or `reg64x32`, `reg64x64`, `reg128x32`, `reg128x64` (register-resident) force one. `GLINER4J_DEBERTA_AUTOTUNE=0` keeps the static rule instead. |
 | `VLLM4J_ATTENTION_BACKEND` | unset | Same as `-Dvllm4j.attentionBackend`. |

@@ -150,7 +150,8 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       LOGGER.info("Models loaded {}", progressBar(loaded, total));
     }
 
-    // Remote models (gRPC proxies)
+    // Remote models (gRPC proxies). Unresolved endpoints were already logged by the loader.
+    ws.remoteErrors().forEach((id, error) -> failures.add("remote '" + id + "': " + error));
     remoteClients = buildRemoteClients(ws.remotes(), configuration, failures);
 
     for (var modelDef : ws.remoteModels()) {

@@ -115,9 +115,9 @@ public record WorkspaceDefinition(
      * an idle connection is held before the client closes it.
      */
     @JsonProperty("http2_keep_alive_timeout") Integer http2KeepAliveTimeout,
-    /** {@code username}: HTTP Basic user sent as gRPC metadata. Unset = no authentication. */
+    /** {@code username}: HTTP Basic user sent as gRPC metadata. Unset = no authentication. {@code ${env:NAME}} reads it from the environment at load. */
     @JsonProperty("username") String username,
-    /** {@code password}: HTTP Basic password paired with {@link #username()}. */
+    /** {@code password}: HTTP Basic password paired with {@link #username()}. {@code ${env:NAME}} reads it from the environment at load. */
     @JsonProperty("password") String password,
     /**
      * {@code ssl}: reach the endpoint over TLS. Server certificates are validated against the

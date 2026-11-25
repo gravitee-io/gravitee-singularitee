@@ -150,7 +150,7 @@ public final class YamlWorkspaceLoader {
     );
 
     List<PipelineModel> pipelines = parsePipelines(root, codecContext, codecs);
-    var remotes = parseRemotes(root);
+    var remotes = parseRemotes(root, System::getenv);
 
     LOGGER.info(
       "Workspace loaded: {} local model(s), {} remote model(s), {} client-local model(s), {} pipeline(s), {} remote endpoint(s)",
@@ -158,7 +158,7 @@ public final class YamlWorkspaceLoader {
       modelSplit.remote().size(),
       modelSplit.clientLocal().size(),
       pipelines.size(),
-      remotes.size()
+      remotes.endpoints().size()
     );
     return new WorkspaceRequests(
       root.name(),
@@ -166,7 +166,8 @@ public final class YamlWorkspaceLoader {
       pipelines,
       modelSplit.remote(),
       modelSplit.clientLocal(),
-      remotes
+      remotes.endpoints(),
+      remotes.errors()
     );
   }
 
@@ -179,6 +180,7 @@ public final class YamlWorkspaceLoader {
    * @param remoteModels       remote model definitions (proxies to another Singularitee)
    * @param clientLocalModels  client-local model definitions (pure-Java, in-process engines)
    * @param remotes            remote endpoint definitions keyed by server ID
+   * @param remoteErrors       why each remote endpoint left out of {@code remotes} failed to load, keyed by server ID
    */
   public record WorkspaceRequests(
     String name,
@@ -186,8 +188,25 @@ public final class YamlWorkspaceLoader {
     List<PipelineModel> pipelines,
     List<WorkspaceDefinition.ModelDefinition> remoteModels,
     List<ClientLocalModelData> clientLocalModels,
-    java.util.Map<String, WorkspaceDefinition.RemoteEndpoint> remotes
-  ) {}
+    java.util.Map<String, WorkspaceDefinition.RemoteEndpoint> remotes,
+    Map<String, String> remoteErrors
+  ) {
+    public WorkspaceRequests {
+      remoteErrors = remoteErrors == null ? Map.of() : Map.copyOf(remoteErrors);
+    }
+
+    /** A workspace whose remote endpoints all loaded. */
+    public WorkspaceRequests(
+      String name,
+      List<ModelLoadRequest> models,
+      List<PipelineModel> pipelines,
+      List<WorkspaceDefinition.ModelDefinition> remoteModels,
+      List<ClientLocalModelData> clientLocalModels,
+      java.util.Map<String, WorkspaceDefinition.RemoteEndpoint> remotes
+    ) {
+      this(name, models, pipelines, remoteModels, clientLocalModels, remotes, Map.of());
+    }
+  }
 
   /**
    * A client-local model definition ({@code regex} or
@@ -635,24 +654,56 @@ public final class YamlWorkspaceLoader {
   // Remote endpoint parsing
   // ---------------------------------------------------------------------------
 
-  private static java.util.Map<String, WorkspaceDefinition.RemoteEndpoint> parseRemotes(
-    WorkspaceDefinition.WorkspaceRoot root
-  ) {
-    var result = new java.util.LinkedHashMap<String, WorkspaceDefinition.RemoteEndpoint>();
-    if (root.remote() == null) return result;
+  /** Remote endpoints that loaded, and why the others did not, both keyed by server id. */
+  private record Remotes(
+    Map<String, WorkspaceDefinition.RemoteEndpoint> endpoints,
+    Map<String, String> errors
+  ) {}
 
-    var rc = root.remote();
-    if (rc.defaultEndpoint() != null) {
-      result.put("default", rc.defaultEndpoint());
-    }
-    if (rc.servers() != null) {
-      for (var ep : rc.servers()) {
-        if (ep.id() != null && !ep.id().isBlank()) {
-          result.put(ep.id(), ep);
+  private static Remotes parseRemotes(
+    WorkspaceDefinition.WorkspaceRoot root,
+    java.util.function.UnaryOperator<String> environment
+  ) {
+    var declared = new LinkedHashMap<String, WorkspaceDefinition.RemoteEndpoint>();
+    if (root.remote() != null) {
+      var rc = root.remote();
+      if (rc.defaultEndpoint() != null) {
+        declared.put("default", rc.defaultEndpoint());
+      }
+      if (rc.servers() != null) {
+        for (var ep : rc.servers()) {
+          if (ep.id() != null && !ep.id().isBlank()) {
+            declared.put(ep.id(), ep);
+          }
         }
       }
     }
-    return result;
+    var endpoints = new LinkedHashMap<String, WorkspaceDefinition.RemoteEndpoint>();
+    var errors = new LinkedHashMap<String, String>();
+    for (var entry : declared.entrySet()) {
+      try {
+        endpoints.put(entry.getKey(), withResolvedCredentials(entry.getValue(), environment));
+      } catch (IllegalArgumentException e) {
+        LOGGER.error("Remote endpoint '{}' not loaded: {}", entry.getKey(), e.getMessage());
+        errors.put(entry.getKey(), e.getMessage());
+      }
+    }
+    return new Remotes(endpoints, errors);
+  }
+
+  private static WorkspaceDefinition.RemoteEndpoint withResolvedCredentials(
+    WorkspaceDefinition.RemoteEndpoint ep,
+    java.util.function.UnaryOperator<String> environment
+  ) {
+    return new WorkspaceDefinition.RemoteEndpoint(
+      ep.id(),
+      ep.host(),
+      ep.port(),
+      ep.http2KeepAliveTimeout(),
+      EnvironmentReferences.resolve(ep.username(), "username", environment),
+      EnvironmentReferences.resolve(ep.password(), "password", environment),
+      ep.ssl()
+    );
   }
 
   // ---------------------------------------------------------------------------
