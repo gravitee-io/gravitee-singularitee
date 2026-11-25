@@ -465,6 +465,7 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       );
     }
     client.store(release);
+    List<String> stale = changedOrRemoved(replacement);
     pipelineRegistry.replaceAll(replacement);
     runningYaml = release.yaml();
     LOGGER.info(
@@ -475,7 +476,23 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
     );
     appliedRevision = release.revision();
     runningRevision = release.revision();
+    if (stepExecutorFactory != null) {
+      stepExecutorFactory.forgetPipelines(stale);
+    }
     warmUp(replacement);
+  }
+
+  /** Ids of the served pipelines that the replacement drops or defines differently. */
+  private List<String> changedOrRemoved(PipelineRegistry.Replacement replacement) {
+    return pipelineRegistry
+      .list()
+      .stream()
+      .filter(served -> {
+        var next = replacement.entries().get(served.pipeline().id());
+        return next == null || !next.pipeline().equals(served.pipeline());
+      })
+      .map(served -> served.pipeline().id())
+      .toList();
   }
 
   /** The release's pipelines, loaded as the workspace loader loads them; any pipeline the loader skips fails the set. */

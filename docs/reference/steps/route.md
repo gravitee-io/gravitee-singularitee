@@ -9,7 +9,7 @@
 | `strategy` | Model | Label resolution |
 | --- | --- | --- |
 | `classifier` (default) | `ClassifierEngine` | The classifier's top label, compared exactly with each rule's `label`. |
-| `embedding_knn` | `EmbeddingEngine` | Every rule's `sentences` (or its `label` when none) is embedded; the rule holding the reference with the highest cosine similarity to the embedded input wins. References are computed at workspace load (`rxWarmupEmbeddings`) and cached per `pipeline:step`. |
+| `embedding_knn` | `EmbeddingEngine` | Every rule's `sentences` (or its `label` when none) is embedded; the rule holding the reference with the highest cosine similarity to the embedded input wins. References are computed at workspace load (`rxWarmupEmbeddings`) and cached per pipeline, step and a hash of the model id and reference texts, so a step whose references changed never reads the old embeddings; a release applied in place drops the entries of changed and removed pipelines. |
 | `llm_structured` | none | The input text itself is the verdict: trimmed, surrounding quotes removed, lower-cased, then matched with `contains` against each rule's lower-cased `label`, in rule order. Point `input_field` at the output of a `role: internal` infer step. |
 | `decision` | none | The choice a [`decide`](./decide.md) step wrote, compared exactly with each rule's `label`. Point `input_field` at `<decide step>.<question>`. With `min_confidence`, a choice whose `<input_field>.confidence` is lower resolves the empty label and takes `default_step`. |
 

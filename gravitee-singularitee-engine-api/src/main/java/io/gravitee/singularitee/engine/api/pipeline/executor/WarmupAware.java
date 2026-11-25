@@ -29,4 +29,7 @@ import io.reactivex.rxjava3.core.Completable;
 public interface WarmupAware {
   /** Warms this executor up for the given pipeline; completes when the state is ready. */
   Completable rxWarmup(PipelineModel pipeline);
+
+  /** Drops the state held for a pipeline that was changed or removed; the next warm-up rebuilds it. */
+  default void forget(String pipelineId) {}
 }

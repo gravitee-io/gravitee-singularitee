@@ -193,4 +193,14 @@ public final class StepExecutorFactory {
       .toList();
     return warmups.isEmpty() ? Completable.complete() : Completable.merge(warmups);
   }
+
+  /** Drops what the warm-up of each given pipeline computed, for pipelines changed or removed in place. */
+  public void forgetPipelines(java.util.Collection<String> pipelineIds) {
+    handlers
+      .values()
+      .stream()
+      .filter(WarmupAware.class::isInstance)
+      .map(WarmupAware.class::cast)
+      .forEach(w -> pipelineIds.forEach(w::forget));
+  }
 }

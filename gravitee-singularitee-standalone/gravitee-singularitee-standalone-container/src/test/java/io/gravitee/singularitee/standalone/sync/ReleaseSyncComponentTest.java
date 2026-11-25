@@ -21,10 +21,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import io.gravitee.node.api.configuration.Configuration;
+import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutor;
 import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
+import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.engine.pipeline.executor.StepExecutorFactory;
 import io.gravitee.singularitee.engine.template.JinjaTemplateRenderer;
 import io.gravitee.singularitee.plugin.api.StepPlugins;
 import io.gravitee.singularitee.standalone.vertx.ReadinessState;
@@ -426,6 +429,73 @@ class ReleaseSyncComponentTest {
     }
     readiness.markReady();
     return new Node(component, pipelines, readiness);
+  }
+
+  private static final class RecordingWarmup
+    implements
+      StepExecutor<Echo>, io.gravitee.singularitee.engine.api.pipeline.executor.WarmupAware {
+
+    final List<String> warmed = new java.util.concurrent.CopyOnWriteArrayList<>();
+    final List<String> forgotten = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    @Override
+    public io.reactivex.rxjava3.core.Maybe<String> execute(
+      String stepId,
+      Echo config,
+      io.gravitee.singularitee.engine.api.pipeline.executor.StepContext ctx
+    ) {
+      return io.reactivex.rxjava3.core.Maybe.empty();
+    }
+
+    @Override
+    public io.reactivex.rxjava3.core.Completable rxWarmup(PipelineModel pipeline) {
+      warmed.add(pipeline.id());
+      return io.reactivex.rxjava3.core.Completable.complete();
+    }
+
+    @Override
+    public void forget(String pipelineId) {
+      forgotten.add(pipelineId);
+    }
+  }
+
+  @Test
+  void an_in_place_release_forgets_the_warm_up_of_changed_and_removed_pipelines() throws Exception {
+    var models = new ModelRegistry();
+    var pipelines = new PipelineRegistry(models);
+    var readiness = new ReadinessState();
+    var recording = new RecordingWarmup();
+    var factory = new StepExecutorFactory(models, pipelines, null, null, null);
+    factory.addExecutors(Map.of("echo", recording));
+    var component = new ReleaseSyncComponent(
+      config(Map.of()),
+      models,
+      pipelines,
+      readiness,
+      new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority(),
+      new StepPlugins(Map.of(), CODECS, Map.of(), List.of(), Map.of()),
+      factory
+    );
+    component.setHardwareForTest(new HardwareInfo("Linux", null, List.of()));
+    String v1 = workspace(
+      "",
+      echo("chat", "text", "v1") + echo("gone", "text", "g") + echo("same", "text", "s")
+    );
+    for (var pipeline : YamlWorkspaceLoader.loadFromString(v1, null, null, CODECS).pipelines()) {
+      pipelines.register(pipeline);
+    }
+    readiness.markReady();
+    component.setClientForTest(client(), 1, v1, true, () -> {});
+    releaseYaml = workspace(
+      "",
+      echo("chat", "text", "v2") + echo("same", "text", "s") + echo("new", "text", "n")
+    );
+    revision = 2;
+
+    component.poll();
+
+    assertThat(recording.forgotten).containsExactlyInAnyOrder("chat", "gone");
+    assertThat(recording.warmed).containsExactlyInAnyOrder("chat", "same", "new");
   }
 
   private static String text(PipelineRegistry pipelines, String id) {

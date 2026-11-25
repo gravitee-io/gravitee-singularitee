@@ -160,6 +160,7 @@ the release is applied in place once the workspace has loaded:
 - the whole set replaces the old one in one step: new and changed pipelines are served, removed ones are gone;
 - the release is stored in `ai.sync.cache-dir`, so a later restart starts from it, and the heartbeat reports its
   revision;
+- the KNN reference embeddings of changed and removed pipelines are dropped and recomputed, so a changed `embedding_knn` route never routes on its old references;
 - runs already started finish on the pipeline they began with.
 
 If any pipeline fails to load (an unknown model, a step type no plugin provides, an unlicensed step, a config its
