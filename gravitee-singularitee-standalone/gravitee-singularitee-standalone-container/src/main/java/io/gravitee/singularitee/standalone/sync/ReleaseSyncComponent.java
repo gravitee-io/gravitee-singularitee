@@ -17,24 +17,34 @@ package io.gravitee.singularitee.standalone.sync;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.gravitee.common.service.AbstractService;
 import io.gravitee.node.api.configuration.Configuration;
+import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
+import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepTypes;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.engine.pipeline.executor.StepExecutorFactory;
 import io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority;
 import io.gravitee.singularitee.plugin.api.StepPlugins;
 import io.gravitee.singularitee.standalone.vertx.ReadinessState;
+import io.gravitee.singularitee.standalone.vertx.WorkspaceLoaderComponent;
+import io.gravitee.singularitee.workspace.YamlWorkspaceLoader;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,10 +56,14 @@ import org.slf4j.LoggerFactory;
  * ai.workspace.path} at it. When the control plane is unreachable it falls back to the last
  * stored release and fails startup only if there is none.
  *
- * <p>While running it polls every {@code ai.sync.interval} seconds. Engines cannot unload a
- * model, so a newer release is applied by storing it and exiting; the supervisor (Kubernetes,
- * Docker, systemd) restarts the node onto it. Set {@code ai.sync.restart-on-change=false} to
- * only store it.
+ * <p>While running it polls every {@code ai.sync.interval} seconds. A newer release that differs
+ * from the running one only in its pipelines and templates ({@link ReleaseChanges}) is applied in
+ * place once the workspace has loaded: the new pipeline set is loaded against the models already
+ * served and replaces the old one all at once, or not at all when any pipeline fails, which the
+ * heartbeat then reports as the last sync error. Runs already started finish on the pipeline they
+ * began with. Engines cannot unload a model, so any other newer release is applied by storing it
+ * and exiting; the supervisor (Kubernetes, Docker, systemd) restarts the node onto it. Set
+ * {@code ai.sync.restart-on-change=false} to only store such a release.
  *
  * <p>Every {@code ai.sync.heartbeat-interval} seconds it also reports a {@link NodeStatus} to
  * Gamma (running revision, loaded models and engines, RAM, last sync error), which is
@@ -60,6 +74,7 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ReleaseSyncComponent.class);
   private static final ObjectMapper ANSWER_JSON = new ObjectMapper();
+  private static final ObjectMapper RELEASE_YAML = new ObjectMapper(new YAMLFactory());
 
   private final TraceKeyAuthority traceKeys;
   private final StepPlugins stepPlugins;
@@ -75,12 +90,15 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
   private final ModelRegistry modelRegistry;
   private final PipelineRegistry pipelineRegistry;
   private final ReadinessState readiness;
+  private final StepExecutorFactory stepExecutorFactory;
   private int heartbeatSeconds = DEFAULT_HEARTBEAT_SECONDS;
   private ReleaseSyncClient client;
   private String instanceId = "";
   private volatile long runningRevision;
   private volatile HardwareInfo hardware;
   private volatile String lastSyncError;
+  private volatile String runningYaml;
+  private Path workspaceDir;
   private ScheduledExecutorService scheduler;
   private long appliedRevision;
   private boolean restartOnChange;
@@ -118,6 +136,20 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
     TraceKeyAuthority traceKeys,
     StepPlugins stepPlugins
   ) {
+    this(configuration, modelRegistry, pipelineRegistry, readiness, traceKeys, stepPlugins, null);
+  }
+
+  /** @param stepExecutorFactory warms up the pipelines a release applies in place; null skips it */
+  public ReleaseSyncComponent(
+    Configuration configuration,
+    ModelRegistry modelRegistry,
+    PipelineRegistry pipelineRegistry,
+    ReadinessState readiness,
+    TraceKeyAuthority traceKeys,
+    StepPlugins stepPlugins,
+    StepExecutorFactory stepExecutorFactory
+  ) {
+    this.stepExecutorFactory = stepExecutorFactory;
     this.stepPlugins = stepPlugins;
     this.traceKeys = traceKeys;
     this.configuration = configuration;
@@ -156,6 +188,8 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
     instanceId = resolveInstanceId(cacheDir);
     Path workspace = bootSync();
     runningRevision = client.cachedRevision();
+    runningYaml = Files.readString(workspace);
+    workspaceDir = workspace.getParent();
     String local = configuration.getProperty("ai.workspace.path");
     if (local != null && !local.isBlank()) {
       LOGGER.warn(
@@ -389,6 +423,10 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       if (release.isEmpty()) {
         return;
       }
+      if (ReleaseChanges.pipelinesOrTemplatesOnly(runningYaml, release.get().yaml())) {
+        applyInPlace(release.get());
+        return;
+      }
       client.store(release.get());
       LOGGER.info("Release {} received (was {})", release.get().revision(), appliedRevision);
       appliedRevision = release.get().revision();
@@ -401,6 +439,93 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
     } catch (Exception e) {
       lastSyncError = describe(e);
       LOGGER.warn("Release sync poll failed: {}", lastSyncError);
+    }
+  }
+
+  /**
+   * Replaces the served pipelines with the release's, all or nothing. Waits for the workspace to
+   * load first, so the boot registration and this one never race; the release is fetched again on
+   * the next poll. A failure keeps the running pipelines and revision and leaves the cache as it was.
+   */
+  private void applyInPlace(ReleaseSyncClient.Release release) throws IOException {
+    if (!readiness.isReady()) {
+      LOGGER.info(
+        "Release {} changes only pipelines or templates; it is applied once the workspace has loaded",
+        release.revision()
+      );
+      return;
+    }
+    PipelineRegistry.Replacement replacement;
+    try {
+      replacement = pipelineRegistry.prepareReplacement(loadPipelines(release.yaml()));
+    } catch (RuntimeException | IOException e) {
+      throw new IllegalStateException(
+        "Release " + release.revision() + " not applied: " + describe(e),
+        e
+      );
+    }
+    client.store(release);
+    pipelineRegistry.replaceAll(replacement);
+    runningYaml = release.yaml();
+    LOGGER.info(
+      "Release {} applied in place (was {}): {} pipeline(s)",
+      release.revision(),
+      runningRevision,
+      replacement.ids().size()
+    );
+    appliedRevision = release.revision();
+    runningRevision = release.revision();
+    warmUp(replacement);
+  }
+
+  /** The release's pipelines, loaded as the workspace loader loads them; any pipeline the loader skips fails the set. */
+  private List<PipelineModel> loadPipelines(String yaml) throws IOException {
+    var codecs = stepPlugins == null ? Map.<String, StepConfigCodec<?>>of() : stepPlugins.codecs();
+    List<PipelineModel> pipelines = YamlWorkspaceLoader.loadFromString(
+      yaml,
+      workspaceDir,
+      WorkspaceLoaderComponent.templatesPath(),
+      codecs
+    ).pipelines();
+    List<String> declared = declaredPipelineIds(yaml);
+    if (pipelines.size() < declared.size()) {
+      Set<String> loaded = pipelines.stream().map(PipelineModel::id).collect(Collectors.toSet());
+      List<String> skipped = declared
+        .stream()
+        .filter(id -> !loaded.contains(id))
+        .toList();
+      throw new IllegalStateException(
+        "pipeline(s) " + skipped + " failed to load; the node log has the cause"
+      );
+    }
+    return pipelines;
+  }
+
+  private static List<String> declaredPipelineIds(String yaml) throws IOException {
+    List<String> ids = new ArrayList<>();
+    for (JsonNode pipeline : RELEASE_YAML.readTree(yaml).path("workspace").path("pipelines")) {
+      ids.add(pipeline.path("id").asText(""));
+    }
+    return ids;
+  }
+
+  private void warmUp(PipelineRegistry.Replacement replacement) {
+    if (stepExecutorFactory == null) {
+      return;
+    }
+    for (var entry : replacement.entries().values()) {
+      var pipeline = entry.pipeline();
+      stepExecutorFactory
+        .rxWarmupEmbeddings(pipeline)
+        .subscribe(
+          () -> {},
+          e ->
+            LOGGER.warn(
+              "KNN embedding warmup failed for pipeline '{}': {}",
+              pipeline.id(),
+              e.getMessage()
+            )
+        );
     }
   }
 
@@ -423,6 +548,17 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       throw new IllegalStateException("ai.sync.enabled is true but " + key + " is not set");
     }
     return value;
+  }
+
+  void setClientForTest(
+    ReleaseSyncClient client,
+    long appliedRevision,
+    String runningYaml,
+    boolean restartOnChange,
+    Runnable restart
+  ) {
+    setClientForTest(client, appliedRevision, restartOnChange, restart);
+    this.runningYaml = runningYaml;
   }
 
   void setClientForTest(

@@ -136,10 +136,10 @@ The workspace decides which endpoints are reached over TLS (`ssl: true` on the e
 | `ai.sync.url` | unset | `GRAVITEE_AI_SYNC_URL` | Base URL of the Gamma module sync API; the node calls `<url>/_sync/release`. |
 | `ai.sync.token` | unset | `GRAVITEE_AI_SYNC_TOKEN` | Sync token issued by Gamma (sent as `X-Singularitee-Token`) for the server group, a signed JWT that names the group. Shown once when the group is created or its token rotated. |
 | `ai.sync.interval` | `30` | `GRAVITEE_AI_SYNC_INTERVAL` | Seconds between polls for a newer release. |
-| `ai.sync.heartbeat-interval` | `10` | `GRAVITEE_AI_SYNC_HEARTBEAT_INTERVAL` | Seconds between status reports to Gamma (`POST <url>/_sync/instances/<id>/status`). Each report says whether the node is ready to serve (false while the workspace loads), its uptime, the running revision, the models (id, engine, task) and pipelines it serves, the step types it can execute (type, whether core, and the config JSON schema when the plugin ships one), host RAM, CPU (architecture, model, cores, SIMD) and GPUs (vendor, memory, driver, CUDA capability or Metal), and the last sync error. Gamma counts a node offline after three missed reports. The first report registers the node. A failed report is logged and never affects serving. |
+| `ai.sync.heartbeat-interval` | `10` | `GRAVITEE_AI_SYNC_HEARTBEAT_INTERVAL` | Seconds between status reports to Gamma (`POST <url>/_sync/instances/<id>/status`). Each report says whether the node is ready to serve (false while the workspace loads), its uptime, the running revision, the models (id, engine, task) and pipelines it serves, the step types it can execute (type, whether core, and the config JSON schema when the plugin ships one), host RAM, CPU (architecture, model, cores, SIMD) and GPUs (vendor, memory, driver, CUDA capability or Metal), and the last sync error (including why a release could not be applied in place). Gamma counts a node offline after three missed reports. The first report registers the node. A failed report is logged and never affects serving. |
 | `ai.sync.instance-id` | generated | `GRAVITEE_AI_SYNC_INSTANCE_ID` | Stable id of this node. Unset, a UUID is generated once and kept as `instance.id` in `ai.sync.cache-dir`. Set it in Kubernetes to the pod or StatefulSet name so a restart keeps its identity. |
 | `ai.sync.cache-dir` | `${gravitee.home}/sync` | `GRAVITEE_AI_SYNC_CACHE_DIR` | Where the last good release is kept. If Gamma is unreachable at boot the node starts on it; with nothing cached, startup fails. |
-| `ai.sync.restart-on-change` | `true` | `GRAVITEE_AI_SYNC_RESTART_ON_CHANGE` | Models cannot be unloaded at runtime, so a newer release is applied by storing it and exiting with status `75`; the supervisor must restart the node (`./run-server.sh` does; Kubernetes restarts any exit; Docker needs `restart: unless-stopped` or `on-failure`; systemd needs `Restart=always` or `RestartForceExitStatus=75`). Set `false` to store it only. |
+| `ai.sync.restart-on-change` | `true` | `GRAVITEE_AI_SYNC_RESTART_ON_CHANGE` | Models cannot be unloaded at runtime, so a newer release that changes anything beyond `workspace.pipelines` and `workspace.templates` is applied by storing it and exiting with status `75`; the supervisor must restart the node (`./run-server.sh` does; Kubernetes restarts any exit; Docker needs `restart: unless-stopped` or `on-failure`; systemd needs `Restart=always` or `RestartForceExitStatus=75`). Set `false` to store such a release only. A release that changes only pipelines and templates is applied in place whatever this key says; see [Releases applied without a restart](#releases-applied-without-a-restart). |
 | `ai.models.path` | `${gravitee.home}/models` | `GRAVITEE_AI_MODELS_PATH` | Model cache. Blank falls back to `~/.cache/gravitee-singularitee/models`; `run-server.sh` sets that path explicitly so `mvn clean` never removes weights. |
 | `ai.huggingface.token` | unset | `GRAVITEE_AI_HUGGINGFACE_TOKEN` | Token for gated repos. Blank falls back to the `HF_TOKEN` environment variable. |
 | `ai.huggingface.download.chunkSize` | `10485760` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_CHUNKSIZE` | Bytes per HTTP Range request in the parallel download path. |
@@ -148,6 +148,27 @@ The workspace decides which endpoints are reached over TLS (`ssl: true` on the e
 | `ai.huggingface.download.connectTimeout` | `15000` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_CONNECTTIMEOUT` | Milliseconds to wait establishing a connection to the hub or its CDN before the attempt is retried. |
 | `ai.huggingface.download.idleTimeout` | `300` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_IDLETIMEOUT` | Download time check, in seconds: a transfer that receives no data for this long is aborted and retried against a fresh URL. Raise it for very large weights on a slow link; lower it to fail fast. |
 | `ai.huggingface.download.progressInterval` | `5000` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_PROGRESSINTERVAL` | How often, in milliseconds, the per-file download progress bar (percentage and MiB) is logged. Raise it to quiet the log on long downloads; lower it for a snappier bar. |
+
+#### Releases applied without a restart
+
+With `ai.sync.enabled`, the node compares each newer release with the one it runs, as YAML trees (key order and
+formatting do not count), after removing `workspace.pipelines` and `workspace.templates`. When nothing else differs,
+the release is applied in place once the workspace has loaded:
+
+- the new pipelines are loaded through the workspace loader against the models the node already serves, templates
+  included;
+- the whole set replaces the old one in one step: new and changed pipelines are served, removed ones are gone;
+- the release is stored in `ai.sync.cache-dir`, so a later restart starts from it, and the heartbeat reports its
+  revision;
+- runs already started finish on the pipeline they began with.
+
+If any pipeline fails to load (an unknown model, a step type no plugin provides, an unlicensed step, a config its
+codec refuses), nothing changes: the node keeps the old pipelines and revision, leaves the stored release as it was,
+reports the error as `lastError` in its heartbeat and tries again at the next poll. A newer release fixes it.
+
+Anything else takes the restart path of `ai.sync.restart-on-change`: a changed model or remote endpoint, any other
+changed key, a release that does not parse, `includes:`, and a changed template that a model reads (a decision
+model's `prompt.template` is resolved when the model loads).
 
 ### `ai.streaming.*`
 

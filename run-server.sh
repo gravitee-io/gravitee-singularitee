@@ -235,7 +235,8 @@ if grep -qE '^[[:space:]]*type:[[:space:]]*vllm(_decision)?[[:space:]]*$' "$WORK
   fi
 fi
 
-# With ai.sync.enabled the node exits with 75 to apply a newer release (models cannot be unloaded at runtime):
+# With ai.sync.enabled the node exits with 75 to apply a newer release that changes more than pipelines and templates
+# (models cannot be unloaded at runtime):
 # start it again, as a supervisor would. Any other status, including Ctrl-C, ends the script.
 while true; do
   rc=0

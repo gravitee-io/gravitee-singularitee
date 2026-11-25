@@ -113,9 +113,7 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     boolean strict = configuration.getProperty("ai.workspace.strict", Boolean.class, false);
     List<String> failures = new ArrayList<>();
 
-    // Resolve the templates base path from gravitee.home (set by Bootstrap).
-    String graviteeHome = System.getProperty("gravitee.home");
-    Path templatesPath = graviteeHome != null ? Path.of(graviteeHome, "templates") : null;
+    Path templatesPath = templatesPath();
 
     YamlWorkspaceLoader.WorkspaceRequests ws;
     try {
@@ -230,6 +228,12 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
 
     // Models and pipelines are loaded; the server may now serve inference.
     readinessState.markReady();
+  }
+
+  /** Where {@code template_file} references resolve: {@code ${gravitee.home}/templates}, null when the home is unset. */
+  public static Path templatesPath() {
+    String graviteeHome = System.getProperty("gravitee.home");
+    return graviteeHome != null ? Path.of(graviteeHome, "templates") : null;
   }
 
   /** Renders a fixed-width textual progress bar, e.g. {@code [████████░░░░] 2/3}. */

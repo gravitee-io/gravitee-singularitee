@@ -21,6 +21,8 @@ import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
 import io.gravitee.singularitee.protocol.PipelineStatus;
 import io.gravitee.singularitee.protocol.StepRole;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,11 +36,12 @@ import org.slf4j.LoggerFactory;
 /**
  * Thread-safe in-memory registry of published pipeline definitions.
  *
- * <p>Pipelines are loaded once at startup from the workspace YAML and live for
- * the lifetime of the process. The registry only validates that every model
- * reference in a pipeline resolves against the {@link ModelRegistry} at
- * register time and serves look-ups thereafter. There is no runtime lifecycle
- * (no retirement, no updates): the deployment is static.
+ * <p>Pipelines are loaded at startup from the workspace YAML. The registry
+ * validates that every model reference in a pipeline resolves against the
+ * {@link ModelRegistry} at register time and serves look-ups thereafter. The
+ * whole set can be replaced at once ({@link #prepareReplacement} then
+ * {@link #replaceAll}), which is how a synced node applies a release that changes
+ * only pipelines; a run already started keeps the pipeline object it began with.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -48,7 +51,7 @@ public final class PipelineRegistry {
   private static final Logger LOGGER = LoggerFactory.getLogger(PipelineRegistry.class);
 
   private final ModelRegistry modelRegistry;
-  private final ConcurrentHashMap<String, PipelineEntry> pipelines = new ConcurrentHashMap<>();
+  private volatile ConcurrentHashMap<String, PipelineEntry> pipelines = new ConcurrentHashMap<>();
   private volatile StepAvailability stepAvailability = StepAvailability.ALL_AVAILABLE;
 
   /** Creates a registry that resolves step models through {@code modelRegistry}. */
@@ -80,6 +83,59 @@ public final class PipelineRegistry {
    *                                   model_id is not active
    */
   public String register(PipelineModel pipeline) {
+    PipelineModel published = published(pipeline);
+    String resolvedId = published.id();
+    if (pipelines.putIfAbsent(resolvedId, activeEntry(published)) != null) {
+      throw new IllegalArgumentException("pipeline_id already in use: " + resolvedId);
+    }
+
+    LOGGER.info("Pipeline published: id={}, name={}", resolvedId, pipeline.name());
+    return resolvedId;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Replace
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Validates a complete pipeline set as {@link #register} validates each pipeline, without
+   * publishing anything.
+   *
+   * @throws IllegalArgumentException as {@link #register} does, or when two pipelines share an id
+   */
+  public Replacement prepareReplacement(List<PipelineModel> replacement) {
+    Map<String, PipelineEntry> entries = new LinkedHashMap<>();
+    for (PipelineModel pipeline : replacement) {
+      PipelineModel published = published(pipeline);
+      if (entries.putIfAbsent(published.id(), activeEntry(published)) != null) {
+        throw new IllegalArgumentException("pipeline_id declared twice: " + published.id());
+      }
+    }
+    return new Replacement(entries);
+  }
+
+  /**
+   * Publishes a prepared set in place of every registered pipeline in one step: a lookup sees
+   * either the old set or the new one, never a mix.
+   */
+  public void replaceAll(Replacement replacement) {
+    pipelines = new ConcurrentHashMap<>(replacement.entries());
+    LOGGER.info("Pipelines replaced: {}", replacement.ids());
+  }
+
+  /** A validated pipeline set, ready to replace the registered one. */
+  public record Replacement(Map<String, PipelineEntry> entries) {
+    public Replacement {
+      entries = Collections.unmodifiableMap(new LinkedHashMap<>(entries));
+    }
+
+    /** The pipeline ids of the set, in declaration order. */
+    public List<String> ids() {
+      return List.copyOf(entries.keySet());
+    }
+  }
+
+  private PipelineModel published(PipelineModel pipeline) {
     String resolvedId = pipeline.id() != null && !pipeline.id().isBlank()
       ? pipeline.id()
       : UUID.randomUUID().toString();
@@ -94,7 +150,7 @@ public final class PipelineRegistry {
       ? pipeline.inputModalities()
       : derivedModalities(pipeline);
 
-    PipelineModel published = new PipelineModel(
+    return new PipelineModel(
       resolvedId,
       pipeline.name(),
       pipeline.entryStepId(),
@@ -104,19 +160,14 @@ public final class PipelineRegistry {
       pipeline.hidden(),
       modalities
     );
+  }
 
-    if (
-      pipelines.putIfAbsent(
-        resolvedId,
-        new PipelineEntry(published, PipelineStatus.PIPELINE_STATUS_ACTIVE, new AtomicInteger(0))
-      ) !=
-      null
-    ) {
-      throw new IllegalArgumentException("pipeline_id already in use: " + resolvedId);
-    }
-
-    LOGGER.info("Pipeline published: id={}, name={}", resolvedId, pipeline.name());
-    return resolvedId;
+  private static PipelineEntry activeEntry(PipelineModel published) {
+    return new PipelineEntry(
+      published,
+      PipelineStatus.PIPELINE_STATUS_ACTIVE,
+      new AtomicInteger(0)
+    );
   }
 
   // ---------------------------------------------------------------------------

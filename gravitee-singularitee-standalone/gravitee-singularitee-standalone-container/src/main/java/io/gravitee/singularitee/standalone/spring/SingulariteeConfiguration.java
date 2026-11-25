@@ -780,7 +780,8 @@ public class SingulariteeConfiguration {
     PipelineRegistry pipelineRegistry,
     io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState,
     io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority traceKeyAuthority,
-    StepPlugins stepPlugins
+    StepPlugins stepPlugins,
+    StepExecutorFactory stepExecutorFactory
   ) {
     return new ReleaseSyncComponent(
       configuration,
@@ -788,7 +789,8 @@ public class SingulariteeConfiguration {
       pipelineRegistry,
       readinessState,
       traceKeyAuthority,
-      stepPlugins
+      stepPlugins,
+      stepExecutorFactory
     );
   }
 

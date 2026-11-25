@@ -15,8 +15,9 @@ with hot-reloadable certificates, SNI, mTLS and the HAProxy PROXY protocol all c
 | `GraviteeModelService` | `model.proto` | Read-only model catalogue. |
 | `GraviteePipelineService` | `pipeline.proto` | Read-only pipeline catalogue. |
 
-Models and pipelines are loaded once at startup from the workspace; there is no publish, update or
-retire RPC. Server reflection is not registered: point tools at the proto files.
+Models and pipelines are loaded at startup from the workspace; there is no publish, update or
+retire RPC. A node synced from Gamma replaces its pipelines in place when a release changes only
+pipelines and templates (see [Configuration](../../reference/configuration.md#releases-applied-without-a-restart)). Server reflection is not registered: point tools at the proto files.
 
 ## Key types
 - `GraviteeInferenceServiceImpl`, `GraviteeVectorServiceImpl`, `GraviteeDecisionServiceImpl`, `GraviteeModelServiceImpl`, `GraviteePipelineServiceImpl` (`gravitee-singularitee-grpc`, package `io.gravitee.singularitee.service`): the implementations, driven by both fronts.

@@ -18,14 +18,21 @@ package io.gravitee.singularitee.standalone.sync;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import io.gravitee.node.api.configuration.Configuration;
+import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
+import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.engine.template.JinjaTemplateRenderer;
+import io.gravitee.singularitee.plugin.api.StepPlugins;
 import io.gravitee.singularitee.standalone.vertx.ReadinessState;
+import io.gravitee.singularitee.workspace.YamlWorkspaceLoader;
 import java.lang.reflect.Proxy;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -40,12 +47,14 @@ import org.junit.jupiter.api.io.TempDir;
 class ReleaseSyncComponentTest {
 
   private static final String YAML = "workspace:\n  name: demo\n";
+  private static final ObjectMapper JSON = new ObjectMapper();
 
   @TempDir
   Path cache;
 
   private HttpServer server;
   private volatile int revision = 1;
+  private volatile String releaseYaml = YAML;
   private final AtomicReference<String> statusBody = new AtomicReference<>();
   private final AtomicReference<String> statusAuth = new AtomicReference<>();
   private volatile String statusAnswer;
@@ -58,11 +67,10 @@ class ReleaseSyncComponentTest {
       if (known >= revision) {
         exchange.sendResponseHeaders(304, -1);
       } else {
-        byte[] body = ("{\"revision\":" +
-          revision +
-          ",\"checksum\":\"" +
-          ReleaseSyncClient.sha256(YAML) +
-          "\",\"yaml\":\"workspace:\\n  name: demo\\n\"}").getBytes(StandardCharsets.UTF_8);
+        String yaml = releaseYaml;
+        byte[] body = JSON.writeValueAsBytes(
+          Map.of("revision", revision, "checksum", ReleaseSyncClient.sha256(yaml), "yaml", yaml)
+        );
         exchange.sendResponseHeaders(200, body.length);
         exchange.getResponseBody().write(body);
       }
@@ -313,6 +321,262 @@ class ReleaseSyncComponentTest {
     var config = config(Map.of("ai.sync.enabled", true));
 
     assertThatThrownBy(() -> component(config).start()).hasMessageContaining("ai.sync.url");
+  }
+
+  private record Echo(String text) {}
+
+  private record Bound(String modelId) implements ModelBoundConfig {}
+
+  private static final Map<String, StepConfigCodec<?>> CODECS = Map.of(
+    "echo",
+    (stepId, config, ctx) ->
+      new Echo(
+        config.containsKey("template")
+          ? ctx.templates().get((String) config.get("template"))
+          : String.valueOf(config.get("text"))
+      ),
+    "bound",
+    (stepId, config, ctx) -> new Bound((String) config.get("model_id")),
+    "broken",
+    (stepId, config, ctx) -> {
+      throw new IllegalStateException("codec failure");
+    }
+  );
+
+  private static String workspace(String templates, String pipelines) {
+    return "workspace:\n  name: demo\n" + templates + "  pipelines:\n" + pipelines;
+  }
+
+  private static String echo(String id, String key, String value) {
+    return (
+      "    - id: " +
+      id +
+      "\n      entry: s\n      steps:\n        - id: s\n          type: echo\n          config:\n            " +
+      key +
+      ": " +
+      value +
+      "\n"
+    );
+  }
+
+  private static String step(String id, String type, String config) {
+    return (
+      "    - id: " +
+      id +
+      "\n      entry: s\n      steps:\n        - id: s\n          type: " +
+      type +
+      "\n          config:\n            " +
+      config +
+      "\n"
+    );
+  }
+
+  private static String greeting(String content) {
+    return "  templates:\n    - id: greeting\n      content: \"" + content + "\"\n";
+  }
+
+  private static final String V1 = workspace("", echo("chat", "text", "v1"));
+  private static final String V2 = workspace(
+    "",
+    echo("chat", "text", "v2") + echo("summary", "text", "s1")
+  );
+
+  private record Node(
+    ReleaseSyncComponent component,
+    PipelineRegistry pipelines,
+    ReadinessState readiness
+  ) {}
+
+  /** A node that booted on {@code bootYaml}: its pipelines registered as the workspace loader does. */
+  private Node node(String bootYaml) throws Exception {
+    var models = new ModelRegistry();
+    var pipelines = new PipelineRegistry(models);
+    var readiness = new ReadinessState();
+    var component = new ReleaseSyncComponent(
+      config(Map.of()),
+      models,
+      pipelines,
+      readiness,
+      new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority(),
+      new StepPlugins(Map.of(), CODECS, Map.of(), List.of(), Map.of())
+    );
+    component.setHardwareForTest(new HardwareInfo("Linux", null, List.of()));
+    for (var pipeline : YamlWorkspaceLoader.loadFromString(
+      bootYaml,
+      null,
+      null,
+      CODECS
+    ).pipelines()) {
+      pipelines.register(pipeline);
+    }
+    readiness.markReady();
+    return new Node(component, pipelines, readiness);
+  }
+
+  private static String text(PipelineRegistry pipelines, String id) {
+    return ((Echo) pipelines.get(id).orElseThrow().pipeline().steps().get(0).config()).text();
+  }
+
+  @Test
+  void a_pipeline_only_release_is_applied_in_place() throws Exception {
+    var restarts = new AtomicInteger();
+    var node = node(V1);
+    var client = client();
+    node.component().setClientForTest(client, 1, V1, true, restarts::incrementAndGet);
+    var started = node.pipelines().get("chat").orElseThrow();
+    releaseYaml = V2;
+    revision = 2;
+
+    node.component().poll();
+
+    assertThat(restarts).hasValue(0);
+    assertThat(text(node.pipelines(), "chat")).isEqualTo("v2");
+    assertThat(text(node.pipelines(), "summary")).isEqualTo("s1");
+    assertThat(((Echo) started.pipeline().steps().get(0).config()).text()).isEqualTo("v1");
+    assertThat(node.component().snapshot().appliedRevision()).isEqualTo(2);
+    assertThat(node.component().snapshot().lastError()).isNull();
+    assertThat(client.cachedRevision()).isEqualTo(2);
+    assertThat(Files.readString(client.cachedWorkspace().orElseThrow())).isEqualTo(V2);
+
+    node.component().heartbeat();
+    assertThat(statusBody.get()).contains("\"appliedRevision\":2").contains("\"id\":\"summary\"");
+
+    node.component().poll();
+    assertThat(restarts).hasValue(0);
+  }
+
+  @Test
+  void a_release_that_changes_a_model_still_exits_with_75() throws Exception {
+    var restarts = new AtomicInteger();
+    var node = node(V1);
+    var client = client();
+    node.component().setClientForTest(client, 1, V1, true, restarts::incrementAndGet);
+    releaseYaml = V2.replace(
+      "  pipelines:\n",
+      "  models:\n    - id: llm\n      name: org/llm\n      type: llama_cpp\n  pipelines:\n"
+    );
+    revision = 2;
+
+    node.component().poll();
+
+    assertThat(restarts).hasValue(1);
+    assertThat(client.cachedRevision()).isEqualTo(2);
+    assertThat(text(node.pipelines(), "chat")).isEqualTo("v1");
+    assertThat(node.pipelines().get("summary")).isEmpty();
+    assertThat(node.component().snapshot().appliedRevision()).isEqualTo(1);
+  }
+
+  @Test
+  void a_template_only_release_re_renders_with_the_new_template() throws Exception {
+    var restarts = new AtomicInteger();
+    String running = workspace(greeting("Hello {{ name }}"), echo("chat", "template", "greeting"));
+    var node = node(running);
+    node.component().setClientForTest(client(), 1, running, true, restarts::incrementAndGet);
+    var renderer = new JinjaTemplateRenderer();
+    assertThat(
+      renderer.render(text(node.pipelines(), "chat"), "chat", Map.of("name", "Ada"))
+    ).isEqualTo("Hello Ada");
+    releaseYaml = running.replace("Hello", "Bye");
+    revision = 2;
+
+    node.component().poll();
+
+    assertThat(restarts).hasValue(0);
+    assertThat(
+      renderer.render(text(node.pipelines(), "chat"), "chat", Map.of("name", "Ada"))
+    ).isEqualTo("Bye Ada");
+    assertThat(node.component().snapshot().appliedRevision()).isEqualTo(2);
+  }
+
+  @Test
+  void a_release_whose_pipeline_fails_to_load_keeps_the_old_pipelines_and_reports_why()
+    throws Exception {
+    var restarts = new AtomicInteger();
+    var node = node(V1);
+    var client = client();
+    node.component().setClientForTest(client, 1, V1, true, restarts::incrementAndGet);
+    var before = node.pipelines().get("chat").orElseThrow();
+    releaseYaml = workspace(
+      "",
+      echo("chat", "text", "v2") + step("judge", "bound", "model_id: missing_model")
+    );
+    revision = 2;
+
+    node.component().poll();
+
+    assertThat(restarts).hasValue(0);
+    assertThat(node.pipelines().get("chat").orElseThrow()).isSameAs(before);
+    assertThat(node.pipelines().get("judge")).isEmpty();
+    assertThat(node.component().snapshot().appliedRevision()).isEqualTo(1);
+    assertThat(node.component().snapshot().lastError()).contains("missing_model");
+    assertThat(client.cachedRevision()).isNotEqualTo(2);
+
+    node.component().heartbeat();
+    assertThat(statusBody.get()).contains("\"appliedRevision\":1").contains("missing_model");
+  }
+
+  @Test
+  void a_pipeline_the_loader_skips_fails_the_whole_release() throws Exception {
+    var restarts = new AtomicInteger();
+    var node = node(V1);
+    node.component().setClientForTest(client(), 1, V1, true, restarts::incrementAndGet);
+    var before = node.pipelines().get("chat").orElseThrow();
+    releaseYaml = workspace("", echo("chat", "text", "v2") + step("flaky", "broken", "x: 1"));
+    revision = 2;
+
+    node.component().poll();
+
+    assertThat(restarts).hasValue(0);
+    assertThat(node.pipelines().get("chat").orElseThrow()).isSameAs(before);
+    assertThat(node.component().snapshot().appliedRevision()).isEqualTo(1);
+    assertThat(node.component().snapshot().lastError()).contains("flaky");
+  }
+
+  @Test
+  void a_pipeline_only_release_waits_until_the_workspace_has_loaded() throws Exception {
+    var restarts = new AtomicInteger();
+    var models = new ModelRegistry();
+    var pipelines = new PipelineRegistry(models);
+    var readiness = new ReadinessState();
+    var component = new ReleaseSyncComponent(
+      config(Map.of()),
+      models,
+      pipelines,
+      readiness,
+      new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority(),
+      new StepPlugins(Map.of(), CODECS, Map.of(), List.of(), Map.of())
+    );
+    var client = client();
+    component.setClientForTest(client, 1, V1, true, restarts::incrementAndGet);
+    releaseYaml = V2;
+    revision = 2;
+
+    component.poll();
+
+    assertThat(restarts).hasValue(0);
+    assertThat(pipelines.list()).isEmpty();
+    assertThat(client.cachedRevision()).isNotEqualTo(2);
+
+    readiness.markReady();
+    component.poll();
+
+    assertThat(pipelines.get("summary")).isPresent();
+    assertThat(client.cachedRevision()).isEqualTo(2);
+  }
+
+  @Test
+  void a_pipeline_only_release_is_applied_in_place_without_restart_on_change() throws Exception {
+    var restarts = new AtomicInteger();
+    var node = node(V1);
+    node.component().setClientForTest(client(), 1, V1, false, restarts::incrementAndGet);
+    releaseYaml = V2;
+    revision = 2;
+
+    node.component().poll();
+
+    assertThat(restarts).hasValue(0);
+    assertThat(text(node.pipelines(), "chat")).isEqualTo("v2");
+    assertThat(node.component().snapshot().appliedRevision()).isEqualTo(2);
   }
 
   /** Minimal Configuration backed by a map: absent keys give null or the supplied default. */
