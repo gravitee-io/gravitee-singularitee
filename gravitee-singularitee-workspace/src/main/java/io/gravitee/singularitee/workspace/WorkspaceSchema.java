@@ -19,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -27,8 +28,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -38,14 +37,16 @@ import java.util.TreeMap;
  * Generates the JSON Schema (draft 2020-12) of a workspace YAML from {@link WorkspaceDefinition}.
  *
  * <p>The records stay the single source of truth: the committed {@code workspace.schema.json}
- * resource is checked against this generator by a test, so it cannot drift. Regenerate it with
- * {@code WorkspaceSchema <path>} (see {@link #main}).
+ * resource is checked by a test against this generator fed with the step schemas of the real
+ * plugins, so it cannot drift. That test also regenerates the file on request (see
+ * {@code WorkspaceSchemaTest}), since this module cannot see the plugins.
  *
  * <p>Strictness: a record without a catch-all section gets {@code additionalProperties: false},
  * so editors flag a misspelled key. The node itself ignores unknown keys, so a consumer should
  * report schema errors as warnings unless it wants to be stricter than the node. A step's
- * {@code config} block is an open object: its schema belongs to the plugin providing the step
- * type.
+ * {@code config} block is an open object unless the plugin providing the step type publishes a
+ * schema for it: {@link #generate(Map)} embeds each one under {@code $defs/step.<type>} and
+ * selects it by the step's {@code type}.
  */
 public final class WorkspaceSchema {
 
@@ -68,8 +69,19 @@ public final class WorkspaceSchema {
 
   private WorkspaceSchema() {}
 
-  /** Builds the schema tree. */
+  /** Builds the schema tree, with every step {@code config} open. */
   public static ObjectNode generate() {
+    return generate(Map.of());
+  }
+
+  /**
+   * Builds the schema tree, validating the {@code config} of each step whose type has an entry
+   * in {@code stepSchemas} (type to the JSON schema text of its {@code config} block). Types
+   * without an entry keep an open {@code config}.
+   *
+   * @throws IllegalArgumentException if a step schema is not valid JSON
+   */
+  public static ObjectNode generate(Map<String, String> stepSchemas) {
     var generator = new WorkspaceSchema();
     ObjectNode root = JSON.createObjectNode();
     root.put("$schema", "https://json-schema.org/draft/2020-12/schema");
@@ -77,19 +89,66 @@ public final class WorkspaceSchema {
     root.put("title", "Gravitee Singularitee workspace");
     root.put("$ref", "#/$defs/WorkspaceDefinition");
     generator.define(WorkspaceDefinition.class);
+    generator.defineStepSchemas(new TreeMap<>(stepSchemas));
     root.set("$defs", generator.sorted());
     return root;
   }
 
-  /** Writes the schema, pretty-printed, to the path given as the first argument. */
-  public static void main(String[] args) throws IOException {
-    if (args.length != 1) {
-      throw new IllegalArgumentException("usage: WorkspaceSchema <output-file>");
+  /** The schema as pretty-printed JSON text, newline terminated: the form of the committed file. */
+  public static String toJson(JsonNode schema) throws IOException {
+    return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(schema) + "\n";
+  }
+
+  private void defineStepSchemas(Map<String, String> stepSchemas) {
+    if (stepSchemas.isEmpty()) {
+      return;
     }
-    Files.writeString(
-      Path.of(args[0]),
-      JSON.writerWithDefaultPrettyPrinter().writeValueAsString(generate()) + "\n"
-    );
+    ArrayNode rules = JSON.createArrayNode();
+    stepSchemas.forEach((type, text) -> {
+      String name = "step." + type;
+      defs.set(name, stepSchema(type, text, "#/$defs/" + name));
+      ObjectNode rule = rules.addObject();
+      ObjectNode condition = rule.putObject("if");
+      condition.putObject("properties").putObject("type").put("const", type);
+      condition.putArray("required").add("type");
+      rule
+        .putObject("then")
+        .putObject("properties")
+        .putObject("config")
+        .put("$ref", "#/$defs/" + name);
+    });
+    ((ObjectNode) defs.get("StepDefinition")).set("allOf", rules);
+  }
+
+  /** Parses a plugin's schema and rebases its local references under {@code base}. */
+  private static JsonNode stepSchema(String type, String text, String base) {
+    JsonNode schema;
+    try {
+      schema = JSON.readTree(text);
+    } catch (IOException e) {
+      throw new IllegalArgumentException("config schema of step type '" + type + "'", e);
+    }
+    if (!(schema instanceof ObjectNode object)) {
+      throw new IllegalArgumentException(
+        "config schema of step type '" + type + "' is not a JSON object"
+      );
+    }
+    object.remove("$schema");
+    object.remove("$id");
+    rebaseReferences(object, base);
+    return object;
+  }
+
+  private static void rebaseReferences(JsonNode node, String base) {
+    if (node instanceof ObjectNode object) {
+      JsonNode ref = object.get("$ref");
+      if (ref != null && ref.isTextual() && ref.asText().startsWith("#")) {
+        object.put("$ref", base + ref.asText().substring(1));
+      }
+      object.elements().forEachRemaining(child -> rebaseReferences(child, base));
+    } else if (node instanceof ArrayNode array) {
+      array.elements().forEachRemaining(child -> rebaseReferences(child, base));
+    }
   }
 
   private ObjectNode sorted() {

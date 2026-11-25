@@ -103,6 +103,20 @@ class ExamplesWorkspaceTest {
     }
   }
 
+  /** Pipeline fragments under {@code modular/pipelines/}, pulled in by a server's {@code includes:}. */
+  static Stream<Path> pipelineFragments() throws IOException {
+    Path root = examplesDir().resolve("modular/pipelines");
+    if (!Files.isDirectory(root)) return Stream.of();
+    try (var walk = Files.walk(root)) {
+      return walk
+        .filter(Files::isRegularFile)
+        .filter(p -> p.getFileName().toString().endsWith(".yaml"))
+        .sorted()
+        .toList()
+        .stream();
+    }
+  }
+
   @ParameterizedTest(name = "{0}")
   @MethodSource("modelFragments")
   void model_fragment_declares_exactly_one_model(Path yaml) throws IOException {
