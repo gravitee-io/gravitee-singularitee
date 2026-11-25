@@ -156,4 +156,58 @@ class TraceStepDecoratorTest {
     assertThat(events).hasSize(1);
     assertThat(events.getFirst().getStepTrace().getError()).isEqualTo("model down");
   }
+
+  private static StepInvocation writing(PipelineContext pctx, String prefix, int keys) {
+    return (s, c) -> {
+      for (int i = 0; i < keys; i++) {
+        pctx.set(prefix + ".k" + i, "v".repeat(4096));
+      }
+      return Maybe.just("next");
+    };
+  }
+
+  @Test
+  void stops_recording_outputs_once_the_run_trace_outgrows_the_cap() {
+    var pctx = pctx(true);
+    var context = ctx(pctx);
+
+    decorator.around(step("a", "infer", null), context, writing(pctx, "a", 40)).blockingGet();
+    decorator.around(step("b", "infer", null), context, writing(pctx, "b", 40)).blockingGet();
+    decorator.around(step("c", "guard", null), context, writing(pctx, "c", 1)).blockingGet();
+
+    assertThat(events).hasSize(3);
+    var first = events.get(0).getStepTrace();
+    assertThat(first.getTruncated()).isFalse();
+    assertThat(first.getOutputsCount()).isEqualTo(40);
+    for (var event : events.subList(1, 3)) {
+      var trace = event.getStepTrace();
+      assertThat(trace.getTruncated()).isTrue();
+      assertThat(trace.getOutputsMap()).isEmpty();
+      assertThat(trace.getStepId()).isNotEmpty();
+      assertThat(trace.getStepType()).isNotEmpty();
+      assertThat(trace.getDurationMs()).isGreaterThanOrEqualTo(0);
+    }
+    assertThat(events.get(2).getStepTrace().getStepId()).isEqualTo("c");
+    var total = events
+      .stream()
+      .mapToInt(e -> e.getStepTrace().getSerializedSize())
+      .sum();
+    assertThat(total).isLessThan(TraceStepDecorator.MAX_TRACE_BYTES + 1024);
+  }
+
+  @Test
+  void a_small_trace_is_never_truncated() {
+    var pctx = pctx(true);
+    var context = ctx(pctx);
+
+    for (int i = 0; i < 20; i++) {
+      decorator
+        .around(step("s" + i, "guard", null), context, writing(pctx, "s" + i, 1))
+        .blockingGet();
+    }
+
+    assertThat(events)
+      .hasSize(20)
+      .noneMatch(e -> e.getStepTrace().getTruncated());
+  }
 }

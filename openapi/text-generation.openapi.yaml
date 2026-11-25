@@ -490,6 +490,11 @@ components:
                     additionalProperties: { type: string }
                     description: Context fields the step added or changed, each cut to 4096 characters.
                   error: { type: string }
+                  truncated:
+                    type: boolean
+                    description: >-
+                      Present and true once the run's trace passed 256 KiB: such a step carries only its id,
+                      type and timings.
 
     ChatCompletionChunk:
       type: object

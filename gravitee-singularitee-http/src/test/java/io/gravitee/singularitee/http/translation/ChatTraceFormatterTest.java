@@ -91,6 +91,25 @@ class ChatTraceFormatterTest {
   }
 
   @Test
+  void a_truncated_step_is_marked() {
+    var acc = new SequenceAccumulator();
+    acc.add(
+      TokenMessage.stepTraced(
+        StepTrace.newBuilder().setStepId("late").setStepType("infer").setTruncated(true).build()
+      )
+    );
+    acc.add(TokenMessage.stepTraced(guard()));
+    acc.add(done());
+
+    var steps = ChatCompletionsFormatter.buildChatResponse("pipeline:p", acc, Map.of())
+      .path("gravitee_trace")
+      .path("steps");
+
+    assertThat(steps.get(0).path("truncated").asBoolean()).isTrue();
+    assertThat(steps.get(1).has("truncated")).isFalse();
+  }
+
+  @Test
   void an_untraced_run_has_no_gravitee_trace() {
     var acc = new SequenceAccumulator();
     acc.add(TokenMessage.contentDelta("Hello"));

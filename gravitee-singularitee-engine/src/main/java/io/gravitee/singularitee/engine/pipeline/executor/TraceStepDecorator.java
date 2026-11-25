@@ -30,11 +30,15 @@ import java.util.Objects;
 
 /**
  * Platform decorator that reports what each step did when the run is traced: the context fields it
- * added or changed, where the run went next, and how long the step took.
+ * added or changed, where the run went next, and how long the step took. The serialized trace of a
+ * run is capped at {@link #MAX_TRACE_BYTES}: from the first step that would exceed it, steps record
+ * only their id, type and timing, marked {@code truncated}.
  */
 public final class TraceStepDecorator implements StepExecutorDecorator {
 
   static final int MAX_VALUE_CHARS = 4096;
+  /** Total serialized size of one run's step traces. */
+  static final int MAX_TRACE_BYTES = 256 * 1024;
   static final String TRUNCATED = "...[truncated]";
 
   @Override
@@ -83,12 +87,22 @@ public final class TraceStepDecorator implements StepExecutorDecorator {
       .forEach((key, value) -> {
         if (!Objects.equals(before.get(key), value)) trace.putOutputs(key, cut(value));
       });
+    var full = trace.build();
+    var recorded = pctx.chargeTrace(full.getSerializedSize(), MAX_TRACE_BYTES)
+      ? full
+      : StepTrace.newBuilder()
+        .setStepId(full.getStepId())
+        .setStepType(full.getStepType())
+        .setStartedAtMs(full.getStartedAtMs())
+        .setDurationMs(full.getDurationMs())
+        .setTruncated(true)
+        .build();
     ctx
       .response()
       .write(
         InferResponse.newBuilder()
           .setEventType(ResponseEventType.RESPONSE_EVENT_TYPE_STEP_TRACE)
-          .setStepTrace(trace)
+          .setStepTrace(recorded)
           .build()
       );
   }

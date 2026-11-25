@@ -443,6 +443,7 @@ public final class ChatCompletionsFormatter {
       ObjectNode outputs = step.putObject("outputs");
       trace.getOutputsMap().forEach(outputs::put);
       if (!trace.getError().isEmpty()) step.put("error", trace.getError());
+      if (trace.getTruncated()) step.put("truncated", true);
     }
   }
 

@@ -371,6 +371,8 @@ message StepTrace {
   map<string, string> outputs   = 9;
   // Set when the step failed.
   string error                  = 10;
+  // Set when the run's trace outgrew its 256 KiB cap: only step_id, step_type and the timings are filled.
+  bool truncated                = 11;
 }
 
 // Auxiliary progress update emitted mid-stream by pipeline steps that manage

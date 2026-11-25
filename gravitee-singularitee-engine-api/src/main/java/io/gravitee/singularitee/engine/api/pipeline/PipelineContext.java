@@ -930,6 +930,24 @@ public final class PipelineContext {
     return traceEnabled;
   }
 
+  private long traceBytes;
+  private boolean traceFull;
+
+  /**
+   * Charges a step trace of {@code bytes} against the run's trace size budget.
+   *
+   * @return {@code true} when it fits within {@code cap}; once a trace did not fit, every later one
+   *     is refused too
+   */
+  public synchronized boolean chargeTrace(long bytes, long cap) {
+    if (traceFull || traceBytes + bytes > cap) {
+      traceFull = true;
+      return false;
+    }
+    traceBytes += bytes;
+    return true;
+  }
+
   /** {@link System#nanoTime()} when the trace was enabled, the origin of each step's start offset. */
   public long traceStartNanos() {
     return traceStartNanos;
