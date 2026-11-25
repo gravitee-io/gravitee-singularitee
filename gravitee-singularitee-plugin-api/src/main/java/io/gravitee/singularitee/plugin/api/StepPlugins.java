@@ -42,10 +42,11 @@ import org.slf4j.LoggerFactory;
  * codec (a workspace still parses) but no executor: registration is where the license
  * verdict lands, naming the feature.
  *
- * @param executors  licensed executors keyed by step type
- * @param codecs     codecs for every discovered step type, licensed or not
- * @param decorators licensed plugin decorators, outer to inner
- * @param unlicensed gated step types the license does not cover, type to feature
+ * @param executors     licensed executors keyed by step type
+ * @param codecs        codecs for every discovered step type, licensed or not
+ * @param configSchemas config JSON schemas by step type, only for plugins that ship one
+ * @param decorators    licensed plugin decorators, outer to inner
+ * @param unlicensed    gated step types the license does not cover, type to feature
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -53,6 +54,7 @@ import org.slf4j.LoggerFactory;
 public record StepPlugins(
   Map<String, StepExecutor<?>> executors,
   Map<String, StepConfigCodec<?>> codecs,
+  Map<String, String> configSchemas,
   List<StepExecutorDecorator> decorators,
   Map<String, String> unlicensed
 ) {
@@ -81,6 +83,7 @@ public record StepPlugins(
   ) {
     Map<String, StepExecutor<?>> executors = new LinkedHashMap<>();
     Map<String, StepConfigCodec<?>> codecs = new LinkedHashMap<>();
+    Map<String, String> configSchemas = new LinkedHashMap<>();
     Map<String, String> unlicensed = new LinkedHashMap<>();
     Map<String, String> providers = new LinkedHashMap<>();
     List<Plugin> decoratorPlugins = new ArrayList<>();
@@ -112,6 +115,10 @@ public record StepPlugins(
         );
       }
       codecs.put(type, step.codec());
+      String schema = step.configSchema();
+      if (schema != null) {
+        configSchemas.put(type, schema);
+      }
       String feature = plugin.manifest().feature();
       if (feature != null && !feature.isBlank() && !featureEnabled.test(feature)) {
         unlicensed.put(type, feature);
@@ -148,6 +155,7 @@ public record StepPlugins(
     return new StepPlugins(
       Map.copyOf(executors),
       Map.copyOf(codecs),
+      Map.copyOf(configSchemas),
       List.copyOf(decorators),
       Map.copyOf(unlicensed)
     );

@@ -111,7 +111,11 @@ YAML `config:` block, and the `StepExecutor` built from the parent-owned
 `StepExecutorServices`. Cross-cutting behaviour comes from `StepDecoratorPlugin`s
 (`type=step-decorator`), applied to every step inside the platform decorators (tracing,
 diagnostics), so a plugin step is always observed. `StepPlugins.assemble` turns the plugins
-the registry discovered into the engine's executors and codecs. Rules enforced at boot: two
+the registry discovered into the engine's executors and codecs. A step plugin also ships
+`step-config.schema.json` at its jar root, the JSON schema of its `config:` block;
+`StepExecutorPlugin.configSchema()` reads it from the plugin's own class loader and
+`StepPlugins.configSchemas()` maps step types to schemas (a plugin without the file has no
+entry). Rules enforced at boot: two
 providers for one type is a misassembly and fails; a core type without an executor fails
 ("core step types without an executor"); a step can be switched off with
 `step.<id>.enabled: false`; and a step whose manifest
