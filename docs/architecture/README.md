@@ -113,7 +113,7 @@ YAML `config:` block, and the `StepExecutor` built from the parent-owned
 diagnostics), so a plugin step is always observed. `StepPlugins.assemble` turns the plugins
 the registry discovered into the engine's executors and codecs. A step plugin also ships
 `step-config.schema.json` at its jar root, the JSON schema of its `config:` block;
-`StepExecutorPlugin.configSchema()` reads it from the plugin's own class loader and
+`StepExecutorPlugin.configSchema()` reads it from the jar the plugin class was loaded from (not by name through a class loader, which delegates parent-first) and
 `StepPlugins.configSchemas()` maps step types to schemas (a plugin without the file has no
 entry). Rules enforced at boot: two
 providers for one type is a misassembly and fails; a core type without an executor fails

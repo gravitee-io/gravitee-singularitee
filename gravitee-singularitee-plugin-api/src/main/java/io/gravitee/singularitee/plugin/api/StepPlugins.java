@@ -72,6 +72,8 @@ public record StepPlugins(
    * @param featureEnabled whether the platform license enables a feature
    * @param enabled        whether a plugin is enabled ({@code <type>.<id>.enabled} toggles)
    * @param services       the parent-owned collaborators plugins build from
+   * @throws java.io.UncheckedIOException when a plugin's {@code step-config.schema.json}
+   *                                      exists but cannot be read: one broken plugin fails the whole assembly
    */
   public static StepPlugins assemble(
     Collection<Plugin> plugins,

@@ -17,11 +17,14 @@ package io.gravitee.singularitee.plugin.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutor;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
 import io.reactivex.rxjava3.core.Maybe;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,6 +56,14 @@ class StepPluginsSchemaTest {
     null
   );
 
+  static final class NoopExecutor implements StepExecutor<Object> {
+
+    @Override
+    public Maybe<String> execute(String stepId, Object config, StepContext ctx) {
+      return Maybe.empty();
+    }
+  }
+
   public abstract static class FixtureBase implements StepExecutorPlugin {
 
     @Override
@@ -62,7 +73,7 @@ class StepPluginsSchemaTest {
 
     @Override
     public StepExecutor<?> create(StepExecutorServices services) {
-      return (StepExecutor<Object>) (id, config, ctx) -> Maybe.empty();
+      return new NoopExecutor();
     }
   }
 
@@ -187,6 +198,51 @@ class StepPluginsSchemaTest {
 
     assertThat(assembled.codecs()).containsOnlyKeys("alpha", "schemaless");
     assertThat(assembled.configSchemas()).containsOnlyKeys("alpha");
+  }
+
+  @Test
+  void plugins_on_one_parent_first_classpath_keep_their_own_schema_despite_a_decoy(
+    @TempDir Path tmp
+  ) throws Exception {
+    Path decoy = Files.writeString(
+      Files.createDirectory(tmp.resolve("decoy")).resolve("step-config.schema.json"),
+      "{\"title\":\"decoy\"}"
+    );
+    Path alphaRoot = pluginRoot(tmp.resolve("alpha"), AlphaPlugin.class, "{\"title\":\"alpha\"}");
+    Path betaRoot = pluginRoot(tmp.resolve("beta"), BetaPlugin.class, "{\"title\":\"beta\"}");
+    Path bareRoot = pluginRoot(tmp.resolve("bare"), SchemalessPlugin.class, null);
+    var decoyLoader = new URLClassLoader(
+      new URL[] { decoy.getParent().toUri().toURL() },
+      PARENT_WITHOUT_FIXTURES
+    );
+    var shared = new URLClassLoader(
+      new URL[] { alphaRoot.toUri().toURL(), betaRoot.toUri().toURL(), bareRoot.toUri().toURL() },
+      decoyLoader
+    );
+
+    assertThat(shared.getResource("step-config.schema.json")).isEqualTo(decoy.toUri().toURL());
+    assertThat(plugin(shared, AlphaPlugin.class).configSchema()).isEqualTo("{\"title\":\"alpha\"}");
+    assertThat(plugin(shared, BetaPlugin.class).configSchema()).isEqualTo("{\"title\":\"beta\"}");
+    assertThat(plugin(shared, SchemalessPlugin.class).configSchema()).isNull();
+  }
+
+  private static Path pluginRoot(Path root, Class<?> clazz, String schema) throws IOException {
+    String entry = clazz.getName().replace('.', '/') + ".class";
+    Path classFile = root.resolve(entry);
+    Files.createDirectories(classFile.getParent());
+    try (InputStream in = clazz.getClassLoader().getResourceAsStream(entry)) {
+      Files.write(classFile, in.readAllBytes());
+    }
+    if (schema != null) {
+      Files.writeString(root.resolve("step-config.schema.json"), schema);
+    }
+    return root;
+  }
+
+  private static StepExecutorPlugin plugin(ClassLoader loader, Class<?> clazz) throws Exception {
+    Class<?> loaded = loader.loadClass(clazz.getName());
+    assertThat(loaded).isNotSameAs(clazz);
+    return (StepExecutorPlugin) loaded.getDeclaredConstructor().newInstance();
   }
 
   @Test

@@ -17,10 +17,14 @@ package io.gravitee.singularitee.plugin.api;
 
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutor;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.net.URI;
+import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
+import java.security.CodeSource;
 
 /**
  * A gravitee plugin of type {@code step}: the {@code class=} of its {@code plugin.properties}
@@ -32,8 +36,9 @@ import java.nio.charset.StandardCharsets;
  * makes the step available only when the platform license enables that feature. Core
  * steps declare none.
  *
- * <p>A plugin may ship a JSON schema of its config block as {@value #CONFIG_SCHEMA_RESOURCE}
- * at the root of its jar; {@link #configSchema()} reads it from the plugin's own class loader.
+ * <p>A plugin may ship a JSON schema of its config block as {@value #CONFIG_SCHEMA_FILE}
+ * at the root of its jar; {@link #configSchema()} reads it from the root the plugin class
+ * itself was loaded from.
  *
  * <p>Implementations need a public no-arg constructor. A plugin is a decorator over the
  * engine: it may only use parent-loaded APIs, never loads a model or a native library,
@@ -43,8 +48,8 @@ import java.nio.charset.StandardCharsets;
  * @author GraviteeSource Team
  */
 public interface StepExecutorPlugin {
-  /** Root resource of the plugin jar holding the JSON schema of the step's config block. */
-  String CONFIG_SCHEMA_RESOURCE = "/step-config.schema.json";
+  /** File at the root of the plugin jar holding the JSON schema of the step's config block. */
+  String CONFIG_SCHEMA_FILE = "step-config.schema.json";
 
   /** The step type string a workspace writes as {@code type:}. */
   String type();
@@ -55,10 +60,33 @@ public interface StepExecutorPlugin {
   /** Builds the executor from the parent-owned services. */
   StepExecutor<?> create(StepExecutorServices services);
 
-  /** The JSON schema of this step's config block, or {@code null} when the plugin ships none. */
+  /**
+   * The JSON schema of this step's config block, or {@code null} when the plugin ships none.
+   *
+   * <p>The file is read from the jar (or directory) this plugin class was loaded from, never
+   * by name through a class loader: loaders delegate parent-first, so a lookup by name would
+   * give every plugin the first {@value #CONFIG_SCHEMA_FILE} on the shared classpath.
+   *
+   * @throws UncheckedIOException when the file exists but cannot be read; during assembly
+   *                              this fails the boot, like any other broken plugin
+   */
   default String configSchema() {
-    try (InputStream in = getClass().getResourceAsStream(CONFIG_SCHEMA_RESOURCE)) {
-      return in == null ? null : new String(in.readAllBytes(), StandardCharsets.UTF_8);
+    CodeSource source = getClass().getProtectionDomain().getCodeSource();
+    if (source == null) {
+      return null;
+    }
+    String location = source.getLocation().toExternalForm();
+    String schemaUrl = location.endsWith("/")
+      ? location + CONFIG_SCHEMA_FILE
+      : "jar:" + location + "!/" + CONFIG_SCHEMA_FILE;
+    try {
+      URLConnection connection = URI.create(schemaUrl).toURL().openConnection();
+      connection.setUseCaches(false);
+      try (InputStream in = connection.getInputStream()) {
+        return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+      }
+    } catch (FileNotFoundException e) {
+      return null;
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
