@@ -111,9 +111,10 @@ public final class ReleaseSyncClient {
   /**
    * Reports this node's state: {@code POST <url>/_sync/instances/<id>/status} with a JSON body.
    *
+   * @return the answer body, empty when Gamma sent none
    * @throws IOException on transport failure or a non-2xx status
    */
-  public void reportStatus(String instanceId, Object status)
+  public Optional<String> reportStatus(String instanceId, Object status)
     throws IOException, InterruptedException {
     HttpRequest request = HttpRequest.newBuilder(
       URI.create(
@@ -128,10 +129,13 @@ public final class ReleaseSyncClient {
       .header("Content-Type", "application/json")
       .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(status)))
       .build();
-    int code = http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
+    HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+    int code = response.statusCode();
     if (code / 100 != 2) {
       throw new IOException("Status report failed: HTTP " + code);
     }
+    String body = response.body();
+    return body == null || body.isBlank() ? Optional.empty() : Optional.of(body);
   }
 
   /** Writes the release atomically and returns the workspace file path. */

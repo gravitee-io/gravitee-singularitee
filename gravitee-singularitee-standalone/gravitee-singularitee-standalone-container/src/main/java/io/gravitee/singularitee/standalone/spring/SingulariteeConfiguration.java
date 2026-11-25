@@ -714,6 +714,12 @@ public class SingulariteeConfiguration {
     return new ConversationStore(cacheManager, ttlSeconds, maxEntries);
   }
 
+  /** Which requests may see a step trace; fed by the trace key hash Gamma announces in heartbeat answers. */
+  @Bean
+  public io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority traceKeyAuthority() {
+    return new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority();
+  }
+
   /** Runs pipeline DAGs, with tracing, metrics and cross-request stores attached. */
   @Bean
   public PipelineExecutor pipelineExecutor(
@@ -723,7 +729,8 @@ public class SingulariteeConfiguration {
     InferenceMetrics inferenceMetrics,
     TodoSessionStore todoSessionStore,
     ConversationStore conversationStore,
-    ServerToolNames serverToolNames
+    ServerToolNames serverToolNames,
+    io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority traceKeyAuthority
   ) {
     return new PipelineExecutor(
       pipelineRegistry,
@@ -732,7 +739,8 @@ public class SingulariteeConfiguration {
       inferenceMetrics,
       todoSessionStore,
       conversationStore,
-      serverToolNames
+      serverToolNames,
+      traceKeyAuthority
     );
   }
 
@@ -770,13 +778,15 @@ public class SingulariteeConfiguration {
     Configuration configuration,
     GraviteeModelServiceImpl modelService,
     PipelineRegistry pipelineRegistry,
-    io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState
+    io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState,
+    io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority traceKeyAuthority
   ) {
     return new ReleaseSyncComponent(
       configuration,
       modelService.modelRegistry(),
       pipelineRegistry,
-      readinessState
+      readinessState,
+      traceKeyAuthority
     );
   }
 

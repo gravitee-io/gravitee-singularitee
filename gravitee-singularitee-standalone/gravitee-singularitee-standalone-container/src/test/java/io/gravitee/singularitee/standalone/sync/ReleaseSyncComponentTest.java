@@ -48,6 +48,7 @@ class ReleaseSyncComponentTest {
   private volatile int revision = 1;
   private final AtomicReference<String> statusBody = new AtomicReference<>();
   private final AtomicReference<String> statusAuth = new AtomicReference<>();
+  private volatile String statusAnswer;
 
   @BeforeEach
   void start() throws Exception {
@@ -70,7 +71,14 @@ class ReleaseSyncComponentTest {
     server.createContext("/_sync/instances/test-instance/status", exchange -> {
       statusBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
       statusAuth.set(exchange.getRequestHeaders().getFirst("X-Singularitee-Token"));
-      exchange.sendResponseHeaders(204, -1);
+      if (statusAnswer == null) {
+        exchange.sendResponseHeaders(204, -1);
+      } else {
+        byte[] answer = statusAnswer.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, answer.length);
+        exchange.getResponseBody().write(answer);
+      }
       exchange.close();
     });
     server.start();
@@ -83,12 +91,23 @@ class ReleaseSyncComponentTest {
   }
 
   private ReleaseSyncComponent component(Configuration config) {
+    return component(
+      config,
+      new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority()
+    );
+  }
+
+  private ReleaseSyncComponent component(
+    Configuration config,
+    io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority authority
+  ) {
     var models = new ModelRegistry();
     var component = new ReleaseSyncComponent(
       config,
       models,
       new PipelineRegistry(models),
-      new ReadinessState()
+      new ReadinessState(),
+      authority
     );
     component.setHardwareForTest(
       new HardwareInfo(
@@ -171,6 +190,31 @@ class ReleaseSyncComponentTest {
     component.poll();
 
     assertThat(component.snapshot().lastError()).isNotBlank();
+  }
+
+  @Test
+  void a_heartbeat_answer_sets_the_expected_trace_key() {
+    var authority = new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority();
+    var component = component(config(Map.of()), authority);
+    component.setClientForTest(client(), 1, false, () -> {});
+    statusAnswer = "{\"traceKeySha256\":\"" + ReleaseSyncClient.sha256("k-1") + "\"}";
+
+    component.heartbeat();
+
+    assertThat(authority.allows("k-1")).isTrue();
+    assertThat(authority.allows("k-2")).isFalse();
+  }
+
+  @Test
+  void an_empty_heartbeat_answer_changes_nothing() {
+    var authority = new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority();
+    authority.expect(ReleaseSyncClient.sha256("k-1"));
+    var component = component(config(Map.of()), authority);
+    component.setClientForTest(client(), 1, false, () -> {});
+
+    component.heartbeat();
+
+    assertThat(authority.allows("k-1")).isTrue();
   }
 
   @Test

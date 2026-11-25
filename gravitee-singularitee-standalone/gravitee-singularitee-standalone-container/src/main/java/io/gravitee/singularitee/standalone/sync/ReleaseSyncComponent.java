@@ -15,10 +15,13 @@
  */
 package io.gravitee.singularitee.standalone.sync;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gravitee.common.service.AbstractService;
 import io.gravitee.node.api.configuration.Configuration;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority;
 import io.gravitee.singularitee.standalone.vertx.ReadinessState;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
@@ -54,6 +57,9 @@ import org.slf4j.LoggerFactory;
 public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ReleaseSyncComponent.class);
+  private static final ObjectMapper ANSWER_JSON = new ObjectMapper();
+
+  private final TraceKeyAuthority traceKeys;
   static final int DEFAULT_HEARTBEAT_SECONDS = 10;
   /**
    * Where the synced workspace is, handed to the workspace loader. A dedicated key rather than {@code ai.workspace.path}:
@@ -86,6 +92,18 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
     PipelineRegistry pipelineRegistry,
     ReadinessState readiness
   ) {
+    this(configuration, modelRegistry, pipelineRegistry, readiness, new TraceKeyAuthority());
+  }
+
+  /** @param traceKeys receives the trace key hash Gamma announces in its heartbeat answers */
+  public ReleaseSyncComponent(
+    Configuration configuration,
+    ModelRegistry modelRegistry,
+    PipelineRegistry pipelineRegistry,
+    ReadinessState readiness,
+    TraceKeyAuthority traceKeys
+  ) {
+    this.traceKeys = traceKeys;
     this.configuration = configuration;
     this.modelRegistry = modelRegistry;
     this.pipelineRegistry = pipelineRegistry;
@@ -283,11 +301,22 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
   /** One heartbeat; never throws so the schedule keeps running. */
   void heartbeat() {
     try {
-      client.reportStatus(instanceId, snapshot());
+      client.reportStatus(instanceId, snapshot()).ifPresent(this::readAnswer);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     } catch (Exception e) {
       LOGGER.warn("Heartbeat to Gamma failed: {}", e.getMessage());
+    }
+  }
+
+  private void readAnswer(String body) {
+    try {
+      JsonNode hash = ANSWER_JSON.readTree(body).get("traceKeySha256");
+      if (hash != null && hash.isTextual()) {
+        traceKeys.expect(hash.asText());
+      }
+    } catch (IOException e) {
+      LOGGER.warn("Unreadable heartbeat answer from Gamma: {}", e.getMessage());
     }
   }
 

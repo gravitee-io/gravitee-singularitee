@@ -41,6 +41,7 @@ import io.gravitee.singularitee.engine.api.registry.PipelineRegistry.PipelineEnt
 import io.gravitee.singularitee.engine.api.tools.ServerToolNames;
 import io.gravitee.singularitee.engine.api.tools.TodoTools;
 import io.gravitee.singularitee.engine.pipeline.executor.StepDispatcher;
+import io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority;
 import io.gravitee.singularitee.protocol.*;
 import io.opentelemetry.api.trace.SpanKind;
 import io.reactivex.rxjava3.core.Completable;
@@ -81,6 +82,7 @@ public class PipelineExecutor implements PipelineExecutorCallback {
   private final TodoSessionStore todoSessionStore;
   private final ServerToolNames serverToolNames;
   private final ConversationStore conversationStore;
+  private final TraceKeyAuthority traceKeys;
 
   /** Untraced, store-less constructor (client-side executor, CLI, tests). */
   public PipelineExecutor(PipelineRegistry pipelineRegistry, StepDispatcher dispatcher) {
@@ -105,6 +107,32 @@ public class PipelineExecutor implements PipelineExecutorCallback {
     ConversationStore conversationStore,
     ServerToolNames serverToolNames
   ) {
+    this(
+      pipelineRegistry,
+      dispatcher,
+      tracer,
+      metrics,
+      todoSessionStore,
+      conversationStore,
+      serverToolNames,
+      null
+    );
+  }
+
+  /**
+   * @param traceKeys decides which requests may see a step trace, or {@code null} to never trace
+   */
+  public PipelineExecutor(
+    PipelineRegistry pipelineRegistry,
+    StepDispatcher dispatcher,
+    Tracer tracer,
+    InferenceMetrics metrics,
+    TodoSessionStore todoSessionStore,
+    ConversationStore conversationStore,
+    ServerToolNames serverToolNames,
+    TraceKeyAuthority traceKeys
+  ) {
+    this.traceKeys = traceKeys;
     this.pipelineRegistry = pipelineRegistry;
     this.serverToolNames = serverToolNames == null ? ServerToolNames.DEFAULTS : serverToolNames;
     this.dispatcher = dispatcher;
@@ -216,6 +244,7 @@ public class PipelineExecutor implements PipelineExecutorCallback {
     Consumer<PipelineContext> prepare
   ) {
     var context = PipelineContext.fromRequest(request);
+    if (traceKeys != null && traceKeys.allows(request.getTraceKey())) context.enableTrace();
     context.setServerToolNames(serverToolNames);
     prepare.accept(context);
 
