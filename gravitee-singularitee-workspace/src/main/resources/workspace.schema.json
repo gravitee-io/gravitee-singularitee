@@ -717,7 +717,216 @@
         }
       },
       "additionalProperties" : false,
-      "required" : [ "type" ]
+      "required" : [ "type" ],
+      "allOf" : [ {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "break"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.break"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "classify"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.classify"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "decide"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.decide"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "embed"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.embed"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "guard"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.guard"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "infer"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.infer"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "llm_guard"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.llm_guard"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "loop"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.loop"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "regex_guard"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.regex_guard"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "route"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.route"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "sub_pipeline"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.sub_pipeline"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "todo"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.todo"
+            }
+          }
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "type" : {
+              "const" : "tool_select"
+            }
+          },
+          "required" : [ "type" ]
+        },
+        "then" : {
+          "properties" : {
+            "config" : {
+              "$ref" : "#/$defs/step.tool_select"
+            }
+          }
+        }
+      } ]
     },
     "TagsDef" : {
       "anyOf" : [ {
@@ -969,6 +1178,1109 @@
           "$ref" : "#/$defs/IncludesDef"
         }
       }
+    },
+    "step.break" : {
+      "title" : "break step config",
+      "description" : "Halts the pipeline when a condition on a context field holds; otherwise the step continues to next_step.",
+      "type" : "object",
+      "properties" : {
+        "output_field" : {
+          "type" : "string",
+          "description" : "Context key whose value is reported as the pipeline's final output when the step halts.",
+          "x-singularitee-context" : "reads"
+        },
+        "condition" : {
+          "type" : "object",
+          "description" : "Halt condition evaluated over a context field; without it the step never halts.",
+          "properties" : {
+            "type" : {
+              "type" : "string",
+              "enum" : [ "equals", "contains", "label_equals", "score_above", "score_below", "not_empty", "empty" ],
+              "description" : "Kind of condition to evaluate."
+            },
+            "input_field" : {
+              "type" : "string",
+              "description" : "Flat context key to evaluate; score conditions also read <input_field>.score.",
+              "x-singularitee-context" : "reads"
+            },
+            "match_value" : {
+              "type" : [ "string", "number", "boolean" ],
+              "description" : "Reference for equals, contains and label_equals; bare YAML booleans are normalised to YES or NO."
+            },
+            "threshold" : {
+              "type" : "number",
+              "default" : 0,
+              "description" : "Reference for score_above and score_below."
+            }
+          },
+          "required" : [ "type" ],
+          "additionalProperties" : false
+        }
+      },
+      "additionalProperties" : false
+    },
+    "step.classify" : {
+      "title" : "classify step config",
+      "description" : "Runs a classifier on a context field and writes the top label and its score.",
+      "type" : "object",
+      "required" : [ "model_id" ],
+      "properties" : {
+        "model_id" : {
+          "type" : "string",
+          "description" : "Logical id of a published classifier model.",
+          "x-singularitee-ref" : "model",
+          "x-singularitee-model-tasks" : [ "text-classification", "token-classification", "decision" ]
+        },
+        "input_field" : {
+          "type" : "string",
+          "default" : "prompt",
+          "description" : "Context key holding the text to classify; an empty value skips the step with a warning.",
+          "x-singularitee-context" : "reads"
+        },
+        "output_field" : {
+          "type" : "string",
+          "default" : "<step id>.label",
+          "description" : "Context key receiving the top label; the score lands in <output_field>.score.",
+          "x-singularitee-context" : "writes"
+        },
+        "threshold" : {
+          "type" : "number",
+          "minimum" : 0,
+          "description" : "Minimum score carried to downstream readers; the executor itself does not filter on it, and 0 is not sent."
+        }
+      },
+      "additionalProperties" : false
+    },
+    "step.decide" : {
+      "title" : "decide step config",
+      "description" : "Asks a decision model typed questions (choice, score, noul) about a context field and writes the answers to the context.",
+      "type" : "object",
+      "properties" : {
+        "model_id" : {
+          "type" : "string",
+          "minLength" : 1,
+          "description" : "Logical id of a published decision model.",
+          "x-singularitee-ref" : "model",
+          "x-singularitee-model-tasks" : [ "decision" ]
+        },
+        "input_field" : {
+          "type" : "string",
+          "default" : "prompt",
+          "description" : "Context key holding the state; messages passes the chat messages as a list of role and content, and an empty value skips the step with a warning.",
+          "x-singularitee-context" : "reads"
+        },
+        "output_field" : {
+          "type" : "string",
+          "default" : "<step id>",
+          "description" : "Prefix of the context keys written: <prefix>.<question id> holds the answer and, for choice and score, .confidence, .mode and .probabilities follow.",
+          "x-singularitee-context" : "writes"
+        },
+        "questions" : {
+          "description" : "Id to question map in declaration order, or the string request to take the caller's questions; set exactly one of questions and prompts.",
+          "oneOf" : [ {
+            "type" : "string",
+            "const" : "request",
+            "description" : "Take the questions from the decision call that targets the pipeline."
+          }, {
+            "type" : "object",
+            "minProperties" : 1,
+            "description" : "Question id to question.",
+            "additionalProperties" : {
+              "$ref" : "#/$defs/step.decide/$defs/question"
+            }
+          } ]
+        },
+        "prompts" : {
+          "type" : "object",
+          "minProperties" : 1,
+          "description" : "Id to prompt the step renders itself with the pipeline's Jinja context, for a model without a template; set exactly one of questions and prompts.",
+          "additionalProperties" : {
+            "$ref" : "#/$defs/step.decide/$defs/prompt"
+          }
+        }
+      },
+      "required" : [ "model_id" ],
+      "additionalProperties" : false,
+      "oneOf" : [ {
+        "required" : [ "questions" ]
+      }, {
+        "required" : [ "prompts" ]
+      } ],
+      "$defs" : {
+        "question" : {
+          "type" : "object",
+          "description" : "A typed question: instructions plus exactly one of choice, score or noul.",
+          "properties" : {
+            "instructions" : {
+              "description" : "The question; a string, map or list reaches the template as is."
+            },
+            "choice" : {
+              "description" : "Pick one option: option key to description (null allowed), or a list of bare keys; at least one option.",
+              "oneOf" : [ {
+                "type" : "object",
+                "minProperties" : 1,
+                "description" : "Option key to description.",
+                "additionalProperties" : true
+              }, {
+                "type" : "array",
+                "minItems" : 1,
+                "description" : "Bare option keys.",
+                "items" : {
+                  "type" : [ "string", "number" ]
+                }
+              } ]
+            },
+            "score" : {
+              "type" : "array",
+              "minItems" : 2,
+              "maxItems" : 10,
+              "description" : "Level descriptions, lowest first."
+            },
+            "noul" : {
+              "type" : [ "object", "null" ],
+              "description" : "Yes or no question; an optional true and false description may be given.",
+              "properties" : {
+                "true" : {
+                  "description" : "Description of the yes answer."
+                },
+                "false" : {
+                  "description" : "Description of the no answer."
+                }
+              },
+              "additionalProperties" : false
+            }
+          },
+          "required" : [ "instructions" ],
+          "additionalProperties" : false,
+          "oneOf" : [ {
+            "required" : [ "choice" ]
+          }, {
+            "required" : [ "score" ]
+          }, {
+            "required" : [ "noul" ]
+          } ]
+        },
+        "prompt" : {
+          "type" : "object",
+          "description" : "A prompt the step renders itself: a template plus exactly one of choice, score or noul describing the answer shape.",
+          "properties" : {
+            "template" : {
+              "type" : "string",
+              "minLength" : 1,
+              "description" : "A workspace templates id, or inline Jinja rendered against the pipeline context; a bare name that is no templates id fails the load."
+            },
+            "choice" : {
+              "type" : "array",
+              "minItems" : 1,
+              "uniqueItems" : true,
+              "description" : "Distinct, non-empty option keys in the order the prompt lists them.",
+              "items" : {
+                "type" : "string",
+                "minLength" : 1
+              }
+            },
+            "score" : {
+              "type" : "integer",
+              "minimum" : 2,
+              "maximum" : 10,
+              "description" : "Number of score levels."
+            },
+            "noul" : {
+              "type" : [ "object", "null" ],
+              "description" : "Yes or no answer; use an empty map."
+            }
+          },
+          "required" : [ "template" ],
+          "additionalProperties" : false,
+          "oneOf" : [ {
+            "required" : [ "choice" ]
+          }, {
+            "required" : [ "score" ]
+          }, {
+            "required" : [ "noul" ]
+          } ]
+        }
+      }
+    },
+    "step.embed" : {
+      "title" : "embed step config",
+      "description" : "Embeds a context field with an embedding model and writes the vector as a float array string.",
+      "type" : "object",
+      "required" : [ "model_id" ],
+      "properties" : {
+        "model_id" : {
+          "type" : "string",
+          "description" : "Logical id of a published embedding model.",
+          "x-singularitee-ref" : "model",
+          "x-singularitee-model-tasks" : [ "feature-extraction" ]
+        },
+        "input_field" : {
+          "type" : "string",
+          "default" : "prompt",
+          "description" : "Context key holding the text to embed; an empty value skips the step with a warning.",
+          "x-singularitee-context" : "reads"
+        },
+        "output_field" : {
+          "type" : "string",
+          "default" : "<step id>.embedding",
+          "description" : "Context key receiving the serialised vector.",
+          "x-singularitee-context" : "writes"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "step.guard" : {
+      "title" : "guard step config",
+      "description" : "Classifier-backed input check that rejects the request, warns, or redacts the matched spans before generation.",
+      "type" : "object",
+      "required" : [ "model_id" ],
+      "properties" : {
+        "model_id" : {
+          "type" : "string",
+          "description" : "Logical id of a published classifier model.",
+          "x-singularitee-ref" : "model",
+          "x-singularitee-model-tasks" : [ "text-classification", "token-classification" ]
+        },
+        "input_field" : {
+          "type" : "string",
+          "default" : "prompt",
+          "description" : "Context key to classify; prompt (or unset) means the request itself, inspected per scope, and any other key is classified alone.",
+          "x-singularitee-context" : "reads"
+        },
+        "scope" : {
+          "type" : "string",
+          "enum" : [ "last_user", "user_turns", "conversation" ],
+          "default" : "conversation",
+          "description" : "Turns inspected when the guard reads the request: last_user, user_turns, or conversation (every user, assistant and tool turn, system turns excluded); refused alongside any input_field other than prompt."
+        },
+        "on_empty" : {
+          "type" : "string",
+          "enum" : [ "reject", "skip" ],
+          "description" : "What to do when there is no text to inspect: reject halts with the rendered message and skip passes to the next step; defaults to reject for the reject action and skip for warn and redact."
+        },
+        "output_field" : {
+          "type" : "string",
+          "description" : "Redact only: context key receiving the redacted text (the original text when nothing matched); defaults to <step id>.redacted.",
+          "x-singularitee-context" : "writes"
+        },
+        "action" : {
+          "type" : "string",
+          "enum" : [ "reject", "warn", "redact" ],
+          "default" : "reject",
+          "description" : "What happens when a trigger matches: reject halts the pipeline, warn flags and continues, redact masks the matched spans; the codec falls back to reject for unknown values."
+        },
+        "trigger" : {
+          "$ref" : "#/$defs/step.guard/$defs/trigger",
+          "description" : "Single trigger; ignored when triggers is non-empty."
+        },
+        "triggers" : {
+          "type" : "array",
+          "description" : "Several triggers, any one of which fires the guard; wins over trigger.",
+          "items" : {
+            "$ref" : "#/$defs/step.guard/$defs/trigger"
+          }
+        },
+        "message" : {
+          "type" : "string",
+          "description" : "Jinja template rendered on reject and returned as the failure message, with <step id>.label and <step id>.score available."
+        },
+        "redact_with_entity_type" : {
+          "type" : "boolean",
+          "default" : false,
+          "description" : "Redact only: replace each span with [LABEL] (upper-cased) instead of asterisks."
+        }
+      },
+      "additionalProperties" : false,
+      "$defs" : {
+        "trigger" : {
+          "type" : "object",
+          "description" : "A classifier label and the minimum score that fires it.",
+          "properties" : {
+            "label" : {
+              "type" : "string",
+              "description" : "Classifier label to watch."
+            },
+            "score" : {
+              "type" : "number",
+              "minimum" : 0,
+              "default" : 0,
+              "description" : "Minimum score that fires the trigger; 0 means any score."
+            }
+          },
+          "additionalProperties" : false
+        }
+      }
+    },
+    "step.infer" : {
+      "title" : "infer step config",
+      "description" : "Streams a generation from a text-generation model, writes the text to the context and records tool-call and reasoning diagnostics.",
+      "type" : "object",
+      "required" : [ "model_id" ],
+      "properties" : {
+        "model_id" : {
+          "type" : "string",
+          "description" : "Logical id of a published text-generation model.",
+          "x-singularitee-ref" : "model",
+          "x-singularitee-model-tasks" : [ "text-generation" ]
+        },
+        "output_field" : {
+          "type" : "string",
+          "default" : "<step id>.output",
+          "description" : "Context key receiving the full generated text (reasoning included unless strip_thinking is true).",
+          "x-singularitee-context" : "writes"
+        },
+        "prompt" : {
+          "$ref" : "#/$defs/step.infer/$defs/prompt"
+        },
+        "sampling" : {
+          "$ref" : "#/$defs/step.infer/$defs/sampling"
+        },
+        "tags" : {
+          "description" : "Reasoning and tool-call markers, inline or a bare string naming a workspace tags entry by id.",
+          "oneOf" : [ {
+            "type" : "string",
+            "description" : "Id of a workspace tags entry; an unknown id fails the load."
+          }, {
+            "$ref" : "#/$defs/step.infer/$defs/tags"
+          } ]
+        },
+        "context" : {
+          "type" : "object",
+          "description" : "Typed Jinja variables (for example enable_thinking: false or reasoning_effort: medium) merged into the rendering context and forwarded as template_context when the engine renders the messages itself.",
+          "additionalProperties" : true
+        },
+        "system" : {
+          "type" : "string",
+          "description" : "Jinja template prepended as a system turn, merged into the caller's system message when there is one."
+        },
+        "inject_tools" : {
+          "type" : "boolean",
+          "default" : true,
+          "description" : "When false, the caller's tools are hidden from the prompt."
+        },
+        "server_tools" : {
+          "type" : "boolean",
+          "default" : true,
+          "description" : "When false, the server-owned todo tools (set_todos, complete_todo, ask_user) are hidden from this step."
+        },
+        "strip_thinking" : {
+          "type" : "boolean",
+          "default" : false,
+          "description" : "When true, the span between the reasoning tags is removed from the stream, the step output and the conversation."
+        },
+        "stream_thinking" : {
+          "type" : "boolean",
+          "default" : false,
+          "description" : "For role internal steps only: forward reasoning deltas to the client while content and tool deltas stay suppressed."
+        },
+        "trim_history" : {
+          "type" : "boolean",
+          "default" : true,
+          "description" : "Drop older turns so the prompt plus max_tokens fits the engine's context window."
+        },
+        "tool_extraction_template" : {
+          "type" : "string",
+          "description" : "A built-in dialect name (chatml-json, xml-function, gemma-call, glm-name-json, harmony) or inline Jinja rendering a JSON array of name and arguments from output and tools; unset tries chatml-json, xml-function and gemma-call in that order."
+        },
+        "chat_template" : {
+          "type" : "string",
+          "description" : "A workspace templates id or inline Jinja replacing the model's own chat template for this step."
+        }
+      },
+      "additionalProperties" : false,
+      "$defs" : {
+        "prompt" : {
+          "type" : "object",
+          "description" : "Prompt source: structured messages replacing the conversation, or one raw template (inline, file or workspace id) bypassing the chat template; a template takes precedence over messages and at most one template key may be set.",
+          "properties" : {
+            "messages" : {
+              "type" : "array",
+              "description" : "Templated messages replacing the conversation; the result still goes through the chat template.",
+              "items" : {
+                "$ref" : "#/$defs/step.infer/$defs/message"
+              }
+            },
+            "template" : {
+              "type" : "string",
+              "description" : "Inline raw Jinja template sent as a bare prompt, bypassing the chat template."
+            },
+            "template_file" : {
+              "type" : "string",
+              "description" : "Path to a raw template file, resolved under the templates base directory unless absolute."
+            },
+            "template_id" : {
+              "type" : "string",
+              "description" : "Id of a workspace templates entry, resolved to its content at load time.",
+              "x-singularitee-ref" : "template"
+            }
+          },
+          "additionalProperties" : false,
+          "allOf" : [ {
+            "not" : {
+              "required" : [ "template", "template_file" ]
+            }
+          }, {
+            "not" : {
+              "required" : [ "template", "template_id" ]
+            }
+          }, {
+            "not" : {
+              "required" : [ "template_file", "template_id" ]
+            }
+          } ]
+        },
+        "message" : {
+          "type" : "object",
+          "description" : "One templated chat message.",
+          "properties" : {
+            "role" : {
+              "type" : "string",
+              "enum" : [ "system", "user", "assistant", "tool" ],
+              "default" : "user",
+              "description" : "Role of the turn; a blank role means user and an unknown one is treated as user."
+            },
+            "content" : {
+              "type" : "string",
+              "description" : "Jinja template rendered against the pipeline context."
+            }
+          },
+          "additionalProperties" : false
+        },
+        "sampling" : {
+          "type" : "object",
+          "description" : "Step-level sampling; values apply only when non-zero, except temperature where 0 is greedy, and a request or loop retry override wins.",
+          "properties" : {
+            "max_tokens" : {
+              "type" : "integer",
+              "minimum" : 0,
+              "description" : "Completion cap, also the reservation trim_history keeps free; 0 keeps the engine default."
+            },
+            "temperature" : {
+              "type" : "number",
+              "description" : "Sampling temperature; 0 is greedy and a negative value keeps the engine default."
+            },
+            "top_p" : {
+              "type" : "number",
+              "description" : "Nucleus threshold; 0 keeps the engine default."
+            },
+            "presence_penalty" : {
+              "type" : "number",
+              "default" : 0,
+              "description" : "Presence penalty."
+            },
+            "frequency_penalty" : {
+              "type" : "number",
+              "default" : 0,
+              "description" : "Frequency penalty."
+            },
+            "stop" : {
+              "type" : "array",
+              "description" : "Stop strings ending generation.",
+              "items" : {
+                "type" : "string"
+              }
+            }
+          },
+          "additionalProperties" : false
+        },
+        "tagMarker" : {
+          "description" : "A marker string, or a list whose first entry is the primary marker and the rest are alternatives (longest match wins).",
+          "oneOf" : [ {
+            "type" : "string"
+          }, {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          } ]
+        },
+        "tags" : {
+          "type" : "object",
+          "description" : "Inline reasoning and tool-call channel markers.",
+          "properties" : {
+            "reasoning_open" : {
+              "$ref" : "#/$defs/step.infer/$defs/tagMarker",
+              "description" : "Marker or markers opening the reasoning channel."
+            },
+            "reasoning_close" : {
+              "$ref" : "#/$defs/step.infer/$defs/tagMarker",
+              "description" : "Marker or markers closing the reasoning channel."
+            },
+            "reasoning_repeatable" : {
+              "type" : "boolean",
+              "description" : "Whether the reasoning channel may reopen within one generation, as chained-channel dialects such as Harmony need; unset keeps the engine rule."
+            },
+            "tool_open" : {
+              "$ref" : "#/$defs/step.infer/$defs/tagMarker",
+              "description" : "Marker or markers opening the tool-call channel; a generation ending inside it finishes with tool_calls."
+            },
+            "tool_close" : {
+              "$ref" : "#/$defs/step.infer/$defs/tagMarker",
+              "description" : "Marker or markers closing the tool-call channel."
+            }
+          },
+          "additionalProperties" : false
+        }
+      }
+    },
+    "step.llm_guard" : {
+      "title" : "llm_guard step config",
+      "description" : "LLM-as-judge check where a text-generation model answers a screening prompt and the first token of its answer decides whether the request continues.",
+      "type" : "object",
+      "required" : [ "model_id" ],
+      "properties" : {
+        "model_id" : {
+          "type" : "string",
+          "description" : "Logical id of a published text-generation model.",
+          "x-singularitee-ref" : "model",
+          "x-singularitee-model-tasks" : [ "text-generation" ]
+        },
+        "action" : {
+          "type" : "string",
+          "enum" : [ "reject", "warn", "redact" ],
+          "default" : "reject",
+          "description" : "What happens on an unsafe verdict: reject halts the pipeline, warn flags and continues, and redact is unsupported and behaves as warn."
+        },
+        "safe_token" : {
+          "type" : "string",
+          "default" : "safe",
+          "description" : "Prefix the verdict must start with (case-insensitive, leading whitespace stripped) for the request to pass."
+        },
+        "prompt" : {
+          "type" : "object",
+          "description" : "The screening prompt: chat messages or one raw template; template, template_file and template_id are mutually exclusive and take precedence over messages.",
+          "properties" : {
+            "messages" : {
+              "type" : "array",
+              "description" : "Screening conversation sent through the chat template.",
+              "items" : {
+                "type" : "object",
+                "description" : "One chat message.",
+                "properties" : {
+                  "role" : {
+                    "type" : "string",
+                    "enum" : [ "system", "user", "assistant" ],
+                    "default" : "user",
+                    "description" : "Message role; unknown values are treated as user."
+                  },
+                  "content" : {
+                    "type" : "string",
+                    "description" : "Jinja template rendered into the message text."
+                  }
+                },
+                "additionalProperties" : false
+              }
+            },
+            "template" : {
+              "type" : "string",
+              "description" : "Inline raw Jinja prompt sent as a bare string, bypassing the chat template."
+            },
+            "template_file" : {
+              "type" : "string",
+              "description" : "Path to a raw template file, resolved under the templates directory unless absolute."
+            },
+            "template_id" : {
+              "type" : "string",
+              "description" : "Id of a workspace templates entry, resolved to its content at load time.",
+              "x-singularitee-ref" : "template"
+            }
+          },
+          "additionalProperties" : false
+        },
+        "sampling" : {
+          "type" : "object",
+          "description" : "Sampling override for the judge call; only max_tokens, temperature and top_p are forwarded.",
+          "properties" : {
+            "max_tokens" : {
+              "type" : "integer",
+              "minimum" : 1,
+              "default" : 64,
+              "description" : "Completion cap."
+            },
+            "temperature" : {
+              "type" : "number",
+              "description" : "Sampling temperature; 0 is greedy and a negative value keeps the engine default."
+            },
+            "top_p" : {
+              "type" : "number",
+              "description" : "Nucleus threshold."
+            },
+            "presence_penalty" : {
+              "type" : "number",
+              "description" : "Accepted but not forwarded by this step."
+            },
+            "frequency_penalty" : {
+              "type" : "number",
+              "description" : "Accepted but not forwarded by this step."
+            },
+            "stop" : {
+              "type" : "array",
+              "description" : "Accepted but not forwarded by this step.",
+              "items" : {
+                "type" : "string"
+              }
+            }
+          },
+          "additionalProperties" : false
+        },
+        "message" : {
+          "type" : "string",
+          "description" : "Jinja template rendered on reject and returned as the failure message."
+        },
+        "context" : {
+          "type" : "object",
+          "description" : "Typed Jinja variables merged into the prompt and message rendering context and forwarded to the engine's chat template (for example reasoning_effort, enable_thinking); keys are free-form.",
+          "additionalProperties" : true
+        },
+        "tags" : {
+          "description" : "The judge model's reasoning and tool-call markers, inline or as a bare string referencing a workspace tags entry by id.",
+          "oneOf" : [ {
+            "type" : "string",
+            "description" : "Id of a workspace tags entry."
+          }, {
+            "$ref" : "#/$defs/step.llm_guard/$defs/tags"
+          } ]
+        },
+        "input_field" : {
+          "type" : "string",
+          "description" : "Accepted but ignored; the prompt decides what is screened."
+        }
+      },
+      "additionalProperties" : false,
+      "$defs" : {
+        "marker" : {
+          "description" : "One marker string or a list; the first entry is the primary marker and the rest are alternatives.",
+          "oneOf" : [ {
+            "type" : "string"
+          }, {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          } ]
+        },
+        "tags" : {
+          "type" : "object",
+          "description" : "Reasoning and tool-call channel markers of the model.",
+          "properties" : {
+            "id" : {
+              "type" : "string",
+              "description" : "Workspace tags entry id."
+            },
+            "reasoning_open" : {
+              "$ref" : "#/$defs/step.llm_guard/$defs/marker",
+              "description" : "Marker(s) opening the reasoning channel."
+            },
+            "reasoning_close" : {
+              "$ref" : "#/$defs/step.llm_guard/$defs/marker",
+              "description" : "Marker(s) closing the reasoning channel."
+            },
+            "reasoning_repeatable" : {
+              "type" : "boolean",
+              "description" : "Whether the reasoning channel may reopen within one generation."
+            },
+            "tool_open" : {
+              "$ref" : "#/$defs/step.llm_guard/$defs/marker",
+              "description" : "Marker(s) opening the tool-call channel."
+            },
+            "tool_close" : {
+              "$ref" : "#/$defs/step.llm_guard/$defs/marker",
+              "description" : "Marker(s) closing the tool-call channel."
+            }
+          },
+          "additionalProperties" : false
+        }
+      }
+    },
+    "step.loop" : {
+      "title" : "loop step config",
+      "description" : "Bounded back-edge that re-runs an earlier step until a condition holds, optionally injecting a corrective turn and tighter sampling on every retry; the exit edge is the envelope next_step.",
+      "type" : "object",
+      "properties" : {
+        "loopback_step" : {
+          "type" : "string",
+          "description" : "Step to jump back to while the condition does not hold.",
+          "x-singularitee-ref" : "step",
+          "x-singularitee-branch" : "retry"
+        },
+        "fallback_step" : {
+          "type" : "string",
+          "description" : "Step taken when max_iterations is reached; the envelope next_step when unset.",
+          "x-singularitee-ref" : "step",
+          "x-singularitee-branch" : "fallback"
+        },
+        "max_iterations" : {
+          "type" : "integer",
+          "minimum" : 1,
+          "description" : "Hard ceiling on retries; must be positive."
+        },
+        "condition" : {
+          "$ref" : "#/$defs/step.loop/$defs/condition"
+        },
+        "loopback_message" : {
+          "type" : "object",
+          "description" : "Message appended to the conversation on every loop-back, never on exit or fallback.",
+          "properties" : {
+            "role" : {
+              "type" : "string",
+              "enum" : [ "system", "user", "assistant" ],
+              "default" : "user",
+              "description" : "Chat role of the injected message; unknown values fall back to user."
+            },
+            "content" : {
+              "type" : "string",
+              "description" : "Jinja template rendered against the pipeline context at loop-back time; a render failure or empty result skips the injection."
+            }
+          },
+          "additionalProperties" : false
+        },
+        "retry_sampling_params" : {
+          "type" : "object",
+          "description" : "Sampling override applied to infer steps on the retry edge only and cleared on exit and on fallback.",
+          "properties" : {
+            "max_tokens" : {
+              "type" : "integer",
+              "minimum" : 0,
+              "description" : "Maximum tokens to generate; only positive values are applied."
+            },
+            "temperature" : {
+              "type" : "number",
+              "description" : "Sampling temperature; 0 is greedy and a negative value is ignored."
+            },
+            "top_p" : {
+              "type" : "number",
+              "description" : "Nucleus sampling probability; only positive values are applied."
+            },
+            "presence_penalty" : {
+              "type" : "number",
+              "description" : "Presence penalty; 0 is not applied."
+            },
+            "frequency_penalty" : {
+              "type" : "number",
+              "description" : "Frequency penalty; 0 is not applied."
+            },
+            "stop" : {
+              "type" : "array",
+              "items" : {
+                "type" : "string"
+              },
+              "description" : "Accepted by the codec but not applied on the retry edge."
+            }
+          },
+          "additionalProperties" : false
+        }
+      },
+      "required" : [ "max_iterations" ],
+      "additionalProperties" : false,
+      "$defs" : {
+        "condition" : {
+          "type" : "object",
+          "description" : "Exit condition evaluated over a context field; the loop exits through next_step when it holds.",
+          "properties" : {
+            "type" : {
+              "type" : "string",
+              "enum" : [ "equals", "contains", "label_equals", "score_above", "score_below", "not_empty", "empty" ],
+              "description" : "Kind of condition to evaluate."
+            },
+            "input_field" : {
+              "type" : "string",
+              "description" : "Flat context key to evaluate; score conditions also read <input_field>.score.",
+              "x-singularitee-context" : "reads"
+            },
+            "match_value" : {
+              "type" : [ "string", "number", "boolean" ],
+              "description" : "Reference for equals, contains and label_equals; bare YAML booleans are normalised to YES or NO."
+            },
+            "threshold" : {
+              "type" : "number",
+              "default" : 0,
+              "description" : "Reference for score_above and score_below."
+            }
+          },
+          "required" : [ "type" ],
+          "additionalProperties" : false
+        }
+      }
+    },
+    "step.regex_guard" : {
+      "title" : "regex_guard step config",
+      "description" : "Deprecated model-free pattern guard that rejects, warns or redacts on a list of named Java regular expressions.",
+      "type" : "object",
+      "properties" : {
+        "input_field" : {
+          "type" : "string",
+          "default" : "prompt",
+          "description" : "Context key to scan; prompt (or unset) means the request itself, scanned per scope, and any other key is scanned alone.",
+          "x-singularitee-context" : "reads"
+        },
+        "scope" : {
+          "type" : "string",
+          "enum" : [ "last_user", "user_turns", "conversation" ],
+          "default" : "conversation",
+          "description" : "Turns inspected when the guard reads the request: last_user, user_turns, or conversation (every user, assistant and tool turn, system turns excluded); refused alongside any input_field other than prompt."
+        },
+        "on_empty" : {
+          "type" : "string",
+          "enum" : [ "reject", "skip" ],
+          "description" : "What to do when there is no text to inspect: reject halts with the rendered message and skip passes to the next step; defaults to reject for the reject action and skip for warn and redact."
+        },
+        "patterns" : {
+          "type" : "array",
+          "description" : "Named Java regular expressions evaluated in order; an empty list skips the step.",
+          "items" : {
+            "type" : "object",
+            "description" : "One named pattern.",
+            "properties" : {
+              "name" : {
+                "type" : "string",
+                "description" : "Free-form label used as the [NAME] replacement and in the entity_type fields."
+              },
+              "pattern" : {
+                "type" : "string",
+                "description" : "Java Pattern source; blank patterns are ignored in redact mode."
+              }
+            },
+            "additionalProperties" : false
+          }
+        },
+        "action" : {
+          "type" : "string",
+          "enum" : [ "reject", "warn", "redact" ],
+          "default" : "reject",
+          "description" : "What happens on a match: reject halts the pipeline, warn flags and continues, redact masks the matched spans; the codec falls back to reject for unknown values."
+        },
+        "redact_with_entity_type" : {
+          "type" : "boolean",
+          "default" : false,
+          "description" : "Redact only: replace spans with [NAME] (upper-cased) instead of [REDACTED]."
+        },
+        "output_field" : {
+          "type" : "string",
+          "description" : "Redact only: context key receiving the redacted text (the original text when nothing matched); defaults to <step id>.output.",
+          "x-singularitee-context" : "writes"
+        },
+        "message" : {
+          "type" : "string",
+          "description" : "Jinja template rendered on reject and returned as the failure message."
+        }
+      },
+      "additionalProperties" : false
+    },
+    "step.route" : {
+      "title" : "route step config",
+      "description" : "Resolves a label for the input with a classifier, embedding similarity, a prior LLM verdict or a prior decision, and jumps to the first rule whose label matches.",
+      "type" : "object",
+      "properties" : {
+        "model_id" : {
+          "type" : "string",
+          "description" : "Logical id of the classifier or embedding model; required for the classifier and embedding_knn strategies, unused by llm_structured and decision.",
+          "x-singularitee-ref" : "model",
+          "x-singularitee-model-tasks" : [ "text-classification", "token-classification", "feature-extraction" ]
+        },
+        "strategy" : {
+          "type" : "string",
+          "enum" : [ "classifier", "embedding_knn", "llm_structured", "decision" ],
+          "default" : "classifier",
+          "description" : "How the label is resolved: the classifier's top label, the nearest reference embedding, a prior LLM verdict matched against rule labels, or a prior decide choice."
+        },
+        "input_field" : {
+          "type" : "string",
+          "default" : "prompt",
+          "description" : "Context key holding the text to route on; required for the decision strategy, where it is <decide step>.<question>.",
+          "x-singularitee-context" : "reads"
+        },
+        "min_confidence" : {
+          "type" : "number",
+          "default" : 0,
+          "description" : "Decision strategy only: a choice whose <input_field>.confidence is below this takes default_step, which it requires; 0 turns the check off."
+        },
+        "default_step" : {
+          "type" : "string",
+          "description" : "Step taken when no rule matches; when unset the pipeline ends.",
+          "x-singularitee-ref" : "step",
+          "x-singularitee-branch" : "default"
+        },
+        "rules" : {
+          "type" : "array",
+          "description" : "Ordered rules; the first one whose label equals the resolved label wins.",
+          "items" : {
+            "type" : "object",
+            "description" : "One routing rule: a label, the step taken when it wins and, for embedding_knn, the reference sentences.",
+            "properties" : {
+              "label" : {
+                "type" : "string",
+                "description" : "Label to match; for embedding_knn without sentences it is also the reference text."
+              },
+              "next_step" : {
+                "type" : "string",
+                "description" : "Id of the step taken when this rule matches.",
+                "x-singularitee-ref" : "step",
+                "x-singularitee-branch" : true
+              },
+              "sentences" : {
+                "type" : "array",
+                "items" : {
+                  "type" : "string"
+                },
+                "description" : "embedding_knn only: reference sentences embedded for this rule; the label is used when none are given."
+              }
+            },
+            "additionalProperties" : false
+          }
+        }
+      },
+      "allOf" : [ {
+        "if" : {
+          "anyOf" : [ {
+            "not" : {
+              "required" : [ "strategy" ]
+            }
+          }, {
+            "properties" : {
+              "strategy" : {
+                "enum" : [ "classifier", "embedding_knn" ]
+              }
+            }
+          } ]
+        },
+        "then" : {
+          "required" : [ "model_id" ]
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "strategy" : {
+              "const" : "decision"
+            }
+          },
+          "required" : [ "strategy" ]
+        },
+        "then" : {
+          "required" : [ "input_field" ]
+        }
+      }, {
+        "if" : {
+          "properties" : {
+            "strategy" : {
+              "const" : "decision"
+            },
+            "min_confidence" : {
+              "exclusiveMinimum" : 0
+            }
+          },
+          "required" : [ "strategy", "min_confidence" ]
+        },
+        "then" : {
+          "required" : [ "default_step" ]
+        }
+      } ],
+      "additionalProperties" : false
+    },
+    "step.sub_pipeline" : {
+      "title" : "sub_pipeline step config",
+      "description" : "Runs another published pipeline as a nested step, locally or on a named remote server, and captures its output in the parent context.",
+      "type" : "object",
+      "properties" : {
+        "pipeline_id" : {
+          "type" : "string",
+          "minLength" : 1,
+          "description" : "Id of the pipeline to run, in the local registry or on server.",
+          "x-singularitee-ref" : "pipeline"
+        },
+        "server" : {
+          "type" : "string",
+          "description" : "Id of a workspace.remote.servers[] endpoint to run the pipeline on; local when unset.",
+          "x-singularitee-ref" : "server"
+        },
+        "input_field" : {
+          "type" : "string",
+          "default" : "prompt",
+          "description" : "Context key sent as the sub-pipeline's prompt when messages are not forwarded.",
+          "x-singularitee-context" : "reads"
+        },
+        "forward_messages" : {
+          "type" : "boolean",
+          "default" : false,
+          "description" : "Send the parent's full conversation instead of the flat prompt."
+        },
+        "system_prompt" : {
+          "type" : "string",
+          "description" : "Plain-text system message for the sub-pipeline, replacing any existing system turn; not a Jinja template."
+        },
+        "output_field" : {
+          "type" : "string",
+          "description" : "Context key receiving everything the sub-pipeline streamed; <step id>.output when unset.",
+          "x-singularitee-context" : "writes"
+        }
+      },
+      "required" : [ "pipeline_id" ],
+      "additionalProperties" : false
+    },
+    "step.todo" : {
+      "title" : "todo step config",
+      "description" : "Executes the server-owned plan tools called by the preceding infer step and keeps the plan in the pipeline context.",
+      "type" : "object",
+      "properties" : {
+        "handled_step" : {
+          "type" : "string",
+          "description" : "Step to branch to after consuming a plan call (usually the infer step that produced it, or the gate after it); the envelope next_step when unset.",
+          "x-singularitee-ref" : "step",
+          "x-singularitee-branch" : "handled"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "step.tool_select" : {
+      "title" : "tool_select step config",
+      "description" : "Shortlists the request's tools with a zero-shot classifier so the following infer step injects only the relevant schemas.",
+      "type" : "object",
+      "required" : [ "model_id" ],
+      "properties" : {
+        "model_id" : {
+          "type" : "string",
+          "description" : "Logical id of a zero-shot classifier model (a gliner_classifier declared without labels).",
+          "x-singularitee-ref" : "model",
+          "x-singularitee-model-tasks" : [ "text-classification" ]
+        },
+        "input_field" : {
+          "type" : "string",
+          "description" : "Context key to classify; unset means the last user message, falling back to prompt, and the text is capped at 1500 characters.",
+          "x-singularitee-context" : "reads"
+        },
+        "batch_size" : {
+          "type" : "integer",
+          "minimum" : 0,
+          "default" : 4,
+          "description" : "Tools per classify call, plus the synthetic none_of_these label; 0 or less means the default."
+        },
+        "threshold" : {
+          "type" : "number",
+          "minimum" : 0,
+          "default" : 0.3,
+          "description" : "Minimum score for a tool to be selected; 0 means the default."
+        },
+        "label_template" : {
+          "type" : "string",
+          "description" : "Jinja template rendered per tool with tool.name and tool.description to build the classifier label description; unset uses the first sentence of the description, capped at 160 characters."
+        },
+        "always_include" : {
+          "type" : "array",
+          "description" : "Tool names unioned into a non-empty shortlist (only names present on the request).",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "trim_descriptions" : {
+          "type" : "boolean",
+          "default" : false,
+          "description" : "Write condensed descriptions for the selected tools so infer injects the short form."
+        },
+        "description_template" : {
+          "type" : "string",
+          "description" : "Jinja template (same tool variable) for the injected condensed description; unset uses the default condenser."
+        }
+      },
+      "additionalProperties" : false
     }
   }
 }

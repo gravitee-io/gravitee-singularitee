@@ -79,7 +79,7 @@ On a prior decision (`examples/decision/qwen3-0.6b-triage.yaml`):
 | `input_field` | string | `prompt` | Context key holding the text to route on. Blank text resolves to the empty label and takes `default_step`. Required for `decision` (the load fails without it). |
 | `min_confidence` | float | `0` (off) | `decision` only: below this `<input_field>.confidence`, take `default_step`, which it requires (the load fails without one). A missing or unparsable confidence counts as `0`. |
 | `default_step` | string | unset | Step when no rule matches. Unset: the pipeline ends. |
-| `rules` | list | required | Ordered list of `{label, next_step, sentences}`. |
+| `rules` | list | empty | Ordered list of `{label, next_step, sentences}`; with none, every request takes `default_step`. |
 | `rules[].label` | string | required | Label to match. For `embedding_knn` without `sentences`, it is also the reference text. |
 | `rules[].next_step` | string | required | Target step id. |
 | `rules[].sentences` | list of string | unset | `embedding_knn` only: reference sentences embedded for this rule. |

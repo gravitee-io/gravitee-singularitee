@@ -25,6 +25,7 @@ import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SchemaId;
 import com.networknt.schema.SchemaLocation;
 import com.networknt.schema.SpecVersion;
+import io.gravitee.singularitee.engine.api.pipeline.model.StepTypes;
 import io.gravitee.singularitee.plugin.test.TestStepPlugins;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -101,6 +102,13 @@ class StepConfigSchemaTest {
     }
 
     assertThat(problems).isEmpty();
+  }
+
+  @Test
+  void every_core_step_type_has_a_schema() {
+    assertThat(TestStepPlugins.plugins().configSchemas()).containsKeys(
+      StepTypes.CORE.toArray(String[]::new)
+    );
   }
 
   @Test

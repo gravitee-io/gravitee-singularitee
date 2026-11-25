@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "loop step config",
+  "description": "Bounded back-edge that re-runs an earlier step until a condition holds, optionally injecting a corrective turn and tighter sampling on every retry; the exit edge is the envelope next_step.",
+  "type": "object",
+  "properties": {
+    "loopback_step": {
+      "type": "string",
+      "description": "Step to jump back to while the condition does not hold.",
+      "x-singularitee-ref": "step",
+      "x-singularitee-branch": "retry"
+    },
+    "fallback_step": {
+      "type": "string",
+      "description": "Step taken when max_iterations is reached; the envelope next_step when unset.",
+      "x-singularitee-ref": "step",
+      "x-singularitee-branch": "fallback"
+    },
+    "max_iterations": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Hard ceiling on retries; must be positive."
+    },
+    "condition": { "$ref": "#/$defs/condition" },
+    "loopback_message": {
+      "type": "object",
+      "description": "Message appended to the conversation on every loop-back, never on exit or fallback.",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["system", "user", "assistant"],
+          "default": "user",
+          "description": "Chat role of the injected message; unknown values fall back to user."
+        },
+        "content": {
+          "type": "string",
+          "description": "Jinja template rendered against the pipeline context at loop-back time; a render failure or empty result skips the injection."
+        }
+      },
+      "additionalProperties": false
+    },
+    "retry_sampling_params": {
+      "type": "object",
+      "description": "Sampling override applied to infer steps on the retry edge only and cleared on exit and on fallback.",
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum tokens to generate; only positive values are applied."
+        },
+        "temperature": {
+          "type": "number",
+          "description": "Sampling temperature; 0 is greedy and a negative value is ignored."
+        },
+        "top_p": {
+          "type": "number",
+          "description": "Nucleus sampling probability; only positive values are applied."
+        },
+        "presence_penalty": {
+          "type": "number",
+          "description": "Presence penalty; 0 is not applied."
+        },
+        "frequency_penalty": {
+          "type": "number",
+          "description": "Frequency penalty; 0 is not applied."
+        },
+        "stop": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Accepted by the codec but not applied on the retry edge."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["max_iterations"],
+  "additionalProperties": false,
+  "$defs": {
+    "condition": {
+      "type": "object",
+      "description": "Exit condition evaluated over a context field; the loop exits through next_step when it holds.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["equals", "contains", "label_equals", "score_above", "score_below", "not_empty", "empty"],
+          "description": "Kind of condition to evaluate."
+        },
+        "input_field": {
+          "type": "string",
+          "description": "Flat context key to evaluate; score conditions also read <input_field>.score.",
+          "x-singularitee-context": "reads"
+        },
+        "match_value": {
+          "type": ["string", "number", "boolean"],
+          "description": "Reference for equals, contains and label_equals; bare YAML booleans are normalised to YES or NO."
+        },
+        "threshold": {
+          "type": "number",
+          "default": 0,
+          "description": "Reference for score_above and score_below."
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    }
+  }
+}

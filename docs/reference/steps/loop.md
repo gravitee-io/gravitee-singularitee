@@ -56,7 +56,7 @@ A one-shot branch (`examples/pipelines/todo-agent.yaml`): `max_iterations: 1` wi
 | --- | --- | --- | --- |
 | `next_step` (envelope) | string | unset | Exit edge taken when the condition holds. Proto `next_step_id`. |
 | `loopback_step` | string | required | Step to jump back to on retry. Proto `target_step_id`. |
-| `max_iterations` | int | `0` | Retry ceiling. Only positive values are sent; `0` leaves the loop unbounded. Always set it. |
+| `max_iterations` | int | required | Retry ceiling; must be positive, the load fails with `max_iterations must be positive` otherwise. |
 | `fallback_step` | string | `next_step` | Step taken when the ceiling is reached. |
 | `condition.type` | string | required | `equals`, `contains`, `label_equals`, `score_above`, `score_below`, `not_empty`, `empty`. See [conditions](./README.md#conditions-break-and-loop). |
 | `condition.input_field` | string | required | Flat context key to evaluate. |
@@ -64,7 +64,7 @@ A one-shot branch (`examples/pipelines/todo-agent.yaml`): `max_iterations: 1` wi
 | `condition.threshold` | float | `0` | Reference for `score_above`, `score_below`. |
 | `loopback_message.role` | string | `user` | `system`, `user` or `assistant`; unknown values fall back to `user`. |
 | `loopback_message.content` | string | unset | Jinja template appended to `messages` on every retry. A render failure or an empty result skips the injection without failing the loop. |
-| `retry_sampling_params` | object | unset | `max_tokens`, `temperature`, `top_p`, `presence_penalty`, `frequency_penalty` applied to infer steps on the retry edge only; `temperature: 0` is greedy, a negative one is ignored. Precedence: request override > retry > step. Cleared on exit and on fallback. |
+| `retry_sampling_params` | object | unset | `max_tokens`, `temperature`, `top_p`, `presence_penalty`, `frequency_penalty` (a `stop` list is parsed but not applied) applied to infer steps on the retry edge only; `temperature: 0` is greedy, a negative one is ignored. Precedence: request override > retry > step. Cleared on exit and on fallback. |
 
 ## Context fields
 
