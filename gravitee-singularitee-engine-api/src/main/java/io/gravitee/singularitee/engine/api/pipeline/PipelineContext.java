@@ -917,6 +917,24 @@ public final class PipelineContext {
     this.haltReason = reason;
   }
 
+  private volatile boolean traceEnabled;
+  private volatile long traceStartNanos;
+
+  /** Makes this run emit one step trace event per finished step; called once, before the first step. */
+  public void enableTrace() {
+    this.traceStartNanos = System.nanoTime();
+    this.traceEnabled = true;
+  }
+
+  public boolean traceEnabled() {
+    return traceEnabled;
+  }
+
+  /** {@link System#nanoTime()} when the trace was enabled, the origin of each step's start offset. */
+  public long traceStartNanos() {
+    return traceStartNanos;
+  }
+
   /** Returns {@code true} if a halt has been signalled. */
   public boolean isHalted() {
     return breakOutputField != null;

@@ -212,6 +212,11 @@ message InferPipelineRequest {
   // for later continuation via previous_response_id. Unset = true when a
   // request_id is present (OpenAI `store` defaults to true).
   optional bool store = 63;
+
+  // Key that unlocks the step trace: when it matches the hash the control plane
+  // announced to this node, the run emits one STEP_TRACE event per finished step.
+  // Any other value, or none, runs without a trace and without an error.
+  string trace_key = 64;
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +244,7 @@ message InferResponse {
     ResponseCompleted        response_completed         = 12;
     ResponseFailed           response_failed            = 13;
     ResponseProgress         response_progress          = 14;
+    StepTrace                step_trace                 = 15;
   }
 
   // Semantic role of this event's content in a pipeline.
@@ -267,6 +273,9 @@ enum ResponseEventType {
   // Chat Completions surface drops it, the Responses API surfaces it as a
   // "gravitee.progress" object.
   RESPONSE_EVENT_TYPE_PROGRESS          = 5;
+  // What one pipeline step did, emitted after it finishes when the request
+  // carried a valid trace_key. Additive and ignorable.
+  RESPONSE_EVENT_TYPE_STEP_TRACE        = 6;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,6 +351,26 @@ message ToolCall {
   // Call id, when the transcript carries one (OpenAI "tool_call_id"). Templates use it to pair a
   // following tool message to the call it answers. Empty for freshly extracted calls.
   string id = 4;
+}
+
+// What one pipeline step did during a traced run.
+message StepTrace {
+  string step_id                = 1;
+  string step_type              = 2;
+  // Milliseconds from the start of the run to the start of the step.
+  int64 started_at_ms           = 3;
+  int64 duration_ms             = 4;
+  // The step the run continued with; empty when the step ended the run.
+  string next_step              = 5;
+  // Whether the step halted the run (guard block, break condition).
+  bool halted                   = 6;
+  FinishReason finish_reason    = 7;
+  // The model the step called; empty for steps bound to no model.
+  string model_id               = 8;
+  // Context fields the step added or changed, each value cut to 4096 characters.
+  map<string, string> outputs   = 9;
+  // Set when the step failed.
+  string error                  = 10;
 }
 
 // Auxiliary progress update emitted mid-stream by pipeline steps that manage
