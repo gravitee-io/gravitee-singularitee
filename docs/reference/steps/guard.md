@@ -55,7 +55,7 @@ From `examples/pipelines/guard.yaml`:
 | `action` | string | `reject` | `reject`, `warn` or `redact`. Unknown values fall back to `reject`. |
 | `trigger` | `{label, score}` | unset | Single trigger. Ignored when `triggers` is non-empty. Also fills the deprecated proto fields `trigger_label` / `trigger_score`. |
 | `triggers` | list of `{label, score}` | unset | Several triggers; any match fires. |
-| `triggers[].label` | string | required | Classifier label to watch. |
+| `triggers[].label` | string | unset | Classifier label to watch. |
 | `triggers[].score` | float | `0` (any score) | Minimum score. `0` is not sent and means any score. |
 | `message` | string | unset | Jinja template rendered on `reject` and returned as the failure message. `{{ <id>.label }}` and `{{ <id>.score }}` are available. |
 | `redact_with_entity_type` | bool | `false` | `redact` only: replace each span with `[LABEL]` (upper-cased) instead of `************`. |

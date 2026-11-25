@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tool_select step config",
+  "description": "Shortlists the request's tools with a zero-shot classifier so the following infer step injects only the relevant schemas.",
+  "type": "object",
+  "required": ["model_id"],
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "description": "Logical id of a zero-shot classifier model (a gliner_classifier declared without labels).",
+      "x-singularitee-ref": "model",
+      "x-singularitee-model-tasks": ["text-classification"]
+    },
+    "input_field": {
+      "type": "string",
+      "description": "Context key to classify; unset means the last user message, falling back to prompt, and the text is capped at 1500 characters.",
+      "x-singularitee-context": "reads"
+    },
+    "batch_size": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 4,
+      "description": "Tools per classify call, plus the synthetic none_of_these label; 0 or less means the default."
+    },
+    "threshold": {
+      "type": "number",
+      "minimum": 0,
+      "default": 0.3,
+      "description": "Minimum score for a tool to be selected; 0 means the default."
+    },
+    "label_template": {
+      "type": "string",
+      "description": "Jinja template rendered per tool with tool.name and tool.description to build the classifier label description; unset uses the first sentence of the description, capped at 160 characters."
+    },
+    "always_include": {
+      "type": "array",
+      "description": "Tool names unioned into a non-empty shortlist (only names present on the request).",
+      "items": { "type": "string" }
+    },
+    "trim_descriptions": {
+      "type": "boolean",
+      "default": false,
+      "description": "Write condensed descriptions for the selected tools so infer injects the short form."
+    },
+    "description_template": {
+      "type": "string",
+      "description": "Jinja template (same tool variable) for the injected condensed description; unset uses the default condenser."
+    }
+  },
+  "additionalProperties": false
+}

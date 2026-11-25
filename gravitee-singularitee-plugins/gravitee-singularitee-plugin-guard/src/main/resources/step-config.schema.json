@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "guard step config",
+  "description": "Classifier-backed input check that rejects the request, warns, or redacts the matched spans before generation.",
+  "type": "object",
+  "required": ["model_id"],
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "description": "Logical id of a published classifier model.",
+      "x-singularitee-ref": "model",
+      "x-singularitee-model-tasks": ["text-classification", "token-classification"]
+    },
+    "input_field": {
+      "type": "string",
+      "default": "prompt",
+      "description": "Context key to classify; prompt (or unset) means the request itself, inspected per scope, and any other key is classified alone.",
+      "x-singularitee-context": "reads"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["last_user", "user_turns", "conversation"],
+      "default": "conversation",
+      "description": "Turns inspected when the guard reads the request: last_user, user_turns, or conversation (every user, assistant and tool turn, system turns excluded); refused alongside any input_field other than prompt."
+    },
+    "on_empty": {
+      "type": "string",
+      "enum": ["reject", "skip"],
+      "description": "What to do when there is no text to inspect: reject halts with the rendered message and skip passes to the next step; defaults to reject for the reject action and skip for warn and redact."
+    },
+    "output_field": {
+      "type": "string",
+      "description": "Redact only: context key receiving the redacted text (the original text when nothing matched); defaults to <step id>.redacted.",
+      "x-singularitee-context": "writes"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["reject", "warn", "redact"],
+      "default": "reject",
+      "description": "What happens when a trigger matches: reject halts the pipeline, warn flags and continues, redact masks the matched spans; the codec falls back to reject for unknown values."
+    },
+    "trigger": {
+      "$ref": "#/$defs/trigger",
+      "description": "Single trigger; ignored when triggers is non-empty."
+    },
+    "triggers": {
+      "type": "array",
+      "description": "Several triggers, any one of which fires the guard; wins over trigger.",
+      "items": { "$ref": "#/$defs/trigger" }
+    },
+    "message": {
+      "type": "string",
+      "description": "Jinja template rendered on reject and returned as the failure message, with <step id>.label and <step id>.score available."
+    },
+    "redact_with_entity_type": {
+      "type": "boolean",
+      "default": false,
+      "description": "Redact only: replace each span with [LABEL] (upper-cased) instead of asterisks."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "trigger": {
+      "type": "object",
+      "description": "A classifier label and the minimum score that fires it.",
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Classifier label to watch."
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "default": 0,
+          "description": "Minimum score that fires the trigger; 0 means any score."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
