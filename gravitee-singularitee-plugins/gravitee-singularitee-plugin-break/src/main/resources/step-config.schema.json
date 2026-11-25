@@ -33,7 +33,7 @@
           "description": "Reference for score_above and score_below."
         }
       },
-      "required": ["type"],
+      "required": ["type", "input_field"],
       "additionalProperties": false
     }
   },

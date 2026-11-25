@@ -145,6 +145,47 @@ class StepConfigSchemaTest {
   }
 
   @Test
+  void route_loop_and_break_require_the_settings_they_cannot_run_without() throws IOException {
+    var workspace = YAML.readTree(
+      """
+      workspace:
+        pipelines:
+          - id: p
+            steps:
+              - id: r
+                type: route
+                config:
+                  model_id: m
+                  rules:
+                    - label: spam
+                    - next_step: done
+              - id: l
+                type: loop
+                config:
+                  max_iterations: 2
+                  condition: { type: not_empty }
+              - id: b
+                type: break
+                config:
+                  condition: { type: empty }
+      """
+    );
+
+    var violations = violations(
+      Path.of("w.yaml"),
+      workspace,
+      compile(TestStepPlugins.plugins().configSchemas())
+    );
+
+    assertThat(violations)
+      .anyMatch(v -> v.contains("step r") && v.contains("next_step"))
+      .anyMatch(v -> v.contains("step r") && v.contains("label"))
+      .anyMatch(v -> v.contains("step l") && v.contains("loopback_step"))
+      .anyMatch(v -> v.contains("step l") && v.contains("input_field"))
+      .anyMatch(v -> v.contains("step b") && v.contains("input_field"));
+  }
+
+  @Test
   void the_harness_leaves_steps_without_a_schema_or_a_config_alone() throws IOException {
     var workspace = YAML.readTree(
       """

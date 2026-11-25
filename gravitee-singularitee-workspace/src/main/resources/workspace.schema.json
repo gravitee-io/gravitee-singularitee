@@ -1213,7 +1213,7 @@
               "description" : "Reference for score_above and score_below."
             }
           },
-          "required" : [ "type" ],
+          "required" : [ "type", "input_field" ],
           "additionalProperties" : false
         }
       },
@@ -1970,7 +1970,7 @@
           "additionalProperties" : false
         }
       },
-      "required" : [ "max_iterations" ],
+      "required" : [ "loopback_step", "max_iterations" ],
       "additionalProperties" : false,
       "$defs" : {
         "condition" : {
@@ -1997,7 +1997,7 @@
               "description" : "Reference for score_above and score_below."
             }
           },
-          "required" : [ "type" ],
+          "required" : [ "type", "input_field" ],
           "additionalProperties" : false
         }
       }
@@ -2125,6 +2125,7 @@
                 "description" : "embedding_knn only: reference sentences embedded for this rule; the label is used when none are given."
               }
             },
+            "required" : [ "label", "next_step" ],
             "additionalProperties" : false
           }
         }
@@ -2223,7 +2224,7 @@
       "properties" : {
         "handled_step" : {
           "type" : "string",
-          "description" : "Step to branch to after consuming a plan call (usually the infer step that produced it, or the gate after it); the envelope next_step when unset.",
+          "description" : "Step to branch to after the plan calls of the preceding generation were executed, unless an ask_user question or a client tool call ends the turn instead (usually the infer step that produced them, or the gate after it); the envelope next_step when unset, and always when the generation made no plan call.",
           "x-singularitee-ref" : "step",
           "x-singularitee-branch" : "handled"
         }

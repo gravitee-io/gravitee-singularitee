@@ -73,7 +73,7 @@
       "additionalProperties": false
     }
   },
-  "required": ["max_iterations"],
+  "required": ["loopback_step", "max_iterations"],
   "additionalProperties": false,
   "$defs": {
     "condition": {
@@ -100,7 +100,7 @@
           "description": "Reference for score_above and score_below."
         }
       },
-      "required": ["type"],
+      "required": ["type", "input_field"],
       "additionalProperties": false
     }
   }
