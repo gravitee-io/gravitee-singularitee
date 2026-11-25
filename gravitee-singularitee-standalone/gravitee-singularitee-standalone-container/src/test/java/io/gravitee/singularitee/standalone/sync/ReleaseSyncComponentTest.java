@@ -74,13 +74,21 @@ class ReleaseSyncComponentTest {
   private final AtomicReference<String> statusBody = new AtomicReference<>();
   private final AtomicReference<String> statusAuth = new AtomicReference<>();
   private volatile String statusAnswer;
+  private volatile int releaseStatus = 200;
 
   @BeforeEach
   void start() throws Exception {
     server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    registerContexts();
+    server.start();
+  }
+
+  private void registerContexts() {
     server.createContext("/_sync/release", exchange -> {
       long known = Long.parseLong(exchange.getRequestURI().getQuery().substring("known=".length()));
-      if (known >= revision) {
+      if (releaseStatus != 200) {
+        exchange.sendResponseHeaders(releaseStatus, -1);
+      } else if (known >= revision) {
         exchange.sendResponseHeaders(304, -1);
       } else {
         String yaml = releaseYaml;
@@ -105,7 +113,6 @@ class ReleaseSyncComponentTest {
       }
       exchange.close();
     });
-    server.start();
   }
 
   @AfterEach
@@ -261,6 +268,118 @@ class ReleaseSyncComponentTest {
     component.poll();
 
     assertThat(component.snapshot().lastError()).isNotBlank();
+  }
+
+  @Test
+  void a_transport_failure_clears_once_a_later_poll_succeeds() throws Exception {
+    var component = component(config(Map.of()));
+    component.setClientForTest(client(), 1, false, () -> {});
+    server.stop(0);
+    component.poll();
+    assertThat(component.snapshot().lastError()).isNotBlank();
+
+    restartServer();
+    component.poll();
+
+    assertThat(component.snapshot().lastError()).isNull();
+    component.heartbeat();
+    assertThat(statusBody.get()).contains("\"lastError\":null");
+  }
+
+  @Test
+  void a_transport_failure_clears_once_a_later_heartbeat_succeeds() throws Exception {
+    var component = component(config(Map.of()));
+    component.setClientForTest(client(), 1, false, () -> {});
+    server.stop(0);
+    component.poll();
+    assertThat(component.snapshot().lastError()).isNotBlank();
+
+    restartServer();
+    component.heartbeat();
+
+    assertThat(component.snapshot().lastError()).isNull();
+  }
+
+  @Test
+  void a_refused_release_request_outlives_a_working_heartbeat_until_a_poll_succeeds() {
+    var component = component(config(Map.of()));
+    component.setClientForTest(client(), 1, false, () -> {});
+    releaseStatus = 500;
+    component.poll();
+    assertThat(component.snapshot().lastError()).contains("HTTP 500");
+
+    component.heartbeat();
+    assertThat(component.snapshot().lastError()).contains("HTTP 500");
+
+    releaseStatus = 200;
+    component.poll();
+    assertThat(component.snapshot().lastError()).isNull();
+  }
+
+  @Test
+  void a_failed_release_stays_reported_across_successful_polls_and_heartbeats() throws Exception {
+    var node = node(V1);
+    node.component().setClientForTest(client(), 1, V1, true, () -> {});
+    releaseYaml = workspace(
+      "",
+      echo("chat", "text", "v2") + step("judge", "bound", "model_id: missing_model")
+    );
+    revision = 2;
+
+    node.component().poll();
+    node.component().heartbeat();
+    node.component().poll();
+    node.component().heartbeat();
+
+    assertThat(node.component().snapshot().lastError()).contains("missing_model");
+    assertThat(statusBody.get()).contains("missing_model");
+  }
+
+  @Test
+  void a_failed_release_outlives_a_transport_failure_and_its_recovery() throws Exception {
+    var node = node(V1);
+    node.component().setClientForTest(client(), 1, V1, true, () -> {});
+    releaseYaml = workspace(
+      "",
+      echo("chat", "text", "v2") + step("judge", "bound", "model_id: missing_model")
+    );
+    revision = 2;
+    node.component().poll();
+    releaseStatus = 503;
+    node.component().poll();
+
+    releaseStatus = 200;
+    node.component().poll();
+    node.component().heartbeat();
+
+    assertThat(node.component().snapshot().lastError()).contains("missing_model");
+  }
+
+  @Test
+  void a_failed_release_clears_once_a_fixed_one_is_applied() throws Exception {
+    var node = node(V1);
+    node.component().setClientForTest(client(), 1, V1, true, () -> {});
+    releaseYaml = workspace(
+      "",
+      echo("chat", "text", "v2") + step("judge", "bound", "model_id: missing_model")
+    );
+    revision = 2;
+    node.component().poll();
+    assertThat(node.component().snapshot().lastError()).isNotBlank();
+
+    releaseYaml = V2;
+    revision = 3;
+    node.component().poll();
+
+    assertThat(node.component().snapshot().lastError()).isNull();
+    assertThat(node.component().snapshot().appliedRevision()).isEqualTo(3);
+  }
+
+  private void restartServer() throws Exception {
+    int port = server.getAddress().getPort();
+    server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+    registerContexts();
+    server.start();
   }
 
   @Test

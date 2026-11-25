@@ -167,6 +167,12 @@ If any pipeline fails to load (an unknown model, a step type no plugin provides,
 codec refuses), nothing changes: the node keeps the old pipelines and revision, leaves the stored release as it was,
 reports the error as `lastError` in its heartbeat and tries again at the next poll. A newer release fixes it.
 
+`lastError` keeps two kinds of error apart. A failure to reach the control plane (a refused connection, a timeout, an
+empty response) is transient: it is reported until the next successful poll or heartbeat, then cleared. A release
+the node could not load or apply stays reported across successful polls and heartbeats until a release that applies
+cleanly replaces it. A control plane that answers a poll with an error status keeps being reported until a poll
+succeeds.
+
 Anything else takes the restart path of `ai.sync.restart-on-change`: a changed model or remote endpoint, any other
 changed key, a release that does not parse, `includes:`, and a changed template that a model reads (a decision
 model's `prompt.template` is resolved when the model loads).

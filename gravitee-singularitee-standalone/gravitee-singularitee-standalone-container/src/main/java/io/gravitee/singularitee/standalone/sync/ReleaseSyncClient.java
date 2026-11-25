@@ -91,19 +91,19 @@ public final class ReleaseSyncClient {
       return Optional.empty();
     }
     if (status != 200) {
-      throw new IOException("Release sync failed: HTTP " + status);
+      throw new UnexpectedAnswerException("Release sync failed: HTTP " + status);
     }
     JsonNode body = JSON.readTree(response.body());
     String yaml = body.path("yaml").asText("");
     String checksum = body.path("checksum").asText("");
     String actual = sha256(yaml);
     if (!actual.equalsIgnoreCase(checksum)) {
-      throw new IOException(
+      throw new UnexpectedAnswerException(
         "Release checksum mismatch: expected " + checksum + " but got " + actual
       );
     }
     if (!body.hasNonNull("revision")) {
-      throw new IOException("Release response is missing revision");
+      throw new UnexpectedAnswerException("Release response is missing revision");
     }
     return Optional.of(new Release(body.get("revision").asLong(), actual, yaml));
   }
@@ -132,7 +132,7 @@ public final class ReleaseSyncClient {
     HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
     int code = response.statusCode();
     if (code / 100 != 2) {
-      throw new IOException("Status report failed: HTTP " + code);
+      throw new UnexpectedAnswerException("Status report failed: HTTP " + code);
     }
     String body = response.body();
     return body == null || body.isBlank() ? Optional.empty() : Optional.of(body);
@@ -175,6 +175,14 @@ public final class ReleaseSyncClient {
       );
     } catch (java.security.NoSuchAlgorithmException e) {
       throw new IllegalStateException(e);
+    }
+  }
+
+  /** The control plane answered, but not with what was asked for: it is reachable, so this is not a transport failure. */
+  public static final class UnexpectedAnswerException extends IOException {
+
+    public UnexpectedAnswerException(String message) {
+      super(message);
     }
   }
 }

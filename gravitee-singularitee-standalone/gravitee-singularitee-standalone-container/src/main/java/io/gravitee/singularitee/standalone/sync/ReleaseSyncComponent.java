@@ -60,7 +60,7 @@ import org.slf4j.LoggerFactory;
  * from the running one only in its pipelines and templates ({@link ReleaseChanges}) is applied in
  * place once the workspace has loaded: the new pipeline set is loaded against the models already
  * served and replaces the old one all at once, or not at all when any pipeline fails, which the
- * heartbeat then reports as the last sync error. Runs already started finish on the pipeline they
+ * heartbeat then reports as the last error, until a release applies. Runs already started finish on the pipeline they
  * began with. Engines cannot unload a model, so any other newer release is applied by storing it
  * and exiting; the supervisor (Kubernetes, Docker, systemd) restarts the node onto it. Set
  * {@code ai.sync.restart-on-change=false} to only store such a release.
@@ -96,7 +96,8 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
   private String instanceId = "";
   private volatile long runningRevision;
   private volatile HardwareInfo hardware;
-  private volatile String lastSyncError;
+  private volatile SyncFailure syncFailure;
+  private volatile String workspaceError;
   private volatile String runningYaml;
   private Path workspaceDir;
   private ScheduledExecutorService scheduler;
@@ -280,7 +281,7 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       ramFreeMb,
       runningRevision,
       models,
-      lastSyncError,
+      reportedError(),
       hw,
       readiness.isReady(),
       ManagementFactory.getRuntimeMXBean().getUptime() / 1000,
@@ -289,6 +290,19 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       steps()
     );
   }
+
+  /** The node's own state wins over a sync failure: a failed release stays reported until it is resolved. */
+  private String reportedError() {
+    String workspace = workspaceError;
+    if (workspace != null) {
+      return workspace;
+    }
+    SyncFailure failure = syncFailure;
+    return failure == null ? null : failure.message();
+  }
+
+  /** What went wrong talking to the control plane; {@code unreachable} when it never answered. */
+  private record SyncFailure(String message, boolean unreachable) {}
 
   private List<NodeStatus.StepTypeState> steps() {
     if (stepPlugins == null) {
@@ -371,7 +385,12 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
   /** One heartbeat; never throws so the schedule keeps running. */
   void heartbeat() {
     try {
-      client.reportStatus(instanceId, snapshot()).ifPresent(this::readAnswer);
+      var answer = client.reportStatus(instanceId, snapshot());
+      SyncFailure failure = syncFailure;
+      if (failure != null && failure.unreachable()) {
+        syncFailure = null;
+      }
+      answer.ifPresent(this::readAnswer);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     } catch (Exception e) {
@@ -417,28 +436,44 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
 
   /** One poll cycle; never throws so the schedule keeps running. */
   void poll() {
+    ReleaseSyncClient.Release release;
     try {
-      var release = client.fetch(appliedRevision);
-      lastSyncError = null;
-      if (release.isEmpty()) {
+      var fetched = client.fetch(appliedRevision);
+      syncFailure = null;
+      if (fetched.isEmpty()) {
+        workspaceError = null;
         return;
       }
-      if (ReleaseChanges.pipelinesOrTemplatesOnly(runningYaml, release.get().yaml())) {
-        applyInPlace(release.get());
+      release = fetched.get();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return;
+    } catch (Exception e) {
+      syncFailure = new SyncFailure(
+        describe(e),
+        !(e instanceof ReleaseSyncClient.UnexpectedAnswerException)
+      );
+      LOGGER.warn("Release sync poll failed: {}", syncFailure.message());
+      return;
+    }
+    try {
+      if (ReleaseChanges.pipelinesOrTemplatesOnly(runningYaml, release.yaml())) {
+        if (applyInPlace(release)) {
+          workspaceError = null;
+        }
         return;
       }
-      client.store(release.get());
-      LOGGER.info("Release {} received (was {})", release.get().revision(), appliedRevision);
-      appliedRevision = release.get().revision();
+      client.store(release);
+      workspaceError = null;
+      LOGGER.info("Release {} received (was {})", release.revision(), appliedRevision);
+      appliedRevision = release.revision();
       if (restartOnChange) {
         LOGGER.info("Exiting so the supervisor restarts the node onto the new release");
         restart.run();
       }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
     } catch (Exception e) {
-      lastSyncError = describe(e);
-      LOGGER.warn("Release sync poll failed: {}", lastSyncError);
+      workspaceError = describe(e);
+      LOGGER.warn("Release sync poll failed: {}", workspaceError);
     }
   }
 
@@ -447,13 +482,13 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
    * load first, so the boot registration and this one never race; the release is fetched again on
    * the next poll. A failure keeps the running pipelines and revision and leaves the cache as it was.
    */
-  private void applyInPlace(ReleaseSyncClient.Release release) throws IOException {
+  private boolean applyInPlace(ReleaseSyncClient.Release release) throws IOException {
     if (!readiness.isReady()) {
       LOGGER.info(
         "Release {} changes only pipelines or templates; it is applied once the workspace has loaded",
         release.revision()
       );
-      return;
+      return false;
     }
     PipelineRegistry.Replacement replacement;
     try {
@@ -480,6 +515,7 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       stepExecutorFactory.forgetPipelines(stale);
     }
     warmUp(replacement);
+    return true;
   }
 
   /** Ids of the served pipelines that the replacement drops or defines differently. */
