@@ -58,11 +58,16 @@ import io.reactivex.rxjava3.core.Completable;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.HttpVersion;
 import io.vertx.core.streams.WriteStream;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.BodyHandler;
+import java.net.URI;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -245,6 +250,72 @@ class HttpApiIntegrationTest {
       .contains("\"reasoning_content\":\"thinking...\"")
       .contains("\"content\":\"Hello\"")
       .contains("data: [DONE]");
+  }
+
+  private static final String CHAT_STREAM_BODY =
+    "{\"model\":\"llm\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+
+  @Test
+  void chatStreamingOverHttp11StaysPersistent() throws Exception {
+    Resp r = post("/v1/chat/completions", CHAT_STREAM_BODY);
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(r.headers().get("content-type")).isEqualTo("text/event-stream");
+    assertThat(r.headers().get("connection")).satisfiesAnyOf(
+      c -> assertThat(c).isNull(),
+      c -> assertThat(c).isEqualToIgnoringCase("keep-alive")
+    );
+    assertThat(r.body()).contains("\"content\":\"Hello\"").contains("data: [DONE]");
+  }
+
+  @Test
+  void chatStreamingOverHttp2PriorKnowledgeSendsNoConnectionHeader() throws Exception {
+    HttpClient h2 = vertx.createHttpClient(
+      new HttpClientOptions().setProtocolVersion(HttpVersion.HTTP_2).setHttp2ClearTextUpgrade(false)
+    );
+    CompletableFuture<Resp> future = new CompletableFuture<>();
+    h2
+      .request(HttpMethod.POST, port, "localhost", "/v1/chat/completions")
+      .compose(req -> {
+        req.putHeader("content-type", "application/json");
+        return req.send(CHAT_STREAM_BODY);
+      })
+      .compose(resp ->
+        resp
+          .body()
+          .map(buf ->
+            new Resp(resp.statusCode(), buf.toString(), resp.headers(), resp.version().name())
+          )
+      )
+      .onSuccess(future::complete)
+      .onFailure(future::completeExceptionally);
+    Resp r = future.get(10, TimeUnit.SECONDS);
+    assertThat(r.version()).isEqualTo("HTTP_2");
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(r.headers().get("content-type")).isEqualTo("text/event-stream");
+    assertThat(r.headers().get("connection")).isNull();
+    assertThat(r.body()).contains("\"content\":\"Hello\"").contains("data: [DONE]");
+  }
+
+  @Test
+  void chatStreamingIsAcceptedByStrictJdkHttp2Client() throws Exception {
+    java.net.http.HttpClient jdk = java.net.http.HttpClient.newBuilder()
+      .version(java.net.http.HttpClient.Version.HTTP_2)
+      .build();
+    try {
+      HttpResponse<String> r = jdk.send(
+        HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/v1/chat/completions"))
+          .header("content-type", "application/json")
+          .POST(HttpRequest.BodyPublishers.ofString(CHAT_STREAM_BODY))
+          .build(),
+        HttpResponse.BodyHandlers.ofString()
+      );
+      assertThat(r.version()).isEqualTo(java.net.http.HttpClient.Version.HTTP_2);
+      assertThat(r.statusCode()).isEqualTo(200);
+      assertThat(r.headers().firstValue("connection")).isEmpty();
+      assertThat(r.body()).contains("\"content\":\"Hello\"").contains("data: [DONE]");
+    } finally {
+      jdk.shutdownNow();
+    }
   }
 
   @Test
@@ -590,7 +661,7 @@ class HttpApiIntegrationTest {
     "{\"type\":\"text\",\"text\":\"what is this\"}," +
     "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,AAA\"}}]}]}";
 
-  private record Resp(int status, String body) {}
+  private record Resp(int status, String body, io.vertx.core.MultiMap headers, String version) {}
 
   private Resp post(String path, String body) throws Exception {
     return request(HttpMethod.POST, path, body);
@@ -608,7 +679,9 @@ class HttpApiIntegrationTest {
         req.putHeader("content-type", "application/json");
         return body == null ? req.send() : req.send(body);
       })
-      .compose(resp -> resp.body().map(buf -> new Resp(resp.statusCode(), buf.toString())))
+      .compose(resp ->
+        resp.body().map(buf -> new Resp(resp.statusCode(), buf.toString(), resp.headers(), null))
+      )
       .onSuccess(future::complete)
       .onFailure(future::completeExceptionally);
     return future.get(10, TimeUnit.SECONDS);
