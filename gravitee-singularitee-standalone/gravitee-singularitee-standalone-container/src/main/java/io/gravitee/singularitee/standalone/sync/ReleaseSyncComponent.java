@@ -19,9 +19,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gravitee.common.service.AbstractService;
 import io.gravitee.node.api.configuration.Configuration;
+import io.gravitee.singularitee.engine.api.pipeline.model.StepTypes;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority;
+import io.gravitee.singularitee.plugin.api.StepPlugins;
 import io.gravitee.singularitee.standalone.vertx.ReadinessState;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
@@ -60,6 +62,7 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
   private static final ObjectMapper ANSWER_JSON = new ObjectMapper();
 
   private final TraceKeyAuthority traceKeys;
+  private final StepPlugins stepPlugins;
   static final int DEFAULT_HEARTBEAT_SECONDS = 10;
   /**
    * Where the synced workspace is, handed to the workspace loader. A dedicated key rather than {@code ai.workspace.path}:
@@ -103,6 +106,19 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
     ReadinessState readiness,
     TraceKeyAuthority traceKeys
   ) {
+    this(configuration, modelRegistry, pipelineRegistry, readiness, traceKeys, null);
+  }
+
+  /** @param stepPlugins the installed step plugins whose types and config schemas the heartbeat reports; null reports none */
+  public ReleaseSyncComponent(
+    Configuration configuration,
+    ModelRegistry modelRegistry,
+    PipelineRegistry pipelineRegistry,
+    ReadinessState readiness,
+    TraceKeyAuthority traceKeys,
+    StepPlugins stepPlugins
+  ) {
+    this.stepPlugins = stepPlugins;
     this.traceKeys = traceKeys;
     this.configuration = configuration;
     this.modelRegistry = modelRegistry;
@@ -235,8 +251,28 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       readiness.isReady(),
       ManagementFactory.getRuntimeMXBean().getUptime() / 1000,
       heartbeatSeconds,
-      pipelines()
+      pipelines(),
+      steps()
     );
+  }
+
+  private List<NodeStatus.StepTypeState> steps() {
+    if (stepPlugins == null) {
+      return List.of();
+    }
+    return stepPlugins
+      .executors()
+      .keySet()
+      .stream()
+      .map(type ->
+        new NodeStatus.StepTypeState(
+          type,
+          StepTypes.CORE.contains(type),
+          stepPlugins.configSchemas().get(type)
+        )
+      )
+      .sorted(java.util.Comparator.comparing(NodeStatus.StepTypeState::type))
+      .toList();
   }
 
   private List<NodeStatus.PipelineState> pipelines() {

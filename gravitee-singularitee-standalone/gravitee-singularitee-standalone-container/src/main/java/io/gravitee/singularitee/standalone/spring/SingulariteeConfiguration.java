@@ -779,14 +779,16 @@ public class SingulariteeConfiguration {
     GraviteeModelServiceImpl modelService,
     PipelineRegistry pipelineRegistry,
     io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState,
-    io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority traceKeyAuthority
+    io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority traceKeyAuthority,
+    StepPlugins stepPlugins
   ) {
     return new ReleaseSyncComponent(
       configuration,
       modelService.modelRegistry(),
       pipelineRegistry,
       readinessState,
-      traceKeyAuthority
+      traceKeyAuthority,
+      stepPlugins
     );
   }
 

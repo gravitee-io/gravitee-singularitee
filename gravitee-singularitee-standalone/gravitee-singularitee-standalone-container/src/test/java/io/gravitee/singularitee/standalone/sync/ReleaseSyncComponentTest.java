@@ -182,6 +182,53 @@ class ReleaseSyncComponentTest {
   }
 
   @Test
+  void heartbeat_reports_the_installed_step_types_and_schemas() throws Exception {
+    io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutor<?> executor = (
+      stepId,
+      config,
+      ctx
+    ) -> io.reactivex.rxjava3.core.Maybe.empty();
+    var plugins = new io.gravitee.singularitee.plugin.api.StepPlugins(
+      Map.of("infer", executor, "http_tool", executor, "noop", executor),
+      Map.of(),
+      Map.of("http_tool", "{\"type\":\"object\"}"),
+      List.of(),
+      Map.of()
+    );
+    var models = new ModelRegistry();
+    var component = new ReleaseSyncComponent(
+      config(Map.of()),
+      models,
+      new PipelineRegistry(models),
+      new ReadinessState(),
+      new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority(),
+      plugins
+    );
+    component.setHardwareForTest(new HardwareInfo("Linux", null, List.of()));
+    component.setClientForTest(client(), 1, false, () -> {});
+
+    component.heartbeat();
+
+    assertThat(component.snapshot().steps()).containsExactly(
+      new NodeStatus.StepTypeState("http_tool", false, "{\"type\":\"object\"}"),
+      new NodeStatus.StepTypeState("infer", true, null),
+      new NodeStatus.StepTypeState("noop", false, null)
+    );
+    assertThat(statusBody.get())
+      .contains(
+        "\"steps\":[{\"type\":\"http_tool\",\"core\":false,\"schema\":\"{\\\"type\\\":\\\"object\\\"}\"}"
+      )
+      .contains("{\"type\":\"infer\",\"core\":true,\"schema\":null}");
+  }
+
+  @Test
+  void a_node_without_step_plugins_reports_no_step_types() {
+    var component = component(config(Map.of()));
+
+    assertThat(component.snapshot().steps()).isEmpty();
+  }
+
+  @Test
   void heartbeat_carries_last_sync_error() throws Exception {
     var component = component(config(Map.of()));
     server.stop(0);

@@ -38,7 +38,8 @@ public record NodeStatus(
   boolean ready,
   long uptimeSeconds,
   int heartbeatSeconds,
-  List<PipelineState> pipelines
+  List<PipelineState> pipelines,
+  List<StepTypeState> steps
 ) {
   /**
    * State of one loaded model; the node only knows models that finished loading, so {@code READY}.
@@ -57,4 +58,12 @@ public record NodeStatus(
 
   /** A pipeline the node serves; {@code name} may be null and {@code status} is the registry's. */
   public record PipelineState(String id, String name, String task, String status, int steps) {}
+
+  /**
+   * A step type the node can execute.
+   *
+   * @param core whether it is one of the core step types
+   * @param schema the JSON schema of its config as raw JSON text, null when the plugin ships none
+   */
+  public record StepTypeState(String type, boolean core, String schema) {}
 }
