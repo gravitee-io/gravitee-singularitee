@@ -17,6 +17,7 @@ package io.gravitee.singularitee.http.translation;
 
 import io.gravitee.singularitee.protocol.PositionLogprobs;
 import io.gravitee.singularitee.protocol.ResponseProgress;
+import io.gravitee.singularitee.protocol.StepTrace;
 import java.util.List;
 
 /**
@@ -44,7 +45,8 @@ public record TokenMessage(
   String guardMessage,
   List<WireToolCall> toolCalls,
   List<PositionLogprobs> logprobs,
-  ResponseProgress progress
+  ResponseProgress progress,
+  StepTrace stepTrace
 ) {
   public static Builder builder() {
     return new Builder();
@@ -74,6 +76,14 @@ public record TokenMessage(
     return builder().progress(progress).build();
   }
 
+  /**
+   * What one pipeline step did ({@code RESPONSE_EVENT_TYPE_STEP_TRACE} on the wire). Carries no
+   * text: streams drop it, a non-streamed chat answer lists it under {@code gravitee_trace}.
+   */
+  public static TokenMessage stepTraced(StepTrace stepTrace) {
+    return builder().stepTrace(stepTrace).build();
+  }
+
   /** Fluent builder for {@link TokenMessage}. */
   public static final class Builder {
 
@@ -92,6 +102,7 @@ public record TokenMessage(
     private List<WireToolCall> toolCalls;
     private List<PositionLogprobs> logprobs;
     private ResponseProgress progress;
+    private StepTrace stepTrace;
 
     private Builder() {}
 
@@ -170,6 +181,11 @@ public record TokenMessage(
       return this;
     }
 
+    public Builder stepTrace(StepTrace stepTrace) {
+      this.stepTrace = stepTrace;
+      return this;
+    }
+
     public TokenMessage build() {
       return new TokenMessage(
         token,
@@ -186,7 +202,8 @@ public record TokenMessage(
         guardMessage,
         toolCalls,
         logprobs,
-        progress
+        progress,
+        stepTrace
       );
     }
   }

@@ -466,6 +466,30 @@ components:
                 enum: [stop, length, tool_calls, content_filter]
                 description: "`content_filter` when a guard blocked the request."
         usage: { $ref: "#/components/schemas/Usage" }
+        gravitee_trace:
+          type: object
+          description: >-
+            Non-standard. Present only on a pipeline call with a valid `X-Singularitee-Trace-Key`:
+            what each step of the run did, in order.
+          properties:
+            steps:
+              type: array
+              items:
+                type: object
+                properties:
+                  step_id: { type: string }
+                  step_type: { type: string }
+                  started_at_ms: { type: integer }
+                  duration_ms: { type: integer }
+                  next_step: { type: string, description: Absent when the step ended the run. }
+                  halted: { type: boolean }
+                  finish_reason: { type: string, description: "Lower case, on a halt only, e.g. `guard_blocked`." }
+                  model_id: { type: string }
+                  outputs:
+                    type: object
+                    additionalProperties: { type: string }
+                    description: Context fields the step added or changed, each cut to 4096 characters.
+                  error: { type: string }
 
     ChatCompletionChunk:
       type: object

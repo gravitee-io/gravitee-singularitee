@@ -67,7 +67,7 @@ stream with no events at all, and a failure during generation (guard block, engi
 **Streaming.** `Infer` and `InferPipeline` return a server stream of `InferResponse`:
 
 ```
-CREATED -> (OUTPUT_TEXT_DELTA | PROGRESS)* -> COMPLETED | FAILED
+CREATED -> (OUTPUT_TEXT_DELTA | PROGRESS | STEP_TRACE)* -> COMPLETED | FAILED
 ```
 
 Each event carries `step_role`. Direct `Infer` emits `STEP_ROLE_UNSPECIFIED` or `STEP_ROLE_OUTPUT`;
@@ -115,6 +115,7 @@ Slow consumers are cancelled after `ai.streaming.buffer-capacity` tokens of lag.
 | `previous_response_id` | string | Continue a stored conversation; an unknown id fails the stream with `error_code: previous_response_not_found`. |
 | `store` | optional bool | Persist the transcript under `request_id` (default true when a `request_id` is present). |
 | `structured_output` | `StructuredOutputFormat` | Tag 41. Applies to the `role: output` step only; other steps are untouched. |
+| `trace_key` | string | Tag 64. Unlocks `STEP_TRACE` events when its SHA-256 matches the hash the control plane announced in the node's heartbeat answer; otherwise ignored. |
 
 `StructuredOutputFormat { oneof kind, string name = 10 }` constrains decoding so the text always
 matches the format; `name` is informational (the OpenAI `json_schema.name`).
@@ -144,6 +145,7 @@ counts as an image.
 | `RESPONSE_EVENT_TYPE_CREATED` | `ResponseCreated` | `response_id`, `model` |
 | `RESPONSE_EVENT_TYPE_OUTPUT_TEXT_DELTA` | `ResponseOutputTextDelta` | `delta`, `item_index`, `part_index`, `repeated PositionLogprobs logprobs` (only with `top_logprobs > 0`) |
 | `RESPONSE_EVENT_TYPE_PROGRESS` | `ResponseProgress` | `step_id`, `repeated TodoItem todos { id, title, status, proof }`, `completed`, `total` |
+| `RESPONSE_EVENT_TYPE_STEP_TRACE` | `StepTrace` | `step_id`, `step_type`, `started_at_ms`, `duration_ms`, `next_step`, `halted`, `FinishReason finish_reason`, `model_id`, `map<string,string> outputs` (context fields added or changed, each cut to 4096 characters), `error`. Only on a traced run. |
 | `RESPONSE_EVENT_TYPE_COMPLETED` | `ResponseCompleted` | `TokenUsage usage { prompt_tokens, completion_tokens, reasoning_tokens, tool_tokens }`, `InferencePerformance performance`, `FinishReason finish_reason`, `repeated ToolCall tool_calls { name, arguments_json, coercible_args, id }` |
 | `RESPONSE_EVENT_TYPE_FAILED` | `ResponseFailed` | `error_code` (`content_filter`, `previous_response_not_found`, `invalid_request_error`, `unsupported_modality`, `server_error`), `error_message`. A `server_error` message is generic, `Inference failed (ref 1a2b3c4d)`; the server log carries the full error under the same ref. |
 

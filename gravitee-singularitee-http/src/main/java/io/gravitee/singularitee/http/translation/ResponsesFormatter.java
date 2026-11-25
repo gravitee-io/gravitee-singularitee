@@ -139,6 +139,9 @@ public final class ResponsesFormatter {
       // Auxiliary progress update (engine-managed todo plan): the Responses
       // surface already emits typed non-canonical objects, so a gravitee-
       // namespaced type is the least invasive representation.
+      if (token.stepTrace() != null) {
+        return Flowable.fromIterable(events);
+      }
       if (token.progress() != null) {
         events.add(progressEvent(seq, token.progress()));
         return Flowable.fromIterable(events);
@@ -293,6 +296,9 @@ public final class ResponsesFormatter {
         : "resp-" + accumulator.created();
       return tokenStream
         .concatMap(t -> {
+          if (t.stepTrace() != null) {
+            return Flowable.<ServerEvent>empty();
+          }
           if (t.progress() != null) {
             // The header pair must precede ANY outbound event: a live progress
             // or reasoning event before response.created violates the lifecycle.

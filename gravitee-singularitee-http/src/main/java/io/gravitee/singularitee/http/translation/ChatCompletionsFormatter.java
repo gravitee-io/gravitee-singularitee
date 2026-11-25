@@ -29,11 +29,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gravitee.singularitee.http.json.Utils;
+import io.gravitee.singularitee.protocol.FinishReason;
 import io.gravitee.singularitee.protocol.PositionLogprobs;
+import io.gravitee.singularitee.protocol.StepTrace;
 import io.reactivex.rxjava3.core.Flowable;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -78,7 +81,7 @@ public final class ChatCompletionsFormatter {
 
     // Progress updates are not part of the Chat Completions contract: dropped.
     return tokenStream
-      .filter(t -> t.progress() == null)
+      .filter(t -> t.progress() == null && t.stepTrace() == null)
       .flatMap(token -> {
         if (token.isFinal()) {
           if (onFinal != null) {
@@ -196,7 +199,7 @@ public final class ChatCompletionsFormatter {
 
     // Progress updates are not part of the Chat Completions contract: dropped.
     return tokenStream
-      .filter(t -> t.progress() == null)
+      .filter(t -> t.progress() == null && t.stepTrace() == null)
       .flatMap(token -> {
         List<ServerEvent> events = new ArrayList<>();
 
@@ -408,7 +411,39 @@ public final class ChatCompletionsFormatter {
     writeLogprobs(choice, accumulator.logprobs());
     choice.put("finish_reason", finishReason);
     writeUsage(response, accumulator);
+    writeTrace(response, accumulator.traces());
     return response;
+  }
+
+  /** The step trace of a traced pipeline run, under a vendor key OpenAI clients ignore. */
+  private static void writeTrace(ObjectNode response, List<StepTrace> traces) {
+    if (traces.isEmpty()) {
+      return;
+    }
+    ArrayNode steps = response.putObject("gravitee_trace").putArray("steps");
+    for (StepTrace trace : traces) {
+      ObjectNode step = steps.addObject();
+      step.put("step_id", trace.getStepId());
+      step.put("step_type", trace.getStepType());
+      step.put("started_at_ms", trace.getStartedAtMs());
+      step.put("duration_ms", trace.getDurationMs());
+      if (!trace.getNextStep().isEmpty()) step.put("next_step", trace.getNextStep());
+      step.put("halted", trace.getHalted());
+      if (trace.getFinishReason() != FinishReason.FINISH_REASON_UNSPECIFIED) {
+        step.put(
+          "finish_reason",
+          trace
+            .getFinishReason()
+            .name()
+            .substring("FINISH_REASON_".length())
+            .toLowerCase(Locale.ROOT)
+        );
+      }
+      if (!trace.getModelId().isEmpty()) step.put("model_id", trace.getModelId());
+      ObjectNode outputs = step.putObject("outputs");
+      trace.getOutputsMap().forEach(outputs::put);
+      if (!trace.getError().isEmpty()) step.put("error", trace.getError());
+    }
   }
 
   /** Builds a chat SSE chunk with a structured tool_calls delta. */
