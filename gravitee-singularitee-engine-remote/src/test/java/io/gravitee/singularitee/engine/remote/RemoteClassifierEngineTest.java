@@ -140,4 +140,11 @@ class RemoteClassifierEngineTest {
       .blockingGet();
     assertThat(response.usage()).isNull();
   }
+
+  @Test
+  void forwards_request_labels_so_it_takes_them() {
+    var engine = new RemoteClassifierEngine(mock(SingulariteeClient.class), MODEL_ID, null);
+
+    assertThat(engine.acceptsRequestLabels()).isTrue();
+  }
 }

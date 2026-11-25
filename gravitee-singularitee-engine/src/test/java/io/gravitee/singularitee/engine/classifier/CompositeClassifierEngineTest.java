@@ -476,4 +476,42 @@ class CompositeClassifierEngineTest {
       assertThat(composite.rxClassify(new ClassifyRequest("Kari")).blockingGet().usage()).isNull();
     }
   }
+
+  @Nested
+  class RequestLabels {
+
+    private ClassifierEngine zeroShot() {
+      return new ClassifierEngine() {
+        @Override
+        public boolean acceptsRequestLabels() {
+          return true;
+        }
+
+        @Override
+        public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
+          return Single.just(new ClassifyResponse("x", 1f, Map.of("x", 1f), List.of()));
+        }
+
+        @Override
+        public void close() {}
+      };
+    }
+
+    @Test
+    void a_composite_takes_request_labels_when_a_member_does() {
+      var regex = new RegexClassifierEngine(List.of(new PatternEntry("alpha", "ALPHA")));
+
+      assertThat(
+        new CompositeClassifierEngine(List.of(regex, zeroShot())).acceptsRequestLabels()
+      ).isTrue();
+    }
+
+    @Test
+    void a_composite_of_fixed_label_members_does_not() {
+      var regex = new RegexClassifierEngine(List.of(new PatternEntry("alpha", "ALPHA")));
+
+      assertThat(regex.acceptsRequestLabels()).isFalse();
+      assertThat(new CompositeClassifierEngine(List.of(regex)).acceptsRequestLabels()).isFalse();
+    }
+  }
 }

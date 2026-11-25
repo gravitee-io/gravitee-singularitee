@@ -55,6 +55,15 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
     this.task = (task == null || task.isBlank()) ? ModelTasks.TEXT_CLASSIFICATION : task;
   }
 
+  /**
+   * Forwards request labels to the remote model, which decides what to do with them: the proxy is
+   * registered without probing the remote, so it cannot tell a zero-shot model from another.
+   */
+  @Override
+  public boolean acceptsRequestLabels() {
+    return true;
+  }
+
   @Override
   public String task() {
     return task;

@@ -15,7 +15,9 @@
  */
 package io.gravitee.singularitee.engine.api.registry;
 
+import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.Modalities;
+import io.gravitee.singularitee.engine.api.pipeline.model.ClassifierLabelsConfig;
 import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
 import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
@@ -38,7 +40,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Pipelines are loaded at startup from the workspace YAML. The registry
  * validates that every model reference in a pipeline resolves against the
- * {@link ModelRegistry} at register time and serves look-ups thereafter. The
+ * {@link ModelRegistry} at register time, and that a step bringing its own labels
+ * names a model that takes them, and serves look-ups thereafter. The
  * whole set can be replaced at once ({@link #prepareReplacement} then
  * {@link #replaceAll}), which is how a synced node applies a release that changes
  * only pipelines; a run already started keeps the pipeline object it began with.
@@ -276,6 +279,30 @@ public final class PipelineRegistry {
           );
         }
       }
+      validateStepLabels(step, modelId);
+    }
+  }
+
+  /** Labels a step brings replace the model's, which only a model taking request labels honours. */
+  private void validateStepLabels(StepModel step, String modelId) {
+    if (!(step.config() instanceof ClassifierLabelsConfig c) || c.labels().isEmpty()) {
+      return;
+    }
+    if (modelId == null || modelId.isBlank()) {
+      throw new IllegalArgumentException(
+        "Step '" + step.id() + "' sets labels but names no model to classify with"
+      );
+    }
+    var engine = modelRegistry.get(modelId).map(ModelRegistry.ModelEntry::engine).orElse(null);
+    if (!(engine instanceof ClassifierEngine classifier && classifier.acceptsRequestLabels())) {
+      throw new IllegalArgumentException(
+        "Step '" +
+          step.id() +
+          "' sets labels, but model '" +
+          modelId +
+          "' cannot take request labels; labels need a zero-shot classifier " +
+          "(gliner_classifier, gliner_ner or a decision model published as a classifier)"
+      );
     }
   }
 

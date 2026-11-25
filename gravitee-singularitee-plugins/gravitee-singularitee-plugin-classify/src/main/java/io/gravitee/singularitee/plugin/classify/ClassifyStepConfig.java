@@ -15,8 +15,10 @@
  */
 package io.gravitee.singularitee.plugin.classify;
 
-import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
+import io.gravitee.singularitee.engine.api.pipeline.model.ClassifierLabelsConfig;
 import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
+import java.util.List;
 
 /**
  * Runtime config of a {@code classify} step.
@@ -25,6 +27,7 @@ import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
  * @param inputField  context key to classify; blank = the prompt
  * @param outputField context key receiving the top label; the score lands in {@code <outputField>.score}
  * @param threshold   minimum score for downstream conditions; zero when unset
+ * @param labels      labels sent to a zero-shot model on every call; empty = the model's own
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -33,12 +36,14 @@ public record ClassifyStepConfig(
   String modelId,
   String inputField,
   String outputField,
-  float threshold
-) implements ModelBoundConfig, OutputFieldConfig {
+  float threshold,
+  List<ClassifyLabel> labels
+) implements ClassifierLabelsConfig, OutputFieldConfig {
   public ClassifyStepConfig {
     modelId = modelId == null ? "" : modelId;
     inputField = inputField == null ? "" : inputField;
     outputField = outputField == null ? "" : outputField;
     threshold = threshold > 0 ? threshold : 0;
+    labels = labels == null ? List.of() : List.copyOf(labels);
   }
 }

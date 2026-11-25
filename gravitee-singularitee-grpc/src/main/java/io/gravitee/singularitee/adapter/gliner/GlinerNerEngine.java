@@ -87,6 +87,11 @@ public final class GlinerNerEngine
   }
 
   @Override
+  public boolean acceptsRequestLabels() {
+    return true;
+  }
+
+  @Override
   public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
     return rxExtractBatched(request.text(), configEntityNames);
   }

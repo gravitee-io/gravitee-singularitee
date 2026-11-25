@@ -18,7 +18,9 @@ package io.gravitee.singularitee.plugin.guard;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
 import io.gravitee.singularitee.engine.api.pipeline.executor.GuardInputs;
+import io.gravitee.singularitee.engine.api.pipeline.model.ClassifierLabels;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
@@ -75,6 +77,10 @@ public final class GuardStepCodec implements StepConfigCodec<GuardStepConfig> {
     } else if (d.trigger() != null) {
       triggers.add(toTrigger(d.trigger()));
     }
+    List<ClassifyLabel> labels = ClassifierLabels.parse(stepId, config);
+    for (GuardTrigger trigger : triggers) {
+      ClassifierLabels.requireAmong(stepId, "trigger", trigger.label(), labels);
+    }
     return new GuardStepConfig(
       d.modelId(),
       d.inputField(),
@@ -84,7 +90,8 @@ public final class GuardStepCodec implements StepConfigCodec<GuardStepConfig> {
       d.message() != null && !d.message().isBlank() ? d.message() : "",
       d.redactWithEntityType(),
       GuardInputs.parseScope(stepId, d.inputField(), d.scope()),
-      GuardInputs.parseOnEmpty(stepId, d.onEmpty(), GuardAction.parse(d.action()))
+      GuardInputs.parseOnEmpty(stepId, d.onEmpty(), GuardAction.parse(d.action())),
+      labels
     );
   }
 

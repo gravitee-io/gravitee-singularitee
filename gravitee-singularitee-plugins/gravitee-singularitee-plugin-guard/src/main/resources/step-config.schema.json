@@ -56,6 +56,11 @@
       "type": "boolean",
       "default": false,
       "description": "Redact only: replace each span with [LABEL] (upper-cased) instead of asterisks."
+    },
+    "labels": {
+      "type": "array",
+      "description": "Labels (entity types for a span model) to classify against, sent with every call in place of the model's own: names, or objects with a name and a description. Every trigger label must be one of them. Needs a zero-shot model (gliner_classifier, gliner_ner, or a decision model published as a classifier); any other model fails the pipeline load. Unset, the model's own labels apply.",
+      "items": { "$ref": "#/$defs/label" }
     }
   },
   "additionalProperties": false,
@@ -66,7 +71,7 @@
       "properties": {
         "label": {
           "type": "string",
-          "description": "Classifier label to watch."
+          "description": "Classifier label to watch; one of labels when the step sets them."
         },
         "score": {
           "type": "number",
@@ -76,6 +81,28 @@
         }
       },
       "additionalProperties": false
+    },
+    "label": {
+      "description": "A label name, or an object with the name and a description.",
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The label, as the step's results, rules and triggers name it."
+            },
+            "description": {
+              "type": "string",
+              "description": "What the label means; the model reads it, so a precise sentence classifies better than a bare word."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     }
   }
 }

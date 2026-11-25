@@ -15,10 +15,11 @@
  */
 package io.gravitee.singularitee.plugin.guard;
 
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
+import io.gravitee.singularitee.engine.api.pipeline.model.ClassifierLabelsConfig;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardOnEmpty;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardScope;
-import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
 import io.gravitee.singularitee.engine.api.pipeline.model.OutputFieldConfig;
 import java.util.List;
 
@@ -34,6 +35,8 @@ import java.util.List;
  * @param triggers             conditions of which any one fires the guard
  * @param message              Jinja reject message; blank = none
  * @param redactWithEntityType replace spans with {@code [ENTITY_TYPE]} instead of stars
+ * @param labels               labels sent to a zero-shot model on every call; empty = the
+ *                             model's own
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -47,8 +50,9 @@ public record GuardStepConfig(
   String message,
   boolean redactWithEntityType,
   GuardScope scope,
-  GuardOnEmpty onEmpty
-) implements ModelBoundConfig, OutputFieldConfig {
+  GuardOnEmpty onEmpty,
+  List<ClassifyLabel> labels
+) implements ClassifierLabelsConfig, OutputFieldConfig {
   public GuardStepConfig {
     modelId = modelId == null ? "" : modelId;
     inputField = inputField == null ? "" : inputField;
@@ -58,6 +62,7 @@ public record GuardStepConfig(
     message = message == null ? "" : message;
     scope = scope == null ? GuardScope.CONVERSATION : scope;
     onEmpty = onEmpty == null ? GuardOnEmpty.parse(null, action) : onEmpty;
+    labels = labels == null ? List.of() : List.copyOf(labels);
   }
 
   /** One trigger: a classifier label and the minimum score that fires it. */

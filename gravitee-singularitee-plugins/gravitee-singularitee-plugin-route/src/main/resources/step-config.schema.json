@@ -33,6 +33,11 @@
       "x-singularitee-ref": "step",
       "x-singularitee-branch": "default"
     },
+    "labels": {
+      "type": "array",
+      "description": "Classifier strategy only: labels to classify against, sent with every call in place of the model's own: names, or objects with a name and a description. Every rule label must be one of them. Needs a zero-shot model (gliner_classifier, gliner_ner, or a decision model published as a classifier); any other model fails the pipeline load. Unset, the model's own labels apply.",
+      "items": { "$ref": "#/$defs/label" }
+    },
     "rules": {
       "type": "array",
       "description": "Ordered rules; the first one whose label equals the resolved label wins.",
@@ -42,7 +47,7 @@
         "properties": {
           "label": {
             "type": "string",
-            "description": "Label to match; for embedding_knn without sentences it is also the reference text."
+            "description": "Label to match; one of labels when the step sets them; for embedding_knn without sentences it is also the reference text."
           },
           "next_step": {
             "type": "string",
@@ -87,7 +92,40 @@
         "required": ["strategy", "min_confidence"]
       },
       "then": { "required": ["default_step"] }
+    },
+    {
+      "if": { "required": ["labels"] },
+      "then": {
+        "anyOf": [
+          { "not": { "required": ["strategy"] } },
+          { "properties": { "strategy": { "const": "classifier" } } }
+        ]
+      }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "label": {
+      "description": "A label name, or an object with the name and a description.",
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The label, as the step's results, rules and triggers name it."
+            },
+            "description": {
+              "type": "string",
+              "description": "What the label means; the model reads it, so a precise sentence classifies better than a bare word."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
 }

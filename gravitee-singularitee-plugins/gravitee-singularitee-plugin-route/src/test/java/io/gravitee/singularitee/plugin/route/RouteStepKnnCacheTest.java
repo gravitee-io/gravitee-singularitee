@@ -76,7 +76,8 @@ class RouteStepKnnCacheTest {
         new RouteRule("X", List.of(sentenceOfX), "to_x"),
         new RouteRule("Y", List.of(sentenceOfY), "to_y")
       ),
-      0
+      0,
+      List.of()
     );
   }
 

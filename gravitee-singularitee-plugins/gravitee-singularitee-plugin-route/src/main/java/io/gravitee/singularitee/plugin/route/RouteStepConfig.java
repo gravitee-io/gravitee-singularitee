@@ -15,8 +15,9 @@
  */
 package io.gravitee.singularitee.plugin.route;
 
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
 import io.gravitee.singularitee.engine.api.pipeline.model.BranchingConfig;
-import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
+import io.gravitee.singularitee.engine.api.pipeline.model.ClassifierLabelsConfig;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,6 +30,8 @@ import java.util.List;
  * @param inputField    context key to route on; blank = the prompt
  * @param defaultStepId step taken when no rule matches; blank = terminal
  * @param rules         label-to-step mapping
+ * @param labels        classifier strategy: labels sent to a zero-shot model; empty = the
+ *                      model's own
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -39,14 +42,16 @@ public record RouteStepConfig(
   String inputField,
   String defaultStepId,
   List<RouteRule> rules,
-  double minConfidence
-) implements ModelBoundConfig, BranchingConfig {
+  double minConfidence,
+  List<ClassifyLabel> labels
+) implements ClassifierLabelsConfig, BranchingConfig {
   public RouteStepConfig {
     modelId = modelId == null ? "" : modelId;
     strategy = strategy == null ? RoutingStrategy.CLASSIFIER : strategy;
     inputField = inputField == null ? "" : inputField;
     defaultStepId = defaultStepId == null ? "" : defaultStepId;
     rules = rules == null ? List.of() : List.copyOf(rules);
+    labels = labels == null ? List.of() : List.copyOf(labels);
   }
 
   @Override

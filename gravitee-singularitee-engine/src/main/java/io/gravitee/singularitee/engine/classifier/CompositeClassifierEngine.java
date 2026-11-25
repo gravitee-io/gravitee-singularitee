@@ -144,6 +144,12 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
     return ModelTasks.TEXT_CLASSIFICATION;
   }
 
+  /** Request labels reach every member; it takes them when one member does. */
+  @Override
+  public boolean acceptsRequestLabels() {
+    return delegates.stream().anyMatch(ClassifierEngine::acceptsRequestLabels);
+  }
+
   @Override
   public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
     return rxClassify(request, List.of());

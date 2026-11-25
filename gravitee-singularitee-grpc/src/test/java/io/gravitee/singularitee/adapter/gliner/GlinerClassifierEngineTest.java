@@ -212,4 +212,9 @@ class GlinerClassifierEngineTest {
     }
     return sb.toString();
   }
+
+  @Test
+  void takes_request_labels() {
+    assertThat(engine(mock(GLiNER4jClassifier.class), List.of()).acceptsRequestLabels()).isTrue();
+  }
 }

@@ -18,8 +18,10 @@ package io.gravitee.singularitee.plugin.guard;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -32,6 +34,7 @@ import static org.mockito.Mockito.withSettings;
 import io.gravitee.singularitee.engine.api.ChatRole;
 import io.gravitee.singularitee.engine.api.ChatTurn;
 import io.gravitee.singularitee.engine.api.ClassifierEngine;
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
 import io.gravitee.singularitee.engine.api.ClassifyRequest;
 import io.gravitee.singularitee.engine.api.ClassifyResponse;
 import io.gravitee.singularitee.engine.api.ModelTasks;
@@ -87,7 +90,8 @@ class GuardStepExecutorTest {
       "",
       false,
       scope,
-      onEmpty
+      onEmpty,
+      List.of()
     );
   }
 
@@ -219,7 +223,8 @@ class GuardStepExecutorTest {
       "",
       false,
       GuardScope.CONVERSATION,
-      GuardOnEmpty.parse(null, GuardAction.REDACT)
+      GuardOnEmpty.parse(null, GuardAction.REDACT),
+      List.of()
     );
 
     var pctx = run(cfg, imageOnly);
@@ -269,5 +274,39 @@ class GuardStepExecutorTest {
     assertThatThrownBy(() -> bound.execute("g", cfg, stepContext(pctx)).blockingGet())
       .isInstanceOf(IllegalStateException.class)
       .hasMessageContaining("ClassifierEngine");
+  }
+
+  @Test
+  void a_guard_with_labels_sends_them_with_every_text_it_inspects() {
+    var labels = List.of(new ClassifyLabel("toxic", "Insults or threats."));
+    var cfg = new GuardStepConfig(
+      "tox",
+      "",
+      "",
+      GuardAction.REJECT,
+      List.of(new GuardTrigger("toxic", 0.5f)),
+      "",
+      false,
+      GuardScope.CONVERSATION,
+      GuardOnEmpty.REJECT,
+      labels
+    );
+
+    var pctx = run(cfg, HOSTILE_EARLIER_TURN);
+
+    assertThat(pctx.isHalted()).isTrue();
+    verify(engine).rxClassifyBatch(argThat(batch -> batch.size() == 3), eq(labels));
+    verify(engine, times(3)).rxClassify(any(), eq(labels));
+  }
+
+  @Test
+  void a_guard_without_labels_sends_none() {
+    run(
+      cfg(GuardAction.REJECT, GuardScope.CONVERSATION, GuardOnEmpty.REJECT),
+      HOSTILE_EARLIER_TURN
+    );
+
+    verify(engine).rxClassifyBatch(argThat(batch -> batch.size() == 3));
+    verify(engine, never()).rxClassifyBatch(anyList(), argThat(labels -> !labels.isEmpty()));
   }
 }

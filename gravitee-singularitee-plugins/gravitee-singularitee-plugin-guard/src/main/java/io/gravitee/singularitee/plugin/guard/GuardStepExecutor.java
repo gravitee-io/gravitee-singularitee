@@ -92,81 +92,80 @@ public final class GuardStepExecutor
 
     // One classification per target, so a long benign turn cannot dilute a short hostile one, in
     // a single batch call so a batching engine scores the whole conversation at once.
-    return engine
-      .rxClassifyBatch(
-        targets
-          .stream()
-          .map(t -> new ClassifyRequest(t.text()))
-          .toList()
-      )
-      .flatMapMaybe(results -> {
-        List<GuardTrigger> triggers = cfg.triggers();
+    List<ClassifyRequest> requests = targets
+      .stream()
+      .map(t -> new ClassifyRequest(t.text()))
+      .toList();
+    return (
+      cfg.labels().isEmpty()
+        ? engine.rxClassifyBatch(requests)
+        : engine.rxClassifyBatch(requests, cfg.labels())
+    ).flatMapMaybe(results -> {
+      List<GuardTrigger> triggers = cfg.triggers();
 
-        float minThreshold = triggers.isEmpty()
-          ? 0f
-          : (float) triggers.stream().mapToDouble(GuardTrigger::score).min().orElse(0);
+      float minThreshold = triggers.isEmpty()
+        ? 0f
+        : (float) triggers.stream().mapToDouble(GuardTrigger::score).min().orElse(0);
 
-        // Span-bearing results are entity spans only for token-classification engines (NER, regex,
-        // stop-words). A sequence classifier whose long input was split also carries spans (the
-        // chunk ranges) but those are not entities; gate on the engine's task so they aren't
-        // treated as redactable entities or used to trigger the guard.
-        boolean tokenClassification = ModelTasks.TOKEN_CLASSIFICATION.equals(engine.task());
+      // Span-bearing results are entity spans only for token-classification engines (NER, regex,
+      // stop-words). A sequence classifier whose long input was split also carries spans (the
+      // chunk ranges) but those are not entities; gate on the engine's task so they aren't
+      // treated as redactable entities or used to trigger the guard.
+      boolean tokenClassification = ModelTasks.TOKEN_CLASSIFICATION.equals(engine.task());
 
-        List<Verdict> verdicts = new ArrayList<>();
-        for (int i = 0; i < targets.size(); i++) {
-          ClassifyResponse result = results.get(i);
-          LOGGER.info(
-            "GuardStep '{}': target {}/{} classification results={}, watching triggers={}",
-            stepId,
-            i + 1,
-            targets.size(),
-            result.allScores(),
-            triggers
-              .stream()
-              .map(t -> t.label() + ">=" + t.score())
-              .toList()
-          );
-          verdicts.add(
-            evaluate(targets.get(i), result, triggers, tokenClassification, minThreshold)
-          );
-        }
-
-        List<MatchedTrigger> matchedTriggers = strongestPerLabel(verdicts);
-        boolean triggered = verdicts.stream().anyMatch(Verdict::triggered);
-
-        if (!triggered) {
-          if (cfg.action() == GuardAction.REDACT) {
-            String outputField = resolveOutputField(cfg.outputField(), stepId, ".redacted");
-            pctx.set(outputField, GuardInputs.primaryText(targets, pctx, Map.of()));
-          }
-          // Span introspection: the guard's decision when nothing matched.
-          stepScribe
-            .set(SpanNames.key("monitor.verdict"), "safe")
-            .set(SpanNames.key("guard.matched"), 0);
-          return ctx.rxNextStep(stepId);
-        }
-
+      List<Verdict> verdicts = new ArrayList<>();
+      for (int i = 0; i < targets.size(); i++) {
+        ClassifyResponse result = results.get(i);
         LOGGER.info(
-          "GuardStep '{}': triggered, {} match(es): [{}], action={}",
+          "GuardStep '{}': target {}/{} classification results={}, watching triggers={}",
           stepId,
-          matchedTriggers.size(),
-          matchedTriggers.stream().map(MatchedTrigger::toString).collect(Collectors.joining(", ")),
-          cfg.action()
+          i + 1,
+          targets.size(),
+          result.allScores(),
+          triggers
+            .stream()
+            .map(t -> t.label() + ">=" + t.score())
+            .toList()
         );
+        verdicts.add(evaluate(targets.get(i), result, triggers, tokenClassification, minThreshold));
+      }
 
-        applyAction(
-          cfg.action(),
-          stepId,
-          cfg,
-          targets,
-          verdicts,
-          minThreshold,
-          matchedTriggers,
-          ctx,
-          stepScribe
-        );
+      List<MatchedTrigger> matchedTriggers = strongestPerLabel(verdicts);
+      boolean triggered = verdicts.stream().anyMatch(Verdict::triggered);
+
+      if (!triggered) {
+        if (cfg.action() == GuardAction.REDACT) {
+          String outputField = resolveOutputField(cfg.outputField(), stepId, ".redacted");
+          pctx.set(outputField, GuardInputs.primaryText(targets, pctx, Map.of()));
+        }
+        // Span introspection: the guard's decision when nothing matched.
+        stepScribe
+          .set(SpanNames.key("monitor.verdict"), "safe")
+          .set(SpanNames.key("guard.matched"), 0);
         return ctx.rxNextStep(stepId);
-      });
+      }
+
+      LOGGER.info(
+        "GuardStep '{}': triggered, {} match(es): [{}], action={}",
+        stepId,
+        matchedTriggers.size(),
+        matchedTriggers.stream().map(MatchedTrigger::toString).collect(Collectors.joining(", ")),
+        cfg.action()
+      );
+
+      applyAction(
+        cfg.action(),
+        stepId,
+        cfg,
+        targets,
+        verdicts,
+        minThreshold,
+        matchedTriggers,
+        ctx,
+        stepScribe
+      );
+      return ctx.rxNextStep(stepId);
+    });
   }
 
   /** What one inspected target produced. */

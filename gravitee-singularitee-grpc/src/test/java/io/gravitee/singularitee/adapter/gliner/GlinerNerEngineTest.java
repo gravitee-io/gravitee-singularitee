@@ -195,4 +195,11 @@ class GlinerNerEngineTest {
     }
     return sb.toString();
   }
+
+  @Test
+  void takes_request_labels() {
+    var engine = new GlinerNerEngine(mock(GLiNER4jNER.class), THRESHOLD, 512, List.of(), vertx);
+
+    assertThat(engine.acceptsRequestLabels()).isTrue();
+  }
 }

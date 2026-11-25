@@ -21,6 +21,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import io.gravitee.node.api.configuration.Configuration;
+import io.gravitee.singularitee.engine.api.ChatRole;
+import io.gravitee.singularitee.engine.api.ChatTurn;
+import io.gravitee.singularitee.engine.api.ClassifierEngine;
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
+import io.gravitee.singularitee.engine.api.ClassifyRequest;
+import io.gravitee.singularitee.engine.api.ClassifyResponse;
+import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
+import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
+import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutor;
 import io.gravitee.singularitee.engine.api.pipeline.model.ModelBoundConfig;
 import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
@@ -29,9 +38,12 @@ import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.engine.pipeline.executor.StepExecutorFactory;
 import io.gravitee.singularitee.engine.template.JinjaTemplateRenderer;
+import io.gravitee.singularitee.plugin.api.StepExecutorServices;
 import io.gravitee.singularitee.plugin.api.StepPlugins;
+import io.gravitee.singularitee.plugin.route.RouteStepPlugin;
 import io.gravitee.singularitee.standalone.vertx.ReadinessState;
 import io.gravitee.singularitee.workspace.YamlWorkspaceLoader;
+import io.reactivex.rxjava3.core.Single;
 import java.lang.reflect.Proxy;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +52,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -662,6 +675,205 @@ class ReleaseSyncComponentTest {
     assertThat(restarts).hasValue(0);
     assertThat(text(node.pipelines(), "chat")).isEqualTo("v2");
     assertThat(node.component().snapshot().appliedRevision()).isEqualTo(2);
+  }
+
+  /** A zero-shot model that answers the last label it is given, or "other" with none. */
+  private static final class LastLabel implements ClassifierEngine {
+
+    final List<List<ClassifyLabel>> calls = new CopyOnWriteArrayList<>();
+    private final boolean zeroShot;
+
+    LastLabel(boolean zeroShot) {
+      this.zeroShot = zeroShot;
+    }
+
+    @Override
+    public boolean acceptsRequestLabels() {
+      return zeroShot;
+    }
+
+    @Override
+    public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
+      return rxClassify(request, List.of());
+    }
+
+    @Override
+    public Single<ClassifyResponse> rxClassify(
+      ClassifyRequest request,
+      List<ClassifyLabel> labels
+    ) {
+      calls.add(labels);
+      String top = labels.isEmpty() ? "other" : labels.getLast().name();
+      return Single.just(new ClassifyResponse(top, 0.9f, Map.of(top, 0.9f), List.of()));
+    }
+
+    @Override
+    public void close() {}
+  }
+
+  private static String routed(String modelId, String labels, String rules, String targets) {
+    return workspace(
+      "",
+      "    - id: support\n      entry: route\n      steps:\n        - id: route\n          type: route\n" +
+        "          config:\n            model_id: " +
+        modelId +
+        "\n            labels: " +
+        labels +
+        "\n            default_step: other\n            rules:\n" +
+        rules +
+        targets +
+        "        - id: other\n          type: echo\n          config:\n            text: other\n"
+    );
+  }
+
+  private static String rule(String label) {
+    return ("              - label: " + label + "\n                next_step: to_" + label + "\n");
+  }
+
+  private static String target(String label) {
+    return (
+      "        - id: to_" +
+      label +
+      "\n          type: echo\n          config:\n            text: " +
+      label +
+      "\n"
+    );
+  }
+
+  private static final String TWO_LABELS = routed(
+    "gliner",
+    "[billing, tech]",
+    rule("billing") + rule("tech"),
+    target("billing") + target("tech")
+  );
+
+  private record LabelledNode(Node node, StepPlugins plugins, LastLabel gliner) {
+    /** Runs the served support pipeline's route step on one request, as the next request would. */
+    String nextStepFor(String text) {
+      var pipeline = node.pipelines().get("support").orElseThrow().pipeline();
+      var step = pipeline.step("route").orElseThrow();
+      @SuppressWarnings("unchecked")
+      var route = (StepExecutor<Object>) plugins.executors().get("route");
+      var pctx = new PipelineContext(
+        text,
+        List.of(new ChatTurn(ChatRole.USER, text)),
+        null,
+        List.of(),
+        null
+      );
+      return route
+        .execute("route", step.config(), new StepContext(pctx, pipeline, null, null))
+        .blockingGet();
+    }
+  }
+
+  /** A node serving one zero-shot model ("gliner") and one that takes no request labels ("toxicity"). */
+  private LabelledNode labelledNode(String bootYaml) throws Exception {
+    var models = new ModelRegistry();
+    var gliner = new LastLabel(true);
+    models.register("gliner", "gliner", gliner, token -> {});
+    models.register("toxicity", "toxicity", new LastLabel(false), token -> {});
+    var pipelines = new PipelineRegistry(models);
+    var routePlugin = new RouteStepPlugin();
+    var route = routePlugin.create(
+      new StepExecutorServices(
+        new StepExecutionContext(models, null, null),
+        null,
+        null,
+        models,
+        pipelines,
+        null,
+        null,
+        null,
+        null
+      )
+    );
+    var codecs = new java.util.HashMap<String, StepConfigCodec<?>>(CODECS);
+    codecs.put("route", routePlugin.codec());
+    var plugins = new StepPlugins(
+      Map.of("route", route),
+      Map.copyOf(codecs),
+      Map.of(),
+      List.of(),
+      Map.of()
+    );
+    var readiness = new ReadinessState();
+    var component = new ReleaseSyncComponent(
+      config(Map.of()),
+      models,
+      pipelines,
+      readiness,
+      new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority(),
+      plugins
+    );
+    component.setHardwareForTest(new HardwareInfo("Linux", null, List.of()));
+    for (var pipeline : YamlWorkspaceLoader.loadFromString(
+      bootYaml,
+      null,
+      null,
+      plugins.codecs()
+    ).pipelines()) {
+      pipelines.register(pipeline);
+    }
+    readiness.markReady();
+    return new LabelledNode(new Node(component, pipelines, readiness), plugins, gliner);
+  }
+
+  @Test
+  void a_release_that_changes_a_step_s_labels_is_applied_in_place_and_the_next_request_uses_them()
+    throws Exception {
+    var restarts = new AtomicInteger();
+    var labelled = labelledNode(TWO_LABELS);
+    labelled
+      .node()
+      .component()
+      .setClientForTest(client(), 1, TWO_LABELS, true, restarts::incrementAndGet);
+    assertThat(labelled.nextStepFor("my invoice")).isEqualTo("to_tech");
+    releaseYaml = routed(
+      "gliner",
+      "[billing, tech, sales]",
+      rule("billing") + rule("tech") + rule("sales"),
+      target("billing") + target("tech") + target("sales")
+    );
+    revision = 2;
+
+    labelled.node().component().poll();
+
+    assertThat(restarts).hasValue(0);
+    assertThat(labelled.node().component().snapshot().lastError()).isNull();
+    assertThat(labelled.node().component().snapshot().appliedRevision()).isEqualTo(2);
+    assertThat(labelled.nextStepFor("my invoice")).isEqualTo("to_sales");
+    assertThat(labelled.gliner().calls.getLast())
+      .extracting(ClassifyLabel::name)
+      .containsExactly("billing", "tech", "sales");
+  }
+
+  @Test
+  void a_release_that_puts_labels_on_a_model_that_cannot_take_them_is_not_applied()
+    throws Exception {
+    var restarts = new AtomicInteger();
+    var labelled = labelledNode(TWO_LABELS);
+    labelled
+      .node()
+      .component()
+      .setClientForTest(client(), 1, TWO_LABELS, true, restarts::incrementAndGet);
+    var before = labelled.node().pipelines().get("support").orElseThrow();
+    releaseYaml = routed(
+      "toxicity",
+      "[billing, tech]",
+      rule("billing") + rule("tech"),
+      target("billing") + target("tech")
+    );
+    revision = 2;
+
+    labelled.node().component().poll();
+
+    assertThat(restarts).hasValue(0);
+    assertThat(labelled.node().pipelines().get("support").orElseThrow()).isSameAs(before);
+    assertThat(labelled.node().component().snapshot().appliedRevision()).isEqualTo(1);
+    assertThat(labelled.node().component().snapshot().lastError())
+      .contains("Step 'route'")
+      .contains("model 'toxicity'");
   }
 
   /** Minimal Configuration backed by a map: absent keys give null or the supplied default. */
