@@ -226,6 +226,63 @@ class StepPluginsSchemaTest {
     assertThat(plugin(shared, SchemalessPlugin.class).configSchema()).isNull();
   }
 
+  @SuppressWarnings("deprecation")
+  private static URL rawUrl(Path path, boolean directory) throws IOException {
+    return new URL("file:" + path.toAbsolutePath() + (directory ? "/" : ""));
+  }
+
+  private static Path pluginJar(Path jar, Class<?> clazz, String schema) throws IOException {
+    Path root = pluginRoot(
+      Files.createDirectories(jar.resolveSibling("staging-" + jar.getFileName())),
+      clazz,
+      schema
+    );
+    try (var out = new JarOutputStream(Files.newOutputStream(jar))) {
+      for (Path file : Files.walk(root).filter(Files::isRegularFile).toList()) {
+        out.putNextEntry(new JarEntry(root.relativize(file).toString().replace('\\', '/')));
+        out.write(Files.readAllBytes(file));
+        out.closeEntry();
+      }
+    }
+    return jar;
+  }
+
+  @Test
+  void a_plugin_directory_with_spaces_in_its_path_publishes_its_schema(@TempDir Path tmp)
+    throws Exception {
+    Path root = pluginRoot(
+      tmp.resolve("my plugins/alpha dir"),
+      AlphaPlugin.class,
+      "{\"title\":\"alpha\"}"
+    );
+
+    var encoded = new URLClassLoader(new URL[] { root.toUri().toURL() }, PARENT_WITHOUT_FIXTURES);
+    var raw = new URLClassLoader(new URL[] { rawUrl(root, true) }, PARENT_WITHOUT_FIXTURES);
+
+    assertThat(plugin(encoded, AlphaPlugin.class).configSchema()).isEqualTo(
+      "{\"title\":\"alpha\"}"
+    );
+    assertThat(plugin(raw, AlphaPlugin.class).configSchema()).isEqualTo("{\"title\":\"alpha\"}");
+  }
+
+  @Test
+  void a_plugin_jar_with_spaces_in_its_path_publishes_its_schema(@TempDir Path tmp)
+    throws Exception {
+    Path jar = pluginJar(
+      Files.createDirectories(tmp.resolve("my plugins")).resolve("alpha plugin.jar"),
+      AlphaPlugin.class,
+      "{\"title\":\"alpha\"}"
+    );
+
+    var encoded = new URLClassLoader(new URL[] { jar.toUri().toURL() }, PARENT_WITHOUT_FIXTURES);
+    var raw = new URLClassLoader(new URL[] { rawUrl(jar, false) }, PARENT_WITHOUT_FIXTURES);
+
+    assertThat(plugin(encoded, AlphaPlugin.class).configSchema()).isEqualTo(
+      "{\"title\":\"alpha\"}"
+    );
+    assertThat(plugin(raw, AlphaPlugin.class).configSchema()).isEqualTo("{\"title\":\"alpha\"}");
+  }
+
   private static Path pluginRoot(Path root, Class<?> clazz, String schema) throws IOException {
     String entry = clazz.getName().replace('.', '/') + ".class";
     Path classFile = root.resolve(entry);

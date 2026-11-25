@@ -22,6 +22,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.security.CodeSource;
@@ -75,12 +77,13 @@ public interface StepExecutorPlugin {
     if (source == null) {
       return null;
     }
-    String location = source.getLocation().toExternalForm();
-    String schemaUrl = location.endsWith("/")
-      ? location + CONFIG_SCHEMA_FILE
-      : "jar:" + location + "!/" + CONFIG_SCHEMA_FILE;
+    URL location = source.getLocation();
+    URI base = toUri(location);
+    URI schema = location.getPath().endsWith("/")
+      ? base.resolve(CONFIG_SCHEMA_FILE)
+      : URI.create("jar:" + base + "!/" + CONFIG_SCHEMA_FILE);
     try {
-      URLConnection connection = URI.create(schemaUrl).toURL().openConnection();
+      URLConnection connection = schema.toURL().openConnection();
       connection.setUseCaches(false);
       try (InputStream in = connection.getInputStream()) {
         return new String(in.readAllBytes(), StandardCharsets.UTF_8);
@@ -89,6 +92,19 @@ public interface StepExecutorPlugin {
       return null;
     } catch (IOException e) {
       throw new UncheckedIOException(e);
+    }
+  }
+
+  /** A location whose path holds unescaped characters, a space for one, is escaped rather than refused. */
+  private static URI toUri(URL location) {
+    try {
+      return location.toURI();
+    } catch (URISyntaxException e) {
+      try {
+        return new URI(location.getProtocol(), null, location.getPath(), null);
+      } catch (URISyntaxException unreachable) {
+        throw new IllegalArgumentException(location.toExternalForm(), unreachable);
+      }
     }
   }
 }
