@@ -136,12 +136,13 @@ public final class ResponsesFormatter {
         );
       }
 
-      // Auxiliary progress update (engine-managed todo plan): the Responses
-      // surface already emits typed non-canonical objects, so a gravitee-
-      // namespaced type is the least invasive representation.
+      // Step traces are not carried on this endpoint yet: dropped.
       if (token.stepTrace() != null) {
         return Flowable.fromIterable(events);
       }
+      // Auxiliary progress update (engine-managed todo plan): the Responses
+      // surface already emits typed non-canonical objects, so a gravitee-
+      // namespaced type is the least invasive representation.
       if (token.progress() != null) {
         events.add(progressEvent(seq, token.progress()));
         return Flowable.fromIterable(events);

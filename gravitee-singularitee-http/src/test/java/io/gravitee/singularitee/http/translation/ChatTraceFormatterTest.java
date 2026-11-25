@@ -121,7 +121,7 @@ class ChatTraceFormatterTest {
   }
 
   @Test
-  void streamed_chunks_never_carry_trace_events() {
+  void streamed_chunks_do_not_carry_trace_events_yet() {
     var tokens = Flowable.just(
       TokenMessage.stepTraced(guard()),
       TokenMessage.contentDelta("Hi"),

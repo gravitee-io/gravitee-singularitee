@@ -170,6 +170,30 @@ Anything else takes the restart path of `ai.sync.restart-on-change`: a changed m
 changed key, a release that does not parse, `includes:`, and a changed template that a model reads (a decision
 model's `prompt.template` is resolved when the model loads).
 
+#### Heartbeat answer and the step trace
+
+Gamma answers a status report with an optional JSON body. The node reads one field:
+
+```json
+{ "traceKeySha256": "<SHA-256 of the trace key, lower or upper case hex>" }
+```
+
+A request may see a step trace only when it presents the key behind that hash (`X-Singularitee-Trace-Key` over HTTP,
+`trace_key` over gRPC); the node compares hashes and never learns the key. Until a hash is announced nothing is traced,
+and a request with another key or none runs normally.
+
+| Answer | Effect |
+| --- | --- |
+| `traceKeySha256` set to a hex digest | Replaces the expected hash. |
+| `traceKeySha256` blank, or not hex | Withdraws it: nothing is traced until a valid hash is announced. |
+| No body, no `traceKeySha256`, or a non-string value | Changes nothing. |
+| A body that is not JSON | Logged as a warning and ignored. |
+
+Limits of a trace: each output value is cut to 4096 characters, and the serialized trace of one run is capped at
+256 KiB. From the first step that would exceed the cap, steps record only their id, type and timing, marked
+`truncated`. Over HTTP only a non-streamed Chat Completions answer carries the trace (`gravitee_trace`); streams and the
+Responses and legacy Completions endpoints do not carry it yet. gRPC streams carry it as `STEP_TRACE` events.
+
 ### `ai.streaming.*`
 
 | Key | Default | Env var | Purpose |

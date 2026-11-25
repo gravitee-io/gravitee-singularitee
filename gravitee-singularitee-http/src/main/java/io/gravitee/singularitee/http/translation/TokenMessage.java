@@ -78,7 +78,8 @@ public record TokenMessage(
 
   /**
    * What one pipeline step did ({@code RESPONSE_EVENT_TYPE_STEP_TRACE} on the wire). Carries no
-   * text: streams drop it, a non-streamed chat answer lists it under {@code gravitee_trace}.
+   * text: a non-streamed chat answer lists it under {@code gravitee_trace}; streams and the other
+   * endpoints do not carry it yet.
    */
   public static TokenMessage stepTraced(StepTrace stepTrace) {
     return builder().stepTrace(stepTrace).build();

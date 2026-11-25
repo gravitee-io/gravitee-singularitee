@@ -343,7 +343,7 @@ BASE_URL=http://localhost:8080/v1 API_KEY=sk-local-changeme uv run --with reques
   fields the step added or changed, each cut to 4096 characters) and `error`. A run's trace is capped
   at 256 KiB: from the first step that would exceed it, entries carry only `step_id`, `step_type`,
   `started_at_ms`, `duration_ms` and `truncated: true`. Any other key, or
-  none, gives a normal answer. Streams never carry trace events.
+  none, gives a normal answer. Streams, the Responses API and legacy Completions do not carry trace events yet.
 - The Responses API keeps reasoning streaming live even when `tools` hold the content back.
 - Decision questions are rendered and answered in request order. Image input to decisions is
   refused with `unsupported_modality` until a decision backend reads images.
