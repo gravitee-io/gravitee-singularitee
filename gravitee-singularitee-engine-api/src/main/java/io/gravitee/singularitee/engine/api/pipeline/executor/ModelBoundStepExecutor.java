@@ -123,12 +123,14 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
       final Span span = startModelSpan(tracer, vctx, stepSpan, modelId, op);
       // Model-call span facts: the OpenInference kind from the engine type (a text-gen backend
       // such as llama.cpp or vLLM tags LLM), and the engine type + concrete backend class.
-      if (TracingOptions.openInference()) {
-        span.withAttribute(OpenInference.SPAN_KIND, engineKind(engine.type()));
+      if (span != null) {
+        if (TracingOptions.openInference()) {
+          span.withAttribute(OpenInference.SPAN_KIND, engineKind(engine.type()));
+        }
+        span
+          .withAttribute(SpanNames.key("model.engine_type"), engine.type().name())
+          .withAttribute(SpanNames.key("model.engine"), engine.getClass().getSimpleName());
       }
-      span
-        .withAttribute(SpanNames.key("model.engine_type"), engine.type().name())
-        .withAttribute(SpanNames.key("model.engine"), engine.getClass().getSimpleName());
       final Throwable[] error = { null };
       final long startNanos = System.nanoTime();
       return rxExecuteWithEngine(stepId, config, typed, ctx)

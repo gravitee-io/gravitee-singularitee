@@ -65,6 +65,10 @@ public record StepContext(
   AtomicReference<Span> activeStepSpan,
   StepModel currentStep
 ) {
+  public StepContext {
+    activeStepSpan = activeStepSpan == null ? new AtomicReference<>() : activeStepSpan;
+  }
+
   /** Creates a context with no current step; {@link #withStep} sets it per dispatch. */
   public StepContext(
     PipelineContext pipelineContext,
