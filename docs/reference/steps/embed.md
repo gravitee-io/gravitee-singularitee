@@ -22,7 +22,7 @@
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `model_id` | string | required | Logical id of a published embedding model. |
+| `model_id` | string | required | Logical id of a published embedding model. The codec does not check it: a missing id fails the step at run time (`model '' is not loaded`). |
 | `input_field` | string | `prompt` | Context key holding the text to embed. An empty value skips the step with a warning. |
 | `output_field` | string | `<id>.embedding` | Context key receiving the serialised vector. |
 

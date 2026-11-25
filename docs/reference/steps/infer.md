@@ -57,7 +57,7 @@ A step that keeps the caller's conversation and only adds its own instructions (
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `model_id` | string | required | Logical id of a published text-generation model. |
+| `model_id` | string | required | Logical id of a published text-generation model. The codec does not check it: a missing id fails the step at run time (`model '' is not loaded`). |
 | `output_field` | string | `<id>.output` | Context key receiving the full generated text (reasoning included unless `strip_thinking`). |
 | `prompt` | object | unset | Prompt source, see below. Unset: the caller's messages pass through as-is, or the bare `prompt` becomes a single user turn. |
 | `sampling` | object | unset | Step-level sampling, see below. |
@@ -78,7 +78,7 @@ Exactly one of the three template keys may be set; setting two fails the workspa
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `prompt.messages` | list of `{role, content}` | unset | Replaces the conversation. Each `content` is a Jinja template; `role` defaults to `user`. The result still goes through the chat template. |
+| `prompt.messages` | list of `{role, content}` | unset | Replaces the conversation. Each `content` is a Jinja template; `role` is `system`, `user`, `assistant` or `tool` and defaults to `user` (an unknown role is treated as `user`). The result still goes through the chat template. |
 | `prompt.template` | string | unset | Inline raw Jinja template. The rendered string is sent as a bare prompt, bypassing the chat template. Proto field `raw_template`. |
 | `prompt.template_file` | string | unset | Path to a raw template file. Resolved relative to `${gravitee.home}/templates` on a running server (the workspace directory when the loader is given no templates path). Must stay under that base unless absolute. |
 | `prompt.template_id` | string | unset | Id of a `templates:` entry; resolved to its content at load time. Unknown ids fail the load. |

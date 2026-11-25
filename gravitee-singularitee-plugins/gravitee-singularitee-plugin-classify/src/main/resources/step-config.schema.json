@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "classify step config",
+  "description": "Runs a classifier on a context field and writes the top label and its score.",
+  "type": "object",
+  "required": ["model_id"],
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "description": "Logical id of a published classifier model.",
+      "x-singularitee-ref": "model",
+      "x-singularitee-model-tasks": ["text-classification", "token-classification", "decision"]
+    },
+    "input_field": {
+      "type": "string",
+      "default": "prompt",
+      "description": "Context key holding the text to classify; an empty value skips the step with a warning.",
+      "x-singularitee-context": "reads"
+    },
+    "output_field": {
+      "type": "string",
+      "default": "<step id>.label",
+      "description": "Context key receiving the top label; the score lands in <output_field>.score.",
+      "x-singularitee-context": "writes"
+    },
+    "threshold": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Minimum score carried to downstream readers; the executor itself does not filter on it, and 0 is not sent."
+    }
+  },
+  "additionalProperties": false
+}

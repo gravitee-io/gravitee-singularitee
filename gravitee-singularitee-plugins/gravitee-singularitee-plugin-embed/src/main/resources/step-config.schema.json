@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "embed step config",
+  "description": "Embeds a context field with an embedding model and writes the vector as a float array string.",
+  "type": "object",
+  "required": ["model_id"],
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "description": "Logical id of a published embedding model.",
+      "x-singularitee-ref": "model",
+      "x-singularitee-model-tasks": ["feature-extraction"]
+    },
+    "input_field": {
+      "type": "string",
+      "default": "prompt",
+      "description": "Context key holding the text to embed; an empty value skips the step with a warning.",
+      "x-singularitee-context": "reads"
+    },
+    "output_field": {
+      "type": "string",
+      "default": "<step id>.embedding",
+      "description": "Context key receiving the serialised vector.",
+      "x-singularitee-context": "writes"
+    }
+  },
+  "additionalProperties": false
+}

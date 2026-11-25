@@ -32,7 +32,7 @@
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `model_id` | string | required | Logical id of a published classifier model. |
+| `model_id` | string | required | Logical id of a published classifier model. The codec does not check it: a missing id fails the step at run time (`model '' is not loaded`). |
 | `input_field` | string | `prompt` | Context key holding the text to classify. An empty value skips the step with a warning. |
 | `output_field` | string | `<id>.label` | Context key receiving the top label. The score lands in `<output_field>.score`. |
 | `threshold` | float | unset | Carried on the wire (`ClassifyStepConfig.threshold`) for downstream readers; the executor itself does not filter on it. Values of `0` are not sent. |
