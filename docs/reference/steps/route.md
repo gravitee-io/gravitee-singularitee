@@ -8,7 +8,7 @@
 
 | `strategy` | Model | Label resolution |
 | --- | --- | --- |
-| `classifier` (default) | `ClassifierEngine` | The classifier's top label, compared exactly with each rule's `label`. |
+| `classifier` (default) | `ClassifierEngine` | The classifier's top label, compared exactly with each rule's `label`. With `labels`, the step sends its own labels to a zero-shot model with every call and the rules match against them. |
 | `embedding_knn` | `EmbeddingEngine` | Every rule's `sentences` (or its `label` when none) is embedded; the rule holding the reference with the highest cosine similarity to the embedded input wins. References are computed at workspace load (`rxWarmupEmbeddings`) and cached per pipeline, step and a hash of the model id and reference texts, so a step whose references changed never reads the old embeddings; a release applied in place drops the entries of changed and removed pipelines. |
 | `llm_structured` | none | The input text itself is the verdict: trimmed, surrounding quotes removed, lower-cased, then matched with `contains` against each rule's lower-cased `label`, in rule order. Point `input_field` at the output of a `role: internal` infer step. |
 | `decision` | none | The choice a [`decide`](./decide.md) step wrote, compared exactly with each rule's `label`. Point `input_field` at `<decide step>.<question>`. With `min_confidence`, a choice whose `<input_field>.confidence` is lower resolves the empty label and takes `default_step`. |
@@ -55,6 +55,24 @@ Zero-shot classifier (`examples/pipelines/gliner-router.yaml`):
         next_step: respond_cooking
 ```
 
+The same, with the labels on the step instead of the model (`examples/pipelines/gliner-step-labels.yaml`), so the model can serve other steps with other labels:
+
+```yaml
+- id: topic
+  type: route
+  config:
+    model_id: zero-shot              # a gliner_classifier declared without labels
+    default_step: respond_general
+    labels:
+      - name: billing
+        description: The user asks about an invoice, a charge or a refund.
+      - name: technical problem
+        description: Something does not work.
+    rules:
+      - { label: billing, next_step: respond_billing }
+      - { label: technical problem, next_step: respond_technical }
+```
+
 On a prior decision (`examples/decision/qwen3-0.6b-triage.yaml`):
 
 ```yaml
@@ -79,8 +97,9 @@ On a prior decision (`examples/decision/qwen3-0.6b-triage.yaml`):
 | `input_field` | string | `prompt` | Context key holding the text to route on. Blank text resolves to the empty label and takes `default_step`. Required for `decision` (the load fails without it). |
 | `min_confidence` | float | `0` (off) | `decision` only: below this `<input_field>.confidence`, take `default_step`, which it requires (the load fails without one). A missing or unparsable confidence counts as `0`. |
 | `default_step` | string | unset | Step when no rule matches. Unset: the pipeline ends. |
+| `labels` | list | unset | `classifier` only: labels sent with every call in place of the model's own, names or `{name, description}` objects (the shapes `/v1/classify` takes). Every rule label must be one of them. Needs a model that takes request labels, as for [`classify`](./classify.md#notes). Unset or empty: the model's own labels, as before. |
 | `rules` | list | empty | Ordered list of `{label, next_step, sentences}`; with none, every request takes `default_step`. |
-| `rules[].label` | string | required | Label to match. For `embedding_knn` without `sentences`, it is also the reference text. |
+| `rules[].label` | string | required | Label to match; one of `labels` when the step sets them. For `embedding_knn` without `sentences`, it is also the reference text. |
 | `rules[].next_step` | string | required | Target step id. |
 | `rules[].sentences` | list of string | unset | `embedding_knn` only: reference sentences embedded for this rule. |
 
@@ -97,7 +116,8 @@ Writes:
 
 ## Notes
 
-- `classifier` compares labels exactly; the rule label must be spelled as the model reports it (GLiNER labels are the workspace-declared names).
+- `classifier` compares labels exactly; the rule label must be spelled as the model reports it (GLiNER labels are the workspace-declared names, or the step's `labels`).
+- With `labels`, a rule label that is not among them fails the pipeline load instead of silently routing to `default_step`, and so do `labels` with another strategy and `labels` on a model that cannot take request labels. A release applied in place is checked the same way and refused as a whole. `examples/pipelines/gliner-step-labels.yaml` routes with its own labels on a GLiNER2 model another step shares.
 - `embedding_knn` picks the single nearest reference, so one strong sentence outweighs many weak ones; there is no score threshold.
 - A missing or wrongly typed model logs a warning and resolves the empty label, so the pipeline silently takes `default_step`. Check the log when every request lands on the default branch.
 - `decision` reads the context only; route on a `choice` question. A `score` or `noul` answer is a number and matches no label.

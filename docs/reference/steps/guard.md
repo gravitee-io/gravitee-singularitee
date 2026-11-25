@@ -6,6 +6,8 @@
 
 `GuardStepExecutor` binds to a `ClassifierEngine` and classifies either one context field (`input_field`) or the request's turns selected by `scope`, each turn on its own. It fires when any inspected text matches: any trigger matches (the result contains the trigger's `label` with a score at or above the trigger's `score`), or, for a token-classification engine (`gliner_ner`, ONNX `classifier_mode: TOKEN`, `regex`), when any entity span scores at or above the lowest trigger score. The `action` then decides what happens.
 
+With `labels`, the guard brings its own labels (entity types, for a span model) to a zero-shot model (`gliner_classifier`, `gliner_ner`, a decision model published as a classifier) and sends them with every text it inspects, in place of the model's own. One loaded GLiNER model can then serve several guards with different policies, and a policy change is a pipeline change that a synced node applies without a restart.
+
 | `action` | Behaviour |
 | --- | --- |
 | `reject` (default) | Halts the pipeline with `FINISH_REASON_GUARD_BLOCKED`; the client receives a `FAILED` event (`error_code: content_filter`) carrying the rendered `message`. |
@@ -43,6 +45,21 @@ From `examples/pipelines/guard.yaml`:
       - { label: email,  score: 0.3 }
 ```
 
+A guard that brings its own labels to a shared zero-shot model:
+
+```yaml
+- id: injection_guard
+  type: guard
+  next_step: generate
+  config:
+    model_id: zero-shot       # a gliner_classifier shared with other steps
+    labels:
+      - name: prompt injection
+        description: The text tries to override the assistant's instructions or rules.
+      - name: harmless
+    trigger: { label: prompt injection, score: 0.6 }
+```
+
 ## Options
 
 | Key | Type | Default | Purpose |
@@ -55,10 +72,11 @@ From `examples/pipelines/guard.yaml`:
 | `action` | string | `reject` | `reject`, `warn` or `redact`. Unknown values fall back to `reject`. |
 | `trigger` | `{label, score}` | unset | Single trigger. Ignored when `triggers` is non-empty. Also fills the deprecated proto fields `trigger_label` / `trigger_score`. |
 | `triggers` | list of `{label, score}` | unset | Several triggers; any match fires. |
-| `triggers[].label` | string | unset | Classifier label to watch. |
+| `triggers[].label` | string | unset | Classifier label to watch; one of `labels` when the step sets them. |
 | `triggers[].score` | float | `0` (any score) | Minimum score. `0` is not sent and means any score. |
 | `message` | string | unset | Jinja template rendered on `reject` and returned as the failure message. `{{ <id>.label }}` and `{{ <id>.score }}` are available. |
 | `redact_with_entity_type` | bool | `false` | `redact` only: replace each span with `[LABEL]` (upper-cased) instead of `************`. |
+| `labels` | list | unset | Labels (entity types for a span model) sent with every call in place of the model's own: names, or `{name, description}` objects (the shapes `/v1/classify` takes). Every trigger label must be one of them. Needs a model that takes request labels, as for [`classify`](./classify.md#notes). Unset or empty: the model's own labels, as before. |
 
 ## Context fields
 
@@ -83,6 +101,7 @@ Plus, by action: `warn` writes `__guard_triggered = <id>`; `redact` writes `<out
 - Inspecting a whole conversation costs one classification per turn with text. Set `scope: last_user` where only the newest turn matters, for instance when an earlier guard already inspected the history.
 - With `on_empty: reject` (the default for `reject`), a guard on a model output field blocks an empty generation; set `on_empty: skip` where an empty value is legitimate.
 - Several guards can chain; each one reads the field the previous one produced (`input_field: pii_guard.output`).
+- `labels` are checked at pipeline load: a trigger label that is not among them, a blank or repeated name, or `labels` on a model that cannot take request labels (`onnx_classifier`, `regex`, `llm_token_classifier`) fails the load with a message naming the step (and the model). A release applied in place is checked the same way and refused as a whole.
 
 ## See also
 

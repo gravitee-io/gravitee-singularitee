@@ -116,6 +116,30 @@ models:
 
 `gliner_ner` takes the same block with `entities:` instead of `labels:` (`examples/classifier/pii-gliner.yaml`).
 
+Or put the labels on the steps and declare the model without any: a `classify`, `guard` or `route` step's `labels` are sent with every call it makes, so one loaded GLiNER model serves several steps with different labels, and a new label set is a pipeline change that a synced node applies without a restart (`examples/pipelines/gliner-step-labels.yaml`):
+
+```yaml
+steps:
+  - id: mood
+    type: classify
+    next_step: topic
+    config:
+      model_id: zero-shot          # gliner_classifier, no labels of its own
+      labels: [angry, neutral, happy]
+  - id: topic
+    type: route
+    config:
+      model_id: zero-shot          # same model, other labels
+      labels:
+        - { name: billing, description: "The user asks about an invoice, a charge or a refund." }
+        - { name: technical problem, description: "Something does not work." }
+      rules:
+        - { label: billing, next_step: respond_billing }
+        - { label: technical problem, next_step: respond_technical }
+```
+
+A step with `labels` on a model that cannot take request labels (`onnx_classifier`, `regex`, `llm_token_classifier`) fails the pipeline load, naming the step and the model.
+
 Regex and composite, layered into one id:
 
 ```yaml
@@ -177,7 +201,7 @@ Keys used in this guide. Full lists: [onnx_classifier](../../reference/models/on
 ## Notes
 
 - There is no `NER` mode: `classifier_mode: TOKEN` is NER. The engine reports `token-classification` and results carry `start` / `end`.
-- Per-request `labels` replace the schema for GLiNER engines only. `llm_token_classifier` keeps only the requested labels from its answer. ONNX and regex engines ignore them; a composite passes them to its delegates.
+- Per-request `labels` replace the schema for GLiNER engines and decision models published as classifiers. `llm_token_classifier` keeps only the requested labels from its answer. ONNX and regex engines ignore them; a composite passes them to its delegates. A step's `labels` are refused at load on a model that ignores them (`ClassifierEngine.acceptsRequestLabels()`).
 - Composite merge: `results` is the union of delegate spans, `scores` merges per label with the maximum, `top_label` is the first delegate's non-empty top label, `top_score` the maximum. The composite splits long input once and hands the chunks to its delegates.
 - Regex matches all score `1.0` and `top_label` is the first match in the text. Thresholds on regex verdicts are binary.
 - `regex`, `composite_classifier` and `llm_token_classifier` are pure Java and run on a client workspace as well as a server.

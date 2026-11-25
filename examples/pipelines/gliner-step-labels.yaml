@@ -1,0 +1,148 @@
+#
+# Copyright © 2015 The Gravitee team (http://gravitee.io)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Pipeline: one GLiNER2 model, two steps, each with its own labels
+#
+# Standalone workspace. Run it with:
+#   ./run-server.sh --workspace examples/pipelines/gliner-step-labels.yaml
+#
+#   mood (classify) -> topic (route) -> [ respond_billing | respond_technical | respond_general ]
+#
+# A zero-shot model scores whatever labels it is given, so the labels belong to the
+# step, not to the model. The `zero-shot` model below declares none: the `mood` step
+# asks it about the tone of the message, the `topic` step asks the same loaded model
+# which team should answer. One model in memory serves both, and a new label set is a
+# pipeline change, which a synced node applies in place without a restart.
+#
+# A step's `labels` are names or {name, description} objects, the shapes /v1/classify
+# takes per request. Every route rule (and every guard trigger) must name one of the
+# step's labels; a typo fails the pipeline load instead of silently taking the default
+# branch. A step with `labels` on a model that cannot take request labels (an ONNX or
+# regex classifier, say) fails the load too.
+#
+# Try it:
+#   curl localhost:8080/v1/chat/completions -H 'content-type: application/json' \
+#     -d '{"model":"gliner-step-labels","messages":[{"role":"user","content":"I was charged twice this month and I am furious."}]}'
+#
+#   "I was charged twice this month and I am furious."  -> mood angry, respond_billing
+#   "The app crashes when I upload a photo."            -> respond_technical
+#   "Thanks, have a nice day!"                          -> mood happy, respond_general
+
+workspace:
+  name: gliner-step-labels
+
+  models:
+    - id: llm
+      name: Qwen/Qwen3-0.6B-GGUF
+      type: llama_cpp
+      memory_check: warn
+      llama_cpp:
+        path: Qwen3-0.6B-Q8_0.gguf
+        n_ctx: 8192
+        n_seq_max: 4
+        n_gpu_layers: 999
+        flash_attn_type: AUTO
+
+    # No `labels` here on purpose: every step that uses this model brings its own.
+    - id: zero-shot
+      name: gravitee-io/gliner4j-gliner2-base-v1
+      type: gliner_classifier
+      memory_check: disabled
+      gliner_classifier:
+        variant: onnx_fp16
+        threshold: 0.3
+
+  pipelines:
+    - id: gliner-step-labels
+      name: GLiNER Step Labels Pipeline
+      entry: mood
+
+      steps:
+        - id: mood
+          type: classify
+          next_step: topic
+          config:
+            model_id: zero-shot
+            input_field: prompt
+            labels: [angry, neutral, happy]
+
+        - id: topic
+          type: route
+          config:
+            model_id: zero-shot
+            strategy: classifier
+            input_field: prompt
+            default_step: respond_general
+            labels:
+              - name: billing
+                description: >
+                  The user asks about an invoice, a charge, a refund, a payment method or a
+                  subscription price.
+              - name: technical problem
+                description: >
+                  Something does not work: an error, a crash, a login failure, a slow or
+                  missing feature.
+              - name: general conversation
+                description: Small talk, thanks, or a question without a clear support topic.
+            rules:
+              - label: billing
+                next_step: respond_billing
+              - label: technical problem
+                next_step: respond_technical
+              - label: general conversation
+                next_step: respond_general
+
+        - id: respond_billing
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: respond_billing.output
+            context: { enable_thinking: false }
+            prompt:
+              messages:
+                - role: system
+                  content: "You are a billing support agent. The customer sounds {{ mood.label }}; adapt your tone. Explain charges clearly and offer the next step."
+                - role: user
+                  content: "{{prompt}}"
+
+        - id: respond_technical
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: respond_technical.output
+            context: { enable_thinking: false }
+            prompt:
+              messages:
+                - role: system
+                  content: "You are a technical support agent. The customer sounds {{ mood.label }}; adapt your tone. Ask for what you need to reproduce the problem."
+                - role: user
+                  content: "{{prompt}}"
+
+        - id: respond_general
+          type: infer
+          role: output
+          config:
+            model_id: llm
+            output_field: respond_general.output
+            context: { enable_thinking: false }
+            prompt:
+              messages:
+                - role: system
+                  content: "You are a friendly assistant. The user sounds {{ mood.label }}. Answer briefly."
+                - role: user
+                  content: "{{prompt}}"

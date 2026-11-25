@@ -52,7 +52,7 @@ Java: `client.inferPipeline(InferPipelineRequest.newBuilder().setPipelineId("gli
 
 ### Route on a classifier label
 
-`examples/pipelines/gliner-router.yaml`. The router is a zero-shot classifier, so the route set is the YAML label list; every `rules[].label` must appear verbatim in the model's `labels[].name`:
+`examples/pipelines/gliner-router.yaml`. The router is a zero-shot classifier, so the route set is the YAML label list; every `rules[].label` must appear verbatim in the model's `labels[].name`. To keep the model free for other steps, put the labels on the route step instead (`labels:`, see below and `examples/pipelines/gliner-step-labels.yaml`):
 
 ```yaml
 models:
@@ -208,7 +208,7 @@ Keys used in this guide. Full list: [route step reference](../../reference/steps
 ## Notes
 
 - Set `default_step` on every route step. A blank input, a missing or wrong-typed model, and an unmatched label all resolve to the empty label, which matches nothing; without a default the pipeline ends with no output.
-- `classifier` matching is exact. A router that always takes the default branch is almost always a label that differs from the model's `labels[].name`.
+- `classifier` matching is exact. A router that always takes the default branch is almost always a label that differs from the model's `labels[].name`. With the labels on the step (`labels:`), a rule label that is not among them fails the pipeline load instead, and one GLiNER model can serve every route with its own label set; a label change is then a pipeline change a synced node applies without a restart.
 - `llm_structured` strips whitespace and surrounding quotes, lowercases, then takes the first rule whose label the text contains. Order rules so the most specific label comes first.
 - Reference embeddings are cached per `pipelineId:stepId` at workspace load; editing `sentences` needs a reload.
 - A route step's edges are its `rules[].next_step` and `default_step`; it ignores a step-level `next_step`.

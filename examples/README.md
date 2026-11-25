@@ -161,6 +161,7 @@ and run on a laptop; swap in any file from `llama/` for better output.
 | `llm-guard.yaml` | `input_guard(Shieldstral, reject) -> generate(gpt-oss-20b)` | An LLM-as-judge guard: the policy is a natural-language question in the file, answered with one token. |
 | `tool-router.yaml` | `select_tools -> agent` | Shortlisting the caller's tools with a zero-shot classifier before injecting their schemas. |
 | `gliner-router.yaml` | `route -> respond_{code,cooking,finance,general}` | `strategy: classifier`: the top label picks the branch. |
+| `gliner-step-labels.yaml` | `mood(classify) -> topic(route) -> respond_{billing,technical,general}` | One GLiNER2 model, two steps, each with its own `labels`: the model declares none, so one loaded copy serves both. |
 | `embedding-router.yaml` | `route -> respond_{support,sales,general}` | `strategy: embedding_knn`: the nearest reference sentence picks the branch. |
 | `cot.yaml` | `reason -> evaluate -> loop_gate -> answer / fallback` | A quality gate as a graph edge: loop back and refine until an evaluator step is satisfied. |
 | `tool-repair.yaml` | `generate -> repair_gate -> done / fallback` | Tool-call self-repair on gpt-oss-20b: loop back with the parse error when `generate.tool_parse_failed` is true instead of shipping a malformed call as prose. |

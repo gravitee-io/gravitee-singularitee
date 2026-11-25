@@ -111,6 +111,15 @@ triggers:
 redact_with_entity_type: true      # "[EMAIL]" instead of "************"
 ```
 
+A guard can also bring its own entity set (`labels:`) to a zero-shot model that other steps share; every trigger label must then be one of them, or the pipeline load fails:
+
+```yaml
+model_id: zero-shot-ner
+labels: [person, email, { name: iban, description: "A bank account number." }]
+triggers:
+  - { label: iban, score: 0.5 }
+```
+
 ### Judge with an LLM
 
 `examples/pipelines/llm-guard.yaml`. The judge's prompt is ordinary Jinja over the pipeline context, the verdict is generated on an internal, never-streamed sequence, and `safe_token` is the first token that means "pass":

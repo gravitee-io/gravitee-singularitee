@@ -70,7 +70,8 @@ Thread and batching knobs are the `GRAVITEE_GLINER_*` variables in both cases.
   dominates, so a long label list costs tokens on every chunk.
 - **Spans are real.** Unlike a chunked `gliner_classifier`, every result's offsets locate an
   entity in the original text; chunk offsets are shifted back before the response is built.
-- **Per-request entity sets** arrive through `ClassifyRequest.labels`, same as the classifier.
+- **Per-request entity sets** arrive through `ClassifyRequest.labels`, same as the classifier,
+  and a `guard` step's `labels` send its own entity set on every call.
 - **Combine with regex.** A `composite_classifier` over a `regex` model and a `gliner_ner`
   model gives one guard both deterministic patterns and learned entities.
 - **What gets downloaded.** Root files plus the `variant` sub-folder only; `download.exclude`
