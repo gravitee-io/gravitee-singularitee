@@ -162,4 +162,34 @@ class PipelineExecutorTraceTest {
 
     assertThat(stream.count(ResponseEventType.RESPONSE_EVENT_TYPE_STEP_TRACE)).isZero();
   }
+
+  @Test
+  void a_non_hex_hash_from_the_control_plane_withdraws_tracing() throws Exception {
+    var authority = new TraceKeyAuthority();
+    authority.expect(sha256(KEY));
+    assertThat(run(authority, KEY).count(ResponseEventType.RESPONSE_EVENT_TYPE_STEP_TRACE)).isOne();
+
+    for (var garbage : new String[] { "not-hex-at-all", "abc", "zz".repeat(32) }) {
+      authority.expect(garbage);
+
+      var stream = run(authority, KEY);
+
+      assertThat(stream.count(ResponseEventType.RESPONSE_EVENT_TYPE_STEP_TRACE))
+        .as(garbage)
+        .isZero();
+      assertThat(stream.count(ResponseEventType.RESPONSE_EVENT_TYPE_COMPLETED))
+        .as(garbage)
+        .isEqualTo(1);
+    }
+  }
+
+  @Test
+  void a_non_hex_first_announcement_traces_nothing() {
+    var authority = new TraceKeyAuthority();
+    authority.expect("definitely not a sha-256 digest");
+
+    var stream = run(authority, KEY);
+
+    assertThat(stream.count(ResponseEventType.RESPONSE_EVENT_TYPE_STEP_TRACE)).isZero();
+  }
 }

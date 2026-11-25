@@ -261,6 +261,21 @@ class ReleaseSyncComponentTest {
   }
 
   @Test
+  void a_non_hex_trace_key_hash_withdraws_tracing() {
+    var authority = new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority();
+    var component = component(config(Map.of()), authority);
+    component.setClientForTest(client(), 1, false, () -> {});
+    statusAnswer = "{\"traceKeySha256\":\"" + ReleaseSyncClient.sha256("k-1") + "\"}";
+    component.heartbeat();
+    assertThat(authority.allows("k-1")).isTrue();
+
+    statusAnswer = "{\"traceKeySha256\":\"not a hex digest\"}";
+    component.heartbeat();
+
+    assertThat(authority.allows("k-1")).isFalse();
+  }
+
+  @Test
   void an_empty_heartbeat_answer_changes_nothing() {
     var authority = new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority();
     authority.expect(ReleaseSyncClient.sha256("k-1"));
