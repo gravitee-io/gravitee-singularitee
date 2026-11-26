@@ -136,6 +136,10 @@ public final class ResponsesFormatter {
         );
       }
 
+      // Step traces are not carried on this endpoint yet: dropped.
+      if (token.stepTrace() != null) {
+        return Flowable.fromIterable(events);
+      }
       // Auxiliary progress update (engine-managed todo plan): the Responses
       // surface already emits typed non-canonical objects, so a gravitee-
       // namespaced type is the least invasive representation.
@@ -293,6 +297,9 @@ public final class ResponsesFormatter {
         : "resp-" + accumulator.created();
       return tokenStream
         .concatMap(t -> {
+          if (t.stepTrace() != null) {
+            return Flowable.<ServerEvent>empty();
+          }
           if (t.progress() != null) {
             // The header pair must precede ANY outbound event: a live progress
             // or reasoning event before response.created violates the lifecycle.

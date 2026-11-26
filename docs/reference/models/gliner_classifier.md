@@ -71,7 +71,11 @@ Thread and batching knobs are the `GRAVITEE_GLINER_*` variables in both cases.
   included. A split input sums its chunks; `completion_tokens` is always 0. The prompt usually
   dominates, so a long label list costs tokens on every chunk.
 - **Per-request labels.** `ClassifyRequest.labels` (and the HTTP `labels` array) replace the
-  configured schema for that request. GLiNER is the only family that honours this.
+  configured schema for that request, as they do for a decision model published as a
+  classifier. A `classify`, `guard` or `route` step's `labels` do the same on every call it
+  makes, so one loaded model serves several steps with different labels
+  (`examples/pipelines/gliner-step-labels.yaml`); a model whose steps all bring labels can be
+  declared without any. Such a call is scored on its own rather than through the micro-batcher.
 - **Chunking budget.** Each chunk gets `token_cap` minus an estimate of the label prompt
   (about 3.5 characters per token, since gliner4j exposes no tokenizer); scores roll up as the
   maximum per label. For a chunked input, `results` holds one row per (label, chunk) whose

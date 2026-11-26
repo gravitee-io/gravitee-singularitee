@@ -18,6 +18,7 @@ package io.gravitee.singularitee.plugin.route;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import io.gravitee.singularitee.plugin.route.RouteStepConfig.RouteRule;
 import java.util.List;
@@ -126,5 +127,88 @@ class RouteStepCodecTest {
       ctx
     );
     assertThat(cfg.defaultStepId()).isEqualTo("generalist");
+  }
+
+  @Test
+  void a_classifier_route_parses_its_labels() {
+    var cfg = codec.parse(
+      "route",
+      Map.of(
+        "model_id",
+        "gliner",
+        "labels",
+        List.of(Map.of("name", "billing", "description", "Invoices and payments."), "tech"),
+        "rules",
+        List.of(
+          Map.of("label", "billing", "next_step", "billing_agent"),
+          Map.of("label", "tech", "next_step", "tech_agent")
+        )
+      ),
+      ctx
+    );
+
+    assertThat(cfg.labels()).containsExactly(
+      new ClassifyLabel("billing", "Invoices and payments."),
+      new ClassifyLabel("tech", "")
+    );
+  }
+
+  @Test
+  void a_rule_label_that_is_not_among_the_labels_is_a_load_error() {
+    assertThatThrownBy(() ->
+      codec.parse(
+        "route",
+        Map.of(
+          "model_id",
+          "gliner",
+          "labels",
+          List.of("billing", "tech"),
+          "rules",
+          List.of(
+            Map.of("label", "billing", "next_step", "billing_agent"),
+            Map.of("label", "sales", "next_step", "sales_agent")
+          )
+        ),
+        ctx
+      )
+    )
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("Step 'route'")
+      .hasMessageContaining("rule label 'sales'")
+      .hasMessageContaining("[billing, tech]");
+  }
+
+  @Test
+  void labels_apply_to_the_classifier_strategy_only() {
+    assertThatThrownBy(() ->
+      codec.parse(
+        "route",
+        Map.of(
+          "model_id",
+          "embedder",
+          "strategy",
+          "embedding_knn",
+          "labels",
+          List.of("billing"),
+          "rules",
+          List.of(Map.of("label", "billing", "next_step", "billing_agent"))
+        ),
+        ctx
+      )
+    )
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("Step 'route'")
+      .hasMessageContaining("classifier strategy");
+  }
+
+  @Test
+  void without_labels_a_route_has_none() {
+    var cfg = codec.parse(
+      "router",
+      Map.of("model_id", "clf", "rules", List.of(Map.of("label", "x", "next_step", "y"))),
+      ctx
+    );
+
+    assertThat(cfg.labels()).isEmpty();
   }
 }

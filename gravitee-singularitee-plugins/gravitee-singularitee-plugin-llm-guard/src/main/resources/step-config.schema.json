@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "llm_guard step config",
+  "description": "LLM-as-judge check where a text-generation model answers a screening prompt and the first token of its answer decides whether the request continues.",
+  "type": "object",
+  "required": ["model_id"],
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "description": "Logical id of a published text-generation model.",
+      "x-singularitee-ref": "model",
+      "x-singularitee-model-tasks": ["text-generation"]
+    },
+    "action": {
+      "type": "string",
+      "enum": ["reject", "warn", "redact"],
+      "default": "reject",
+      "description": "What happens on an unsafe verdict: reject halts the pipeline, warn flags and continues, and redact is unsupported and behaves as warn."
+    },
+    "safe_token": {
+      "type": "string",
+      "default": "safe",
+      "description": "Prefix the verdict must start with (case-insensitive, leading whitespace stripped) for the request to pass."
+    },
+    "prompt": {
+      "type": "object",
+      "description": "The screening prompt: chat messages or one raw template; template, template_file and template_id are mutually exclusive and take precedence over messages.",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "description": "Screening conversation sent through the chat template.",
+          "items": {
+            "type": "object",
+            "description": "One chat message.",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": ["system", "user", "assistant"],
+                "default": "user",
+                "description": "Message role; unknown values are treated as user."
+              },
+              "content": {
+                "type": "string",
+                "description": "Jinja template rendered into the message text."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "template": {
+          "type": "string",
+          "description": "Inline raw Jinja prompt sent as a bare string, bypassing the chat template."
+        },
+        "template_file": {
+          "type": "string",
+          "description": "Path to a raw template file, resolved under the templates directory unless absolute."
+        },
+        "template_id": {
+          "type": "string",
+          "description": "Id of a workspace templates entry, resolved to its content at load time.",
+          "x-singularitee-ref": "template"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sampling": {
+      "type": "object",
+      "description": "Sampling override for the judge call; only max_tokens, temperature and top_p are forwarded.",
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 64,
+          "description": "Completion cap."
+        },
+        "temperature": {
+          "type": "number",
+          "description": "Sampling temperature; 0 is greedy and a negative value keeps the engine default."
+        },
+        "top_p": {
+          "type": "number",
+          "description": "Nucleus threshold."
+        },
+        "presence_penalty": {
+          "type": "number",
+          "description": "Accepted but not forwarded by this step."
+        },
+        "frequency_penalty": {
+          "type": "number",
+          "description": "Accepted but not forwarded by this step."
+        },
+        "stop": {
+          "type": "array",
+          "description": "Accepted but not forwarded by this step.",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "message": {
+      "type": "string",
+      "description": "Jinja template rendered on reject and returned as the failure message."
+    },
+    "context": {
+      "type": "object",
+      "description": "Typed Jinja variables merged into the prompt and message rendering context and forwarded to the engine's chat template (for example reasoning_effort, enable_thinking); keys are free-form.",
+      "additionalProperties": true
+    },
+    "tags": {
+      "description": "The judge model's reasoning and tool-call markers, inline or as a bare string referencing a workspace tags entry by id.",
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Id of a workspace tags entry."
+        },
+        { "$ref": "#/$defs/tags" }
+      ]
+    },
+    "input_field": {
+      "type": "string",
+      "description": "Accepted but ignored; the prompt decides what is screened."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "marker": {
+      "description": "One marker string or a list; the first entry is the primary marker and the rest are alternatives.",
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      ]
+    },
+    "tags": {
+      "type": "object",
+      "description": "Reasoning and tool-call channel markers of the model.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Workspace tags entry id."
+        },
+        "reasoning_open": {
+          "$ref": "#/$defs/marker",
+          "description": "Marker(s) opening the reasoning channel."
+        },
+        "reasoning_close": {
+          "$ref": "#/$defs/marker",
+          "description": "Marker(s) closing the reasoning channel."
+        },
+        "reasoning_repeatable": {
+          "type": "boolean",
+          "description": "Whether the reasoning channel may reopen within one generation."
+        },
+        "tool_open": {
+          "$ref": "#/$defs/marker",
+          "description": "Marker(s) opening the tool-call channel."
+        },
+        "tool_close": {
+          "$ref": "#/$defs/marker",
+          "description": "Marker(s) closing the tool-call channel."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

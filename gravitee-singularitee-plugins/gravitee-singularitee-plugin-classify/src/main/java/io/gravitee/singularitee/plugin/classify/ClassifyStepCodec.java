@@ -18,6 +18,7 @@ package io.gravitee.singularitee.plugin.classify;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gravitee.singularitee.engine.api.pipeline.model.ClassifierLabels;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
 import java.util.Map;
@@ -43,7 +44,13 @@ public final class ClassifyStepCodec implements StepConfigCodec<ClassifyStepConf
         e
       );
     }
-    return new ClassifyStepConfig(d.modelId(), d.inputField(), d.outputField(), d.threshold());
+    return new ClassifyStepConfig(
+      d.modelId(),
+      d.inputField(),
+      d.outputField(),
+      d.threshold(),
+      ClassifierLabels.parse(stepId, raw)
+    );
   }
 
   /** The YAML shape of the block. */

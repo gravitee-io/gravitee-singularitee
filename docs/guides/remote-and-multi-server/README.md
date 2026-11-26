@@ -112,8 +112,15 @@ remote:
       port: 9092
       ssl: true
       username: pii           # HTTP Basic over gRPC metadata, optional
-      password: <password>
+      password: ${env:SINGULARITEE_REMOTE_SAFETY_PASSWORD}   # read from the node's environment at load
 ```
+
+A credential written `${env:NAME}` is resolved from the process environment when the workspace
+loads; this is how a release synced from Gamma names a secret without carrying it. Set the
+variable on the node, as with `HF_TOKEN`. A plain value still works. Only names admitted by
+`ai.remote.env-allowlist` are read, by default those starting with `SINGULARITEE_REMOTE_`: whoever
+writes the workspace could otherwise send any variable of the node (its sync token, `HF_TOKEN`,
+cloud keys) to a host of their choice.
 
 The certificates come from `gravitee.yml` on the calling process, never from the workspace:
 
@@ -158,7 +165,7 @@ Full tables: [Workspaces](../../workspaces/README.md),
 | `endpoint.id` | string | `default` | Referenced by `server:` on models, steps and pipelines. |
 | `endpoint.host`, `endpoint.port` | string, int | required | gRPC coordinates. |
 | `endpoint.ssl` | bool | `false` | TLS with ALPN; trust and client certificate from `grpc.client.ssl.*`. |
-| `endpoint.username`, `endpoint.password` | string | unset | Basic auth metadata; on when `username` is non-blank. |
+| `endpoint.username`, `endpoint.password` | string | unset | Basic auth metadata; on when `username` is non-blank. `${env:NAME}` reads the value from the environment at load, for names admitted by `ai.remote.env-allowlist` (default `SINGULARITEE_REMOTE_*`). |
 | `endpoint.http2_keep_alive_timeout` | seconds | `-1` (forever) | Idle HTTP/2 connection timeout. |
 | `model.type` | enum | required | `remote_llm`, `remote_classifier`, `remote_embedding`, `remote_reranker`, `remote_decision`. |
 | `model.server` | string | `default` | Endpoint id; startup fails if neither it nor a `default` endpoint exists. |
@@ -168,6 +175,14 @@ Full tables: [Workspaces](../../workspaces/README.md),
 
 ## Notes
 
+- With tracing on at both ends, one request is one trace across servers: a `remote_*` model call
+  or a remote `sub_pipeline` sends the W3C `traceparent` of its span as gRPC metadata, and the
+  serving node's spans nest under it. See [Observability](../../operations/observability/README.md#propagation).
+- An `${env:NAME}` credential whose variable is outside `ai.remote.env-allowlist`, unset or empty
+  fails that endpoint only, with an error that names the variable, never a value. A refused
+  variable is never read. An embedded client applies the default allowlist. On a server the remote models behind it are not
+  registered (`ai.workspace.strict: true` makes it fail startup); an embedded client fails fast, as
+  for any endpoint it cannot reach.
 - Endpoints are plaintext unless `ssl: true`. An endpoint with credentials must set `ssl: true`
   unless its host is loopback (`localhost` or a loopback IP literal such as `127.0.0.1` or `::1`; a host name is never treated as loopback); otherwise it is refused at load,
   and the remote models behind it are not registered.

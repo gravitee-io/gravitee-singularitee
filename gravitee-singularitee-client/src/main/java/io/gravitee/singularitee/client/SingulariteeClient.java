@@ -31,6 +31,7 @@ import io.vertx.grpc.client.InvalidStatusException;
 import io.vertx.grpc.common.GrpcErrorException;
 import io.vertx.grpc.common.GrpcStatus;
 import java.net.ConnectException;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -122,7 +123,9 @@ public final class SingulariteeClient implements AutoCloseable {
   private final GraviteeVectorServiceGrpcClient vectorStub;
   private final GraviteeDecisionServiceGrpcClient decisionStub;
   private final boolean ownsVertx;
+  private final boolean ownsGrpcClient;
   private final String endpoint;
+  private final SocketAddress address;
   private final boolean secureChannel;
 
   /**
@@ -412,6 +415,7 @@ public final class SingulariteeClient implements AutoCloseable {
   ) {
     this.vertx = vertx;
     this.ownsVertx = ownsVertx;
+    this.ownsGrpcClient = true;
     this.secureChannel =
       (ssl && (tls == null || !tls.trustAll())) || LoopbackHosts.isLoopback(host);
     // Configure HttpClientOptions with a short connect timeout so that
@@ -455,15 +459,46 @@ public final class SingulariteeClient implements AutoCloseable {
     // When credentials are supplied, decorate the client so every request carries
     // an HTTP Basic authorization header (gRPC metadata) for servers with grpc.auth enabled.
     this.grpcClient = (username != null)
-      ? new BasicAuthGrpcClient(client, username, password)
+      ? MetadataGrpcClient.basicAuth(client, username, password)
       : client;
     this.endpoint = host + ":" + port;
-    var address = SocketAddress.inetSocketAddress(port, host);
+    this.address = SocketAddress.inetSocketAddress(port, host);
     this.modelStub = GraviteeModelServiceGrpcClient.create(grpcClient, address);
     this.pipelineStub = GraviteePipelineServiceGrpcClient.create(grpcClient, address);
     this.inferenceStub = GraviteeInferenceServiceGrpcClient.create(grpcClient, address);
     this.vectorStub = GraviteeVectorServiceGrpcClient.create(grpcClient, address);
     this.decisionStub = GraviteeDecisionServiceGrpcClient.create(grpcClient, address);
+  }
+
+  /** A view of {@code origin} sharing its connections, adding {@code metadata} to every call. */
+  private SingulariteeClient(SingulariteeClient origin, Map<String, String> metadata) {
+    this.vertx = origin.vertx;
+    this.ownsVertx = false;
+    this.ownsGrpcClient = false;
+    this.secureChannel = origin.secureChannel;
+    this.grpcClient = new MetadataGrpcClient(origin.grpcClient, metadata);
+    this.endpoint = origin.endpoint;
+    this.address = origin.address;
+    this.modelStub = GraviteeModelServiceGrpcClient.create(grpcClient, address);
+    this.pipelineStub = GraviteePipelineServiceGrpcClient.create(grpcClient, address);
+    this.inferenceStub = GraviteeInferenceServiceGrpcClient.create(grpcClient, address);
+    this.vectorStub = GraviteeVectorServiceGrpcClient.create(grpcClient, address);
+    this.decisionStub = GraviteeDecisionServiceGrpcClient.create(grpcClient, address);
+  }
+
+  /**
+   * A client that sends {@code metadata} (gRPC request headers, such as the W3C
+   * {@code traceparent}) with every call, over this client's connections. Closing it leaves
+   * this client open. No metadata returns this client.
+   *
+   * @param metadata header names and values to add to each request
+   * @return a client view carrying the metadata
+   */
+  public SingulariteeClient withMetadata(Map<String, String> metadata) {
+    if (metadata == null || metadata.isEmpty()) {
+      return this;
+    }
+    return new SingulariteeClient(this, metadata);
   }
 
   // =========================================================================
@@ -667,10 +702,13 @@ public final class SingulariteeClient implements AutoCloseable {
   // =========================================================================
 
   /**
-   * Gracefully shuts down the gRPC client and, if owned, the Vert.x instance.
+   * Gracefully shuts down the gRPC client and, if owned, the Vert.x instance. A
+   * {@link #withMetadata} view shuts down nothing: the client it came from owns the connections.
    */
   public void shutdown() {
-    grpcClient.close();
+    if (ownsGrpcClient) {
+      grpcClient.close();
+    }
     if (ownsVertx) {
       vertx.close();
     }

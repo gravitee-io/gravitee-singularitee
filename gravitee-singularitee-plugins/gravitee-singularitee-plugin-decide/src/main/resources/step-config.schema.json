@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "decide step config",
+  "description": "Asks a decision model typed questions (choice, score, noul) about a context field and writes the answers to the context.",
+  "type": "object",
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Logical id of a published decision model.",
+      "x-singularitee-ref": "model",
+      "x-singularitee-model-tasks": ["decision"]
+    },
+    "input_field": {
+      "type": "string",
+      "default": "prompt",
+      "description": "Context key holding the state; messages passes the chat messages as a list of role and content, and an empty value skips the step with a warning.",
+      "x-singularitee-context": "reads"
+    },
+    "output_field": {
+      "type": "string",
+      "default": "<step id>",
+      "description": "Prefix of the context keys written: <prefix>.<question id> holds the answer and, for choice and score, .confidence, .mode and .probabilities follow.",
+      "x-singularitee-context": "writes"
+    },
+    "questions": {
+      "description": "Id to question map in declaration order, or the string request to take the caller's questions; set exactly one of questions and prompts.",
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "request",
+          "description": "Take the questions from the decision call that targets the pipeline."
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Question id to question.",
+          "additionalProperties": {
+            "$ref": "#/$defs/question"
+          }
+        }
+      ]
+    },
+    "prompts": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Id to prompt the step renders itself with the pipeline's Jinja context, for a model without a template; set exactly one of questions and prompts.",
+      "additionalProperties": {
+        "$ref": "#/$defs/prompt"
+      }
+    }
+  },
+  "required": ["model_id"],
+  "additionalProperties": false,
+  "oneOf": [
+    { "required": ["questions"] },
+    { "required": ["prompts"] }
+  ],
+  "$defs": {
+    "question": {
+      "type": "object",
+      "description": "A typed question: instructions plus exactly one of choice, score or noul.",
+      "properties": {
+        "instructions": {
+          "description": "The question; a string, map or list reaches the template as is."
+        },
+        "choice": {
+          "description": "Pick one option: option key to description (null allowed), or a list of bare keys; at least one option.",
+          "oneOf": [
+            {
+              "type": "object",
+              "minProperties": 1,
+              "description": "Option key to description.",
+              "additionalProperties": true
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "description": "Bare option keys.",
+              "items": {
+                "type": ["string", "number"]
+              }
+            }
+          ]
+        },
+        "score": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 10,
+          "description": "Level descriptions, lowest first."
+        },
+        "noul": {
+          "type": ["object", "null"],
+          "description": "Yes or no question; an optional true and false description may be given.",
+          "properties": {
+            "true": {
+              "description": "Description of the yes answer."
+            },
+            "false": {
+              "description": "Description of the no answer."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["instructions"],
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["choice"] },
+        { "required": ["score"] },
+        { "required": ["noul"] }
+      ]
+    },
+    "prompt": {
+      "type": "object",
+      "description": "A prompt the step renders itself: a template plus exactly one of choice, score or noul describing the answer shape.",
+      "properties": {
+        "template": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A workspace templates id, or inline Jinja rendered against the pipeline context; a bare name that is no templates id fails the load."
+        },
+        "choice": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Distinct, non-empty option keys in the order the prompt lists them.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 10,
+          "description": "Number of score levels."
+        },
+        "noul": {
+          "type": ["object", "null"],
+          "description": "Yes or no answer; use an empty map."
+        }
+      },
+      "required": ["template"],
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["choice"] },
+        { "required": ["score"] },
+        { "required": ["noul"] }
+      ]
+    }
+  }
+}

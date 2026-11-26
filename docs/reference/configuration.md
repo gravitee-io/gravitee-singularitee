@@ -131,7 +131,16 @@ The workspace decides which endpoints are reached over TLS (`ssl: true` on the e
 | Key | Default | Env var | Purpose |
 | --- | --- | --- | --- |
 | `ai.workspace.path` | unset | `GRAVITEE_AI_WORKSPACE_PATH` | Workspace YAML loaded at boot. Unset starts an empty server, ready at once. A file that does not parse (bad YAML, an unknown step, an include outside its folder) fails startup whatever `ai.workspace.strict` says. |
-| `ai.workspace.strict` | `false` | `GRAVITEE_AI_WORKSPACE_STRICT` | Fail startup when any model, remote model or pipeline fails to load (a workspace that does not parse always fails startup). Off, failures are logged and the server serves what loaded; a pipeline whose model failed is never registered. Turn it on where an orchestrator should replace an instance instead of routing to a partial one. |
+| `ai.workspace.strict` | `false` | `GRAVITEE_AI_WORKSPACE_STRICT` | Fail startup when any model, remote model or pipeline fails to load (a workspace that does not parse always fails startup). Off, failures are logged and the server serves what loaded; a pipeline whose model failed is never registered. Turn it on where an orchestrator should replace an instance instead of routing to a partial one. It also decides how a synced node applies a release in place: on, one failing pipeline refuses the whole release; off, the failing pipelines are left out and the rest applied, as at startup. See [Releases applied without a restart](#releases-applied-without-a-restart). |
+| `ai.sync.enabled` | `false` | `GRAVITEE_AI_SYNC_ENABLED` | Pull the workspace from the Gamma module instead of a local file. Needs `ai.sync.url` and `ai.sync.token`, otherwise startup fails. The pulled release always wins over `ai.workspace.path`, including when that one comes from `GRAVITEE_AI_WORKSPACE_PATH`: the node logs a warning and serves only what Gamma delivered. `./run-server.sh` serves no local example while this is `true` (unless you pass `--workspace`, which is then ignored). |
+| `ai.sync.url` | unset | `GRAVITEE_AI_SYNC_URL` | Base URL of the Gamma module sync API; the node calls `<url>/_sync/release`. |
+| `ai.sync.token` | unset | `GRAVITEE_AI_SYNC_TOKEN` | Sync token issued by Gamma (sent as `X-Singularitee-Token`) for the server group, a signed JWT that names the group (`gid`) and its environment (`env`, absent on older tokens). With tracing on, the node reads both at startup to label its spans, see [Synced nodes](../operations/observability/README.md#synced-nodes). Shown once when the group is created or its token rotated. |
+| `ai.sync.interval` | `30` | `GRAVITEE_AI_SYNC_INTERVAL` | Seconds between polls for a newer release. |
+| `ai.sync.heartbeat-interval` | `10` | `GRAVITEE_AI_SYNC_HEARTBEAT_INTERVAL` | Seconds between status reports to Gamma (`POST <url>/_sync/instances/<id>/status`). Each report says whether the node is ready to serve (false while the workspace loads), its uptime, the running revision, the models (id, engine, task) and pipelines it serves, the step types it can execute (type, whether core, and the config JSON schema when the plugin ships one), host RAM, CPU (architecture, model, cores, SIMD) and GPUs (vendor, memory, driver, CUDA capability or Metal), and the last sync error (including why a release could not be applied in place, or which pipelines an in-place release left out). Gamma counts a node offline after three missed reports. The first report registers the node. A failed report is logged and never affects serving. The hardware is probed once, on a thread of its own (`nvidia-smi`, `sysctl`, `system_profiler`, each killed after 5 s), so a hung driver never delays a report or a poll; until the probe answers, reports carry no hardware. |
+| `ai.sync.instance-id` | generated | `GRAVITEE_AI_SYNC_INSTANCE_ID` | Stable id of this node. Unset, a UUID is generated once and kept as `instance.id` in `ai.sync.cache-dir`. Set it in Kubernetes to the pod or StatefulSet name so a restart keeps its identity. |
+| `ai.sync.cache-dir` | `${gravitee.home}/sync` | `GRAVITEE_AI_SYNC_CACHE_DIR` | Where the last good release is kept. If Gamma is unreachable at boot the node starts on it; with nothing cached, startup fails. |
+| `ai.sync.restart-on-change` | `true` | `GRAVITEE_AI_SYNC_RESTART_ON_CHANGE` | Models cannot be unloaded at runtime, so a newer release that changes anything beyond `workspace.pipelines` and `workspace.templates` is applied by storing it and exiting with status `75`; the supervisor must restart the node (`./run-server.sh` does; Kubernetes restarts any exit; Docker needs `restart: unless-stopped` or `on-failure`; systemd needs `Restart=always` or `RestartForceExitStatus=75`). Set `false` to store such a release only. A release that changes only pipelines and templates is applied in place whatever this key says; see [Releases applied without a restart](#releases-applied-without-a-restart). |
+| `ai.remote.env-allowlist` | `SINGULARITEE_REMOTE_*` | `GRAVITEE_AI_REMOTE_ENV_ALLOWLIST` | Environment variables a `remote:` endpoint's `${env:NAME}` credentials may read. A comma-separated string or a YAML list; an entry is an exact name, or a prefix when it ends in `*`. A value replaces the default; blank admits no variable. Any other name fails that endpoint at load with an error naming the variable and this rule, and the variable is never read. A workspace (a release synced from Gamma included) can be written by someone who does not run the node, so it never reaches the rest of the node's environment (`GRAVITEE_AI_SYNC_TOKEN`, `HF_TOKEN`, cloud keys). |
 | `ai.models.path` | `${gravitee.home}/models` | `GRAVITEE_AI_MODELS_PATH` | Model cache. Blank falls back to `~/.cache/gravitee-singularitee/models`; `run-server.sh` sets that path explicitly so `mvn clean` never removes weights. |
 | `ai.huggingface.token` | unset | `GRAVITEE_AI_HUGGINGFACE_TOKEN` | Token for gated repos. Blank falls back to the `HF_TOKEN` environment variable. |
 | `ai.huggingface.download.chunkSize` | `10485760` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_CHUNKSIZE` | Bytes per HTTP Range request in the parallel download path. |
@@ -140,6 +149,68 @@ The workspace decides which endpoints are reached over TLS (`ssl: true` on the e
 | `ai.huggingface.download.connectTimeout` | `15000` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_CONNECTTIMEOUT` | Milliseconds to wait establishing a connection to the hub or its CDN before the attempt is retried. |
 | `ai.huggingface.download.idleTimeout` | `300` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_IDLETIMEOUT` | Download time check, in seconds: a transfer that receives no data for this long is aborted and retried against a fresh URL. Raise it for very large weights on a slow link; lower it to fail fast. |
 | `ai.huggingface.download.progressInterval` | `5000` | `GRAVITEE_AI_HUGGINGFACE_DOWNLOAD_PROGRESSINTERVAL` | How often, in milliseconds, the per-file download progress bar (percentage and MiB) is logged. Raise it to quiet the log on long downloads; lower it for a snappier bar. |
+
+#### Releases applied without a restart
+
+With `ai.sync.enabled`, the node compares each newer release with the one it runs, as YAML trees (key order and
+formatting do not count), after removing `workspace.pipelines` and `workspace.templates`. When nothing else differs,
+the release is applied in place once the workspace has loaded:
+
+- the new pipelines are loaded through the workspace loader against the models the node already serves, templates
+  included;
+- the whole set replaces the old one in one step: new and changed pipelines are served, removed ones are gone;
+- the release is stored in `ai.sync.cache-dir`, so a later restart starts from it, and the heartbeat reports its
+  revision;
+- the KNN reference embeddings of changed and removed pipelines are dropped and recomputed, so a changed `embedding_knn` route never routes on its old references;
+- runs already started finish on the pipeline they began with.
+
+A pipeline that fails to register (an unknown model, `labels` on a model that cannot take them), or that the loader
+skips (a step codec failing with an unexpected error), is treated as at startup:
+
+- by default it is left out and the rest of the release is applied as above. A pipeline the node skipped at boot
+  because its model failed to load therefore never blocks an edit to another pipeline. The heartbeat reports the
+  pipelines left out, with the reason for each, as `lastError` until a release applies without leaving any out;
+- with `ai.workspace.strict: true` nothing changes: the node keeps the old pipelines and revision, leaves the stored
+  release as it was, reports the error as `lastError` and tries again at the next poll. A newer release fixes it.
+
+A release that does not load as a whole (a step type no plugin provides, a step config its codec refuses, an unlicensed
+step) is never applied in part: it is refused as in strict mode, as such a workspace fails startup.
+
+`lastError` keeps two kinds of error apart. A failure to reach the control plane (a refused connection, a timeout, an
+empty response) is transient: it is reported until the next successful poll or heartbeat, then cleared. A release
+the node could not load or apply stays reported across successful polls and heartbeats until a release that applies
+cleanly replaces it. A control plane that answers a poll with an error status keeps being reported until a poll
+succeeds.
+
+Anything else takes the restart path of `ai.sync.restart-on-change`: a changed model or remote endpoint, any other
+changed key, a release that does not parse, `includes:`, and a changed template that a model reads (a decision
+model's `prompt.template` is resolved when the model loads).
+
+#### Heartbeat answer and the step trace
+
+Gamma answers a status report with an optional JSON body. The node reads one field:
+
+```json
+{ "traceKeySha256": "<SHA-256 of the trace key, lower or upper case hex>" }
+```
+
+A request may see a step trace only when it presents the key behind that hash (`X-Singularitee-Trace-Key` over HTTP,
+`trace_key` over gRPC); the node compares hashes and never learns the key. Until a hash is announced nothing is traced,
+and a request with another key or none runs normally.
+
+| Answer | Effect |
+| --- | --- |
+| `traceKeySha256` set to a hex digest | Replaces the expected hash. |
+| `traceKeySha256` blank, `null`, or not hex | Withdraws it: nothing is traced until a valid hash is announced. |
+| `401` or `403` (the control plane refuses the node's token) | Withdraws it, so a node left on a rotated token stops accepting the old key. |
+| No body, no `traceKeySha256`, or a value that is neither a string nor `null` | Changes nothing (an older control plane sends no hash). |
+| Any other failure (unreachable, another error status) | Changes nothing. |
+| A body that is not JSON | Logged as a warning and ignored. |
+
+Limits of a trace: each output value is cut to 4096 characters, and the serialized trace of one run is capped at
+256 KiB. From the first step that would exceed the cap, steps record only their id, type and timing, marked
+`truncated`. Over HTTP only a non-streamed Chat Completions answer carries the trace (`gravitee_trace`); streams and the
+Responses and legacy Completions endpoints do not carry it yet. gRPC streams carry it as `STEP_TRACE` events.
 
 ### `ai.streaming.*`
 
@@ -228,10 +299,11 @@ The GPU topology keys are deployment-wide: a model's own `vllm:` value wins; the
 
 | Key | Default | Env var | Purpose |
 | --- | --- | --- | --- |
-| `services.opentelemetry.enabled` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_ENABLED` | Emit a `SERVER` span per RPC with nested `<name-prefix>.*` spans. |
-| `services.opentelemetry.verbose` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_VERBOSE` | Add content-heavy attributes to spans (input/output values, message text, embedded text). Off keeps spans free of prompt/response content. |
+| `services.opentelemetry.enabled` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_ENABLED` | Emit a `SERVER` span per RPC with nested `pipeline <id>`, `step <id> (<type>)` and `<operation> <model>` spans, and propagate the W3C trace context to remote nodes. See [Span model](#span-model). |
+| `services.opentelemetry.verbose` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_VERBOSE` | Add content-heavy attributes to spans (input/output values, message text, embedded text, the `<prefix>.turn.input` / `<prefix>.turn.output` previews). Off keeps spans free of prompt/response content. |
 | `services.opentelemetry.openinference` | `true` | `GRAVITEE_SERVICES_OPENTELEMETRY_OPENINFERENCE` | Also emit OpenInference semantic attributes (`openinference.span.kind`, `session.id`, `llm.*`, `embedding.*`), so OpenInference-aware tools render the traces natively. These keys are fixed and never carry the name-prefix. |
-| `services.opentelemetry.name-prefix` | `singularitee` | `GRAVITEE_SERVICES_OPENTELEMETRY_NAMEPREFIX` | Prefix for the span names and the engine's own span attributes (`<prefix>.pipeline`, `<prefix>.step`, `<prefix>.session`, ...). Does not apply to OpenInference keys; Micrometer metric names are unaffected. |
+| `services.opentelemetry.name-prefix` | `singularitee` | `GRAVITEE_SERVICES_OPENTELEMETRY_NAMEPREFIX` | Prefix for the engine's own span attributes (`<prefix>.step.id`, `<prefix>.model.type`, `<prefix>.session`, ...) and the direct-RPC span names (`<prefix>.embed`, ...). Pipeline, step and model span names carry none. Does not apply to OpenInference or `gen_ai.*` keys; Micrometer metric names are unaffected. |
+| `services.opentelemetry.exclude-paths` | `/health`, `/healthz`, `/ready`, `/readyz`, `/readiness`, `/live`, `/livez`, `/liveness`, `/metrics`, `/_node/*` | `GRAVITEE_SERVICES_OPENTELEMETRY_EXCLUDEPATHS` | HTTP API paths served without a span, so probe polls do not fill the trace list. A comma-separated string or a YAML list; an entry ending in `*` is a prefix. A value replaces the default; blank traces every path. gRPC calls are always traced. |
 | `services.opentelemetry.exporter.endpoint` | `http://localhost:4317` | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_ENDPOINT` | OTLP collector. |
 | `services.opentelemetry.exporter.protocol` | `grpc` | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_PROTOCOL` | `grpc` (4317) or `http/protobuf` (4318). |
 | `services.opentelemetry.exporter.compression` | unset | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_COMPRESSION` | e.g. `gzip`. |
@@ -239,8 +311,32 @@ The GPU topology keys are deployment-wide: a model's own `vllm:` value wins; the
 | `services.opentelemetry.exporter.headers` | unset | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_HEADERS_<n>` | Extra OTLP headers as `name=value` entries. |
 | `services.opentelemetry.exporter.ssl.trustAll` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_SSL_TRUSTALL` | Skip collector certificate verification. |
 | `services.opentelemetry.exporter.ssl.verifyHost` | `true` | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_SSL_VERIFYHOST` | Verify the collector host name. |
+| `services.opentelemetry.extraAttributes` | unset | `GRAVITEE_SERVICES_OPENTELEMETRY_EXTRAATTRIBUTES_<n>_<key>` | Extra resource attributes on every span, as a list of `key: value` entries (in env form the key's dots become underscores, lowercase). With `ai.sync.enabled`, `gravitee.api.id` and `gravitee.env.id` are set automatically, see [Synced nodes](../operations/observability/README.md#synced-nodes); an entry here for either key wins. |
 
 `services.tracing.otel.*` is accepted as an alias for `services.opentelemetry.*`.
+
+#### Span model
+
+One pipeline run is one trace. Attribute keys below use the default prefix `singularitee`.
+
+| Span | Kind | Attributes | Status |
+| --- | --- | --- | --- |
+| `POST` (gRPC or HTTP server span) | `SERVER` | `rpc.system`, `rpc.method` or `http.route` | Left unset on success, as the HTTP semantic conventions ask of server spans. |
+| `pipeline <id>` | `INTERNAL` | `singularitee.pipeline.id`, `pipeline.id`, `singularitee.session`, `singularitee.turn.index`, `singularitee.finish_reason` | `OK`; `ERROR` when the run fails. A run a guard halted is `OK`. |
+| `step <id> (<type>)`, e.g. `step pii_guard (guard)` | `INTERNAL` | `singularitee.step.id`, `singularitee.step.type`, `singularitee.pipeline.id`, `step.id`, `step.type`, `model.id` when model-bound, `singularitee.step.halted=true` on the step that halted the run | `OK`; `ERROR` when the step fails. A deliberate block is `OK`, not an error. |
+| `<operation> <model>`, e.g. `classify pii`, `infer llm` | `CLIENT` | `singularitee.model.id`, `singularitee.model.type` (`text_gen`, `classifier`, `embedding`, `reranker`, `decision`), `model.id`, `op` (the step operation, e.g. `guard`), `gen_ai.request.model` and `gen_ai.operation.name` for generation and embeddings, `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` when the engine reports usage | `OK`; `ERROR` when the call fails. |
+
+`<operation>` follows the model's engine type: `infer`, `classify`, `embed`, `rerank` or `decide`.
+Each span ends before the next sibling starts: a model span inside its step, a step before the
+next step. A failure is recorded as the `exception.type` and `exception.message` attributes and the
+status description. Facts and exceptions are attributes only, never span events: an exporter that
+stores span events as their own documents (the Elasticsearch exporter does) would otherwise show
+them as unnamed spans.
+
+**Across nodes.** A call to a `remote_*` model carries the model span's W3C `traceparent` (and
+`tracestate`) as gRPC metadata, and a remote `sub_pipeline` call carries its step span's. The
+serving node's `SERVER` span continues that context, so its spans join the caller's trace under
+the span that made the call. An inbound `traceparent` on an HTTP request is honoured the same way.
 
 ### Node
 
@@ -267,6 +363,7 @@ These are read straight from the process environment by the engine adapters.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `HF_TOKEN` | unset | Fallback for `ai.huggingface.token`. |
+| any `NAME` a workspace references as `${env:NAME}` | unset | Value of a `remote:` endpoint's `username` or `password`, read when the workspace loads. Only names admitted by `ai.remote.env-allowlist` (default: starting with `SINGULARITEE_REMOTE_`) are read. Unset or empty fails that endpoint; see [Workspaces](../workspaces/README.md#remote-endpoints). |
 | `LLAMA_CPP_LIB_PATH` | unset | Directory llamaj.cpp loads the llama.cpp natives from before falling back to `~/.llama.cpp`; GLiNER ggml bundles use the same natives and look for the `libggml-deberta` plugin in its `plugins/` sub-directory. The CUDA image sets it. |
 | `GLINER4J_DEBERTA_KERNEL` | `auto` | Attention kernel of the `libggml-deberta` plugin: `auto` times every variant the GPU holds at first use (logged as `DEBERTA plugin: autotune …`) and keeps the fastest correct one; `turing`, `ampere` (shared-memory kernels) or `reg64x32`, `reg64x64`, `reg128x32`, `reg128x64` (register-resident) force one. `GLINER4J_DEBERTA_AUTOTUNE=0` keeps the static rule instead. |
 | `VLLM4J_ATTENTION_BACKEND` | unset | Same as `-Dvllm4j.attentionBackend`. |

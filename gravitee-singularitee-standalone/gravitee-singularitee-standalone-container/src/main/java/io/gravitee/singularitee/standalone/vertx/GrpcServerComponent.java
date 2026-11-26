@@ -26,6 +26,7 @@ import io.gravitee.node.vertx.server.http.VertxHttpServer;
 import io.gravitee.node.vertx.server.http.VertxHttpServerOptions;
 import io.gravitee.singularitee.client.LoopbackHosts;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
+import io.gravitee.singularitee.engine.api.tracing.SpanStatus;
 import io.gravitee.singularitee.service.GraviteeDecisionServiceImpl;
 import io.gravitee.singularitee.service.GraviteeInferenceServiceImpl;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
@@ -43,6 +44,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.env.ConfigurableEnvironment;
@@ -236,6 +238,8 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
     // The tracing decorator sits OUTSIDE the auth handler so rejected/unauthenticated calls
     // are still traced (their gRPC UNAUTHENTICATED response ends the span cleanly).
     final Handler<HttpServerRequest> service = tracingHandler(
+      tracer,
+      () -> vertx.getDelegate().getOrCreateContext(),
       authEnabled ? buildAuthHandler(grpcServer) : grpcServer
     );
     // GET /health is 200 (unauthenticated); service calls are 503 until the workspace has loaded.
@@ -354,12 +358,16 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
    * or fails. The span is attached to the request's Vert.x context, which the service methods
    * run on, so their child spans nest under it. Cost is nil when the tracer is the no-op one.
    */
-  private Handler<HttpServerRequest> tracingHandler(Handler<HttpServerRequest> delegate) {
+  static Handler<HttpServerRequest> tracingHandler(
+    Tracer tracer,
+    Supplier<Context> fallbackContext,
+    Handler<HttpServerRequest> delegate
+  ) {
     return request -> {
       final Context ctx = request instanceof
           io.vertx.core.internal.http.HttpServerRequestInternal internal
         ? internal.context()
-        : vertx.getDelegate().getOrCreateContext();
+        : fallbackContext.get();
 
       final Span span = tracer.startRootSpanFrom(ctx, new ObservableHttpServerRequest(request));
       span.withAttribute("rpc.system", "grpc").withAttribute("rpc.method", request.path());
@@ -383,12 +391,12 @@ public class GrpcServerComponent extends AbstractService<GrpcServerComponent> {
         .response()
         .exceptionHandler(err -> {
           if (ended.compareAndSet(false, true)) {
-            tracer.endOnError(ctx, span, err);
+            SpanStatus.endWithError(tracer, ctx, span, err);
           }
         });
       request.exceptionHandler(err -> {
         if (ended.compareAndSet(false, true)) {
-          tracer.endOnError(ctx, span, err);
+          SpanStatus.endWithError(tracer, ctx, span, err);
         }
       });
 

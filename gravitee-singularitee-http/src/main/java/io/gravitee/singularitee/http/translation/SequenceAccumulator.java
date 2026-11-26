@@ -18,6 +18,7 @@ package io.gravitee.singularitee.http.translation;
 import static java.util.Objects.nonNull;
 
 import io.gravitee.singularitee.protocol.PositionLogprobs;
+import io.gravitee.singularitee.protocol.StepTrace;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +39,7 @@ public final class SequenceAccumulator {
   private PerformanceMessage performance;
   private List<WireToolCall> wireToolCalls;
   private List<PositionLogprobs> logprobs;
+  private final List<StepTrace> traces = new ArrayList<>();
 
   /**
    * Folds one token into the accumulated state. Text deltas append to their channel; the final
@@ -45,6 +47,10 @@ public final class SequenceAccumulator {
    * always take the latest value.
    */
   public void add(TokenMessage token) {
+    if (token.stepTrace() != null) {
+      traces.add(token.stepTrace());
+      return;
+    }
     if (nonNull(token.token()) && !token.token().isEmpty()) {
       content.append(token.token());
     }
@@ -78,6 +84,11 @@ public final class SequenceAccumulator {
     if (token.performance() != null) {
       performance = token.performance();
     }
+  }
+
+  /** What each step of a traced pipeline run did, in order; empty when the run was not traced. */
+  public List<StepTrace> traces() {
+    return List.copyOf(traces);
   }
 
   public String content() {

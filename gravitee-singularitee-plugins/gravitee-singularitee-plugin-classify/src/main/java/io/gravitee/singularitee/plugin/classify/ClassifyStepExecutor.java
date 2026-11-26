@@ -63,24 +63,27 @@ public final class ClassifyStepExecutor
 
     // Capture the step-span scribe now (valid before the async classify; see InferStepExecutor).
     final SpanScribe stepScribe = ctx.stepScribe();
-    return engine
-      .rxClassify(new ClassifyRequest(text))
-      .flatMapMaybe(result -> {
-        // Span introspection: the winning label and its score.
-        stepScribe
-          .set(SpanNames.key("classify.label"), result.topLabel())
-          .set(SpanNames.key("classify.score"), (double) result.topScore());
-        String outputField = resolveOutputField(cfg.outputField(), stepId, ".label");
-        ctx.pipelineContext().set(outputField, result.topLabel());
-        ctx.pipelineContext().set(outputField + ".score", String.valueOf(result.topScore()));
+    var request = new ClassifyRequest(text);
+    return (
+      cfg.labels().isEmpty()
+        ? engine.rxClassify(request)
+        : engine.rxClassify(request, cfg.labels()).map(r -> r.within(cfg.labels()))
+    ).flatMapMaybe(result -> {
+      // Span introspection: the winning label and its score.
+      stepScribe
+        .set(SpanNames.key("classify.label"), result.topLabel())
+        .set(SpanNames.key("classify.score"), (double) result.topScore());
+      String outputField = resolveOutputField(cfg.outputField(), stepId, ".label");
+      ctx.pipelineContext().set(outputField, result.topLabel());
+      ctx.pipelineContext().set(outputField + ".score", String.valueOf(result.topScore()));
 
-        LOGGER.debug(
-          "ClassifyStep '{}': label='{}' score={}",
-          stepId,
-          result.topLabel(),
-          result.topScore()
-        );
-        return ctx.rxNextStep(stepId);
-      });
+      LOGGER.debug(
+        "ClassifyStep '{}': label='{}' score={}",
+        stepId,
+        result.topLabel(),
+        result.topScore()
+      );
+      return ctx.rxNextStep(stepId);
+    });
   }
 }

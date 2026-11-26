@@ -294,7 +294,8 @@ distribution flavour can omit an engine and fail with "no factory for type" rath
 template). It holds a config record (implement `ModelBoundConfig` if it names a model,
 `BranchingConfig` if it names branch targets, `MonitorGateConfig` if it needs a downstream
 monitor), a `StepConfigCodec` parsing the YAML `config:` block, the `StepExecutor`, a
-`StepExecutorPlugin` (type string, its codec and executor), and `src/main/resources/plugin.properties`
+`StepExecutorPlugin` (type string, its codec and executor), `src/main/resources/step-config.schema.json`
+(the JSON schema of the YAML `config:` block, read by `StepExecutorPlugin.configSchema()`), and `src/main/resources/plugin.properties`
 (`type=step`, `class=` the plugin, and an optional `feature=` a step declares to require a license feature). The aggregator
 manages the assembly, so the module just opts into `maven-assembly-plugin` to build its zip.
 Register the module in the plugins aggregator, the root `dependencyManagement`, the

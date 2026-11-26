@@ -86,8 +86,7 @@ class SpanScribeTest {
       .set("i", 7)
       .set("l", 9L)
       .set("d", 1.5)
-      .set("nullValue", null)
-      .event("turn", Map.of("role", "engine"));
+      .set("nullValue", null);
 
     assertThat(span.attributes)
       .containsEntry("s", "text")
@@ -96,6 +95,16 @@ class SpanScribeTest {
       .containsEntry("l", 9L)
       .containsEntry("d", 1.5)
       .doesNotContainKey("nullValue"); // null is ignored
-    assertThat(span.events).containsKey("turn");
+  }
+
+  @Test
+  void an_event_is_written_as_attributes_not_as_a_span_event() {
+    var span = new RecordingSpan();
+    SpanScribe.of(span).event("turn", Map.of("role", "engine", "count", 2));
+
+    assertThat(span.attributes)
+      .containsEntry("turn.role", "engine")
+      .containsEntry("turn.count", 2L);
+    assertThat(span.events).isEmpty();
   }
 }

@@ -36,9 +36,15 @@ import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Single;
 import java.io.Serializable;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,17 +73,21 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
   private final StepExecutionContext execContext;
 
   /**
-   * KNN reference embeddings, keyed {@code pipelineId:stepId}. Backed by the
-   * node {@link Cache} when a manager is wired (pluggable; distributed
-   * backends avoid re-embedding per node); a plain map otherwise (client-side
-   * executor, tests).
+   * KNN reference embeddings, keyed {@code pipelineId:stepId:<hash of the references>}: a step
+   * whose references changed misses the old entry instead of reading stale embeddings. Backed by
+   * the node {@link Cache} when a manager is wired (pluggable; distributed backends avoid
+   * re-embedding per node); a plain map otherwise (client-side executor, tests).
    */
   private final EmbeddingCache embeddingCache;
 
-  /** Minimal get/put view unifying the node cache and the in-process fallback map. */
+  /** The key each step of each pipeline currently holds, so superseded and forgotten entries are evicted. */
+  private final Map<String, Map<String, String>> keysByPipeline = new ConcurrentHashMap<>();
+
+  /** Minimal get/put/evict view unifying the node cache and the in-process fallback map. */
   private interface EmbeddingCache {
     List<RuleEmbedding> get(String key);
     void put(String key, List<RuleEmbedding> embeddings);
+    void evict(String key);
   }
 
   /**
@@ -113,6 +123,11 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
         public void put(String key, List<RuleEmbedding> embeddings) {
           local.put(key, embeddings);
         }
+
+        @Override
+        public void evict(String key) {
+          local.remove(key);
+        }
       };
     } else {
       Cache<String, List<RuleEmbedding>> shared = cacheManager.getOrCreateCache(
@@ -128,6 +143,11 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
         @Override
         public void put(String key, List<RuleEmbedding> embeddings) {
           shared.put(key, embeddings);
+        }
+
+        @Override
+        public void evict(String key) {
+          shared.evict(key);
         }
       };
     }
@@ -171,11 +191,10 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
         continue;
       }
 
-      String cacheKey = cacheKey(pipeline.id(), step.id());
       warmups.add(
         rxComputeRuleEmbeddings(cfg, ee)
           .doOnSuccess(embeddings -> {
-            embeddingCache.put(cacheKey, embeddings);
+            store(pipeline.id(), step.id(), cfg, embeddings);
             LOGGER.info(
               "Pre-computed {} reference embedding(s) for KNN route step '{}'",
               embeddings.size(),
@@ -186,6 +205,27 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
       );
     }
     return warmups.isEmpty() ? Completable.complete() : Completable.merge(warmups);
+  }
+
+  /** Drops the reference embeddings of a pipeline that was changed or removed. */
+  @Override
+  public void forget(String pipelineId) {
+    Map<String, String> keys = keysByPipeline.remove(pipelineId);
+    if (keys != null) keys.values().forEach(embeddingCache::evict);
+  }
+
+  private void store(
+    String pipelineId,
+    String stepId,
+    RouteStepConfig cfg,
+    List<RuleEmbedding> embeddings
+  ) {
+    String key = cacheKey(pipelineId, stepId, cfg);
+    embeddingCache.put(key, embeddings);
+    String superseded = keysByPipeline
+      .computeIfAbsent(pipelineId, id -> new ConcurrentHashMap<>())
+      .put(stepId, key);
+    if (superseded != null && !superseded.equals(key)) embeddingCache.evict(superseded);
   }
 
   // ---------------------------------------------------------------------------
@@ -281,7 +321,12 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
       );
       return Single.just("");
     }
-    return ce.rxClassify(new ClassifyRequest(text)).map(r -> r.topLabel());
+    var request = new ClassifyRequest(text);
+    return (
+      cfg.labels().isEmpty()
+        ? ce.rxClassify(request)
+        : ce.rxClassify(request, cfg.labels()).map(r -> r.within(cfg.labels()))
+    ).map(r -> r.topLabel() == null ? "" : r.topLabel());
   }
 
   // ---------------------------------------------------------------------------
@@ -372,7 +417,8 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
       return Single.just("");
     }
 
-    String cacheKey = ctx.pipeline() != null ? cacheKey(ctx.pipeline().id(), stepId) : stepId;
+    String pipelineId = ctx.pipeline() != null ? ctx.pipeline().id() : "";
+    String cacheKey = cacheKey(pipelineId, stepId, cfg);
 
     // Check cache first: if populated (by warmup), no async embedding needed
     List<RuleEmbedding> cached = embeddingCache.get(cacheKey);
@@ -384,7 +430,7 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
 
     // Cache miss: compute reference embeddings reactively, then embed the query
     return rxComputeRuleEmbeddings(cfg, ee)
-      .doOnSuccess(embeddings -> embeddingCache.put(cacheKey, embeddings))
+      .doOnSuccess(embeddings -> store(pipelineId, stepId, cfg, embeddings))
       .flatMap(references ->
         ee
           .rxEmbed(new EmbedRequest(text))
@@ -451,7 +497,29 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
     return denom == 0 ? 0f : dot / denom;
   }
 
-  private static String cacheKey(String pipelineId, String stepId) {
-    return pipelineId + ":" + stepId;
+  private static String cacheKey(String pipelineId, String stepId, RouteStepConfig cfg) {
+    return pipelineId + ":" + stepId + ":" + referencesHash(cfg);
+  }
+
+  /** Identifies the embedding model and the texts embedded as references, in order. */
+  private static String referencesHash(RouteStepConfig cfg) {
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      update(digest, cfg.modelId());
+      for (RouteRule rule : cfg.rules()) {
+        update(digest, rule.label());
+        rule.sentences().forEach(sentence -> update(digest, sentence));
+        update(digest, null);
+      }
+      return HexFormat.of().formatHex(digest.digest(), 0, 16);
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  private static void update(MessageDigest digest, String value) {
+    byte[] bytes = value == null ? new byte[0] : value.getBytes(StandardCharsets.UTF_8);
+    digest.update(ByteBuffer.allocate(4).putInt(value == null ? -1 : bytes.length).array());
+    digest.update(bytes);
   }
 }

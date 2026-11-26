@@ -15,8 +15,12 @@
  */
 package io.gravitee.singularitee.engine.api;
 
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Output from a {@link ClassifierEngine} inference call.
@@ -54,5 +58,57 @@ public record ClassifyResponse(
   /** The same response with {@code usage}. */
   public ClassifyResponse withUsage(ClassifyUsage usage) {
     return new ClassifyResponse(topLabel, topScore, allScores, results, usage);
+  }
+
+  /**
+   * The response kept to {@code labels}: the scores and results of any other label are dropped, and
+   * the top label is the best remaining one, null when none remains. A model answering a request
+   * that brought its labels may still name others (a composite or a remote with a fixed-label
+   * member), and a step must never act on them. Empty {@code labels} keep the response as it is.
+   */
+  public ClassifyResponse within(List<ClassifyLabel> labels) {
+    if (labels == null || labels.isEmpty()) {
+      return this;
+    }
+    Set<String> names = labels.stream().map(ClassifyLabel::name).collect(Collectors.toSet());
+    Map<String, Float> scores = allScores == null ? Map.of() : allScores;
+    List<ClassifyResult> rows = results == null ? List.of() : results;
+    boolean inside =
+      (topLabel == null || names.contains(topLabel)) &&
+      names.containsAll(scores.keySet()) &&
+      rows.stream().allMatch(r -> names.contains(r.label()));
+    if (inside) {
+      return this;
+    }
+    Map<String, Float> keptScores = new LinkedHashMap<>();
+    scores.forEach((label, score) -> {
+      if (names.contains(label)) {
+        keptScores.put(label, score);
+      }
+    });
+    List<ClassifyResult> keptRows = rows
+      .stream()
+      .filter(r -> names.contains(r.label()))
+      .toList();
+    String top = null;
+    float best = 0f;
+    if (topLabel != null && names.contains(topLabel)) {
+      top = topLabel;
+      best = topScore;
+    } else {
+      for (var entry : keptScores.entrySet()) {
+        if (top == null || entry.getValue() > best) {
+          top = entry.getKey();
+          best = entry.getValue();
+        }
+      }
+      for (ClassifyResult row : keptRows) {
+        if (top == null || (keptScores.isEmpty() && row.score() > best)) {
+          top = row.label();
+          best = row.score();
+        }
+      }
+    }
+    return new ClassifyResponse(top, best, keptScores, keptRows, usage);
   }
 }

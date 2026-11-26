@@ -857,6 +857,11 @@ public enum ModelType {
     this.yamlKey = yamlKey;
   }
 
+  /** The wire name written in a workspace's {@code type:} key. */
+  public String yamlKey() {
+    return yamlKey;
+  }
+
   /** The {@code vllm:} engine block as engine configuration. */
   private static VllmConfig toVllm(WorkspaceDefinition.VllmDef d) {
     var b = VllmConfig.newBuilder();

@@ -18,6 +18,8 @@ package io.gravitee.singularitee.plugin.route;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
+import io.gravitee.singularitee.engine.api.pipeline.model.ClassifierLabels;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepConfigCodec;
 import io.gravitee.singularitee.plugin.route.RouteStepConfig.RouteRule;
@@ -91,13 +93,23 @@ public final class RouteStepCodec implements StepConfigCodec<RouteStepConfig> {
           "': min_confidence needs default_step, where a less confident choice goes"
       );
     }
+    List<ClassifyLabel> labels = ClassifierLabels.parse(stepId, config);
+    if (!labels.isEmpty() && strategy != RoutingStrategy.CLASSIFIER) {
+      throw new IllegalArgumentException(
+        "Step '" + stepId + "': labels apply to the classifier strategy only"
+      );
+    }
+    for (RouteRule rule : rules) {
+      ClassifierLabels.requireAmong(stepId, "rule", rule.label(), labels);
+    }
     return new RouteStepConfig(
       d.modelId(),
       strategy,
       d.inputField(),
       d.defaultStep(),
       rules,
-      d.minConfidence()
+      d.minConfidence(),
+      labels
     );
   }
 }

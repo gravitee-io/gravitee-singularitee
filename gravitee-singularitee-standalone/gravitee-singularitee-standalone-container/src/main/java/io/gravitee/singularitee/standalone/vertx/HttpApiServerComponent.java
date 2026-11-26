@@ -28,6 +28,7 @@ import io.gravitee.singularitee.client.LoopbackHosts;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.engine.api.tracing.SpanStatus;
 import io.gravitee.singularitee.http.auth.BearerTokenAuthHandler;
 import io.gravitee.singularitee.http.json.OpenAiError;
 import io.gravitee.singularitee.http.router.OpenAiRoutes;
@@ -48,6 +49,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.env.Environment;
@@ -207,7 +209,12 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
       );
     }
 
-    final Handler<HttpServerRequest> requestHandler = tracingHandler(router);
+    final Handler<HttpServerRequest> requestHandler = tracingHandler(
+      tracer,
+      vertx.getDelegate()::getOrCreateContext,
+      TracingExclusions.from(environment),
+      router
+    );
 
     var latch = new CountDownLatch(1);
     final boolean[] started = { false };
@@ -268,14 +275,27 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
 
   /**
    * Opens a {@code SERVER} span per request (continuing any inbound {@code traceparent}) attached to
-   * the request's Vert.x context, so the service layer's child spans nest under it.
+   * the request's Vert.x context, so the service layer's child spans nest under it. Paths matched by
+   * {@code exclusions} (probes, metrics) are served untraced. The span ends {@code OK} for a status
+   * below 400 and {@code ERROR} for a 5xx; a 4xx stays unset, as the HTTP conventions have it for a
+   * server span.
    */
-  private Handler<HttpServerRequest> tracingHandler(Handler<HttpServerRequest> delegate) {
+  static Handler<HttpServerRequest> tracingHandler(
+    Tracer tracer,
+    Supplier<Context> fallbackContext,
+    TracingExclusions exclusions,
+    Handler<HttpServerRequest> delegate
+  ) {
     return request -> {
+      if (exclusions.excludes(request.path())) {
+        delegate.handle(request);
+        return;
+      }
+
       final Context ctx = request instanceof
           io.vertx.core.internal.http.HttpServerRequestInternal internal
         ? internal.context()
-        : vertx.getDelegate().getOrCreateContext();
+        : fallbackContext.get();
 
       final Span span = tracer.startRootSpanFrom(ctx, new ObservableHttpServerRequest(request));
       span.withAttribute("rpc.system", "http").withAttribute("http.route", request.path());
@@ -290,20 +310,28 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
         .response()
         .endHandler(v -> {
           if (ended.compareAndSet(false, true)) {
-            span.withAttribute("http.response.status_code", request.response().getStatusCode());
-            tracer.end(ctx, span);
+            final int status = request.response().getStatusCode();
+            span.withAttribute("http.response.status_code", status);
+            if (status >= 500) {
+              tracer.endOnError(ctx, span, "HTTP " + status);
+            } else {
+              if (status < 400) {
+                SpanStatus.ok(span);
+              }
+              tracer.end(ctx, span);
+            }
           }
         });
       request
         .response()
         .exceptionHandler(err -> {
           if (ended.compareAndSet(false, true)) {
-            tracer.endOnError(ctx, span, err);
+            SpanStatus.endWithError(tracer, ctx, span, err);
           }
         });
       request.exceptionHandler(err -> {
         if (ended.compareAndSet(false, true)) {
-          tracer.endOnError(ctx, span, err);
+          SpanStatus.endWithError(tracer, ctx, span, err);
         }
       });
 

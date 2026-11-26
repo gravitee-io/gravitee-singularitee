@@ -27,6 +27,9 @@ import io.vertx.ext.web.RoutingContext;
 /** Drives the local inference service and exposes its token stream to the response formatter. */
 public final class Dispatch {
 
+  /** Unlocks the step trace of a pipeline run when it carries the key the control plane announced. */
+  public static final String TRACE_KEY_HEADER = "X-Singularitee-Trace-Key";
+
   private Dispatch() {}
 
   /**
@@ -51,7 +54,11 @@ public final class Dispatch {
     rc.response().closeHandler(v -> adapter.onClientDisconnect());
 
     if (res.pipeline()) {
-      inference.inferPipeline(res.pipelineRequest(), adapter);
+      String traceKey = rc.request().getHeader(TRACE_KEY_HEADER);
+      var request = traceKey == null || traceKey.isBlank()
+        ? res.pipelineRequest()
+        : res.pipelineRequest().toBuilder().setTraceKey(traceKey.strip()).build();
+      inference.inferPipeline(request, adapter);
     } else {
       inference.infer(res.inferRequest(), adapter);
     }

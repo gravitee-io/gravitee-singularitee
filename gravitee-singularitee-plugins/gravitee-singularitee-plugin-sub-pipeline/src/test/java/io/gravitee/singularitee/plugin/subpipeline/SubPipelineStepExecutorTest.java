@@ -15,12 +15,18 @@
  */
 package io.gravitee.singularitee.plugin.subpipeline;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.gravitee.node.api.opentelemetry.Span;
+import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.singularitee.engine.api.ChatRole;
 import io.gravitee.singularitee.engine.api.ChatTurn;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
@@ -28,8 +34,13 @@ import io.gravitee.singularitee.engine.api.pipeline.executor.StepContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContext;
 import io.gravitee.singularitee.engine.api.pipeline.executor.SubPipelineCallbacks;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.engine.api.tracing.TraceContext;
+import io.reactivex.rxjava3.core.Completable;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import org.junit.jupiter.api.Test;
 
 /** A sub-pipeline that cannot run fails the request instead of being skipped. */
@@ -77,6 +88,38 @@ class SubPipelineStepExecutorTest {
           )
       );
     verify(ctx, never()).rxNextStep(anyString());
+  }
+
+  @Test
+  void a_remote_sub_pipeline_is_called_with_the_step_span_as_parent() {
+    var seen = new AtomicReference<Map<String, String>>();
+    var callbacks = new SubPipelineCallbacks();
+    callbacks.register(
+      null,
+      Map.of("edge", (request, response, callerContext) -> {
+        seen.set(TraceContext.current());
+        return Completable.complete();
+      })
+    );
+    var stepSpan = mock(Span.class);
+    var tracer = mock(Tracer.class);
+    doAnswer(inv -> {
+      BiConsumer<String, String> setter = inv.getArgument(2);
+      setter.accept("traceparent", "00-trace-step-01");
+      return null;
+    })
+      .when(tracer)
+      .injectSpanContext(any(), eq(stepSpan), any());
+    when(ctx.tracer()).thenReturn(tracer);
+    when(ctx.activeStepSpan()).thenReturn(new AtomicReference<>(stepSpan));
+
+    new SubPipelineStepExecutor(new StepExecutionContext(null, pipelines, null), callbacks)
+      .execute("check", config("guards", "edge"), ctx)
+      .test()
+      .dispose();
+
+    assertThat(seen.get()).containsEntry("traceparent", "00-trace-step-01");
+    assertThat(TraceContext.current()).isEmpty();
   }
 
   private static SubPipelineStepConfig config(String pipelineId, String remoteId) {

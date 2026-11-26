@@ -18,7 +18,9 @@ package io.gravitee.singularitee.plugin.classify;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepCodecContext;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -68,5 +70,38 @@ class ClassifyStepCodecTest {
     assertThatThrownBy(() -> codec.parse("tox", Map.of("threshold", "not-a-number"), ctx))
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessageContaining("tox");
+  }
+
+  @Test
+  void parses_labels_as_names_or_objects_with_a_description() {
+    var cfg = codec.parse(
+      "topic",
+      Map.of(
+        "model_id",
+        "gliner",
+        "labels",
+        List.of("billing", Map.of("name", "tech", "description", "A technical question."))
+      ),
+      ctx
+    );
+
+    assertThat(cfg.labels()).containsExactly(
+      new ClassifyLabel("billing", ""),
+      new ClassifyLabel("tech", "A technical question.")
+    );
+  }
+
+  @Test
+  void without_labels_the_step_keeps_the_model_labels() {
+    assertThat(codec.parse("tox", Map.of("model_id", "toxicity"), ctx).labels()).isEmpty();
+  }
+
+  @Test
+  void invalid_labels_fail_with_step_id() {
+    assertThatThrownBy(() ->
+      codec.parse("topic", Map.of("model_id", "gliner", "labels", List.of("a", "a")), ctx)
+    )
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("Step 'topic'");
   }
 }

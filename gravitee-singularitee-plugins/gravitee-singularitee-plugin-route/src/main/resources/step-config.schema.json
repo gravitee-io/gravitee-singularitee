@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "route step config",
+  "description": "Resolves a label for the input with a classifier, embedding similarity, a prior LLM verdict or a prior decision, and jumps to the first rule whose label matches.",
+  "type": "object",
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "description": "Logical id of the classifier or embedding model; required for the classifier and embedding_knn strategies, unused by llm_structured and decision.",
+      "x-singularitee-ref": "model",
+      "x-singularitee-model-tasks": ["text-classification", "token-classification", "feature-extraction"]
+    },
+    "strategy": {
+      "type": "string",
+      "enum": ["classifier", "embedding_knn", "llm_structured", "decision"],
+      "default": "classifier",
+      "description": "How the label is resolved: the classifier's top label, the nearest reference embedding, a prior LLM verdict matched against rule labels, or a prior decide choice."
+    },
+    "input_field": {
+      "type": "string",
+      "default": "prompt",
+      "description": "Context key holding the text to route on; required for the decision strategy, where it is <decide step>.<question>.",
+      "x-singularitee-context": "reads"
+    },
+    "min_confidence": {
+      "type": "number",
+      "default": 0,
+      "description": "Decision strategy only: a choice whose <input_field>.confidence is below this takes default_step, which it requires; 0 turns the check off."
+    },
+    "default_step": {
+      "type": "string",
+      "description": "Step taken when no rule matches; when unset the pipeline ends.",
+      "x-singularitee-ref": "step",
+      "x-singularitee-branch": "default"
+    },
+    "labels": {
+      "type": "array",
+      "description": "Classifier strategy only: labels to classify against, sent with every call in place of the model's own: names, or objects with a name and a description. Every rule label must be one of them. Needs a zero-shot model (gliner_classifier, gliner_ner, or a decision model published as a classifier); any other model fails the pipeline load. Unset, the model's own labels apply.",
+      "items": { "$ref": "#/$defs/label" }
+    },
+    "rules": {
+      "type": "array",
+      "description": "Ordered rules; the first one whose label equals the resolved label wins.",
+      "items": {
+        "type": "object",
+        "description": "One routing rule: a label, the step taken when it wins and, for embedding_knn, the reference sentences.",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Label to match; one of labels when the step sets them; for embedding_knn without sentences it is also the reference text."
+          },
+          "next_step": {
+            "type": "string",
+            "description": "Id of the step taken when this rule matches.",
+            "x-singularitee-ref": "step",
+            "x-singularitee-branch": true
+          },
+          "sentences": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "embedding_knn only: reference sentences embedded for this rule; the label is used when none are given."
+          }
+        },
+        "required": ["label", "next_step"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          { "not": { "required": ["strategy"] } },
+          { "properties": { "strategy": { "enum": ["classifier", "embedding_knn"] } } }
+        ]
+      },
+      "then": { "required": ["model_id"] }
+    },
+    {
+      "if": {
+        "properties": { "strategy": { "const": "decision" } },
+        "required": ["strategy"]
+      },
+      "then": { "required": ["input_field"] }
+    },
+    {
+      "if": {
+        "properties": {
+          "strategy": { "const": "decision" },
+          "min_confidence": { "exclusiveMinimum": 0 }
+        },
+        "required": ["strategy", "min_confidence"]
+      },
+      "then": { "required": ["default_step"] }
+    },
+    {
+      "if": { "required": ["labels"] },
+      "then": {
+        "anyOf": [
+          { "not": { "required": ["strategy"] } },
+          { "properties": { "strategy": { "const": "classifier" } } }
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "label": {
+      "description": "A label name, or an object with the name and a description.",
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The label, as the step's results, rules and triggers name it."
+            },
+            "description": {
+              "type": "string",
+              "description": "What the label means; the model reads it, so a precise sentence classifies better than a bare word."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

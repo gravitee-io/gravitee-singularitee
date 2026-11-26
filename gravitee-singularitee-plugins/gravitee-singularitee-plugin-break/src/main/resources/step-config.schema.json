@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "break step config",
+  "description": "Halts the pipeline when a condition on a context field holds; otherwise the step continues to next_step.",
+  "type": "object",
+  "properties": {
+    "output_field": {
+      "type": "string",
+      "description": "Context key whose value is reported as the pipeline's final output when the step halts.",
+      "x-singularitee-context": "reads"
+    },
+    "condition": {
+      "type": "object",
+      "description": "Halt condition evaluated over a context field; without it the step never halts.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["equals", "contains", "label_equals", "score_above", "score_below", "not_empty", "empty"],
+          "description": "Kind of condition to evaluate."
+        },
+        "input_field": {
+          "type": "string",
+          "description": "Flat context key to evaluate; score conditions also read <input_field>.score.",
+          "x-singularitee-context": "reads"
+        },
+        "match_value": {
+          "type": ["string", "number", "boolean"],
+          "description": "Reference for equals, contains and label_equals; bare YAML booleans are normalised to YES or NO."
+        },
+        "threshold": {
+          "type": "number",
+          "default": 0,
+          "description": "Reference for score_above and score_below."
+        }
+      },
+      "required": ["type", "input_field"],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

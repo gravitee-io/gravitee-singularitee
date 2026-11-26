@@ -18,6 +18,7 @@ package io.gravitee.singularitee.plugin.guard;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardAction;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardOnEmpty;
 import io.gravitee.singularitee.engine.api.pipeline.model.GuardScope;
@@ -135,5 +136,64 @@ class GuardStepCodecTest {
     )
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessageContaining("input_field");
+  }
+
+  @Test
+  void parses_labels_with_triggers_among_them() {
+    var cfg = codec.parse(
+      "g",
+      Map.of(
+        "model_id",
+        "gliner",
+        "labels",
+        List.of(
+          "prompt injection",
+          Map.of("name", "jailbreak", "description", "Asks to ignore rules.")
+        ),
+        "triggers",
+        List.of(Map.of("label", "jailbreak", "score", 0.6))
+      ),
+      ctx
+    );
+
+    assertThat(cfg.labels()).containsExactly(
+      new ClassifyLabel("prompt injection", ""),
+      new ClassifyLabel("jailbreak", "Asks to ignore rules.")
+    );
+    assertThat(cfg.triggers()).containsExactly(new GuardTrigger("jailbreak", 0.6f));
+  }
+
+  @Test
+  void a_trigger_label_that_is_not_among_the_labels_is_a_load_error() {
+    assertThatThrownBy(() ->
+      codec.parse(
+        "g",
+        Map.of(
+          "model_id",
+          "gliner",
+          "labels",
+          List.of("jailbreak"),
+          "trigger",
+          Map.of("label", "toxic", "score", 0.5)
+        ),
+        ctx
+      )
+    )
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("Step 'g'")
+      .hasMessageContaining("trigger label 'toxic'")
+      .hasMessageContaining("[jailbreak]");
+  }
+
+  @Test
+  void without_labels_any_trigger_label_is_kept_as_before() {
+    var cfg = codec.parse(
+      "g",
+      Map.of("model_id", "toxicity", "trigger", Map.of("label", "toxic", "score", 0.5)),
+      ctx
+    );
+
+    assertThat(cfg.labels()).isEmpty();
+    assertThat(cfg.triggers()).containsExactly(new GuardTrigger("toxic", 0.5f));
   }
 }

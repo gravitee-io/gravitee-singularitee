@@ -144,6 +144,15 @@ public final class CompositeClassifierEngine implements ClassifierEngine {
     return ModelTasks.TEXT_CLASSIFICATION;
   }
 
+  /**
+   * Request labels reach every member, but a fixed-label member (regex, ONNX) answers with its own,
+   * so the composite takes request labels only when every member does.
+   */
+  @Override
+  public boolean acceptsRequestLabels() {
+    return delegates.stream().allMatch(ClassifierEngine::acceptsRequestLabels);
+  }
+
   @Override
   public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
     return rxClassify(request, List.of());

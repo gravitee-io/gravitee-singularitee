@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "todo step config",
+  "description": "Executes the server-owned plan tools called by the preceding infer step and keeps the plan in the pipeline context.",
+  "type": "object",
+  "properties": {
+    "handled_step": {
+      "type": "string",
+      "description": "Step to branch to after the plan calls of the preceding generation were executed, unless an ask_user question or a client tool call ends the turn instead (usually the infer step that produced them, or the gate after it); the envelope next_step when unset, and always when the generation made no plan call.",
+      "x-singularitee-ref": "step",
+      "x-singularitee-branch": "handled"
+    }
+  },
+  "additionalProperties": false
+}

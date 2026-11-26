@@ -24,6 +24,7 @@ import io.gravitee.node.api.license.LicenseManager;
 import io.gravitee.node.api.opentelemetry.InstrumenterTracerFactory;
 import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.node.api.opentelemetry.TracerFactory;
+import io.gravitee.node.opentelemetry.configuration.OpenTelemetryConfiguration;
 import io.gravitee.node.plugin.cache.standalone.StandaloneCacheManager;
 import io.gravitee.node.plugin.cluster.standalone.StandaloneClusterManager;
 import io.gravitee.plugin.core.api.Plugin;
@@ -75,6 +76,8 @@ import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.service.GraviteePipelineServiceImpl;
 import io.gravitee.singularitee.service.GraviteeVectorServiceImpl;
 import io.gravitee.singularitee.standalone.node.SingulariteeNode;
+import io.gravitee.singularitee.standalone.sync.ReleaseSyncComponent;
+import io.gravitee.singularitee.standalone.sync.SyncedSpanResource;
 import io.gravitee.singularitee.standalone.vertx.GrpcServerComponent;
 import io.gravitee.singularitee.standalone.vertx.HttpApiServerComponent;
 import io.gravitee.singularitee.standalone.vertx.WorkspaceLoaderComponent;
@@ -155,7 +158,8 @@ public class SingulariteeConfiguration {
     TracerFactory tracerFactory,
     List<InstrumenterTracerFactory> instrumenterTracerFactories,
     Node node,
-    Configuration configuration
+    Configuration configuration,
+    OpenTelemetryConfiguration openTelemetryConfiguration
   ) {
     // The span/attribute name prefix is a deployment-wide constant; set it once here, before any
     // request builds a span. Blank restores the default ("singularitee"). Metrics are unaffected.
@@ -173,7 +177,8 @@ public class SingulariteeConfiguration {
       SingulariteeNode.APPLICATION_NAME,
       "gravitee",
       "",
-      instrumenterTracerFactories
+      instrumenterTracerFactories,
+      SyncedSpanResource.attributes(configuration, openTelemetryConfiguration)
     );
   }
 
@@ -713,6 +718,12 @@ public class SingulariteeConfiguration {
     return new ConversationStore(cacheManager, ttlSeconds, maxEntries);
   }
 
+  /** Which requests may see a step trace; fed by the trace key hash Gamma announces in heartbeat answers. */
+  @Bean
+  public io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority traceKeyAuthority() {
+    return new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority();
+  }
+
   /** Runs pipeline DAGs, with tracing, metrics and cross-request stores attached. */
   @Bean
   public PipelineExecutor pipelineExecutor(
@@ -722,7 +733,8 @@ public class SingulariteeConfiguration {
     InferenceMetrics inferenceMetrics,
     TodoSessionStore todoSessionStore,
     ConversationStore conversationStore,
-    ServerToolNames serverToolNames
+    ServerToolNames serverToolNames,
+    io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority traceKeyAuthority
   ) {
     return new PipelineExecutor(
       pipelineRegistry,
@@ -731,7 +743,8 @@ public class SingulariteeConfiguration {
       inferenceMetrics,
       todoSessionStore,
       conversationStore,
-      serverToolNames
+      serverToolNames,
+      traceKeyAuthority
     );
   }
 
@@ -761,6 +774,28 @@ public class SingulariteeConfiguration {
   @Bean
   public io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState() {
     return new io.gravitee.singularitee.standalone.vertx.ReadinessState();
+  }
+
+  /** Pulls the workspace from Gamma; see {@link ReleaseSyncComponent}. */
+  @Bean
+  public ReleaseSyncComponent releaseSyncComponent(
+    Configuration configuration,
+    GraviteeModelServiceImpl modelService,
+    PipelineRegistry pipelineRegistry,
+    io.gravitee.singularitee.standalone.vertx.ReadinessState readinessState,
+    io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority traceKeyAuthority,
+    StepPlugins stepPlugins,
+    StepExecutorFactory stepExecutorFactory
+  ) {
+    return new ReleaseSyncComponent(
+      configuration,
+      modelService.modelRegistry(),
+      pipelineRegistry,
+      readinessState,
+      traceKeyAuthority,
+      stepPlugins,
+      stepExecutorFactory
+    );
   }
 
   /** Loads the workspace at boot; see {@link WorkspaceLoaderComponent}. */

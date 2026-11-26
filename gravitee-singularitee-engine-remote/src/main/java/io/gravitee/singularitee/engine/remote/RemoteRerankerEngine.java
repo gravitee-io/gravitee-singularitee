@@ -20,6 +20,7 @@ import io.gravitee.singularitee.engine.api.RerankRequest;
 import io.gravitee.singularitee.engine.api.RerankResponse;
 import io.gravitee.singularitee.engine.api.RerankResult;
 import io.gravitee.singularitee.engine.api.RerankerEngine;
+import io.gravitee.singularitee.engine.api.tracing.PropagatesTraceContext;
 import io.reactivex.rxjava3.core.Single;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,7 +38,7 @@ import java.util.List;
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public final class RemoteRerankerEngine implements RerankerEngine {
+public final class RemoteRerankerEngine implements RerankerEngine, PropagatesTraceContext {
 
   private final SingulariteeClient client;
   private final String modelId;
@@ -57,7 +58,7 @@ public final class RemoteRerankerEngine implements RerankerEngine {
       .setTopK(request.topK())
       .build();
 
-    return client
+    return RemoteCalls.traced(client)
       .textRerank(protoReq)
       .map(protoResp -> {
         List<RerankResult> results = new ArrayList<>(protoResp.getResultsCount());

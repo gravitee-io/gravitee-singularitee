@@ -124,6 +124,11 @@ public final class DecisionClassifierEngine
   }
 
   @Override
+  public boolean acceptsRequestLabels() {
+    return true;
+  }
+
+  @Override
   public Single<ClassifyResponse> rxClassify(ClassifyRequest request) {
     return rxClassify(request, List.of());
   }

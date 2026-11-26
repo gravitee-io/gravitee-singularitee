@@ -40,7 +40,9 @@ import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry.PipelineEntry;
 import io.gravitee.singularitee.engine.api.tools.ServerToolNames;
 import io.gravitee.singularitee.engine.api.tools.TodoTools;
+import io.gravitee.singularitee.engine.api.tracing.SpanStatus;
 import io.gravitee.singularitee.engine.pipeline.executor.StepDispatcher;
+import io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority;
 import io.gravitee.singularitee.protocol.*;
 import io.opentelemetry.api.trace.SpanKind;
 import io.reactivex.rxjava3.core.Completable;
@@ -50,6 +52,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -81,6 +84,7 @@ public class PipelineExecutor implements PipelineExecutorCallback {
   private final TodoSessionStore todoSessionStore;
   private final ServerToolNames serverToolNames;
   private final ConversationStore conversationStore;
+  private final TraceKeyAuthority traceKeys;
 
   /** Untraced, store-less constructor (client-side executor, CLI, tests). */
   public PipelineExecutor(PipelineRegistry pipelineRegistry, StepDispatcher dispatcher) {
@@ -105,6 +109,32 @@ public class PipelineExecutor implements PipelineExecutorCallback {
     ConversationStore conversationStore,
     ServerToolNames serverToolNames
   ) {
+    this(
+      pipelineRegistry,
+      dispatcher,
+      tracer,
+      metrics,
+      todoSessionStore,
+      conversationStore,
+      serverToolNames,
+      null
+    );
+  }
+
+  /**
+   * @param traceKeys decides which requests may see a step trace, or {@code null} to never trace
+   */
+  public PipelineExecutor(
+    PipelineRegistry pipelineRegistry,
+    StepDispatcher dispatcher,
+    Tracer tracer,
+    InferenceMetrics metrics,
+    TodoSessionStore todoSessionStore,
+    ConversationStore conversationStore,
+    ServerToolNames serverToolNames,
+    TraceKeyAuthority traceKeys
+  ) {
+    this.traceKeys = traceKeys;
     this.pipelineRegistry = pipelineRegistry;
     this.serverToolNames = serverToolNames == null ? ServerToolNames.DEFAULTS : serverToolNames;
     this.dispatcher = dispatcher;
@@ -216,6 +246,7 @@ public class PipelineExecutor implements PipelineExecutorCallback {
     Consumer<PipelineContext> prepare
   ) {
     var context = PipelineContext.fromRequest(request);
+    if (traceKeys != null && traceKeys.allows(request.getTraceKey())) context.enableTrace();
     context.setServerToolNames(serverToolNames);
     prepare.accept(context);
 
@@ -318,8 +349,8 @@ public class PipelineExecutor implements PipelineExecutorCallback {
       }
     }
 
-    // Open the singularitee.pipeline span (child of the gRPC server span on the caller context).
-    // Step/model spans nest under it via explicit parenting. No-op when tracing is off.
+    // Open the pipeline span (child of the server span on the caller context). Step/model spans
+    // nest under it via explicit parenting. No-op when tracing is off.
     final Span pipelineSpan = startPipelineSpan(callerContext, pipeline);
     var stepCtx = new StepContext(
       context,
@@ -334,8 +365,8 @@ public class PipelineExecutor implements PipelineExecutorCallback {
 
     // Neutral per-turn facts on the pipeline span: a stable-enough turn identity (the
     // response id), how many assistant turns precede this one, the continuation pointer,
-    // and the human turn as an event. No-op when tracing is off. Domain-specific fields
-    // (decisions, verdicts) are added by the steps themselves through the same scribe.
+    // and, behind verbose, a preview of the human turn. No-op when tracing is off.
+    // Domain-specific fields (decisions, verdicts) are added by the steps through the same scribe.
     long turnIndex = context.messages() == null
       ? 0
       : context
@@ -354,11 +385,10 @@ public class PipelineExecutor implements PipelineExecutorCallback {
       .set(
         SpanNames.key("previous_response_id"),
         request.getPreviousResponseId().isEmpty() ? null : request.getPreviousResponseId()
-      )
-      .event(
-        SpanNames.key("turn"),
-        Map.of("role", "human", "content", spanPreview(lastUserContent(context)))
       );
+    if (TracingOptions.verbose()) {
+      stepCtx.turnScribe().set(SpanNames.key("turn.input"), spanPreview(lastUserContent(context)));
+    }
 
     // OpenInference: the pipeline is a CHAIN; session id lets trace tools group a conversation.
     // The user input is content, so it rides behind the verbose flag.
@@ -386,7 +416,7 @@ public class PipelineExecutor implements PipelineExecutorCallback {
       .build();
     response.write(created);
 
-    final Throwable[] error = { null };
+    final AtomicBoolean spanEnded = new AtomicBoolean();
     return walkStep(pipeline.entryStepId(), stepMap, stepCtx, context)
       .andThen(
         Completable.defer(() -> {
@@ -423,11 +453,19 @@ public class PipelineExecutor implements PipelineExecutorCallback {
           return Completable.fromAction(() -> endWith(context, response, reason));
         })
       )
-      .doOnError(e -> error[0] = e)
+      .doOnEvent(e -> {
+        if (spanEnded.compareAndSet(false, true)) {
+          endPipelineSpan(callerContext, pipelineSpan, e, true);
+        }
+      })
+      .doOnDispose(() -> {
+        if (spanEnded.compareAndSet(false, true)) {
+          endPipelineSpan(callerContext, pipelineSpan, null, false);
+        }
+      })
       .doFinally(() -> {
         persistTodoSession(pipeline, context, todoPipeline);
         persistConversation(request, context);
-        endPipelineSpan(callerContext, pipelineSpan, error[0]);
       });
   }
 
@@ -607,28 +645,40 @@ public class PipelineExecutor implements PipelineExecutorCallback {
     }
   }
 
-  /** Opens the {@code singularitee.pipeline} span on the caller context, or returns {@code null}. */
+  /** Opens the {@code pipeline <id>} span on the caller context, or returns {@code null}. */
   private Span startPipelineSpan(Context callerContext, PipelineModel pipeline) {
     if (tracer == null || callerContext == null) {
       return null;
     }
     InternalRequest request = InternalRequest.builder()
-      .name(SpanNames.key("pipeline"))
-      .attributes(Map.of("pipeline.id", pipeline.id()))
+      .name("pipeline " + pipeline.id())
+      .attributes(Map.of("pipeline.id", pipeline.id(), SpanNames.key("pipeline.id"), pipeline.id()))
       .spanKind(SpanKind.INTERNAL)
       .build();
     return tracer.startSpanFrom(callerContext, request);
   }
 
-  private void endPipelineSpan(Context callerContext, Span span, Throwable error) {
+  /**
+   * Ends the pipeline span before the run's outcome reaches the caller. A run that halted on a
+   * guard still completed: only a failure is an error; a disposed run gets no status.
+   */
+  private void endPipelineSpan(
+    Context callerContext,
+    Span span,
+    Throwable error,
+    boolean completed
+  ) {
     if (span == null || tracer == null) {
       return;
     }
     if (error != null) {
-      tracer.endOnError(callerContext, span, error);
-    } else {
-      tracer.end(callerContext, span);
+      SpanStatus.endWithError(tracer, callerContext, span, error);
+      return;
     }
+    if (completed) {
+      SpanStatus.ok(span);
+    }
+    tracer.end(callerContext, span);
   }
 
   private Completable walkStep(

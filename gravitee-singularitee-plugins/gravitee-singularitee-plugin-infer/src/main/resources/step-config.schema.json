@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "infer step config",
+  "description": "Streams a generation from a text-generation model, writes the text to the context and records tool-call and reasoning diagnostics.",
+  "type": "object",
+  "required": ["model_id"],
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "description": "Logical id of a published text-generation model.",
+      "x-singularitee-ref": "model",
+      "x-singularitee-model-tasks": ["text-generation"]
+    },
+    "output_field": {
+      "type": "string",
+      "default": "<step id>.output",
+      "description": "Context key receiving the full generated text (reasoning included unless strip_thinking is true).",
+      "x-singularitee-context": "writes"
+    },
+    "prompt": {
+      "$ref": "#/$defs/prompt"
+    },
+    "sampling": {
+      "$ref": "#/$defs/sampling"
+    },
+    "tags": {
+      "description": "Reasoning and tool-call markers, inline or a bare string naming a workspace tags entry by id.",
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Id of a workspace tags entry; an unknown id fails the load."
+        },
+        {
+          "$ref": "#/$defs/tags"
+        }
+      ]
+    },
+    "context": {
+      "type": "object",
+      "description": "Typed Jinja variables (for example enable_thinking: false or reasoning_effort: medium) merged into the rendering context and forwarded as template_context when the engine renders the messages itself.",
+      "additionalProperties": true
+    },
+    "system": {
+      "type": "string",
+      "description": "Jinja template prepended as a system turn, merged into the caller's system message when there is one."
+    },
+    "inject_tools": {
+      "type": "boolean",
+      "default": true,
+      "description": "When false, the caller's tools are hidden from the prompt."
+    },
+    "server_tools": {
+      "type": "boolean",
+      "default": true,
+      "description": "When false, the server-owned todo tools (set_todos, complete_todo, ask_user) are hidden from this step."
+    },
+    "strip_thinking": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, the span between the reasoning tags is removed from the stream, the step output and the conversation."
+    },
+    "stream_thinking": {
+      "type": "boolean",
+      "default": false,
+      "description": "For role internal steps only: forward reasoning deltas to the client while content and tool deltas stay suppressed."
+    },
+    "trim_history": {
+      "type": "boolean",
+      "default": true,
+      "description": "Drop older turns so the prompt plus max_tokens fits the engine's context window."
+    },
+    "tool_extraction_template": {
+      "type": "string",
+      "description": "A built-in dialect name (chatml-json, xml-function, gemma-call, glm-name-json, harmony) or inline Jinja rendering a JSON array of name and arguments from output and tools; unset tries chatml-json, xml-function and gemma-call in that order."
+    },
+    "chat_template": {
+      "type": "string",
+      "description": "A workspace templates id or inline Jinja replacing the model's own chat template for this step."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "prompt": {
+      "type": "object",
+      "description": "Prompt source: structured messages replacing the conversation, or one raw template (inline, file or workspace id) bypassing the chat template; a template takes precedence over messages and at most one template key may be set.",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "description": "Templated messages replacing the conversation; the result still goes through the chat template.",
+          "items": {
+            "$ref": "#/$defs/message"
+          }
+        },
+        "template": {
+          "type": "string",
+          "description": "Inline raw Jinja template sent as a bare prompt, bypassing the chat template."
+        },
+        "template_file": {
+          "type": "string",
+          "description": "Path to a raw template file, resolved under the templates base directory unless absolute."
+        },
+        "template_id": {
+          "type": "string",
+          "description": "Id of a workspace templates entry, resolved to its content at load time.",
+          "x-singularitee-ref": "template"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        { "not": { "required": ["template", "template_file"] } },
+        { "not": { "required": ["template", "template_id"] } },
+        { "not": { "required": ["template_file", "template_id"] } }
+      ]
+    },
+    "message": {
+      "type": "object",
+      "description": "One templated chat message.",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["system", "user", "assistant", "tool"],
+          "default": "user",
+          "description": "Role of the turn; a blank role means user and an unknown one is treated as user."
+        },
+        "content": {
+          "type": "string",
+          "description": "Jinja template rendered against the pipeline context."
+        }
+      },
+      "additionalProperties": false
+    },
+    "sampling": {
+      "type": "object",
+      "description": "Step-level sampling; values apply only when non-zero, except temperature where 0 is greedy, and a request or loop retry override wins.",
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Completion cap, also the reservation trim_history keeps free; 0 keeps the engine default."
+        },
+        "temperature": {
+          "type": "number",
+          "description": "Sampling temperature; 0 is greedy and a negative value keeps the engine default."
+        },
+        "top_p": {
+          "type": "number",
+          "description": "Nucleus threshold; 0 keeps the engine default."
+        },
+        "presence_penalty": {
+          "type": "number",
+          "default": 0,
+          "description": "Presence penalty."
+        },
+        "frequency_penalty": {
+          "type": "number",
+          "default": 0,
+          "description": "Frequency penalty."
+        },
+        "stop": {
+          "type": "array",
+          "description": "Stop strings ending generation.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tagMarker": {
+      "description": "A marker string, or a list whose first entry is the primary marker and the rest are alternatives (longest match wins).",
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      ]
+    },
+    "tags": {
+      "type": "object",
+      "description": "Inline reasoning and tool-call channel markers.",
+      "properties": {
+        "reasoning_open": {
+          "$ref": "#/$defs/tagMarker",
+          "description": "Marker or markers opening the reasoning channel."
+        },
+        "reasoning_close": {
+          "$ref": "#/$defs/tagMarker",
+          "description": "Marker or markers closing the reasoning channel."
+        },
+        "reasoning_repeatable": {
+          "type": "boolean",
+          "description": "Whether the reasoning channel may reopen within one generation, as chained-channel dialects such as Harmony need; unset keeps the engine rule."
+        },
+        "tool_open": {
+          "$ref": "#/$defs/tagMarker",
+          "description": "Marker or markers opening the tool-call channel; a generation ending inside it finishes with tool_calls."
+        },
+        "tool_close": {
+          "$ref": "#/$defs/tagMarker",
+          "description": "Marker or markers closing the tool-call channel."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

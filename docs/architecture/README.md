@@ -111,7 +111,11 @@ YAML `config:` block, and the `StepExecutor` built from the parent-owned
 `StepExecutorServices`. Cross-cutting behaviour comes from `StepDecoratorPlugin`s
 (`type=step-decorator`), applied to every step inside the platform decorators (tracing,
 diagnostics), so a plugin step is always observed. `StepPlugins.assemble` turns the plugins
-the registry discovered into the engine's executors and codecs. Rules enforced at boot: two
+the registry discovered into the engine's executors and codecs. A step plugin also ships
+`step-config.schema.json` at its jar root, the JSON schema of its `config:` block;
+`StepExecutorPlugin.configSchema()` reads it from the jar the plugin class was loaded from (not by name through a class loader, which delegates parent-first) and
+`StepPlugins.configSchemas()` maps step types to schemas (a plugin without the file has no
+entry). Rules enforced at boot: two
 providers for one type is a misassembly and fails; a core type without an executor fails
 ("core step types without an executor"); a step can be switched off with
 `step.<id>.enabled: false`; and a step whose manifest
@@ -166,7 +170,7 @@ Conventions and endpoint details: [HTTP API](../api/http/README.md); schemas: [o
 
 Opt-in through `services.metrics` and `services.opentelemetry`.
 
-- Tracing: a SERVER span per gRPC call (continuing an inbound W3C `traceparent`) with nested `singularitee.pipeline`, `singularitee.step` and `singularitee.model.<op>` spans; direct RPCs get `singularitee.infer`, `singularitee.classify`, `singularitee.embed`. Client-side execution is not traced.
+- Tracing: a SERVER span per gRPC call (continuing an inbound W3C `traceparent`) with nested `pipeline <id>`, `step <id> (<type>)` and `<operation> <model>` spans; direct RPCs get `singularitee.classify`, `singularitee.embed`, and so on. Calls to `remote_*` models and remote sub-pipelines carry the `traceparent` on, so the serving node's spans join the same trace. Client-side execution is not traced.
 - Metrics (Micrometer, Prometheus at `/_node/metrics/prometheus`): `ai_infer_requests_total`, `ai_infer_latency_seconds`, `ai_pipeline_requests_total`, `ai_pipeline_latency_seconds`, `ai_classify_requests_total`, `ai_embed_requests_total`, `ai_model_call_seconds{model,op}`, `ai_tokens_total{model,kind}`.
 
 Details: [Observability](../operations/observability/README.md).

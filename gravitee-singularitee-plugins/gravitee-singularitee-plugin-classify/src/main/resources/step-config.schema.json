@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "classify step config",
+  "description": "Runs a classifier on a context field and writes the top label and its score.",
+  "type": "object",
+  "required": ["model_id"],
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "description": "Logical id of a published classifier model.",
+      "x-singularitee-ref": "model",
+      "x-singularitee-model-tasks": ["text-classification", "token-classification", "decision"]
+    },
+    "input_field": {
+      "type": "string",
+      "default": "prompt",
+      "description": "Context key holding the text to classify; an empty value skips the step with a warning.",
+      "x-singularitee-context": "reads"
+    },
+    "output_field": {
+      "type": "string",
+      "default": "<step id>.label",
+      "description": "Context key receiving the top label; the score lands in <output_field>.score.",
+      "x-singularitee-context": "writes"
+    },
+    "threshold": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Minimum score carried to downstream readers; the executor itself does not filter on it, and 0 is not sent."
+    },
+    "labels": {
+      "type": "array",
+      "description": "Labels to classify against, sent with every call in place of the model's own: names, or objects with a name and a description. Needs a zero-shot model (gliner_classifier, gliner_ner, or a decision model published as a classifier); any other model fails the pipeline load. Unset, the model's own labels apply.",
+      "items": { "$ref": "#/$defs/label" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "label": {
+      "description": "A label name, or an object with the name and a description.",
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The label, as the step's results, rules and triggers name it."
+            },
+            "description": {
+              "type": "string",
+              "description": "What the label means; the model reads it, so a precise sentence classifies better than a bare word."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

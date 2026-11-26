@@ -70,6 +70,13 @@
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-api</artifactId>
         </dependency>
+        <!-- The SDK span behind a gravitee-node Span, to set the OK status the node API cannot
+             express. Present at runtime wherever tracing is enabled; looked up before use. -->
+        <dependency>
+            <groupId>io.gravitee.node</groupId>
+            <artifactId>gravitee-node-opentelemetry</artifactId>
+            <scope>provided</scope>
+        </dependency>
         <!-- Standalone in-memory cache impl, tests only: TodoSessionStore tests run
              against the real thing instead of a mock. Production wiring lives in the
              container (pluggable CacheManager bean). -->

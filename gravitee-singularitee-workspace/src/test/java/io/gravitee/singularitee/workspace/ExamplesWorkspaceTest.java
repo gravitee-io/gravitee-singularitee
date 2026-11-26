@@ -17,6 +17,8 @@ package io.gravitee.singularitee.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.gravitee.singularitee.engine.api.ClassifierEngine.ClassifyLabel;
+import io.gravitee.singularitee.engine.api.pipeline.model.ClassifierLabelsConfig;
 import io.gravitee.singularitee.engine.api.pipeline.model.PipelineModel;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
 import io.gravitee.singularitee.plugin.decide.DecideStepConfig;
@@ -103,6 +105,20 @@ class ExamplesWorkspaceTest {
     }
   }
 
+  /** Pipeline fragments under {@code modular/pipelines/}, pulled in by a server's {@code includes:}. */
+  static Stream<Path> pipelineFragments() throws IOException {
+    Path root = examplesDir().resolve("modular/pipelines");
+    if (!Files.isDirectory(root)) return Stream.of();
+    try (var walk = Files.walk(root)) {
+      return walk
+        .filter(Files::isRegularFile)
+        .filter(p -> p.getFileName().toString().endsWith(".yaml"))
+        .sorted()
+        .toList()
+        .stream();
+    }
+  }
+
   @ParameterizedTest(name = "{0}")
   @MethodSource("modelFragments")
   void model_fragment_declares_exactly_one_model(Path yaml) throws IOException {
@@ -166,6 +182,28 @@ class ExamplesWorkspaceTest {
     // embedding_knn routes on reference sentences; without them there is nothing to match against.
     var route = routeConfigOf("pipelines/embedding-router.yaml");
     assertThat(route.rules()).allSatisfy(rule -> assertThat(rule.sentences()).isNotEmpty());
+  }
+
+  @Test
+  void step_labels_example_shares_one_zero_shot_model_between_two_label_sets() throws IOException {
+    var requests = load("pipelines/gliner-step-labels.yaml");
+    var pipeline = pipeline(requests, "gliner-step-labels");
+    var mood = (ClassifierLabelsConfig) pipeline.step("mood").orElseThrow().config();
+    var topic = (ClassifierLabelsConfig) pipeline.step("topic").orElseThrow().config();
+
+    assertThat(requests.models())
+      .filteredOn(ModelLoadRequest::hasGlinerClassifier)
+      .singleElement()
+      .satisfies(model -> assertThat(model.glinerClassifier().labels()).isEmpty());
+    assertThat(mood.modelId()).isEqualTo("zero-shot");
+    assertThat(topic.modelId()).isEqualTo("zero-shot");
+    assertThat(mood.labels())
+      .extracting(ClassifyLabel::name)
+      .containsExactly("angry", "neutral", "happy");
+    assertThat(topic.labels())
+      .extracting(ClassifyLabel::name)
+      .containsExactly("billing", "technical problem", "general conversation");
+    assertThat(topic.labels()).allSatisfy(label -> assertThat(label.description()).isNotBlank());
   }
 
   @Test

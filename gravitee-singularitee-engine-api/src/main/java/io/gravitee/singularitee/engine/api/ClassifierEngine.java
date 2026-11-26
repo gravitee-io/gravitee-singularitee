@@ -34,7 +34,7 @@ import java.util.List;
 public non-sealed interface ClassifierEngine extends ModelEngine {
   /**
    * A label/entity definition that can be passed at request time to override
-   * the model's default labels (GLiNER zero-shot models only).
+   * the model's default labels (zero-shot models, see {@link #acceptsRequestLabels()}).
    *
    * @param name        the label or entity type name
    * @param description an optional human-readable description used by the model
@@ -44,6 +44,15 @@ public non-sealed interface ClassifierEngine extends ModelEngine {
   @Override
   default ModelEngineType type() {
     return ModelEngineType.CLASSIFIER;
+  }
+
+  /**
+   * Whether {@link #rxClassify(ClassifyRequest, List)} classifies against the labels it is given
+   * instead of the model's own, as a zero-shot model does. The default, {@code false}, means
+   * request labels are ignored; a pipeline step that brings its own labels is then refused at load.
+   */
+  default boolean acceptsRequestLabels() {
+    return false;
   }
 
   /**

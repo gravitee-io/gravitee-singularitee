@@ -67,6 +67,7 @@ public class StepDispatcher {
     var layers = new ArrayList<StepExecutorDecorator>();
     layers.add(new TracingStepDecorator());
     layers.add(new DiagnosticsStepDecorator());
+    layers.add(new TraceStepDecorator());
     layers.addAll(pluginDecorators);
     this.chain = List.copyOf(layers);
   }

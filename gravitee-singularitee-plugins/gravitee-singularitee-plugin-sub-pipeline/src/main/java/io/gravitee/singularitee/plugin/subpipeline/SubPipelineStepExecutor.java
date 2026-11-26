@@ -22,6 +22,7 @@ import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutionContex
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutor;
 import io.gravitee.singularitee.engine.api.pipeline.executor.SubPipelineCallbacks;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TokenCaptureStream;
+import io.gravitee.singularitee.engine.api.tracing.TraceContext;
 import io.gravitee.singularitee.protocol.ChatMessage;
 import io.gravitee.singularitee.protocol.ChatMessageList;
 import io.gravitee.singularitee.protocol.FinishReason;
@@ -127,13 +128,19 @@ public final class SubPipelineStepExecutor implements StepExecutor<SubPipelineSt
     var subRequest = reqBuilder.build();
     var accumulator = new StringBuilder();
     var captureStreamRef = new AtomicReference<TokenCaptureStream>();
+    // A remote sub-pipeline continues this trace: its server span hangs under this step's span.
+    var traceHeaders = TraceContext.headersOf(
+      ctx.tracer(),
+      ctx.callerContext(),
+      ctx.activeStepSpan() == null ? null : ctx.activeStepSpan().get()
+    );
 
     return Completable.create(emitter -> {
       var captureStream = TokenCaptureStream.forwardAll(accumulator, emitter, ctx.response());
       captureStreamRef.set(captureStream);
-      Disposable d = callback
-        .executePipeline(subRequest, captureStream, ctx.callerContext())
-        .subscribe(() -> {}, emitter::tryOnError);
+      Disposable d = TraceContext.callWith(traceHeaders, () ->
+        callback.executePipeline(subRequest, captureStream, ctx.callerContext())
+      ).subscribe(() -> {}, emitter::tryOnError);
       emitter.setCancellable(d::dispose);
     }).andThen(
       Maybe.defer(() -> {

@@ -67,7 +67,7 @@ public final class LegacyCompletionsFormatter {
 
     // Progress updates are not part of the Completions contract: dropped.
     return tokenStream
-      .filter(t -> t.progress() == null)
+      .filter(t -> t.progress() == null && t.stepTrace() == null)
       .flatMap(token -> {
         if (token.isFinal()) {
           if (onFinal != null) {

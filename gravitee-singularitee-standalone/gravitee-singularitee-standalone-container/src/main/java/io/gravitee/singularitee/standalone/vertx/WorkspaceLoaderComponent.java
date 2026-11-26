@@ -33,10 +33,13 @@ import io.gravitee.singularitee.engine.remote.RemoteRerankerEngine;
 import io.gravitee.singularitee.engine.remote.RemoteTextGenEngine;
 import io.gravitee.singularitee.plugin.api.StepPlugins;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
+import io.gravitee.singularitee.standalone.sync.ReleaseSyncComponent;
+import io.gravitee.singularitee.workspace.EnvironmentAllowlist;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition;
 import io.gravitee.singularitee.workspace.YamlWorkspaceLoader;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -90,7 +93,11 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
 
   @Override
   protected void doStart() throws Exception {
-    String workspacePath = configuration.getProperty("ai.workspace.path");
+    // A node synced from the control plane serves what it was given, whatever local workspace is also configured.
+    String workspacePath = System.getProperty(ReleaseSyncComponent.SYNCED_WORKSPACE_PROPERTY);
+    if (workspacePath == null || workspacePath.isBlank()) {
+      workspacePath = configuration.getProperty("ai.workspace.path");
+    }
     if (workspacePath == null || workspacePath.isBlank()) {
       LOGGER.info("No workspace configured (ai.workspace.path not set). Skipping workspace load.");
       // Still set default sub-pipeline callbacks (local-only)
@@ -108,13 +115,16 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
     boolean strict = configuration.getProperty("ai.workspace.strict", Boolean.class, false);
     List<String> failures = new ArrayList<>();
 
-    // Resolve the templates base path from gravitee.home (set by Bootstrap).
-    String graviteeHome = System.getProperty("gravitee.home");
-    Path templatesPath = graviteeHome != null ? Path.of(graviteeHome, "templates") : null;
+    Path templatesPath = templatesPath();
 
     YamlWorkspaceLoader.WorkspaceRequests ws;
     try {
-      ws = YamlWorkspaceLoader.load(path, templatesPath, stepPlugins.codecs());
+      ws = YamlWorkspaceLoader.load(
+        path,
+        templatesPath,
+        stepPlugins.codecs(),
+        remoteEnvAllowlist(configuration)
+      );
     } catch (Exception e) {
       // Unlike a model download, a file that does not parse fails the same way on every start,
       // so it fails startup in every mode rather than leaving a node that never becomes ready.
@@ -147,7 +157,8 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
       LOGGER.info("Models loaded {}", progressBar(loaded, total));
     }
 
-    // Remote models (gRPC proxies)
+    // Remote models (gRPC proxies). Unresolved endpoints were already logged by the loader.
+    ws.remoteErrors().forEach((id, error) -> failures.add("remote '" + id + "': " + error));
     remoteClients = buildRemoteClients(ws.remotes(), configuration, failures);
 
     for (var modelDef : ws.remoteModels()) {
@@ -225,6 +236,33 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
 
     // Models and pipelines are loaded; the server may now serve inference.
     readinessState.markReady();
+  }
+
+  /** Where {@code template_file} references resolve: {@code ${gravitee.home}/templates}, null when the home is unset. */
+  public static Path templatesPath() {
+    String graviteeHome = System.getProperty("gravitee.home");
+    return graviteeHome != null ? Path.of(graviteeHome, "templates") : null;
+  }
+
+  /**
+   * The variables a remote endpoint's {@code ${env:NAME}} credentials may read, from {@code
+   * ai.remote.env-allowlist}: a comma-separated string or a YAML list. A configured value replaces
+   * the default; a blank one admits no variable.
+   */
+  public static EnvironmentAllowlist remoteEnvAllowlist(Configuration configuration) {
+    String csv = configuration.getProperty(EnvironmentAllowlist.PROPERTY);
+    if (csv != null) {
+      return EnvironmentAllowlist.of(Arrays.asList(csv.split(",")));
+    }
+    List<String> listed = new ArrayList<>();
+    for (int i = 0; ; i++) {
+      String entry = configuration.getProperty(EnvironmentAllowlist.PROPERTY + "[" + i + "]");
+      if (entry == null) {
+        break;
+      }
+      listed.add(entry);
+    }
+    return listed.isEmpty() ? EnvironmentAllowlist.defaults() : EnvironmentAllowlist.of(listed);
   }
 
   /** Renders a fixed-width textual progress bar, e.g. {@code [████████░░░░] 2/3}. */

@@ -252,4 +252,11 @@ class DecisionClassifierEngineTest {
       .allSatisfy(r -> assertThat(r.topLabel()).isEqualTo("z"));
     assertThat(model.asked).allSatisfy(q -> assertThat(q.options()).hasSize(3));
   }
+
+  @Test
+  void takes_request_labels() {
+    assertThat(
+      new DecisionClassifierEngine(new RecordingModel(), null, List.of()).acceptsRequestLabels()
+    ).isTrue();
+  }
 }

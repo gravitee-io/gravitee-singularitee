@@ -12,7 +12,7 @@ stream has delivered its first event, failures propagate unchanged.
 ## Key types
 - `SingulariteeClient`: the client. Constructors take host and port plus optional Vert.x instance, keep-alive interval, Basic credentials, TLS flag and `ClientTlsOptions`.
 - `ClientTlsOptions`: record `(TrustOptions trust, KeyCertOptions keyCert, boolean trustAll, boolean verifyHostname)` with factories `trusting(trust)` and `mutual(trust, keyCert)`.
-- `BasicAuthGrpcClient`: package-private decorator that adds `authorization: Basic ...` to every request.
+- `MetadataGrpcClient`: package-private decorator that adds fixed metadata to every request: `authorization: Basic ...` for credentials, or the W3C `traceparent` of a `withMetadata` view.
 - `ClientPipelineExecutor` (`gravitee-singularitee-engine-remote`): runs a pipeline DAG locally over `remote_*` model proxies that call this client. See [Remote models and multi-server](../../guides/remote-and-multi-server/README.md).
 
 ## Usage
@@ -45,6 +45,11 @@ stream has delivered its first event, failures propagate unchanged.
 | `(vertx, host, port, http2KeepAliveTimeout, username, password, ssl, tls)` | shared | Full arity with `ClientTlsOptions`. |
 
 "Owned" constructors create a Vert.x instance and close it in `close()`; "shared" ones reuse yours.
+
+`withMetadata(Map<String, String>)` returns a view of the client that sends the given gRPC
+metadata with every call, over the same connections; closing the view closes nothing. The
+`remote_*` engines use it to send the W3C `traceparent` of the calling span, so the server's spans
+join the caller's trace (see [Observability](../../operations/observability/README.md#propagation)).
 
 ```java
 import io.gravitee.singularitee.client.ClientTlsOptions;

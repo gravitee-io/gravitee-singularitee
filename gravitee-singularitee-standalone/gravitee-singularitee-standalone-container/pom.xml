@@ -159,6 +159,14 @@
             <groupId>io.gravitee.node</groupId>
             <artifactId>gravitee-node-cache-common</artifactId>
         </dependency>
+
+        <!-- Testing: an in-place release is parsed and run through the route step's real codec and executor. -->
+        <dependency>
+            <groupId>io.gravitee.singularitee</groupId>
+            <artifactId>gravitee-singularitee-plugin-route</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

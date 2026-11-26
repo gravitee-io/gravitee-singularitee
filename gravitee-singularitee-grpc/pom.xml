@@ -56,6 +56,13 @@
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-api</artifactId>
         </dependency>
+        <!-- The real gravitee-node tracer over the OpenTelemetry SDK, so span tests read what
+             would be exported. -->
+        <dependency>
+            <groupId>io.gravitee.node</groupId>
+            <artifactId>gravitee-node-opentelemetry</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Workspace YAML parsing -->
         <dependency>

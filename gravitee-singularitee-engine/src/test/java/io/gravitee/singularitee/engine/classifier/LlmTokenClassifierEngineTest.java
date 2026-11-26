@@ -155,6 +155,13 @@ class LlmTokenClassifierEngineTest {
     }
   }
 
+  @Test
+  void request_labels_only_narrow_its_own_labels_so_it_is_not_zero_shot() {
+    assertThat(
+      engine(new ScriptedLlm(t -> "{\"spans\":[]}"), List.of("PERSON"), 0).acceptsRequestLabels()
+    ).isFalse();
+  }
+
   private static LlmTokenClassifierEngine engine(
     ScriptedLlm llm,
     List<String> labels,

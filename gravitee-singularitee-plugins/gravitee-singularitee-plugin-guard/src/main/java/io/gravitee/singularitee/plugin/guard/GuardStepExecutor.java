@@ -92,14 +92,22 @@ public final class GuardStepExecutor
 
     // One classification per target, so a long benign turn cannot dilute a short hostile one, in
     // a single batch call so a batching engine scores the whole conversation at once.
-    return engine
-      .rxClassifyBatch(
-        targets
-          .stream()
-          .map(t -> new ClassifyRequest(t.text()))
-          .toList()
-      )
-      .flatMapMaybe(results -> {
+    List<ClassifyRequest> requests = targets
+      .stream()
+      .map(t -> new ClassifyRequest(t.text()))
+      .toList();
+    return (
+      cfg.labels().isEmpty()
+        ? engine.rxClassifyBatch(requests)
+        : engine
+          .rxClassifyBatch(requests, cfg.labels())
+          .map(batch ->
+            batch
+              .stream()
+              .map(r -> r.within(cfg.labels()))
+              .toList()
+          )
+    ).flatMapMaybe(results -> {
         List<GuardTrigger> triggers = cfg.triggers();
 
         float minThreshold = triggers.isEmpty()

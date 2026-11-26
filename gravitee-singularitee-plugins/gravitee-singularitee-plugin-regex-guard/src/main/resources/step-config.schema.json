@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "regex_guard step config",
+  "description": "Deprecated model-free pattern guard that rejects, warns or redacts on a list of named Java regular expressions.",
+  "type": "object",
+  "properties": {
+    "input_field": {
+      "type": "string",
+      "default": "prompt",
+      "description": "Context key to scan; prompt (or unset) means the request itself, scanned per scope, and any other key is scanned alone.",
+      "x-singularitee-context": "reads"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["last_user", "user_turns", "conversation"],
+      "default": "conversation",
+      "description": "Turns inspected when the guard reads the request: last_user, user_turns, or conversation (every user, assistant and tool turn, system turns excluded); refused alongside any input_field other than prompt."
+    },
+    "on_empty": {
+      "type": "string",
+      "enum": ["reject", "skip"],
+      "description": "What to do when there is no text to inspect: reject halts with the rendered message and skip passes to the next step; defaults to reject for the reject action and skip for warn and redact."
+    },
+    "patterns": {
+      "type": "array",
+      "description": "Named Java regular expressions evaluated in order; an empty list skips the step.",
+      "items": {
+        "type": "object",
+        "description": "One named pattern.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Free-form label used as the [NAME] replacement and in the entity_type fields."
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Java Pattern source; blank patterns are ignored in redact mode."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "action": {
+      "type": "string",
+      "enum": ["reject", "warn", "redact"],
+      "default": "reject",
+      "description": "What happens on a match: reject halts the pipeline, warn flags and continues, redact masks the matched spans; the codec falls back to reject for unknown values."
+    },
+    "redact_with_entity_type": {
+      "type": "boolean",
+      "default": false,
+      "description": "Redact only: replace spans with [NAME] (upper-cased) instead of [REDACTED]."
+    },
+    "output_field": {
+      "type": "string",
+      "description": "Redact only: context key receiving the redacted text (the original text when nothing matched); defaults to <step id>.output.",
+      "x-singularitee-context": "writes"
+    },
+    "message": {
+      "type": "string",
+      "description": "Jinja template rendered on reject and returned as the failure message."
+    }
+  },
+  "additionalProperties": false
+}

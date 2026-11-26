@@ -152,6 +152,7 @@ public final class WriteStreamTokenAdapter implements WriteStream<InferResponse>
       case RESPONSE_EVENT_TYPE_PROGRESS -> TokenMessage.progressUpdate(
         response.getResponseProgress()
       );
+      case RESPONSE_EVENT_TYPE_STEP_TRACE -> TokenMessage.stepTraced(response.getStepTrace());
       default -> null;
     };
   }

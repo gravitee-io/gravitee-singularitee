@@ -26,16 +26,20 @@ import io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutorDecorat
 import io.gravitee.singularitee.engine.api.pipeline.executor.StepInvocation;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
+import io.gravitee.singularitee.engine.api.tracing.SpanStatus;
 import io.opentelemetry.api.trace.SpanKind;
 import io.reactivex.rxjava3.core.Maybe;
 import io.vertx.core.Context;
-import java.util.Map;
+import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Platform decorator: opens one {@code singularitee.step} span per step (child of the pipeline
+ * Platform decorator: opens one {@code step <id> (<type>)} span per step (child of the pipeline
  * span), publishes it as the active step span so {@link ModelBoundStepExecutor} parents
- * its model-call span to it, and ends it error-aware on every terminal. No-op when
- * tracing is disabled.
+ * its model-call span to it, and ends it before the next step starts: {@code OK} on success,
+ * {@code ERROR} with the exception on failure. A step that halts the run (a guard block) is a
+ * deliberate outcome: {@code OK} with {@code <prefix>.step.halted=true}. No-op when tracing is
+ * disabled.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -45,15 +49,30 @@ public final class TracingStepDecorator implements StepExecutorDecorator {
   @Override
   public Maybe<String> around(StepModel step, StepContext ctx, StepInvocation next) {
     // Defer so the span opens at subscribe time (when the step actually runs in the
-    // recursive walk), bracketing the whole inner chain.
+    // recursive walk), bracketing the whole inner chain. It ends before the terminal signal
+    // travels on, since the walk subscribes the next step from that signal.
     return Maybe.defer(() -> {
+      final boolean haltedBefore = isHalted(ctx);
       final Span span = startStepSpan(ctx, step);
-      final Throwable[] error = { null };
+      final AtomicBoolean ended = new AtomicBoolean();
       return next
         .proceed(step, ctx)
-        .doOnError(e -> error[0] = e)
-        .doFinally(() -> endStepSpan(ctx, span, error[0]));
+        .doOnEvent((nextStep, error) -> {
+          if (ended.compareAndSet(false, true)) {
+            boolean halted = !haltedBefore && isHalted(ctx);
+            endStepSpan(ctx, span, error, halted, true);
+          }
+        })
+        .doOnDispose(() -> {
+          if (ended.compareAndSet(false, true)) {
+            endStepSpan(ctx, span, null, false, false);
+          }
+        });
     });
+  }
+
+  private static boolean isHalted(StepContext ctx) {
+    return ctx.pipelineContext() != null && ctx.pipelineContext().isHalted();
   }
 
   private static Span startStepSpan(StepContext ctx, StepModel step) {
@@ -62,9 +81,17 @@ public final class TracingStepDecorator implements StepExecutorDecorator {
     if (tracer == null || vctx == null) {
       return null;
     }
+    var attributes = new HashMap<String, String>();
+    attributes.put("step.id", step.id());
+    attributes.put("step.type", step.type());
+    attributes.put(SpanNames.key("step.id"), step.id());
+    attributes.put(SpanNames.key("step.type"), step.type());
+    if (ctx.pipeline() != null) {
+      attributes.put(SpanNames.key("pipeline.id"), ctx.pipeline().id());
+    }
     InternalRequest request = InternalRequest.builder()
-      .name(SpanNames.key("step"))
-      .attributes(Map.of("step.id", step.id(), "step.type", step.type()))
+      .name("step " + step.id() + " (" + step.type() + ")")
+      .attributes(attributes)
       .spanKind(SpanKind.INTERNAL)
       .build();
     Span span = ctx.pipelineSpan() != null
@@ -78,16 +105,29 @@ public final class TracingStepDecorator implements StepExecutorDecorator {
     return span;
   }
 
-  private static void endStepSpan(StepContext ctx, Span span, Throwable error) {
-    ctx.activeStepSpan().set(null);
+  /** {@code completed} is false when the caller disposed of the step: no status is set. */
+  private static void endStepSpan(
+    StepContext ctx,
+    Span span,
+    Throwable error,
+    boolean halted,
+    boolean completed
+  ) {
     Tracer tracer = ctx.tracer();
     if (span == null || tracer == null) {
       return;
     }
+    ctx.activeStepSpan().compareAndSet(span, null);
     if (error != null) {
-      tracer.endOnError(ctx.callerContext(), span, error);
-    } else {
-      tracer.end(ctx.callerContext(), span);
+      SpanStatus.endWithError(tracer, ctx.callerContext(), span, error);
+      return;
     }
+    if (halted) {
+      span.withAttribute(SpanNames.key("step.halted"), true);
+    }
+    if (completed) {
+      SpanStatus.ok(span);
+    }
+    tracer.end(ctx.callerContext(), span);
   }
 }

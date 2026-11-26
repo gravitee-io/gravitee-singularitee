@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sub_pipeline step config",
+  "description": "Runs another published pipeline as a nested step, locally or on a named remote server, and captures its output in the parent context.",
+  "type": "object",
+  "properties": {
+    "pipeline_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Id of the pipeline to run, in the local registry or on server.",
+      "x-singularitee-ref": "pipeline"
+    },
+    "server": {
+      "type": "string",
+      "description": "Id of a workspace.remote.servers[] endpoint to run the pipeline on; local when unset.",
+      "x-singularitee-ref": "server"
+    },
+    "input_field": {
+      "type": "string",
+      "default": "prompt",
+      "description": "Context key sent as the sub-pipeline's prompt when messages are not forwarded.",
+      "x-singularitee-context": "reads"
+    },
+    "forward_messages": {
+      "type": "boolean",
+      "default": false,
+      "description": "Send the parent's full conversation instead of the flat prompt."
+    },
+    "system_prompt": {
+      "type": "string",
+      "description": "Plain-text system message for the sub-pipeline, replacing any existing system turn; not a Jinja template."
+    },
+    "output_field": {
+      "type": "string",
+      "description": "Context key receiving everything the sub-pipeline streamed; <step id>.output when unset.",
+      "x-singularitee-context": "writes"
+    }
+  },
+  "required": ["pipeline_id"],
+  "additionalProperties": false
+}
