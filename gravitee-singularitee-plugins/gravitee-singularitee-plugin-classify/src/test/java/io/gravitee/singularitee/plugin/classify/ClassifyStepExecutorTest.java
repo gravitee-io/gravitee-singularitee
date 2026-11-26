@@ -210,4 +210,25 @@ class ClassifyStepExecutorTest {
 
     assertThat(pctx.get("topic.label")).isEqualTo("model-label");
   }
+
+  @Test
+  void a_label_outside_the_step_labels_is_never_its_answer() {
+    var engine = mock(ClassifierEngine.class, withSettings().defaultAnswer(CALLS_REAL_METHODS));
+    when(engine.rxClassify(any(), anyList())).thenReturn(
+      Single.just(
+        new ClassifyResponse(
+          "ALPHA",
+          0.99f,
+          Map.of("ALPHA", 0.99f, "billing", 0.6f, "shipping", 0.1f),
+          List.of()
+        )
+      )
+    );
+    var pctx = request("ALPHA billing");
+
+    executor.rxExecuteWithEngine("topic", step(TOPICS), engine, context(pctx)).blockingGet();
+
+    assertThat(pctx.get("topic.label")).isEqualTo("billing");
+    assertThat(pctx.get("topic.label.score")).isEqualTo("0.6");
+  }
 }

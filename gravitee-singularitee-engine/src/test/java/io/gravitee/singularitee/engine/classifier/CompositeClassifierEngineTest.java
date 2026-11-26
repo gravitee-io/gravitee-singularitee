@@ -498,11 +498,14 @@ class CompositeClassifierEngineTest {
     }
 
     @Test
-    void a_composite_takes_request_labels_when_a_member_does() {
+    void a_composite_takes_request_labels_only_when_every_member_does() {
       var regex = new RegexClassifierEngine(List.of(new PatternEntry("alpha", "ALPHA")));
 
       assertThat(
         new CompositeClassifierEngine(List.of(regex, zeroShot())).acceptsRequestLabels()
+      ).isFalse();
+      assertThat(
+        new CompositeClassifierEngine(List.of(zeroShot(), zeroShot())).acceptsRequestLabels()
       ).isTrue();
     }
 

@@ -323,8 +323,10 @@ public final class RouteStepExecutor implements StepExecutor<RouteStepConfig>, W
     }
     var request = new ClassifyRequest(text);
     return (
-      cfg.labels().isEmpty() ? ce.rxClassify(request) : ce.rxClassify(request, cfg.labels())
-    ).map(r -> r.topLabel());
+      cfg.labels().isEmpty()
+        ? ce.rxClassify(request)
+        : ce.rxClassify(request, cfg.labels()).map(r -> r.within(cfg.labels()))
+    ).map(r -> r.topLabel() == null ? "" : r.topLabel());
   }
 
   // ---------------------------------------------------------------------------

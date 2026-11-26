@@ -76,9 +76,10 @@ Writes:
 
 - With the default `output_field`, Jinja sees `{{ intent.label }}` and `{{ intent.score }}`: `intent.label.score` is flattened to `intent = {label: ..., "label.score": ...}` and the nested key is unreachable by dot navigation. Keep `output_field` to a single dot (`<id>.label`) when templates need the score.
 - The full per-label score map is not written to the context; only the top entry is. Use [`guard`](./guard.md) with `triggers` to test several labels.
-- `labels` are checked at pipeline load, never at request time: a name that is blank or declared twice fails the load, and so does a step with `labels` on a model that cannot take request labels (`onnx_classifier`, `regex`, `llm_token_classifier`, a composite with no zero-shot member), with a message naming the step and the model. A release applied in place is checked the same way; [Releases applied without a restart](../configuration.md#releases-applied-without-a-restart) says which failures leave the pipeline out and which refuse the release.
+- `labels` are checked at pipeline load, never at request time: a name that is blank or declared twice fails the load, and so does a step with `labels` on a model that cannot take request labels (`onnx_classifier`, `regex`, `llm_token_classifier`, a composite with a member that cannot), with a message naming the step and the model. A release applied in place is checked the same way; [Releases applied without a restart](../configuration.md#releases-applied-without-a-restart) says which failures leave the pipeline out and which refuse the release.
 - A `remote_classifier` forwards the labels to its server, which honours them only when the model behind it is zero-shot: the proxy is registered without probing the remote, so the load check cannot tell.
-- A `composite_classifier` takes `labels` when one member does; members that ignore request labels (regex, ONNX) answer with their own labels.
+- A `composite_classifier` takes `labels` only when every member does: a member that ignores request labels (regex, ONNX) would answer with its own.
+- The answer always stays within `labels`: should the model still name another label (a `remote_classifier` whose remote model has fixed labels), that label and its score are dropped and the best remaining label wins; with none left, `label` is unset.
 - GLiNER scores a call with request labels on its own instead of through the micro-batcher that coalesces calls using the model's labels.
 
 ## See also

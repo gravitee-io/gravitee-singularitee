@@ -65,7 +65,9 @@ public final class ClassifyStepExecutor
     final SpanScribe stepScribe = ctx.stepScribe();
     var request = new ClassifyRequest(text);
     return (
-      cfg.labels().isEmpty() ? engine.rxClassify(request) : engine.rxClassify(request, cfg.labels())
+      cfg.labels().isEmpty()
+        ? engine.rxClassify(request)
+        : engine.rxClassify(request, cfg.labels()).map(r -> r.within(cfg.labels()))
     ).flatMapMaybe(result -> {
       // Span introspection: the winning label and its score.
       stepScribe

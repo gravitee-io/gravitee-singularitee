@@ -309,4 +309,44 @@ class GuardStepExecutorTest {
     verify(engine).rxClassifyBatch(argThat(batch -> batch.size() == 3));
     verify(engine, never()).rxClassifyBatch(anyList(), argThat(labels -> !labels.isEmpty()));
   }
+
+  @Test
+  void a_guard_with_labels_acts_only_on_its_labels() {
+    var spans = mock(ClassifierEngine.class, withSettings().defaultAnswer(CALLS_REAL_METHODS));
+    when(spans.task()).thenReturn(ModelTasks.TOKEN_CLASSIFICATION);
+    String text = "mail a@b.c from Kari";
+    doReturn(
+      Single.just(
+        new ClassifyResponse(
+          "EMAIL",
+          0.99f,
+          Map.of("EMAIL", 0.99f, "PERSON", 0.9f),
+          List.of(
+            new io.gravitee.singularitee.engine.api.ClassifyResult("EMAIL", 0.99f, "a@b.c", 5, 10),
+            new io.gravitee.singularitee.engine.api.ClassifyResult("PERSON", 0.9f, "Kari", 16, 20)
+          )
+        )
+      )
+    )
+      .when(spans)
+      .rxClassify(any(), anyList());
+    var cfg = new GuardStepConfig(
+      "pii",
+      "",
+      "",
+      GuardAction.REDACT,
+      List.of(new GuardTrigger("PERSON", 0.5f)),
+      "",
+      false,
+      GuardScope.LAST_USER,
+      GuardOnEmpty.REJECT,
+      List.of(new ClassifyLabel("PERSON", ""))
+    );
+    var pctx = context(List.of(new ChatTurn(ChatRole.USER, text)));
+
+    executor.rxExecuteWithEngine("g", cfg, spans, stepContext(pctx)).blockingGet();
+
+    assertThat(pctx.get("g.redacted")).contains("a@b.c").doesNotContain("Kari");
+    assertThat(pctx.get("g.labels")).isEqualTo("PERSON");
+  }
 }

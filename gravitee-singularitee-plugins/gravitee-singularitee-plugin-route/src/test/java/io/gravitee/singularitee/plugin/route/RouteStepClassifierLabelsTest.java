@@ -143,4 +143,21 @@ class RouteStepClassifierLabelsTest {
     verify(engine).rxClassify(any());
     verify(engine, never()).rxClassify(any(), anyList());
   }
+
+  @Test
+  void a_classifier_route_never_routes_on_a_label_outside_its_labels() {
+    var engine = mock(ClassifierEngine.class, withSettings().defaultAnswer(CALLS_REAL_METHODS));
+    when(engine.rxClassify(any(), anyList())).thenReturn(
+      Single.just(
+        new ClassifyResponse(
+          "billing_fraud",
+          0.99f,
+          Map.of("billing_fraud", 0.99f, "tech", 0.7f, "billing", 0.1f),
+          List.of()
+        )
+      )
+    );
+
+    assertThat(route(engine, config(LABELS))).isEqualTo("to_tech");
+  }
 }
