@@ -432,6 +432,11 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       answer.ifPresent(this::readAnswer);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+    } catch (ReleaseSyncClient.UnexpectedAnswerException e) {
+      if (e.refused()) {
+        traceKeys.expect(null);
+      }
+      LOGGER.warn("Heartbeat to Gamma failed: {}", e.getMessage());
     } catch (Exception e) {
       LOGGER.warn("Heartbeat to Gamma failed: {}", e.getMessage());
     }
@@ -440,7 +445,9 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
   private void readAnswer(String body) {
     try {
       JsonNode hash = ANSWER_JSON.readTree(body).get("traceKeySha256");
-      if (hash != null && hash.isTextual()) {
+      if (hash != null && hash.isNull()) {
+        traceKeys.expect(null);
+      } else if (hash != null && hash.isTextual()) {
         traceKeys.expect(hash.asText());
       }
     } catch (IOException e) {

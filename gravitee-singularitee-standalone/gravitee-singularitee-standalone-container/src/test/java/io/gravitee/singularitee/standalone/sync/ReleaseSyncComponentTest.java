@@ -74,6 +74,7 @@ class ReleaseSyncComponentTest {
   private final AtomicReference<String> statusBody = new AtomicReference<>();
   private final AtomicReference<String> statusAuth = new AtomicReference<>();
   private volatile String statusAnswer;
+  private volatile int statusReportCode;
   private volatile int releaseStatus = 200;
 
   @BeforeEach
@@ -103,7 +104,9 @@ class ReleaseSyncComponentTest {
     server.createContext("/_sync/instances/test-instance/status", exchange -> {
       statusBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
       statusAuth.set(exchange.getRequestHeaders().getFirst("X-Singularitee-Token"));
-      if (statusAnswer == null) {
+      if (statusReportCode != 0) {
+        exchange.sendResponseHeaders(statusReportCode, -1);
+      } else if (statusAnswer == null) {
         exchange.sendResponseHeaders(204, -1);
       } else {
         byte[] answer = statusAnswer.getBytes(StandardCharsets.UTF_8);
@@ -518,6 +521,76 @@ class ReleaseSyncComponentTest {
     component.heartbeat();
 
     assertThat(authority.allows("k-1")).isFalse();
+  }
+
+  private io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority tracingWithKey(
+    ReleaseSyncComponent[] holder
+  ) {
+    var authority = new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority();
+    var component = component(config(Map.of()), authority);
+    component.setClientForTest(client(), 1, false, () -> {});
+    statusAnswer = "{\"traceKeySha256\":\"" + ReleaseSyncClient.sha256("k-1") + "\"}";
+    component.heartbeat();
+    assertThat(authority.allows("k-1")).isTrue();
+    holder[0] = component;
+    return authority;
+  }
+
+  @Test
+  void an_explicit_null_trace_key_hash_withdraws_tracing() {
+    var holder = new ReleaseSyncComponent[1];
+    var authority = tracingWithKey(holder);
+
+    statusAnswer = "{\"traceKeySha256\":null}";
+    holder[0].heartbeat();
+
+    assertThat(authority.allows("k-1")).isFalse();
+  }
+
+  @Test
+  void an_answer_without_the_field_keeps_the_trace_key() {
+    var holder = new ReleaseSyncComponent[1];
+    var authority = tracingWithKey(holder);
+
+    statusAnswer = "{\"other\":1}";
+    holder[0].heartbeat();
+
+    assertThat(authority.allows("k-1")).isTrue();
+  }
+
+  @Test
+  void a_heartbeat_refused_with_401_withdraws_tracing() {
+    var holder = new ReleaseSyncComponent[1];
+    var authority = tracingWithKey(holder);
+
+    statusReportCode = 401;
+    holder[0].heartbeat();
+
+    assertThat(authority.allows("k-1")).isFalse();
+  }
+
+  @Test
+  void a_heartbeat_refused_with_403_withdraws_tracing() {
+    var holder = new ReleaseSyncComponent[1];
+    var authority = tracingWithKey(holder);
+
+    statusReportCode = 403;
+    holder[0].heartbeat();
+
+    assertThat(authority.allows("k-1")).isFalse();
+  }
+
+  @Test
+  void a_heartbeat_failing_for_another_reason_keeps_the_trace_key() {
+    var holder = new ReleaseSyncComponent[1];
+    var authority = tracingWithKey(holder);
+
+    statusReportCode = 503;
+    holder[0].heartbeat();
+    server.stop(0);
+    holder[0].heartbeat();
+
+    assertThat(authority.allows("k-1")).isTrue();
   }
 
   @Test

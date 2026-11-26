@@ -201,8 +201,10 @@ and a request with another key or none runs normally.
 | Answer | Effect |
 | --- | --- |
 | `traceKeySha256` set to a hex digest | Replaces the expected hash. |
-| `traceKeySha256` blank, or not hex | Withdraws it: nothing is traced until a valid hash is announced. |
-| No body, no `traceKeySha256`, or a non-string value | Changes nothing. |
+| `traceKeySha256` blank, `null`, or not hex | Withdraws it: nothing is traced until a valid hash is announced. |
+| `401` or `403` (the control plane refuses the node's token) | Withdraws it, so a node left on a rotated token stops accepting the old key. |
+| No body, no `traceKeySha256`, or a value that is neither a string nor `null` | Changes nothing (an older control plane sends no hash). |
+| Any other failure (unreachable, another error status) | Changes nothing. |
 | A body that is not JSON | Logged as a warning and ignored. |
 
 Limits of a trace: each output value is cut to 4096 characters, and the serialized trace of one run is capped at

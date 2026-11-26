@@ -132,7 +132,7 @@ public final class ReleaseSyncClient {
     HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
     int code = response.statusCode();
     if (code / 100 != 2) {
-      throw new UnexpectedAnswerException("Status report failed: HTTP " + code);
+      throw new UnexpectedAnswerException("Status report failed: HTTP " + code, code);
     }
     String body = response.body();
     return body == null || body.isBlank() ? Optional.empty() : Optional.of(body);
@@ -181,8 +181,25 @@ public final class ReleaseSyncClient {
   /** The control plane answered, but not with what was asked for: it is reachable, so this is not a transport failure. */
   public static final class UnexpectedAnswerException extends IOException {
 
+    private final int status;
+
     public UnexpectedAnswerException(String message) {
+      this(message, 0);
+    }
+
+    public UnexpectedAnswerException(String message, int status) {
       super(message);
+      this.status = status;
+    }
+
+    /** The HTTP status the control plane answered with, 0 when the status was not the problem. */
+    public int status() {
+      return status;
+    }
+
+    /** The control plane no longer accepts this node's token. */
+    public boolean refused() {
+      return status == 401 || status == 403;
     }
   }
 }
