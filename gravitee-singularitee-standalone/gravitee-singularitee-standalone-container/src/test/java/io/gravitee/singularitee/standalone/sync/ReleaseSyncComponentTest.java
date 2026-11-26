@@ -318,7 +318,7 @@ class ReleaseSyncComponentTest {
 
   @Test
   void a_failed_release_stays_reported_across_successful_polls_and_heartbeats() throws Exception {
-    var node = node(V1);
+    var node = strictNode(V1);
     node.component().setClientForTest(client(), 1, V1, true, () -> {});
     releaseYaml = workspace(
       "",
@@ -337,7 +337,7 @@ class ReleaseSyncComponentTest {
 
   @Test
   void a_failed_release_outlives_a_transport_failure_and_its_recovery() throws Exception {
-    var node = node(V1);
+    var node = strictNode(V1);
     node.component().setClientForTest(client(), 1, V1, true, () -> {});
     releaseYaml = workspace(
       "",
@@ -357,7 +357,7 @@ class ReleaseSyncComponentTest {
 
   @Test
   void a_failed_release_clears_once_a_fixed_one_is_applied() throws Exception {
-    var node = node(V1);
+    var node = strictNode(V1);
     node.component().setClientForTest(client(), 1, V1, true, () -> {});
     releaseYaml = workspace(
       "",
@@ -366,6 +366,73 @@ class ReleaseSyncComponentTest {
     revision = 2;
     node.component().poll();
     assertThat(node.component().snapshot().lastError()).isNotBlank();
+
+    releaseYaml = V2;
+    revision = 3;
+    node.component().poll();
+
+    assertThat(node.component().snapshot().lastError()).isNull();
+    assertThat(node.component().snapshot().appliedRevision()).isEqualTo(3);
+  }
+
+  private static final String JUDGE_MISSING = step("judge", "bound", "model_id: missing_model");
+
+  @Test
+  void a_pipeline_boot_skipped_does_not_block_an_edit_to_another_pipeline() throws Exception {
+    var restarts = new AtomicInteger();
+    String boot = workspace("", echo("chat", "text", "v1") + JUDGE_MISSING);
+    var node = node(boot);
+    var client = client();
+    node.component().setClientForTest(client, 1, boot, true, restarts::incrementAndGet);
+    assertThat(node.pipelines().get("judge")).isEmpty();
+    releaseYaml = workspace("", echo("chat", "text", "v2") + JUDGE_MISSING);
+    revision = 2;
+
+    node.component().poll();
+
+    assertThat(restarts).hasValue(0);
+    assertThat(text(node.pipelines(), "chat")).isEqualTo("v2");
+    assertThat(node.pipelines().get("judge")).isEmpty();
+    assertThat(node.component().snapshot().appliedRevision()).isEqualTo(2);
+    assertThat(client.cachedRevision()).isEqualTo(2);
+    assertThat(node.component().snapshot().lastError())
+      .contains("judge")
+      .contains("missing_model")
+      .doesNotContain("chat");
+
+    node.component().poll();
+    node.component().heartbeat();
+    assertThat(node.component().snapshot().lastError()).contains("judge");
+    assertThat(statusBody.get()).contains("\"appliedRevision\":2").contains("missing_model");
+  }
+
+  @Test
+  void a_pipeline_the_loader_skips_is_reported_and_the_rest_applied() throws Exception {
+    var node = node(V1);
+    node.component().setClientForTest(client(), 1, V1, true, () -> {});
+    releaseYaml = workspace("", echo("chat", "text", "v2") + step("flaky", "broken", "x: 1"));
+    revision = 2;
+
+    node.component().poll();
+
+    assertThat(text(node.pipelines(), "chat")).isEqualTo("v2");
+    assertThat(node.pipelines().get("flaky")).isEmpty();
+    assertThat(node.component().snapshot().appliedRevision()).isEqualTo(2);
+    assertThat(node.component().snapshot().lastError()).contains("flaky");
+  }
+
+  @Test
+  void a_skipped_pipeline_stays_reported_until_a_release_applies_cleanly() throws Exception {
+    var node = node(V1);
+    node.component().setClientForTest(client(), 1, V1, true, () -> {});
+    releaseYaml = workspace("", echo("chat", "text", "v2") + JUDGE_MISSING);
+    revision = 2;
+    node.component().poll();
+    server.stop(0);
+    node.component().poll();
+    restartServer();
+    node.component().poll();
+    assertThat(node.component().snapshot().lastError()).contains("judge");
 
     releaseYaml = V2;
     revision = 3;
@@ -539,11 +606,19 @@ class ReleaseSyncComponentTest {
 
   /** A node that booted on {@code bootYaml}: its pipelines registered as the workspace loader does. */
   private Node node(String bootYaml) throws Exception {
+    return node(bootYaml, false);
+  }
+
+  private Node strictNode(String bootYaml) throws Exception {
+    return node(bootYaml, true);
+  }
+
+  private Node node(String bootYaml, boolean strict) throws Exception {
     var models = new ModelRegistry();
     var pipelines = new PipelineRegistry(models);
     var readiness = new ReadinessState();
     var component = new ReleaseSyncComponent(
-      config(Map.of()),
+      config(Map.of("ai.workspace.strict", strict)),
       models,
       pipelines,
       readiness,
@@ -557,7 +632,9 @@ class ReleaseSyncComponentTest {
       null,
       CODECS
     ).pipelines()) {
-      pipelines.register(pipeline);
+      try {
+        pipelines.register(pipeline);
+      } catch (IllegalArgumentException skippedAtBoot) {}
     }
     readiness.markReady();
     return new Node(component, pipelines, readiness);
@@ -706,10 +783,10 @@ class ReleaseSyncComponentTest {
   }
 
   @Test
-  void a_release_whose_pipeline_fails_to_load_keeps_the_old_pipelines_and_reports_why()
+  void in_strict_mode_a_release_whose_pipeline_fails_to_load_keeps_the_old_pipelines_and_reports_why()
     throws Exception {
     var restarts = new AtomicInteger();
-    var node = node(V1);
+    var node = strictNode(V1);
     var client = client();
     node.component().setClientForTest(client, 1, V1, true, restarts::incrementAndGet);
     var before = node.pipelines().get("chat").orElseThrow();
@@ -733,9 +810,9 @@ class ReleaseSyncComponentTest {
   }
 
   @Test
-  void a_pipeline_the_loader_skips_fails_the_whole_release() throws Exception {
+  void in_strict_mode_a_pipeline_the_loader_skips_fails_the_whole_release() throws Exception {
     var restarts = new AtomicInteger();
-    var node = node(V1);
+    var node = strictNode(V1);
     node.component().setClientForTest(client(), 1, V1, true, restarts::incrementAndGet);
     var before = node.pipelines().get("chat").orElseThrow();
     releaseYaml = workspace("", echo("chat", "text", "v2") + step("flaky", "broken", "x: 1"));
@@ -888,6 +965,10 @@ class ReleaseSyncComponentTest {
 
   /** A node serving one zero-shot model ("gliner") and one that takes no request labels ("toxicity"). */
   private LabelledNode labelledNode(String bootYaml) throws Exception {
+    return labelledNode(bootYaml, false);
+  }
+
+  private LabelledNode labelledNode(String bootYaml, boolean strict) throws Exception {
     var models = new ModelRegistry();
     var gliner = new LastLabel(true);
     models.register("gliner", "gliner", gliner, token -> {});
@@ -918,7 +999,7 @@ class ReleaseSyncComponentTest {
     );
     var readiness = new ReadinessState();
     var component = new ReleaseSyncComponent(
-      config(Map.of()),
+      config(Map.of("ai.workspace.strict", strict)),
       models,
       pipelines,
       readiness,
@@ -968,10 +1049,10 @@ class ReleaseSyncComponentTest {
   }
 
   @Test
-  void a_release_that_puts_labels_on_a_model_that_cannot_take_them_is_not_applied()
+  void in_strict_mode_a_release_that_puts_labels_on_a_model_that_cannot_take_them_is_not_applied()
     throws Exception {
     var restarts = new AtomicInteger();
-    var labelled = labelledNode(TWO_LABELS);
+    var labelled = labelledNode(TWO_LABELS, true);
     labelled
       .node()
       .component()
@@ -992,6 +1073,31 @@ class ReleaseSyncComponentTest {
     assertThat(labelled.node().component().snapshot().appliedRevision()).isEqualTo(1);
     assertThat(labelled.node().component().snapshot().lastError())
       .contains("Step 'route'")
+      .contains("model 'toxicity'");
+  }
+
+  @Test
+  void a_release_that_puts_labels_on_a_model_that_cannot_take_them_skips_that_pipeline()
+    throws Exception {
+    var labelled = labelledNode(TWO_LABELS);
+    labelled
+      .node()
+      .component()
+      .setClientForTest(client(), 1, TWO_LABELS, true, () -> {});
+    releaseYaml = routed(
+      "toxicity",
+      "[billing, tech]",
+      rule("billing") + rule("tech"),
+      target("billing") + target("tech")
+    );
+    revision = 2;
+
+    labelled.node().component().poll();
+
+    assertThat(labelled.node().pipelines().get("support")).isEmpty();
+    assertThat(labelled.node().component().snapshot().appliedRevision()).isEqualTo(2);
+    assertThat(labelled.node().component().snapshot().lastError())
+      .contains("support")
       .contains("model 'toxicity'");
   }
 

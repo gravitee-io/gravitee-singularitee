@@ -101,7 +101,7 @@ Plus, by action: `warn` writes `__guard_triggered = <id>`; `redact` writes `<out
 - Inspecting a whole conversation costs one classification per turn with text. Set `scope: last_user` where only the newest turn matters, for instance when an earlier guard already inspected the history.
 - With `on_empty: reject` (the default for `reject`), a guard on a model output field blocks an empty generation; set `on_empty: skip` where an empty value is legitimate.
 - Several guards can chain; each one reads the field the previous one produced (`input_field: pii_guard.output`).
-- `labels` are checked at pipeline load: a trigger label that is not among them, a blank or repeated name, or `labels` on a model that cannot take request labels (`onnx_classifier`, `regex`, `llm_token_classifier`) fails the load with a message naming the step (and the model). A release applied in place is checked the same way and refused as a whole.
+- `labels` are checked at pipeline load: a trigger label that is not among them, a blank or repeated name, or `labels` on a model that cannot take request labels (`onnx_classifier`, `regex`, `llm_token_classifier`) fails the load with a message naming the step (and the model). A release applied in place is checked the same way; [Releases applied without a restart](../configuration.md#releases-applied-without-a-restart) says which failures leave the pipeline out and which refuse the release.
 
 ## See also
 

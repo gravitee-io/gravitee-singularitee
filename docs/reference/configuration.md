@@ -131,12 +131,12 @@ The workspace decides which endpoints are reached over TLS (`ssl: true` on the e
 | Key | Default | Env var | Purpose |
 | --- | --- | --- | --- |
 | `ai.workspace.path` | unset | `GRAVITEE_AI_WORKSPACE_PATH` | Workspace YAML loaded at boot. Unset starts an empty server, ready at once. A file that does not parse (bad YAML, an unknown step, an include outside its folder) fails startup whatever `ai.workspace.strict` says. |
-| `ai.workspace.strict` | `false` | `GRAVITEE_AI_WORKSPACE_STRICT` | Fail startup when any model, remote model or pipeline fails to load (a workspace that does not parse always fails startup). Off, failures are logged and the server serves what loaded; a pipeline whose model failed is never registered. Turn it on where an orchestrator should replace an instance instead of routing to a partial one. |
+| `ai.workspace.strict` | `false` | `GRAVITEE_AI_WORKSPACE_STRICT` | Fail startup when any model, remote model or pipeline fails to load (a workspace that does not parse always fails startup). Off, failures are logged and the server serves what loaded; a pipeline whose model failed is never registered. Turn it on where an orchestrator should replace an instance instead of routing to a partial one. It also decides how a synced node applies a release in place: on, one failing pipeline refuses the whole release; off, the failing pipelines are left out and the rest applied, as at startup. See [Releases applied without a restart](#releases-applied-without-a-restart). |
 | `ai.sync.enabled` | `false` | `GRAVITEE_AI_SYNC_ENABLED` | Pull the workspace from the Gamma module instead of a local file. Needs `ai.sync.url` and `ai.sync.token`, otherwise startup fails. The pulled release always wins over `ai.workspace.path`, including when that one comes from `GRAVITEE_AI_WORKSPACE_PATH`: the node logs a warning and serves only what Gamma delivered. `./run-server.sh` serves no local example while this is `true` (unless you pass `--workspace`, which is then ignored). |
 | `ai.sync.url` | unset | `GRAVITEE_AI_SYNC_URL` | Base URL of the Gamma module sync API; the node calls `<url>/_sync/release`. |
 | `ai.sync.token` | unset | `GRAVITEE_AI_SYNC_TOKEN` | Sync token issued by Gamma (sent as `X-Singularitee-Token`) for the server group, a signed JWT that names the group. Shown once when the group is created or its token rotated. |
 | `ai.sync.interval` | `30` | `GRAVITEE_AI_SYNC_INTERVAL` | Seconds between polls for a newer release. |
-| `ai.sync.heartbeat-interval` | `10` | `GRAVITEE_AI_SYNC_HEARTBEAT_INTERVAL` | Seconds between status reports to Gamma (`POST <url>/_sync/instances/<id>/status`). Each report says whether the node is ready to serve (false while the workspace loads), its uptime, the running revision, the models (id, engine, task) and pipelines it serves, the step types it can execute (type, whether core, and the config JSON schema when the plugin ships one), host RAM, CPU (architecture, model, cores, SIMD) and GPUs (vendor, memory, driver, CUDA capability or Metal), and the last sync error (including why a release could not be applied in place). Gamma counts a node offline after three missed reports. The first report registers the node. A failed report is logged and never affects serving. |
+| `ai.sync.heartbeat-interval` | `10` | `GRAVITEE_AI_SYNC_HEARTBEAT_INTERVAL` | Seconds between status reports to Gamma (`POST <url>/_sync/instances/<id>/status`). Each report says whether the node is ready to serve (false while the workspace loads), its uptime, the running revision, the models (id, engine, task) and pipelines it serves, the step types it can execute (type, whether core, and the config JSON schema when the plugin ships one), host RAM, CPU (architecture, model, cores, SIMD) and GPUs (vendor, memory, driver, CUDA capability or Metal), and the last sync error (including why a release could not be applied in place, or which pipelines an in-place release left out). Gamma counts a node offline after three missed reports. The first report registers the node. A failed report is logged and never affects serving. |
 | `ai.sync.instance-id` | generated | `GRAVITEE_AI_SYNC_INSTANCE_ID` | Stable id of this node. Unset, a UUID is generated once and kept as `instance.id` in `ai.sync.cache-dir`. Set it in Kubernetes to the pod or StatefulSet name so a restart keeps its identity. |
 | `ai.sync.cache-dir` | `${gravitee.home}/sync` | `GRAVITEE_AI_SYNC_CACHE_DIR` | Where the last good release is kept. If Gamma is unreachable at boot the node starts on it; with nothing cached, startup fails. |
 | `ai.sync.restart-on-change` | `true` | `GRAVITEE_AI_SYNC_RESTART_ON_CHANGE` | Models cannot be unloaded at runtime, so a newer release that changes anything beyond `workspace.pipelines` and `workspace.templates` is applied by storing it and exiting with status `75`; the supervisor must restart the node (`./run-server.sh` does; Kubernetes restarts any exit; Docker needs `restart: unless-stopped` or `on-failure`; systemd needs `Restart=always` or `RestartForceExitStatus=75`). Set `false` to store such a release only. A release that changes only pipelines and templates is applied in place whatever this key says; see [Releases applied without a restart](#releases-applied-without-a-restart). |
@@ -164,9 +164,17 @@ the release is applied in place once the workspace has loaded:
 - the KNN reference embeddings of changed and removed pipelines are dropped and recomputed, so a changed `embedding_knn` route never routes on its old references;
 - runs already started finish on the pipeline they began with.
 
-If any pipeline fails to load (an unknown model, a step type no plugin provides, an unlicensed step, a config its
-codec refuses), nothing changes: the node keeps the old pipelines and revision, leaves the stored release as it was,
-reports the error as `lastError` in its heartbeat and tries again at the next poll. A newer release fixes it.
+A pipeline that fails to register (an unknown model, `labels` on a model that cannot take them), or that the loader
+skips (a step codec failing with an unexpected error), is treated as at startup:
+
+- by default it is left out and the rest of the release is applied as above. A pipeline the node skipped at boot
+  because its model failed to load therefore never blocks an edit to another pipeline. The heartbeat reports the
+  pipelines left out, with the reason for each, as `lastError` until a release applies without leaving any out;
+- with `ai.workspace.strict: true` nothing changes: the node keeps the old pipelines and revision, leaves the stored
+  release as it was, reports the error as `lastError` and tries again at the next poll. A newer release fixes it.
+
+A release that does not load as a whole (a step type no plugin provides, a step config its codec refuses, an unlicensed
+step) is never applied in part: it is refused as in strict mode, as such a workspace fails startup.
 
 `lastError` keeps two kinds of error apart. A failure to reach the control plane (a refused connection, a timeout, an
 empty response) is transient: it is reported until the next successful poll or heartbeat, then cleared. A release

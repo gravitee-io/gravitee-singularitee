@@ -107,14 +107,51 @@ public final class PipelineRegistry {
    * @throws IllegalArgumentException as {@link #register} does, or when two pipelines share an id
    */
   public Replacement prepareReplacement(List<PipelineModel> replacement) {
+    return prepare(replacement, false);
+  }
+
+  /**
+   * As {@link #prepareReplacement}, but a pipeline that fails validation is left out and listed in
+   * {@link Replacement#skipped()}, as a workspace load that is not strict skips it. An unlicensed
+   * step still fails the whole set, as it fails a workspace load.
+   *
+   * @throws UnlicensedStepException when a pipeline declares a step whose license feature is missing
+   */
+  public Replacement prepareLenientReplacement(List<PipelineModel> replacement) {
+    return prepare(replacement, true);
+  }
+
+  private Replacement prepare(List<PipelineModel> replacement, boolean lenient) {
     Map<String, PipelineEntry> entries = new LinkedHashMap<>();
+    Map<String, String> skipped = new LinkedHashMap<>();
     for (PipelineModel pipeline : replacement) {
-      PipelineModel published = published(pipeline);
+      PipelineModel published;
+      try {
+        published = published(pipeline);
+      } catch (UnlicensedStepException e) {
+        throw e;
+      } catch (RuntimeException e) {
+        if (!lenient) {
+          throw e;
+        }
+        skipped.putIfAbsent(label(pipeline), e.getMessage());
+        continue;
+      }
       if (entries.putIfAbsent(published.id(), activeEntry(published)) != null) {
-        throw new IllegalArgumentException("pipeline_id declared twice: " + published.id());
+        String duplicate = "pipeline_id declared twice: " + published.id();
+        if (!lenient) {
+          throw new IllegalArgumentException(duplicate);
+        }
+        skipped.putIfAbsent(published.id(), duplicate);
       }
     }
-    return new Replacement(entries);
+    return new Replacement(entries, skipped);
+  }
+
+  private static String label(PipelineModel pipeline) {
+    return pipeline.id() != null && !pipeline.id().isBlank()
+      ? pipeline.id()
+      : String.valueOf(pipeline.name());
   }
 
   /**
@@ -126,10 +163,19 @@ public final class PipelineRegistry {
     LOGGER.info("Pipelines replaced: {}", replacement.ids());
   }
 
-  /** A validated pipeline set, ready to replace the registered one. */
-  public record Replacement(Map<String, PipelineEntry> entries) {
+  /**
+   * A validated pipeline set, ready to replace the registered one.
+   *
+   * @param skipped why each pipeline a lenient preparation left out failed, keyed by pipeline id
+   */
+  public record Replacement(Map<String, PipelineEntry> entries, Map<String, String> skipped) {
     public Replacement {
       entries = Collections.unmodifiableMap(new LinkedHashMap<>(entries));
+      skipped = Collections.unmodifiableMap(new LinkedHashMap<>(skipped));
+    }
+
+    public Replacement(Map<String, PipelineEntry> entries) {
+      this(entries, Map.of());
     }
 
     /** The pipeline ids of the set, in declaration order. */

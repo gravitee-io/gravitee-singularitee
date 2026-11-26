@@ -37,6 +37,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -59,9 +60,10 @@ import org.slf4j.LoggerFactory;
  * <p>While running it polls every {@code ai.sync.interval} seconds. A newer release that differs
  * from the running one only in its pipelines and templates ({@link ReleaseChanges}) is applied in
  * place once the workspace has loaded: the new pipeline set is loaded against the models already
- * served and replaces the old one all at once, or not at all when any pipeline fails, which the
- * heartbeat then reports as the last error, until a release applies. Runs already started finish on the pipeline they
- * began with. Engines cannot unload a model, so any other newer release is applied by storing it
+ * served and replaces the old one all at once. A pipeline that fails to load is left out, as the
+ * boot load leaves it out, and the heartbeat reports it until a release applies without one; with
+ * {@code ai.workspace.strict} any such failure keeps the old set and the release is not applied.
+ * Runs already started finish on the pipeline they began with. Engines cannot unload a model, so any other newer release is applied by storing it
  * and exiting; the supervisor (Kubernetes, Docker, systemd) restarts the node onto it. Set
  * {@code ai.sync.restart-on-change=false} to only store such a release.
  *
@@ -98,6 +100,7 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
   private volatile HardwareInfo hardware;
   private volatile SyncFailure syncFailure;
   private volatile String workspaceError;
+  private volatile String skippedPipelines;
   private volatile String runningYaml;
   private Path workspaceDir;
   private ScheduledExecutorService scheduler;
@@ -297,6 +300,10 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
     if (workspace != null) {
       return workspace;
     }
+    String skipped = skippedPipelines;
+    if (skipped != null) {
+      return skipped;
+    }
     SyncFailure failure = syncFailure;
     return failure == null ? null : failure.message();
   }
@@ -478,9 +485,10 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
   }
 
   /**
-   * Replaces the served pipelines with the release's, all or nothing. Waits for the workspace to
-   * load first, so the boot registration and this one never race; the release is fetched again on
-   * the next poll. A failure keeps the running pipelines and revision and leaves the cache as it was.
+   * Replaces the served pipelines with the release's. Waits for the workspace to load first, so the
+   * boot registration and this one never race; the release is fetched again on the next poll. A
+   * pipeline that fails to load is left out unless {@code ai.workspace.strict}, where it fails the
+   * set. A failure keeps the running pipelines and revision and leaves the cache as it was.
    */
   private boolean applyInPlace(ReleaseSyncClient.Release release) throws IOException {
     if (!readiness.isReady()) {
@@ -490,15 +498,21 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       );
       return false;
     }
+    boolean strict = configuration.getProperty("ai.workspace.strict", Boolean.class, false);
     PipelineRegistry.Replacement replacement;
+    Map<String, String> skipped = new LinkedHashMap<>();
     try {
-      replacement = pipelineRegistry.prepareReplacement(loadPipelines(release.yaml()));
+      List<PipelineModel> pipelines = loadPipelines(release.yaml(), strict, skipped);
+      replacement = strict
+        ? pipelineRegistry.prepareReplacement(pipelines)
+        : pipelineRegistry.prepareLenientReplacement(pipelines);
     } catch (RuntimeException | IOException e) {
       throw new IllegalStateException(
         "Release " + release.revision() + " not applied: " + describe(e),
         e
       );
     }
+    replacement.skipped().forEach(skipped::putIfAbsent);
     client.store(release);
     List<String> stale = changedOrRemoved(replacement);
     pipelineRegistry.replaceAll(replacement);
@@ -511,11 +525,30 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
     );
     appliedRevision = release.revision();
     runningRevision = release.revision();
+    skippedPipelines = skipped.isEmpty() ? null : describeSkipped(release.revision(), skipped);
+    if (!skipped.isEmpty()) {
+      LOGGER.warn(skippedPipelines);
+    }
     if (stepExecutorFactory != null) {
       stepExecutorFactory.forgetPipelines(stale);
     }
     warmUp(replacement);
     return true;
+  }
+
+  private static String describeSkipped(long revision, Map<String, String> skipped) {
+    return (
+      "Release " +
+      revision +
+      " applied without " +
+      skipped.size() +
+      " pipeline(s) that failed to load: " +
+      skipped
+        .entrySet()
+        .stream()
+        .map(e -> e.getKey() + " (" + e.getValue() + ")")
+        .collect(Collectors.joining("; "))
+    );
   }
 
   /** Ids of the served pipelines that the replacement drops or defines differently. */
@@ -531,8 +564,15 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       .toList();
   }
 
-  /** The release's pipelines, loaded as the workspace loader loads them; any pipeline the loader skips fails the set. */
-  private List<PipelineModel> loadPipelines(String yaml) throws IOException {
+  /**
+   * The release's pipelines, loaded as the workspace loader loads them. A pipeline the loader skips
+   * fails the set when {@code strict}, and is added to {@code skipped} otherwise.
+   */
+  private List<PipelineModel> loadPipelines(
+    String yaml,
+    boolean strict,
+    Map<String, String> skipped
+  ) throws IOException {
     var codecs = stepPlugins == null ? Map.<String, StepConfigCodec<?>>of() : stepPlugins.codecs();
     List<PipelineModel> pipelines = YamlWorkspaceLoader.loadFromString(
       yaml,
@@ -544,13 +584,16 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
     List<String> declared = declaredPipelineIds(yaml);
     if (pipelines.size() < declared.size()) {
       Set<String> loaded = pipelines.stream().map(PipelineModel::id).collect(Collectors.toSet());
-      List<String> skipped = declared
+      List<String> notLoaded = declared
         .stream()
         .filter(id -> !loaded.contains(id))
         .toList();
-      throw new IllegalStateException(
-        "pipeline(s) " + skipped + " failed to load; the node log has the cause"
-      );
+      if (strict) {
+        throw new IllegalStateException(
+          "pipeline(s) " + notLoaded + " failed to load; the node log has the cause"
+        );
+      }
+      notLoaded.forEach(id -> skipped.put(id, "failed to load; the node log has the cause"));
     }
     return pipelines;
   }

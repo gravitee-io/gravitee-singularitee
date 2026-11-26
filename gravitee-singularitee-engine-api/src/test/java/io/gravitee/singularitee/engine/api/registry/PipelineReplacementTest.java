@@ -24,6 +24,7 @@ import io.gravitee.singularitee.engine.api.pipeline.model.StepModel;
 import io.gravitee.singularitee.protocol.StepRole;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class PipelineReplacementTest {
@@ -103,5 +104,51 @@ class PipelineReplacementTest {
 
     assertThat(ids(registry)).containsExactly("old");
     assertThat(replacement.ids()).containsExactly("new");
+  }
+
+  @Test
+  void a_lenient_replacement_leaves_out_an_invalid_pipeline_and_says_why() {
+    var registry = new PipelineRegistry(new ModelRegistry());
+    registry.register(pipeline("old", null));
+
+    var replacement = registry.prepareLenientReplacement(
+      List.of(pipeline("good", null), pipeline("bad", new Bound("gone")))
+    );
+
+    assertThat(replacement.ids()).containsExactly("good");
+    assertThat(replacement.skipped()).containsOnlyKeys("bad");
+    assertThat(replacement.skipped().get("bad")).contains("gone");
+    assertThat(ids(registry)).containsExactly("old");
+  }
+
+  @Test
+  void a_lenient_replacement_keeps_the_first_of_two_pipelines_sharing_an_id() {
+    var registry = new PipelineRegistry(new ModelRegistry());
+
+    var replacement = registry.prepareLenientReplacement(
+      List.of(pipeline("twice", "first"), pipeline("twice", "second"))
+    );
+
+    assertThat(replacement.entries().get("twice").pipeline().steps().get(0).config()).isEqualTo(
+      "first"
+    );
+    assertThat(replacement.skipped().get("twice")).contains("twice");
+  }
+
+  @Test
+  void a_lenient_replacement_still_refuses_an_unlicensed_step() {
+    var registry = new PipelineRegistry(new ModelRegistry());
+    registry.setStepAvailability(type -> Optional.of("gated-feature"));
+
+    assertThatThrownBy(() -> registry.prepareLenientReplacement(List.of(pipeline("p", null))))
+      .isInstanceOf(UnlicensedStepException.class)
+      .hasMessageContaining("gated-feature");
+  }
+
+  @Test
+  void a_strict_replacement_skips_nothing() {
+    var registry = new PipelineRegistry(new ModelRegistry());
+
+    assertThat(registry.prepareReplacement(List.of(pipeline("p", null))).skipped()).isEmpty();
   }
 }
