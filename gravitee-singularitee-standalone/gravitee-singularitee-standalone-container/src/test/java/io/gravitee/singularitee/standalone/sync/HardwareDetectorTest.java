@@ -16,9 +16,11 @@
 package io.gravitee.singularitee.standalone.sync;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -181,5 +183,42 @@ class HardwareDetectorTest {
         assertThat(gpu.vendor()).isEqualTo("AMD");
         assertThat(gpu.memoryMb()).isEqualTo(8192L);
       });
+  }
+
+  private static final HardwareDetector.ProcessCommands QUICK =
+    new HardwareDetector.ProcessCommands(Duration.ofMillis(500));
+
+  @Test
+  void a_command_answers_with_its_standard_output() {
+    assertThat(QUICK.run("sh", "-c", "echo hello")).contains("hello");
+    assertThat(QUICK.run("sh", "-c", "echo hello; exit 3")).isEmpty();
+    assertThat(QUICK.run("no-such-command-7f3a9c")).isEmpty();
+  }
+
+  @Test
+  void a_command_that_hangs_is_killed_at_the_timeout() {
+    assertTimeoutPreemptively(Duration.ofSeconds(5), () ->
+      assertThat(QUICK.run("sh", "-c", "sleep 30")).isEmpty()
+    );
+  }
+
+  @Test
+  void a_command_that_hangs_with_its_output_open_is_killed_at_the_timeout() {
+    assertTimeoutPreemptively(Duration.ofSeconds(5), () ->
+      assertThat(QUICK.run("sh", "-c", "echo partial; sleep 30")).isEmpty()
+    );
+  }
+
+  @Test
+  void a_command_that_floods_its_error_stream_still_answers() {
+    assertTimeoutPreemptively(Duration.ofSeconds(5), () ->
+      assertThat(
+        new HardwareDetector.ProcessCommands(Duration.ofSeconds(4)).run(
+          "sh",
+          "-c",
+          "head -c 1000000 /dev/zero >&2; echo ok"
+        )
+      ).contains("ok")
+    );
   }
 }

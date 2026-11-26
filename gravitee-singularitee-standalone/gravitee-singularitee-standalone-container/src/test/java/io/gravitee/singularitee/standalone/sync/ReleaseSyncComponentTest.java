@@ -213,6 +213,49 @@ class ReleaseSyncComponentTest {
   }
 
   @Test
+  void a_hung_hardware_probe_never_holds_up_a_heartbeat() throws Exception {
+    var models = new ModelRegistry();
+    var component = new ReleaseSyncComponent(
+      config(Map.of()),
+      models,
+      new PipelineRegistry(models),
+      new ReadinessState(),
+      new io.gravitee.singularitee.engine.pipeline.trace.TraceKeyAuthority()
+    );
+    var probing = new java.util.concurrent.CountDownLatch(1);
+    var release = new java.util.concurrent.CountDownLatch(1);
+    component.setHardwareProbeForTest(() -> {
+      probing.countDown();
+      try {
+        release.await();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+      return new HardwareInfo(
+        "Linux",
+        null,
+        List.of(new HardwareInfo.Gpu("NVIDIA", "L4", 23034L, "550", "8.9", "CUDA", null))
+      );
+    });
+    component.setClientForTest(client(), 1, false, () -> {});
+
+    org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
+      component.heartbeat();
+      component.poll();
+    });
+    assertThat(probing.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+    assertThat(statusBody.get()).contains("\"hardware\":null").contains("\"gpuName\":null");
+
+    release.countDown();
+    long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+    while (component.snapshot().hardware() == null && System.nanoTime() < deadline) {
+      Thread.onSpinWait();
+    }
+    component.heartbeat();
+    assertThat(statusBody.get()).contains("\"gpuName\":\"L4\"");
+  }
+
+  @Test
   void heartbeat_reports_the_installed_step_types_and_schemas() throws Exception {
     io.gravitee.singularitee.engine.api.pipeline.executor.StepExecutor<?> executor = (
       stepId,

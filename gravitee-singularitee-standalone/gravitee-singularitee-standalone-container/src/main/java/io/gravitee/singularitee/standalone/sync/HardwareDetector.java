@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -41,7 +42,7 @@ final class HardwareDetector {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HardwareDetector.class);
   private static final ObjectMapper JSON = new ObjectMapper();
-  private static final int TIMEOUT_SECONDS = 5;
+  private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
   /** Instruction sets that decide how fast CPU inference runs. */
   private static final Set<String> CPU_FEATURES = Set.of(
@@ -69,7 +70,7 @@ final class HardwareDetector {
   static HardwareInfo detect() {
     try {
       return detect(
-        new ProcessCommands(),
+        new ProcessCommands(TIMEOUT),
         System.getProperty("os.name", ""),
         System.getProperty("os.version", ""),
         System.getProperty("os.arch", ""),
@@ -295,29 +296,56 @@ final class HardwareDetector {
     }
   }
 
-  /** Runs real commands with a short timeout; anything unexpected yields empty. */
-  private static final class ProcessCommands implements Commands {
+  /**
+   * Runs real commands; anything unexpected yields empty. Standard output goes to a file and
+   * standard error is discarded, so a child that keeps a stream open or floods one never blocks the
+   * caller: a command still running at the timeout is killed.
+   */
+  static final class ProcessCommands implements Commands {
+
+    private final Duration timeout;
+
+    ProcessCommands(Duration timeout) {
+      this.timeout = timeout;
+    }
 
     @Override
     public Optional<String> run(String... command) {
+      Path output = null;
+      Process process = null;
       try {
-        Process process = new ProcessBuilder(command).redirectErrorStream(false).start();
+        output = Files.createTempFile("singularitee-probe", ".out");
+        process = new ProcessBuilder(command)
+          .redirectOutput(ProcessBuilder.Redirect.to(output.toFile()))
+          .redirectError(ProcessBuilder.Redirect.DISCARD)
+          .start();
         process.getOutputStream().close();
-        byte[] out = process.getInputStream().readAllBytes();
-        if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-          process.destroyForcibly();
+        if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+          LOGGER.warn("{} did not answer within {} ms; killed", command[0], timeout.toMillis());
           return Optional.empty();
         }
         if (process.exitValue() != 0) {
           return Optional.empty();
         }
-        String text = new String(out, StandardCharsets.UTF_8).trim();
+        String text = Files.readString(output, StandardCharsets.UTF_8).trim();
         return text.isEmpty() ? Optional.empty() : Optional.of(text);
       } catch (IOException e) {
         return Optional.empty();
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         return Optional.empty();
+      } finally {
+        if (process != null && process.isAlive()) {
+          process.descendants().forEach(ProcessHandle::destroyForcibly);
+          process.destroyForcibly();
+        }
+        if (output != null) {
+          try {
+            Files.deleteIfExists(output);
+          } catch (IOException e) {
+            LOGGER.debug("Could not delete {}", output);
+          }
+        }
       }
     }
   }

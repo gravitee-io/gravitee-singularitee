@@ -45,6 +45,8 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,6 +100,8 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
   private String instanceId = "";
   private volatile long runningRevision;
   private volatile HardwareInfo hardware;
+  private final AtomicBoolean hardwareProbeStarted = new AtomicBoolean();
+  private Supplier<HardwareInfo> hardwareProbe = HardwareDetector::detect;
   private volatile SyncFailure syncFailure;
   private volatile String workspaceError;
   private volatile String skippedPipelines;
@@ -190,6 +194,7 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
     appliedRevision = client.cachedRevision();
 
     instanceId = resolveInstanceId(cacheDir);
+    startHardwareProbe();
     Path workspace = bootSync();
     runningRevision = client.cachedRevision();
     runningYaml = Files.readString(workspace);
@@ -347,18 +352,38 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       .toList();
   }
 
-  /** Detected once: the hardware does not change under a running node, and detection forks processes. */
+  /**
+   * Detected once, on a thread of its own: the hardware does not change under a running node, and
+   * detection forks processes that can hang (a wedged GPU driver). Null until the probe answers.
+   */
   private HardwareInfo hardware() {
     HardwareInfo hw = hardware;
     if (hw == null) {
-      hw = HardwareDetector.detect();
-      hardware = hw;
+      startHardwareProbe();
     }
     return hw;
   }
 
+  private void startHardwareProbe() {
+    if (hardware != null || !hardwareProbeStarted.compareAndSet(false, true)) {
+      return;
+    }
+    Thread probe = new Thread(
+      () -> {
+        try {
+          hardware = hardwareProbe.get();
+        } catch (RuntimeException e) {
+          LOGGER.warn("Hardware detection failed: {}", e.toString());
+        }
+      },
+      "hardware-probe"
+    );
+    probe.setDaemon(true);
+    probe.start();
+  }
+
   private static String gpuSummary(HardwareInfo hw) {
-    if (hw.gpus().isEmpty()) {
+    if (hw == null || hw.gpus().isEmpty()) {
       return null;
     }
     String first = hw.gpus().get(0).name();
@@ -367,6 +392,9 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
 
   /** Dedicated GPU memory summed over the GPUs; unified memory (Apple Silicon) is the host RAM, so null. */
   private static Long gpuMemoryMb(HardwareInfo hw) {
+    if (hw == null) {
+      return null;
+    }
     long total = hw
       .gpus()
       .stream()
@@ -374,6 +402,10 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       .mapToLong(HardwareInfo.Gpu::memoryMb)
       .sum();
     return total > 0 ? total : null;
+  }
+
+  void setHardwareProbeForTest(Supplier<HardwareInfo> probe) {
+    this.hardwareProbe = probe;
   }
 
   /** Test hook: pins the hardware the status reports. */
