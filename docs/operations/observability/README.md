@@ -5,7 +5,7 @@
 ## Overview
 
 Both signals are configured in `gravitee.yml`. Tracing (`services.opentelemetry`) is off by
-default: when enabled, each gRPC call and each HTTP request opens a `SERVER` span that
+default: when enabled, each gRPC call and each HTTP request opens a `SERVER` span (HTTP probe paths such as `/health` are excluded, see `exclude-paths`) that
 continues any inbound W3C `traceparent`, under which the engine nests a `pipeline <id>` span, a
 `step <id> (<type>)` span per step and an `<operation> <model>` span per model call (for example
 `pipeline guarded`, `step pii_guard (guard)`, `classify pii`, `infer llm`), and a single
@@ -124,6 +124,7 @@ The full key tables are in [Configuration](../../reference/configuration.md#serv
 | `services.monitoring.gpu.delay` / `.unit` | int / string | `5000` / `MILLISECONDS` | Poll interval. |
 | `services.opentelemetry.enabled` | bool | `false` | Emit spans. |
 | `services.opentelemetry.verbose` | bool | `false` | Request and response attributes on spans. |
+| `services.opentelemetry.exclude-paths` | list | `/health`, `/healthz`, `/ready`, `/readyz`, `/readiness`, `/live`, `/livez`, `/liveness`, `/metrics`, `/_node/*` | HTTP API paths that open no span. Comma-separated or a YAML list; a trailing `*` is a prefix; a configured value replaces the default, blank traces every path. |
 | `services.opentelemetry.exporter.endpoint` | string | `http://localhost:4317` | OTLP collector. |
 | `services.opentelemetry.exporter.protocol` | string | `grpc` | `grpc` or `http/protobuf`. |
 | `services.opentelemetry.exporter.compression` / `.timeout` / `.headers` | | unset | `gzip`; ms; `name=value` list. |
@@ -151,8 +152,11 @@ Engine spans end `OK` on success and `ERROR` on failure, with the exception reco
 step that halts the run on purpose,
 such as a guard rejecting the input, is `OK` with `singularitee.step.halted=true`, and its pipeline
 span is `OK`: a deliberate block is not an error. A call the client cancelled ends with no status.
-Server spans follow the HTTP semantic conventions and stay unset on success; a transport failure
-ends them `ERROR` the same way.
+The HTTP API's server span ends `OK` for a 2xx or 3xx answer and `ERROR` for a 5xx (status
+description `HTTP <code>`), so a trace list shows a status for every row; a 4xx stays unset, as the
+HTTP semantic conventions have it for a server span, because the caller's mistake is not the
+server's failure. A transport failure ends it `ERROR` with the exception as attributes. gRPC server
+spans stay unset on success.
 
 Each span ends before the run moves on: a model span inside its step, a step before the next
 step starts. Facts, exceptions included, are attributes, never span events: the Elasticsearch

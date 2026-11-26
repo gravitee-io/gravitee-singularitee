@@ -274,6 +274,7 @@ services:
     enabled: false
     verbose: false # add content-heavy attributes (input/output/message text) to spans
     # openinference: true           # also emit OpenInference attributes (for OpenInference-aware tools)
+    # exclude-paths: /health,/ready,/metrics,/_node/*  # HTTP API paths that open no span (default: health, readiness, liveness, metrics probes)
     # name-prefix: singularitee     # prefix for emitted span names and attributes; metrics unaffected
     exporter:
       endpoint: http://localhost:4317 # OTLP collector endpoint
