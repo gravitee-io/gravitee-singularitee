@@ -45,11 +45,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * @param callerContext   the Vert.x context of the caller (may be unused)
  * @param tracer          the OpenTelemetry tracer, or {@code null} to disable tracing
  * @param metrics         the inference metrics recorder, or {@code null} to disable metrics
- * @param pipelineSpan    the parent {@code singularitee.pipeline} span for per-step spans, or {@code null}
- * @param activeStepSpan  holder for the in-flight {@code singularitee.step} span (parent of model-call spans);
+ * @param pipelineSpan    the parent pipeline span for per-step spans, or {@code null}
+ * @param activeStepSpan  holder for the in-flight step span (parent of model-call spans);
  *                        set by {@link StepDispatcher}, read by {@link ModelBoundStepExecutor}
  * @param currentStep     the step being dispatched, set per step by {@link StepDispatcher} via
  *                        {@link #withStep(StepModel)}; {@code null} outside a dispatch
+ * @param activeModelSpan holder for the in-flight model-call span, set by
+ *                        {@link ModelBoundStepExecutor}
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -63,10 +65,38 @@ public record StepContext(
   InferenceMetrics metrics,
   Span pipelineSpan,
   AtomicReference<Span> activeStepSpan,
-  StepModel currentStep
+  StepModel currentStep,
+  AtomicReference<Span> activeModelSpan
 ) {
   public StepContext {
     activeStepSpan = activeStepSpan == null ? new AtomicReference<>() : activeStepSpan;
+    activeModelSpan = activeModelSpan == null ? new AtomicReference<>() : activeModelSpan;
+  }
+
+  /** Creates a context for {@code currentStep} with no model call in flight. */
+  public StepContext(
+    PipelineContext pipelineContext,
+    PipelineModel pipeline,
+    WriteStream<InferResponse> response,
+    Context callerContext,
+    Tracer tracer,
+    InferenceMetrics metrics,
+    Span pipelineSpan,
+    AtomicReference<Span> activeStepSpan,
+    StepModel currentStep
+  ) {
+    this(
+      pipelineContext,
+      pipeline,
+      response,
+      callerContext,
+      tracer,
+      metrics,
+      pipelineSpan,
+      activeStepSpan,
+      currentStep,
+      null
+    );
   }
 
   /** Creates a context with no current step; {@link #withStep} sets it per dispatch. */
@@ -126,7 +156,8 @@ public record StepContext(
       metrics,
       pipelineSpan,
       activeStepSpan,
-      step
+      step,
+      activeModelSpan
     );
   }
 
@@ -144,6 +175,14 @@ public record StepContext(
    */
   public SpanScribe stepScribe() {
     return SpanScribe.of(activeStepSpan == null ? null : activeStepSpan.get());
+  }
+
+  /**
+   * A {@link SpanScribe} writing to the in-flight model-call span, or a no-op outside one.
+   * Use it for facts about the call itself, such as its token usage.
+   */
+  public SpanScribe modelScribe() {
+    return SpanScribe.of(activeModelSpan == null ? null : activeModelSpan.get());
   }
 
   /**

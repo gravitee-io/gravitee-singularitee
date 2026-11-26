@@ -288,10 +288,10 @@ The GPU topology keys are deployment-wide: a model's own `vllm:` value wins; the
 
 | Key | Default | Env var | Purpose |
 | --- | --- | --- | --- |
-| `services.opentelemetry.enabled` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_ENABLED` | Emit a `SERVER` span per RPC with nested `<name-prefix>.*` spans. |
-| `services.opentelemetry.verbose` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_VERBOSE` | Add content-heavy attributes to spans (input/output values, message text, embedded text). Off keeps spans free of prompt/response content. |
+| `services.opentelemetry.enabled` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_ENABLED` | Emit a `SERVER` span per RPC with nested `pipeline <id>`, `step <id> (<type>)` and `<operation> <model>` spans, and propagate the W3C trace context to remote nodes. See [Span model](#span-model). |
+| `services.opentelemetry.verbose` | `false` | `GRAVITEE_SERVICES_OPENTELEMETRY_VERBOSE` | Add content-heavy attributes to spans (input/output values, message text, embedded text, the `<prefix>.turn.input` / `<prefix>.turn.output` previews). Off keeps spans free of prompt/response content. |
 | `services.opentelemetry.openinference` | `true` | `GRAVITEE_SERVICES_OPENTELEMETRY_OPENINFERENCE` | Also emit OpenInference semantic attributes (`openinference.span.kind`, `session.id`, `llm.*`, `embedding.*`), so OpenInference-aware tools render the traces natively. These keys are fixed and never carry the name-prefix. |
-| `services.opentelemetry.name-prefix` | `singularitee` | `GRAVITEE_SERVICES_OPENTELEMETRY_NAMEPREFIX` | Prefix for the span names and the engine's own span attributes (`<prefix>.pipeline`, `<prefix>.step`, `<prefix>.session`, ...). Does not apply to OpenInference keys; Micrometer metric names are unaffected. |
+| `services.opentelemetry.name-prefix` | `singularitee` | `GRAVITEE_SERVICES_OPENTELEMETRY_NAMEPREFIX` | Prefix for the engine's own span attributes (`<prefix>.step.id`, `<prefix>.model.type`, `<prefix>.session`, ...) and the direct-RPC span names (`<prefix>.embed`, ...). Pipeline, step and model span names carry none. Does not apply to OpenInference or `gen_ai.*` keys; Micrometer metric names are unaffected. |
 | `services.opentelemetry.exporter.endpoint` | `http://localhost:4317` | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_ENDPOINT` | OTLP collector. |
 | `services.opentelemetry.exporter.protocol` | `grpc` | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_PROTOCOL` | `grpc` (4317) or `http/protobuf` (4318). |
 | `services.opentelemetry.exporter.compression` | unset | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_COMPRESSION` | e.g. `gzip`. |
@@ -301,6 +301,29 @@ The GPU topology keys are deployment-wide: a model's own `vllm:` value wins; the
 | `services.opentelemetry.exporter.ssl.verifyHost` | `true` | `GRAVITEE_SERVICES_OPENTELEMETRY_EXPORTER_SSL_VERIFYHOST` | Verify the collector host name. |
 
 `services.tracing.otel.*` is accepted as an alias for `services.opentelemetry.*`.
+
+#### Span model
+
+One pipeline run is one trace. Attribute keys below use the default prefix `singularitee`.
+
+| Span | Kind | Attributes | Status |
+| --- | --- | --- | --- |
+| `POST` (gRPC or HTTP server span) | `SERVER` | `rpc.system`, `rpc.method` or `http.route` | Left unset on success, as the HTTP semantic conventions ask of server spans. |
+| `pipeline <id>` | `INTERNAL` | `singularitee.pipeline.id`, `pipeline.id`, `singularitee.session`, `singularitee.turn.index`, `singularitee.finish_reason` | `OK`; `ERROR` when the run fails. A run a guard halted is `OK`. |
+| `step <id> (<type>)`, e.g. `step pii_guard (guard)` | `INTERNAL` | `singularitee.step.id`, `singularitee.step.type`, `singularitee.pipeline.id`, `step.id`, `step.type`, `model.id` when model-bound, `singularitee.step.halted=true` on the step that halted the run | `OK`; `ERROR` when the step fails. A deliberate block is `OK`, not an error. |
+| `<operation> <model>`, e.g. `classify pii`, `infer llm` | `CLIENT` | `singularitee.model.id`, `singularitee.model.type` (`text_gen`, `classifier`, `embedding`, `reranker`, `decision`), `model.id`, `op` (the step operation, e.g. `guard`), `gen_ai.request.model` and `gen_ai.operation.name` for generation and embeddings, `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` when the engine reports usage | `OK`; `ERROR` when the call fails. |
+
+`<operation>` follows the model's engine type: `infer`, `classify`, `embed`, `rerank` or `decide`.
+Each span ends before the next sibling starts: a model span inside its step, a step before the
+next step. A failure is recorded as the `exception.type` and `exception.message` attributes and the
+status description. Facts and exceptions are attributes only, never span events: an exporter that
+stores span events as their own documents (the Elasticsearch exporter does) would otherwise show
+them as unnamed spans.
+
+**Across nodes.** A call to a `remote_*` model carries the model span's W3C `traceparent` (and
+`tracestate`) as gRPC metadata, and a remote `sub_pipeline` call carries its step span's. The
+serving node's `SERVER` span continues that context, so its spans join the caller's trace under
+the span that made the call. An inbound `traceparent` on an HTTP request is honoured the same way.
 
 ### Node
 

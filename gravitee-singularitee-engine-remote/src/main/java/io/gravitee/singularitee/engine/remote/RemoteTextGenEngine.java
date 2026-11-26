@@ -18,6 +18,7 @@ package io.gravitee.singularitee.engine.remote;
 import io.gravitee.singularitee.client.SingulariteeClient;
 import io.gravitee.singularitee.engine.api.*;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TemplateContextHelper;
+import io.gravitee.singularitee.engine.api.tracing.PropagatesTraceContext;
 import io.gravitee.singularitee.protocol.*;
 import io.reactivex.rxjava3.core.BackpressureOverflowStrategy;
 import io.reactivex.rxjava3.core.Completable;
@@ -42,7 +43,7 @@ import org.slf4j.LoggerFactory;
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public final class RemoteTextGenEngine implements TextGenEngine {
+public final class RemoteTextGenEngine implements TextGenEngine, PropagatesTraceContext {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RemoteTextGenEngine.class);
 
@@ -373,7 +374,7 @@ public final class RemoteTextGenEngine implements TextGenEngine {
     // The Completable completes when the Flowable completes (all tokens delivered),
     // or errors if the stream errors; in both cases the final token was already
     // sent to the consumer by the onNext handler.
-    return client
+    return RemoteCalls.traced(client)
       .infer(inferReq)
       .doOnSubscribe(s ->
         LOGGER.info("RemoteTextGenEngine: subscribed to Infer stream for model '{}'", modelId)

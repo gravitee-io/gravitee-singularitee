@@ -20,6 +20,7 @@ import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.node.api.opentelemetry.internal.InternalRequest;
 import io.gravitee.singularitee.engine.api.ClientErrors;
 import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
+import io.gravitee.singularitee.engine.api.tracing.SpanStatus;
 import io.opentelemetry.api.trace.SpanKind;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
@@ -101,8 +102,9 @@ final class ServiceInstrumentation {
     Throwable error
   ) {
     if (error != null) {
-      tracer.endOnError(ctx, span, error);
+      SpanStatus.endWithError(tracer, ctx, span, error);
     } else {
+      SpanStatus.ok(span);
       tracer.end(ctx, span);
     }
     metrics.recordRequest(

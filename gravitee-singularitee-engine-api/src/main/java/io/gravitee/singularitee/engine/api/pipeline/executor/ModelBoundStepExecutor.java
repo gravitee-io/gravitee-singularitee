@@ -20,12 +20,17 @@ import io.gravitee.node.api.opentelemetry.Tracer;
 import io.gravitee.node.api.opentelemetry.internal.InternalRequest;
 import io.gravitee.singularitee.engine.api.ModelEngine;
 import io.gravitee.singularitee.engine.api.ModelEngineType;
+import io.gravitee.singularitee.engine.api.metrics.InferenceMetrics;
 import io.gravitee.singularitee.engine.api.pipeline.PipelineContext;
+import io.gravitee.singularitee.engine.api.tracing.SpanStatus;
+import io.gravitee.singularitee.engine.api.tracing.TraceContext;
 import io.opentelemetry.api.trace.SpanKind;
 import io.reactivex.rxjava3.core.Maybe;
 import io.vertx.core.Context;
+import java.util.HashMap;
 import java.util.Locale;
-import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Reactive template base for step executors that need a model engine.
@@ -109,10 +114,10 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
     final String modelId = getModelId(config);
     final String op = modelOp();
 
-    // Open an singularitee.model.<op> span (child of the active step span) and time the engine
-    // call (ai_model_call_seconds). Deferred so it opens at subscribe time and, for
-    // streaming infer, stays open until the token stream completes (rxExecuteWithEngine
-    // only terminates once the capture stream ends). No-op when tracing/metrics are off.
+    // Deferred so the model span opens at subscribe time and, for streaming infer, stays open
+    // until the token stream completes (rxExecuteWithEngine terminates only once the capture
+    // stream ends). It ends before the terminal signal reaches the step, so it closes inside
+    // its step span. No-op when tracing/metrics are off.
     return Maybe.defer(() -> {
       final Tracer tracer = ctx.tracer();
       final Context vctx = ctx.callerContext();
@@ -120,9 +125,7 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
       if (stepSpan != null && modelId != null && !modelId.isBlank()) {
         stepSpan.withAttribute("model.id", modelId);
       }
-      final Span span = startModelSpan(tracer, vctx, stepSpan, modelId, op);
-      // Model-call span facts: the OpenInference kind from the engine type (a text-gen backend
-      // such as llama.cpp or vLLM tags LLM), and the engine type + concrete backend class.
+      final Span span = startModelSpan(tracer, vctx, stepSpan, modelId, op, engine.type());
       if (span != null) {
         if (TracingOptions.openInference()) {
           span.withAttribute(OpenInference.SPAN_KIND, engineKind(engine.type()));
@@ -131,17 +134,93 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
           .withAttribute(SpanNames.key("model.engine_type"), engine.type().name())
           .withAttribute(SpanNames.key("model.engine"), engine.getClass().getSimpleName());
       }
-      final Throwable[] error = { null };
-      final long startNanos = System.nanoTime();
-      return rxExecuteWithEngine(stepId, config, typed, ctx)
-        .doOnError(e -> error[0] = e)
-        .doFinally(() -> {
-          endModelSpan(tracer, vctx, span, error[0]);
-          if (ctx.metrics() != null) {
-            ctx.metrics().recordModelCall(op, modelId, System.nanoTime() - startNanos);
-          }
-        });
+      final AtomicReference<Span> modelSpanHolder = ctx.activeModelSpan();
+      if (modelSpanHolder != null) {
+        modelSpanHolder.set(span);
+      }
+      final E called = TraceContext.bind(
+        engineType(),
+        typed,
+        TraceContext.headersOf(tracer, vctx, span)
+      );
+      final var call = new ModelCall(
+        tracer,
+        vctx,
+        span,
+        modelSpanHolder,
+        ctx.metrics(),
+        op,
+        modelId
+      );
+      return rxExecuteWithEngine(stepId, config, called, ctx)
+        .doOnEvent((next, error) -> call.end(error, true))
+        .doOnDispose(() -> call.end(null, false));
     });
+  }
+
+  /** One model call in flight: ends its span and records its duration exactly once. */
+  private static final class ModelCall {
+
+    private final Tracer tracer;
+    private final Context vctx;
+    private final Span span;
+    private final AtomicReference<Span> holder;
+    private final InferenceMetrics metrics;
+    private final String op;
+    private final String modelId;
+    private final long startNanos = System.nanoTime();
+    private final AtomicBoolean ended = new AtomicBoolean();
+
+    ModelCall(
+      Tracer tracer,
+      Context vctx,
+      Span span,
+      AtomicReference<Span> holder,
+      InferenceMetrics metrics,
+      String op,
+      String modelId
+    ) {
+      this.tracer = tracer;
+      this.vctx = vctx;
+      this.span = span;
+      this.holder = holder;
+      this.metrics = metrics;
+      this.op = op;
+      this.modelId = modelId;
+    }
+
+    /** {@code completed} is false when the caller disposed of the call: no status is set. */
+    void end(Throwable error, boolean completed) {
+      if (!ended.compareAndSet(false, true)) {
+        return;
+      }
+      if (holder != null) {
+        holder.compareAndSet(span, null);
+      }
+      if (span != null && tracer != null) {
+        if (error != null) {
+          SpanStatus.endWithError(tracer, vctx, span, error);
+        } else {
+          if (completed) {
+            SpanStatus.ok(span);
+          }
+          tracer.end(vctx, span);
+        }
+      }
+      if (metrics != null) {
+        metrics.recordModelCall(op, modelId, System.nanoTime() - startNanos);
+      }
+    }
+  }
+
+  /** Records a generation's token usage on the in-flight model span; a no-op outside one. */
+  protected static void recordTokenUsage(StepContext ctx, long inputTokens, long outputTokens) {
+    SpanScribe scribe = ctx.modelScribe();
+    if (scribe != null) {
+      scribe
+        .set(GenAi.USAGE_INPUT_TOKENS, inputTokens)
+        .set(GenAi.USAGE_OUTPUT_TOKENS, outputTokens);
+    }
   }
 
   /** The OpenInference span kind for an engine type; a text-gen backend (llama.cpp, vLLM) is LLM. */
@@ -154,10 +233,21 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
     };
   }
 
+  /** What a model of this type is asked to do: the first word of its span name. */
+  static String operation(ModelEngineType type) {
+    return switch (type) {
+      case TEXT_GEN -> "infer";
+      case CLASSIFIER -> "classify";
+      case EMBEDDING -> "embed";
+      case RERANKER -> "rerank";
+      case DECISION -> "decide";
+    };
+  }
+
   /**
-   * The {@code op} tag/suffix for {@code singularitee.model.*} spans (and {@code ai.model.*} metrics), derived from the
-   * executor class name (e.g. {@code InferStepExecutor} gives {@code infer},
-   * {@code ClassifyStepExecutor} gives {@code classify}). Override for a custom value.
+   * The {@code op} attribute of the model span and the {@code op} tag of {@code ai.model.*}
+   * metrics, derived from the executor class name (e.g. {@code InferStepExecutor} gives
+   * {@code infer}, {@code GuardStepExecutor} gives {@code guard}). Override for a custom value.
    */
   protected String modelOp() {
     String name = getClass().getSimpleName();
@@ -171,30 +261,37 @@ public abstract class ModelBoundStepExecutor<C, E extends ModelEngine> implement
     Context vctx,
     Span parent,
     String modelId,
-    String op
+    String op,
+    ModelEngineType type
   ) {
     if (tracer == null || vctx == null) {
       return null;
     }
+    String model = modelId == null ? "" : modelId;
+    var attributes = new HashMap<String, String>();
+    attributes.put("model.id", model);
+    attributes.put("op", op);
+    attributes.put(SpanNames.key("model.id"), model);
+    attributes.put(SpanNames.key("model.type"), type.name().toLowerCase(Locale.ROOT));
+    switch (type) {
+      case TEXT_GEN -> {
+        attributes.put(GenAi.OPERATION_NAME, GenAi.OPERATION_CHAT);
+        attributes.put(GenAi.REQUEST_MODEL, model);
+      }
+      case EMBEDDING -> {
+        attributes.put(GenAi.OPERATION_NAME, GenAi.OPERATION_EMBEDDINGS);
+        attributes.put(GenAi.REQUEST_MODEL, model);
+      }
+      default -> {}
+    }
     InternalRequest request = InternalRequest.builder()
-      .name(SpanNames.key("model.") + op)
-      .attributes(Map.of("model.id", modelId == null ? "" : modelId, "op", op))
+      .name((operation(type) + " " + model).strip())
+      .attributes(attributes)
       .spanKind(SpanKind.CLIENT)
       .build();
     return parent != null
       ? tracer.startSpanWithParentFrom(vctx, parent, request)
       : tracer.startSpanFrom(vctx, request);
-  }
-
-  private static void endModelSpan(Tracer tracer, Context vctx, Span span, Throwable error) {
-    if (span == null || tracer == null) {
-      return;
-    }
-    if (error != null) {
-      tracer.endOnError(vctx, span, error);
-    } else {
-      tracer.end(vctx, span);
-    }
   }
 
   // -----------------------------------------------------------------------

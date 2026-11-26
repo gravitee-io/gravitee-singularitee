@@ -44,7 +44,6 @@ import io.reactivex.rxjava3.disposables.Disposable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -408,8 +407,8 @@ public final class InferStepExecutor
 
     LOGGER.debug("InferStep '{}': generated {} chars", stepId, stepOutput.length());
 
-    // Neutral model-turn facts for the diary: role and proposed tool calls on this step
-    // span, plus a model turn event on the pipeline span. No-op when tracing is off.
+    // Neutral model-turn facts on this step span: role, proposed tool calls and, behind verbose,
+    // a preview of the answer. No-op when tracing is off.
     String toolNames = String.join(
       ",",
       pctx.extractedToolCalls().stream().map(ToolCall::getName).toList()
@@ -421,12 +420,9 @@ public final class InferStepExecutor
       .set(SpanNames.key("role"), "model")
       .set(SpanNames.key("tool_calls.count"), pctx.extractedToolCalls().size())
       .set(SpanNames.key("tool_calls.names"), toolNames);
-    ctx
-      .turnScribe()
-      .event(
-        SpanNames.key("turn"),
-        Map.of("role", "model", "tool_calls", toolNames, "content", spanPreview(stepOutput))
-      );
+    if (TracingOptions.verbose()) {
+      stepScribe.set(SpanNames.key("turn.output"), spanPreview(stepOutput));
+    }
 
     // OpenInference LLM attributes on this step span (fixed keys, never prefixed), so trace tools
     // read the model, token counts and (behind verbose) the messages. Token counts were stashed
@@ -687,6 +683,7 @@ public final class InferStepExecutor
       }
       if (completed.hasUsage()) {
         var usage = completed.getUsage();
+        recordTokenUsage(ctx, usage.getPromptTokens(), usage.getCompletionTokens());
         pctx.set(stepId + ".prompt_tokens", Long.toString(usage.getPromptTokens()));
         pctx.set(stepId + ".completion_tokens", Long.toString(usage.getCompletionTokens()));
         pctx.set(stepId + ".reasoning_tokens", Long.toString(usage.getReasoningTokens()));

@@ -6,10 +6,14 @@
 
 Both signals are configured in `gravitee.yml`. Tracing (`services.opentelemetry`) is off by
 default: when enabled, each gRPC call and each HTTP request opens a `SERVER` span that
-continues any inbound W3C `traceparent`, under which the engine nests `singularitee.pipeline`,
-`singularitee.step` and `singularitee.model.<op>` spans for pipeline runs and a single `singularitee.<op>` span for direct
-RPCs. Spans export over OTLP. Span and attribute names carry the `singularitee` prefix by
-default; `services.opentelemetry.name-prefix` changes it (Micrometer metric names are unaffected).
+continues any inbound W3C `traceparent`, under which the engine nests a `pipeline <id>` span, a
+`step <id> (<type>)` span per step and an `<operation> <model>` span per model call (for example
+`pipeline guarded`, `step pii_guard (guard)`, `classify pii`, `infer llm`), and a single
+`singularitee.<op>` span for direct RPCs. Calls to `remote_*` models and remote sub-pipelines carry
+the trace context as gRPC metadata, so the serving node's spans join the caller's trace. Spans
+export over OTLP. The engine's own attribute keys (and the direct-RPC span names) carry the
+`singularitee` prefix by default; `services.opentelemetry.name-prefix` changes it (Micrometer
+metric names are unaffected).
 Every span also carries OpenInference semantic
 attributes (`openinference.span.kind` LLM/CHAIN/GUARDRAIL/EMBEDDING, `session.id`, `llm.*`), so a
 trace renders in an OTLP viewer such as Jaeger. `session.id` is the request's cache-affinity key
@@ -26,9 +30,11 @@ and Grafana stack with a provisioned dashboard.
 - `InferenceMetrics` (engine): the Micrometer recorder. Wraps a possibly-null `MeterRegistry`; every `record*` call is a no-op when metrics are off.
 - `ServiceInstrumentation` (grpc): wraps the unary RPCs, opening the `singularitee.<op>` child span and recording `ai_<op>_requests_total` and `ai_<op>_latency_seconds`.
 - `GrpcServerComponent` and `HttpApiServerComponent` (standalone): open the `SERVER` span per call, attributes `rpc.system` and `rpc.method` (gRPC) or `http.route` (HTTP).
-- `PipelineExecutor`: opens `singularitee.pipeline` with `pipeline.id`.
-- `StepDispatcher`: opens `singularitee.step` with `step.id` and `step.type`.
-- `ModelBoundStepExecutor`: opens `singularitee.model.<op>` (`CLIENT` kind) with `model.id` and `op`, and times it into `ai_model_call_seconds`.
+- `PipelineExecutor`: opens `pipeline <id>`.
+- `TracingStepDecorator` (in the `StepDispatcher` chain): opens `step <id> (<type>)`.
+- `ModelBoundStepExecutor`: opens `<operation> <model>` (`CLIENT` kind), binds its trace context to the engine call, and times it into `ai_model_call_seconds`.
+- `TraceContext` (engine-api): the W3C headers of a span, bound to the calls into a `PropagatesTraceContext` engine (the `remote_*` engines) and to a remote `sub_pipeline` call; the remote engine sends them through `SingulariteeClient.withMetadata`.
+- `SpanStatus` (engine-api): marks a finished span `OK`, or ends it `ERROR` with the exception as attributes.
 - `io.gravitee.node.api.opentelemetry.Tracer`: the gravitee-node tracer; a no-op instance when tracing is disabled.
 
 ## Usage
@@ -92,16 +98,17 @@ GRAVITEE_SERVICES_OPENTELEMETRY_ENABLED=true GRAVITEE_SERVICES_OPENTELEMETRY_VER
 # 3. send some traffic, then open http://localhost:16686
 ```
 
-A pipeline run is a `POST /v1/responses` root (`openinference.span.kind = AGENT`) over a `CHAIN`
-(`singularitee.pipeline`) nesting `LLM` steps (`llm.model_name`, `llm.token_count.*`, tool calls,
+A pipeline run is a `POST` root (`openinference.span.kind = AGENT`) over a `CHAIN`
+(`pipeline <id>`) nesting `LLM` steps (`llm.model_name`, `llm.token_count.*`, tool calls,
 the sampling parameters as `llm.invocation_parameters`, the engine `singularitee.infer.sequence_id`
 and the client-side time-to-first-token `singularitee.infer.ttft_ms`) and, for a guard/gate step, a
 `GUARDRAIL` span. When logprobs were captured, each `LLM` step also carries the confidence signals
 `singularitee.infer.*` (`perplexity`, `min_margin`, `max_token_perplexity`, `mean_entropy`, and the
 rest of the set; see [Confidence signals](#confidence-signals)). With `verbose` on, each `LLM` step also carries the
 rendered prompt (`input.value`), the answer (`output.value` + `llm.output_messages.*`, reasoning
-included), the input messages, and the to-do plan snapshot (`singularitee.todos`); step spans also
-carry their decisions (`loop.*`, `break.*`, `route.*`, `classify.*`, `singularitee.monitor.verdict`).
+included), the input messages, and the to-do plan snapshot (`singularitee.todos`); the pipeline span
+carries a preview of the user turn (`singularitee.turn.input`) and each `infer` step one of its answer
+(`singularitee.turn.output`); step spans also carry their decisions (`loop.*`, `break.*`, `route.*`, `classify.*`, `singularitee.monitor.verdict`).
 
 If spans do not arrive over gRPC, switch to `protocol: http/protobuf` (port 4318).
 
@@ -125,15 +132,53 @@ The full key tables are in [Configuration](../../reference/configuration.md#serv
 
 ### Spans
 
+Attribute keys use the default prefix `singularitee`.
+
 | Span | Kind | Attributes | Opened by |
 | --- | --- | --- | --- |
-| (server span) | `SERVER` | `rpc.system=grpc`, `rpc.method=<path>`; or `rpc.system=http`, `http.route=<path>` | `GrpcServerComponent`, `HttpApiServerComponent`; continues an inbound `traceparent`. |
-| `singularitee.pipeline` | `INTERNAL` | `pipeline.id` | `PipelineExecutor`, per `InferPipeline`. |
-| `singularitee.step` | `INTERNAL` | `step.id`, `step.type`, `model.id` when model-bound | `StepDispatcher`, per executed step. |
-| `singularitee.model.<op>` | `CLIENT` | `model.id`, `op` | `ModelBoundStepExecutor`, per engine call. `<op>` is the executor class name lower-cased without its suffix: `infer`, `classify`, `embed`, `guard`, `llmguard`, `toolselect`. |
-| `singularitee.embed`, `singularitee.embed.batch`, `singularitee.text_similarity`, `singularitee.text_rerank`, `singularitee.classify`, `singularitee.classify.batch` | `INTERNAL` | `model.id` | `ServiceInstrumentation`, per direct unary RPC. |
+| `POST` (server span) | `SERVER` | `rpc.system=grpc`, `rpc.method=<path>`; or `rpc.system=http`, `http.route=<path>` | `GrpcServerComponent`, `HttpApiServerComponent`; continues an inbound `traceparent`. |
+| `pipeline <id>` | `INTERNAL` | `singularitee.pipeline.id`, `pipeline.id`, `singularitee.session`, `singularitee.turn.index`, `singularitee.finish_reason`; `singularitee.turn.input` with `verbose` | `PipelineExecutor`, per `InferPipeline`. |
+| `step <id> (<type>)` | `INTERNAL` | `singularitee.step.id`, `singularitee.step.type`, `singularitee.pipeline.id`, `step.id`, `step.type`, `model.id` when model-bound, `singularitee.step.halted=true` on the step that halted the run | `TracingStepDecorator`, per executed step. |
+| `<operation> <model>` | `CLIENT` | `singularitee.model.id`, `singularitee.model.type`, `singularitee.model.engine_type`, `singularitee.model.engine`, `model.id`, `op`; for generation and embeddings `gen_ai.operation.name` (`chat`, `embeddings`) and `gen_ai.request.model`; `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` when the engine reports usage | `ModelBoundStepExecutor`, per engine call. `<operation>` follows the engine type: `infer`, `classify`, `embed`, `rerank`, `decide`; `op` is the step operation (the executor class name lower-cased without its suffix: `infer`, `guard`, `llmguard`, `toolselect`, ...), the same `op` tag as `ai_model_call_seconds`. |
+| `singularitee.embed`, `singularitee.embed.batch`, `singularitee.text_similarity`, `singularitee.text_rerank`, `singularitee.classify`, `singularitee.classify.batch`, `singularitee.decide` | `INTERNAL` | `model.id` | `ServiceInstrumentation`, per direct unary RPC. |
 
 Streaming `Infer` is recorded in metrics but opens no child span of its own under the server span.
+
+### Status
+
+Engine spans end `OK` on success and `ERROR` on failure, with the exception recorded as the
+`exception.type` and `exception.message` attributes and the message as the status description. A
+step that halts the run on purpose,
+such as a guard rejecting the input, is `OK` with `singularitee.step.halted=true`, and its pipeline
+span is `OK`: a deliberate block is not an error. A call the client cancelled ends with no status.
+Server spans follow the HTTP semantic conventions and stay unset on success; a transport failure
+ends them `ERROR` the same way.
+
+Each span ends before the run moves on: a model span inside its step, a step before the next
+step starts. Facts, exceptions included, are attributes, never span events: the Elasticsearch
+exporter stores each span event as a document of its own, carrying the span's id but no name, and a
+trace view reading that index draws it as an extra unnamed span.
+
+### Propagation
+
+A `remote_*` model call sends the W3C `traceparent` (and `tracestate`) of its model span as gRPC
+metadata; a remote `sub_pipeline` call sends its step span's. The serving node's gRPC `SERVER`
+span continues it, so a trace reads, for a guarded pipeline whose `llm` is a `remote_llm`:
+
+```
+POST                                 node A, SERVER
+  pipeline guarded
+    step pii_guard (guard)
+      classify pii                   CLIENT, local classifier
+    step generate (infer)
+      infer llm                      CLIENT
+        POST                         node B, SERVER: the remote Infer RPC
+```
+
+The trace context is bound to each call into the remote engine rather than to a thread, so a
+step that calls its model several times (a guard over every turn, a batched `tool_select`)
+propagates it on every call. A remote sub-pipeline's own `pipeline`, `step` and model spans nest
+under node B's server span the same way.
 
 ### Confidence signals
 
@@ -188,7 +233,7 @@ JVM and Vert.x meters from gravitee-node are exposed alongside.
 
 - Meter names are dotted in code (`ai.infer.requests`); the Prometheus registry turns `.` into `_` and appends `_total` or `_seconds` by meter type. Use the names above in PromQL.
 - Metrics live on the management port (`services.core.http`, default `localhost:18092`, basic auth), not on the gRPC or HTTP API ports. Change the default management credentials before exposing it; a non-loopback bind with the default password logs a warning at startup.
-- An inbound `traceparent` is honoured, so a gateway in front of the server sees one trace across processes.
+- An inbound `traceparent` is honoured, so a gateway in front of the server sees one trace across processes; calls to `remote_*` models and remote sub-pipelines pass it on.
 - Client-side pipeline execution (`ClientPipelineExecutor`) runs with the no-op tracer and emits no spans.
 - Without `nvidia-smi` the GPU collector logs once and stays idle; no `gpu_*` series appear and nothing else is affected.
 - `services.tracing.otel.*` is accepted as an alias for `services.opentelemetry.*`.

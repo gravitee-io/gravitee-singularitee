@@ -17,6 +17,7 @@ package io.gravitee.singularitee.engine.remote;
 
 import io.gravitee.singularitee.client.SingulariteeClient;
 import io.gravitee.singularitee.engine.api.EmbeddingEngine;
+import io.gravitee.singularitee.engine.api.tracing.PropagatesTraceContext;
 import io.reactivex.rxjava3.core.Single;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,7 +31,7 @@ import java.util.List;
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public final class RemoteEmbeddingEngine implements EmbeddingEngine {
+public final class RemoteEmbeddingEngine implements EmbeddingEngine, PropagatesTraceContext {
 
   private final SingulariteeClient client;
   private final String modelId;
@@ -50,7 +51,7 @@ public final class RemoteEmbeddingEngine implements EmbeddingEngine {
       .setText(request.text())
       .build();
 
-    return client
+    return RemoteCalls.traced(client)
       .embed(protoReq)
       .map(protoResp -> {
         var protoVec = protoResp.getEmbedding();
@@ -74,7 +75,7 @@ public final class RemoteEmbeddingEngine implements EmbeddingEngine {
       .addAllTexts(texts)
       .build();
 
-    return client
+    return RemoteCalls.traced(client)
       .embedBatch(protoReq)
       .map(batchResp -> {
         List<io.gravitee.singularitee.engine.api.EmbedResponse> responses = new ArrayList<>(

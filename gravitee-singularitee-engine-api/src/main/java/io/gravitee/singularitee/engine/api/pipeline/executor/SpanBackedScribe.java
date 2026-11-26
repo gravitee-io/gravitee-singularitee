@@ -19,9 +19,9 @@ import io.gravitee.node.api.opentelemetry.Span;
 import java.util.Map;
 
 /**
- * A {@link SpanScribe} that writes through to a real {@link Span} via {@code withAttribute} /
- * {@code addEvent}. Attribute values are coerced to the primitive types tracing backends accept
- * (string, long, double, boolean); anything else is stringified.
+ * A {@link SpanScribe} that writes through to a real {@link Span} via {@code withAttribute}.
+ * Attribute values are coerced to the primitive types tracing backends accept (string, long,
+ * double, boolean); anything else is stringified.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
@@ -52,7 +52,9 @@ final class SpanBackedScribe implements SpanScribe {
 
   @Override
   public SpanScribe event(String name, Map<String, Object> fields) {
-    span.addEvent(name, fields == null ? Map.of() : fields);
+    if (fields != null) {
+      fields.forEach((field, value) -> set(name + "." + field, value));
+    }
     return this;
   }
 }

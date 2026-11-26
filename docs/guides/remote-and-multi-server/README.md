@@ -172,6 +172,9 @@ Full tables: [Workspaces](../../workspaces/README.md),
 
 ## Notes
 
+- With tracing on at both ends, one request is one trace across servers: a `remote_*` model call
+  or a remote `sub_pipeline` sends the W3C `traceparent` of its span as gRPC metadata, and the
+  serving node's spans nest under it. See [Observability](../../operations/observability/README.md#propagation).
 - An `${env:NAME}` credential whose variable is unset or empty fails that endpoint only, with an
   error that names the variable, never a value. On a server the remote models behind it are not
   registered (`ai.workspace.strict: true` makes it fail startup); an embedded client fails fast, as

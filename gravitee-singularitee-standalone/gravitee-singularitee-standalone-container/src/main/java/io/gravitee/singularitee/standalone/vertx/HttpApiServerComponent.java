@@ -28,6 +28,7 @@ import io.gravitee.singularitee.client.LoopbackHosts;
 import io.gravitee.singularitee.engine.api.pipeline.executor.TracingOptions;
 import io.gravitee.singularitee.engine.api.registry.ModelRegistry;
 import io.gravitee.singularitee.engine.api.registry.PipelineRegistry;
+import io.gravitee.singularitee.engine.api.tracing.SpanStatus;
 import io.gravitee.singularitee.http.auth.BearerTokenAuthHandler;
 import io.gravitee.singularitee.http.json.OpenAiError;
 import io.gravitee.singularitee.http.router.OpenAiRoutes;
@@ -298,12 +299,12 @@ public class HttpApiServerComponent extends AbstractService<HttpApiServerCompone
         .response()
         .exceptionHandler(err -> {
           if (ended.compareAndSet(false, true)) {
-            tracer.endOnError(ctx, span, err);
+            SpanStatus.endWithError(tracer, ctx, span, err);
           }
         });
       request.exceptionHandler(err -> {
         if (ended.compareAndSet(false, true)) {
-          tracer.endOnError(ctx, span, err);
+          SpanStatus.endWithError(tracer, ctx, span, err);
         }
       });
 

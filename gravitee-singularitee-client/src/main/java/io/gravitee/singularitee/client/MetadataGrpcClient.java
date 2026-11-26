@@ -23,45 +23,57 @@ import io.vertx.grpc.client.GrpcClientRequest;
 import io.vertx.grpc.common.ServiceMethod;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Map;
 
 /**
- * {@link GrpcClient} decorator that attaches an HTTP Basic {@code authorization}
- * header to every outgoing gRPC request.
+ * {@link GrpcClient} decorator that attaches fixed metadata to every outgoing gRPC request:
+ * the HTTP Basic {@code authorization} credential, or the W3C trace context of a remote call.
  *
- * <p>gRPC call metadata is carried as HTTP/2 headers, so authenticating against a
- * server protected by {@code GrpcBasicAuthHandler} is a matter of setting the
- * {@code authorization: Basic base64(username:password)} header on each request.
- * Wrapping the {@link GrpcClient} keeps the generated service stubs untouched;
- * they simply receive a request that already carries the credential.
+ * <p>gRPC call metadata is carried as HTTP/2 headers, so authenticating against a server
+ * protected by {@code GrpcBasicAuthHandler}, or continuing the caller's trace on the server, is a
+ * matter of setting a header on each request. Wrapping the {@link GrpcClient} keeps the generated
+ * service stubs untouched; they simply receive a request that already carries the metadata.
  *
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-final class BasicAuthGrpcClient implements GrpcClient {
+final class MetadataGrpcClient implements GrpcClient {
 
   private final GrpcClient delegate;
-  private final String authorizationHeader;
+  private final Map<String, String> metadata;
 
-  BasicAuthGrpcClient(GrpcClient delegate, String username, String password) {
+  MetadataGrpcClient(GrpcClient delegate, Map<String, String> metadata) {
     this.delegate = delegate;
-    String raw = (username == null ? "" : username) + ":" + (password == null ? "" : password);
-    this.authorizationHeader =
-      "Basic " + Base64.getEncoder().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+    this.metadata = Map.copyOf(metadata);
   }
 
-  private <Req, Resp> GrpcClientRequest<Req, Resp> withAuth(GrpcClientRequest<Req, Resp> request) {
-    request.headers().set("authorization", authorizationHeader);
+  /** Sends {@code authorization: Basic base64(username:password)} with every request. */
+  static MetadataGrpcClient basicAuth(GrpcClient delegate, String username, String password) {
+    String raw = (username == null ? "" : username) + ":" + (password == null ? "" : password);
+    return new MetadataGrpcClient(
+      delegate,
+      Map.of(
+        "authorization",
+        "Basic " + Base64.getEncoder().encodeToString(raw.getBytes(StandardCharsets.UTF_8))
+      )
+    );
+  }
+
+  private <Req, Resp> GrpcClientRequest<Req, Resp> withMetadata(
+    GrpcClientRequest<Req, Resp> request
+  ) {
+    metadata.forEach(request.headers()::set);
     return request;
   }
 
   @Override
   public Future<GrpcClientRequest<Buffer, Buffer>> request(Address server) {
-    return delegate.request(server).map(this::withAuth);
+    return delegate.request(server).map(this::withMetadata);
   }
 
   @Override
   public Future<GrpcClientRequest<Buffer, Buffer>> request() {
-    return delegate.request().map(this::withAuth);
+    return delegate.request().map(this::withMetadata);
   }
 
   @Override
@@ -69,12 +81,12 @@ final class BasicAuthGrpcClient implements GrpcClient {
     Address server,
     ServiceMethod<Resp, Req> method
   ) {
-    return delegate.request(server, method).map(this::withAuth);
+    return delegate.request(server, method).map(this::withMetadata);
   }
 
   @Override
   public <Req, Resp> Future<GrpcClientRequest<Req, Resp>> request(ServiceMethod<Resp, Req> method) {
-    return delegate.request(method).map(this::withAuth);
+    return delegate.request(method).map(this::withMetadata);
   }
 
   @Override

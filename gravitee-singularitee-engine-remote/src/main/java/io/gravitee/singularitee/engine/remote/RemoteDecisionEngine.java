@@ -18,6 +18,7 @@ package io.gravitee.singularitee.engine.remote;
 import io.gravitee.singularitee.client.SingulariteeClient;
 import io.gravitee.singularitee.engine.api.DecisionEngine;
 import io.gravitee.singularitee.engine.api.decision.DecisionMessages;
+import io.gravitee.singularitee.engine.api.tracing.PropagatesTraceContext;
 import io.gravitee.singularitee.inference.api.decision.DecisionCapabilities;
 import io.gravitee.singularitee.inference.api.decision.DecisionException;
 import io.gravitee.singularitee.inference.api.decision.DecisionException.Reason;
@@ -44,7 +45,7 @@ import org.slf4j.LoggerFactory;
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public final class RemoteDecisionEngine implements DecisionEngine {
+public final class RemoteDecisionEngine implements DecisionEngine, PropagatesTraceContext {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RemoteDecisionEngine.class);
 
@@ -85,7 +86,7 @@ public final class RemoteDecisionEngine implements DecisionEngine {
 
   @Override
   public Single<DecisionResult> rxDecide(DecisionRequest request) {
-    return client
+    return RemoteCalls.traced(client)
       .decide(DecisionMessages.request(modelId, request))
       .map(DecisionMessages::result)
       .onErrorResumeNext(e -> Single.error(domainError(modelId, e)));

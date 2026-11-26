@@ -60,7 +60,7 @@ public final class RemotePipelineCallback implements PipelineExecutorCallback {
 
     var ended = new java.util.concurrent.atomic.AtomicBoolean(false);
 
-    return client
+    return RemoteCalls.traced(client)
       .inferPipeline(request)
       .doOnNext(event -> {
         var eventType = event.getEventType();

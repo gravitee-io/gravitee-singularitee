@@ -20,6 +20,7 @@ import io.gravitee.singularitee.engine.api.ClassifierEngine;
 import io.gravitee.singularitee.engine.api.ClassifyResult;
 import io.gravitee.singularitee.engine.api.ClassifyUsage;
 import io.gravitee.singularitee.engine.api.ModelTasks;
+import io.gravitee.singularitee.engine.api.tracing.PropagatesTraceContext;
 import io.reactivex.rxjava3.core.Single;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,7 +35,7 @@ import java.util.Map;
  * @author Rémi SULTAN (remi.sultan at graviteesource.com)
  * @author GraviteeSource Team
  */
-public final class RemoteClassifierEngine implements ClassifierEngine {
+public final class RemoteClassifierEngine implements ClassifierEngine, PropagatesTraceContext {
 
   private final SingulariteeClient client;
   private final String modelId;
@@ -96,7 +97,9 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
       }
     }
 
-    return client.classify(builder.build()).map(RemoteClassifierEngine::fromProto);
+    return RemoteCalls.traced(client)
+      .classify(builder.build())
+      .map(RemoteClassifierEngine::fromProto);
   }
 
   @Override
@@ -121,7 +124,7 @@ public final class RemoteClassifierEngine implements ClassifierEngine {
       }
     }
 
-    return client
+    return RemoteCalls.traced(client)
       .classifyBatch(builder.build())
       .map(batchResp ->
         batchResp.getResultsList().stream().map(RemoteClassifierEngine::fromProto).toList()

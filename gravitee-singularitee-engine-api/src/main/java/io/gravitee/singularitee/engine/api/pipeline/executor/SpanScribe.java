@@ -19,7 +19,7 @@ import io.gravitee.node.api.opentelemetry.Span;
 import java.util.Map;
 
 /**
- * A neutral, null-safe facade for writing attributes and events onto a tracing span.
+ * A neutral, null-safe facade for writing attributes onto a tracing span.
  *
  * <p>Executors annotate spans through this seam instead of touching {@link Span} directly, so
  * a missing span (client-side executor, CLI, unit tests) is a no-op rather than a null check at
@@ -35,7 +35,11 @@ public interface SpanScribe {
   /** Sets a single attribute; a {@code null} value is ignored. Returns {@code this} to chain. */
   SpanScribe set(String key, Object value);
 
-  /** Adds a timestamped event with the given fields. Returns {@code this} to chain. */
+  /**
+   * Records {@code fields} as attributes {@code <name>.<field>}; a later event of the same name
+   * overwrites them. Not a span event: some exporters store span events as separate documents
+   * that trace viewers then take for unnamed spans. Returns {@code this} to chain.
+   */
   SpanScribe event(String name, Map<String, Object> fields);
 
   /** Wraps a span, or returns {@link #NOOP} when {@code span} is {@code null}. */
