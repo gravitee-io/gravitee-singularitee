@@ -34,10 +34,12 @@ import io.gravitee.singularitee.engine.remote.RemoteTextGenEngine;
 import io.gravitee.singularitee.plugin.api.StepPlugins;
 import io.gravitee.singularitee.service.GraviteeModelServiceImpl;
 import io.gravitee.singularitee.standalone.sync.ReleaseSyncComponent;
+import io.gravitee.singularitee.workspace.EnvironmentAllowlist;
 import io.gravitee.singularitee.workspace.WorkspaceDefinition;
 import io.gravitee.singularitee.workspace.YamlWorkspaceLoader;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -117,7 +119,12 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
 
     YamlWorkspaceLoader.WorkspaceRequests ws;
     try {
-      ws = YamlWorkspaceLoader.load(path, templatesPath, stepPlugins.codecs());
+      ws = YamlWorkspaceLoader.load(
+        path,
+        templatesPath,
+        stepPlugins.codecs(),
+        remoteEnvAllowlist(configuration)
+      );
     } catch (Exception e) {
       // Unlike a model download, a file that does not parse fails the same way on every start,
       // so it fails startup in every mode rather than leaving a node that never becomes ready.
@@ -235,6 +242,27 @@ public class WorkspaceLoaderComponent extends AbstractService<WorkspaceLoaderCom
   public static Path templatesPath() {
     String graviteeHome = System.getProperty("gravitee.home");
     return graviteeHome != null ? Path.of(graviteeHome, "templates") : null;
+  }
+
+  /**
+   * The variables a remote endpoint's {@code ${env:NAME}} credentials may read, from {@code
+   * ai.remote.env-allowlist}: a comma-separated string or a YAML list. A configured value replaces
+   * the default; a blank one admits no variable.
+   */
+  public static EnvironmentAllowlist remoteEnvAllowlist(Configuration configuration) {
+    String csv = configuration.getProperty(EnvironmentAllowlist.PROPERTY);
+    if (csv != null) {
+      return EnvironmentAllowlist.of(Arrays.asList(csv.split(",")));
+    }
+    List<String> listed = new ArrayList<>();
+    for (int i = 0; ; i++) {
+      String entry = configuration.getProperty(EnvironmentAllowlist.PROPERTY + "[" + i + "]");
+      if (entry == null) {
+        break;
+      }
+      listed.add(entry);
+    }
+    return listed.isEmpty() ? EnvironmentAllowlist.defaults() : EnvironmentAllowlist.of(listed);
   }
 
   /** Renders a fixed-width textual progress bar, e.g. {@code [████████░░░░] 2/3}. */

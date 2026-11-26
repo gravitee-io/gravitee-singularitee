@@ -538,7 +538,8 @@ public class ReleaseSyncComponent extends AbstractService<ReleaseSyncComponent> 
       yaml,
       workspaceDir,
       WorkspaceLoaderComponent.templatesPath(),
-      codecs
+      codecs,
+      WorkspaceLoaderComponent.remoteEnvAllowlist(configuration)
     ).pipelines();
     List<String> declared = declaredPipelineIds(yaml);
     if (pipelines.size() < declared.size()) {

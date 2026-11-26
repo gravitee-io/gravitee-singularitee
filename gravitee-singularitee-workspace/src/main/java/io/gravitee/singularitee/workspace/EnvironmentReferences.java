@@ -22,7 +22,8 @@ import java.util.regex.Pattern;
 /**
  * Resolves a workspace value written {@code ${env:NAME}} from the environment when the workspace
  * loads. Only a value that is wholly a reference is resolved; any other value is kept as written.
- * Messages name the variable and the field, never a value.
+ * A variable outside the {@link EnvironmentAllowlist} is refused before it is read. Messages name
+ * the variable and the field, never a value.
  */
 final class EnvironmentReferences {
 
@@ -33,9 +34,15 @@ final class EnvironmentReferences {
 
   /**
    * @param field names the value in messages, e.g. {@code password}
-   * @throws IllegalArgumentException when the reference is malformed or its variable is unset or empty
+   * @throws IllegalArgumentException when the reference is malformed, names a variable outside
+   *     {@code allowlist}, or its variable is unset or empty
    */
-  static String resolve(String value, String field, UnaryOperator<String> environment) {
+  static String resolve(
+    String value,
+    String field,
+    EnvironmentAllowlist allowlist,
+    UnaryOperator<String> environment
+  ) {
     if (value == null || !value.startsWith(PREFIX)) {
       return value;
     }
@@ -47,6 +54,19 @@ final class EnvironmentReferences {
       );
     }
     String name = reference.group(1);
+    if (!allowlist.allows(name)) {
+      throw new IllegalArgumentException(
+        "environment variable " +
+          name +
+          " (" +
+          field +
+          ") is not allowed: remote credentials may read only " +
+          allowlist.rule() +
+          " (" +
+          EnvironmentAllowlist.PROPERTY +
+          ")"
+      );
+    }
     String resolved = environment.apply(name);
     if (resolved == null) {
       throw new IllegalArgumentException(

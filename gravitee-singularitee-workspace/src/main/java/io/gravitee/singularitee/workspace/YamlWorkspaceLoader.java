@@ -81,6 +81,19 @@ public final class YamlWorkspaceLoader {
     Path templatesPath,
     Map<String, StepConfigCodec<?>> codecs
   ) throws IOException {
+    return load(path, templatesPath, codecs, EnvironmentAllowlist.defaults());
+  }
+
+  /**
+   * {@link #load(Path, Path, Map)} with the environment variables a remote endpoint's
+   * {@code ${env:NAME}} credentials may read.
+   */
+  public static WorkspaceRequests load(
+    Path path,
+    Path templatesPath,
+    Map<String, StepConfigCodec<?>> codecs,
+    EnvironmentAllowlist envAllowlist
+  ) throws IOException {
     LOGGER.info("Loading workspace: {}", path.toAbsolutePath());
     WorkspaceDefinition def = YAML_MAPPER.readValue(path.toFile(), WorkspaceDefinition.class);
 
@@ -91,7 +104,7 @@ public final class YamlWorkspaceLoader {
     // Override workspace root with merged version
     def = new WorkspaceDefinition(mergedRoot);
 
-    return buildRequests(def, workspaceDir, templatesPath, path.toString(), codecs);
+    return buildRequests(def, workspaceDir, templatesPath, path.toString(), codecs, envAllowlist);
   }
 
   /** Inline-string variant of {@link #load(Path, Path, Map)}. */
@@ -101,9 +114,20 @@ public final class YamlWorkspaceLoader {
     Path templatesPath,
     Map<String, StepConfigCodec<?>> codecs
   ) throws IOException {
+    return loadFromString(yaml, basePath, templatesPath, codecs, EnvironmentAllowlist.defaults());
+  }
+
+  /** Inline-string variant of {@link #load(Path, Path, Map, EnvironmentAllowlist)}. */
+  public static WorkspaceRequests loadFromString(
+    String yaml,
+    Path basePath,
+    Path templatesPath,
+    Map<String, StepConfigCodec<?>> codecs,
+    EnvironmentAllowlist envAllowlist
+  ) throws IOException {
     LOGGER.info("Loading workspace from inline YAML string");
     WorkspaceDefinition def = YAML_MAPPER.readValue(yaml, WorkspaceDefinition.class);
-    return buildRequests(def, basePath, templatesPath, "<inline>", codecs);
+    return buildRequests(def, basePath, templatesPath, "<inline>", codecs, envAllowlist);
   }
 
   private static WorkspaceRequests buildRequests(
@@ -111,7 +135,8 @@ public final class YamlWorkspaceLoader {
     Path basePath,
     Path templatesPath,
     String source,
-    Map<String, StepConfigCodec<?>> codecs
+    Map<String, StepConfigCodec<?>> codecs,
+    EnvironmentAllowlist envAllowlist
   ) {
     if (def.workspace() == null) {
       throw new IllegalArgumentException(
@@ -150,7 +175,7 @@ public final class YamlWorkspaceLoader {
     );
 
     List<PipelineModel> pipelines = parsePipelines(root, codecContext, codecs);
-    var remotes = parseRemotes(root, System::getenv);
+    var remotes = parseRemotes(root, envAllowlist, System::getenv);
 
     LOGGER.info(
       "Workspace loaded: {} local model(s), {} remote model(s), {} client-local model(s), {} pipeline(s), {} remote endpoint(s)",
@@ -662,6 +687,7 @@ public final class YamlWorkspaceLoader {
 
   private static Remotes parseRemotes(
     WorkspaceDefinition.WorkspaceRoot root,
+    EnvironmentAllowlist envAllowlist,
     java.util.function.UnaryOperator<String> environment
   ) {
     var declared = new LinkedHashMap<String, WorkspaceDefinition.RemoteEndpoint>();
@@ -682,7 +708,10 @@ public final class YamlWorkspaceLoader {
     var errors = new LinkedHashMap<String, String>();
     for (var entry : declared.entrySet()) {
       try {
-        endpoints.put(entry.getKey(), withResolvedCredentials(entry.getValue(), environment));
+        endpoints.put(
+          entry.getKey(),
+          withResolvedCredentials(entry.getValue(), envAllowlist, environment)
+        );
       } catch (IllegalArgumentException e) {
         LOGGER.error("Remote endpoint '{}' not loaded: {}", entry.getKey(), e.getMessage());
         errors.put(entry.getKey(), e.getMessage());
@@ -693,6 +722,7 @@ public final class YamlWorkspaceLoader {
 
   private static WorkspaceDefinition.RemoteEndpoint withResolvedCredentials(
     WorkspaceDefinition.RemoteEndpoint ep,
+    EnvironmentAllowlist envAllowlist,
     java.util.function.UnaryOperator<String> environment
   ) {
     return new WorkspaceDefinition.RemoteEndpoint(
@@ -700,8 +730,8 @@ public final class YamlWorkspaceLoader {
       ep.host(),
       ep.port(),
       ep.http2KeepAliveTimeout(),
-      EnvironmentReferences.resolve(ep.username(), "username", environment),
-      EnvironmentReferences.resolve(ep.password(), "password", environment),
+      EnvironmentReferences.resolve(ep.username(), "username", envAllowlist, environment),
+      EnvironmentReferences.resolve(ep.password(), "password", envAllowlist, environment),
       ep.ssl()
     );
   }

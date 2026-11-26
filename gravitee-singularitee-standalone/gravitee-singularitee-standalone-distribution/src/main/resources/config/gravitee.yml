@@ -151,6 +151,11 @@ ai:
     # cache-dir: ${gravitee.home}/sync
     restart-on-change: true
 
+  # Environment variables a remote endpoint's ${env:NAME} credentials may read. An entry is an exact
+  # name, or a prefix when it ends in *. A value replaces the default; blank admits none.
+  remote:
+    # env-allowlist: SINGULARITEE_REMOTE_*
+
   # Directory where model files (GGUF, ONNX, GLiNER) are stored / downloaded.
   # Models referenced by filename in workspace definitions resolve relative to this path.
   models:

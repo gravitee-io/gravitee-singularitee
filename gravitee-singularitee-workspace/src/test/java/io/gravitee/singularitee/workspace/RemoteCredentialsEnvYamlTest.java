@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.gravitee.singularitee.plugin.test.TestStepPlugins;
 import java.io.IOException;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -31,7 +32,29 @@ class RemoteCredentialsEnvYamlTest {
   private static final String SET = "HOME";
   private static final String UNSET = "SINGULARITEE_TEST_UNSET_7F3A9C";
 
+  private static final EnvironmentAllowlist ADMITS_TEST_NAMES = EnvironmentAllowlist.of(
+    List.of(SET, "SINGULARITEE_TEST_*")
+  );
+
   private static YamlWorkspaceLoader.WorkspaceRequests load(String remote) throws IOException {
+    return load(remote, ADMITS_TEST_NAMES);
+  }
+
+  private static YamlWorkspaceLoader.WorkspaceRequests load(
+    String remote,
+    EnvironmentAllowlist allowlist
+  ) throws IOException {
+    return YamlWorkspaceLoader.loadFromString(
+      "workspace:\n  name: test\n  remote:\n" + remote,
+      null,
+      null,
+      TestStepPlugins.codecs(),
+      allowlist
+    );
+  }
+
+  private static YamlWorkspaceLoader.WorkspaceRequests loadWithDefaultAllowlist(String remote)
+    throws IOException {
     return YamlWorkspaceLoader.loadFromString(
       "workspace:\n  name: test\n  remote:\n" + remote,
       null,
@@ -130,5 +153,69 @@ class RemoteCredentialsEnvYamlTest {
 
     assertThat(ws.remotes()).isEmpty();
     assertThat(ws.remoteErrors().get("pii")).contains("password").contains("[A-Z_][A-Z0-9_]*");
+  }
+
+  @Test
+  void by_default_a_variable_outside_singularitee_remote_fails_only_that_endpoint()
+    throws IOException {
+    var ws = loadWithDefaultAllowlist(
+      """
+          servers:
+            - id: exfiltrate
+              host: 127.0.0.1
+              port: 9090
+              username: a
+              password: ${env:HOME}
+            - id: safety
+              host: 127.0.0.1
+              port: 9091
+      """
+    );
+
+    assertThat(ws.remotes()).containsOnlyKeys("safety");
+    assertThat(ws.remoteErrors()).containsOnlyKeys("exfiltrate");
+    assertThat(ws.remoteErrors().get("exfiltrate"))
+      .contains(SET)
+      .contains("password")
+      .contains("SINGULARITEE_REMOTE_*")
+      .contains("ai.remote.env-allowlist")
+      .doesNotContain(System.getenv(SET));
+  }
+
+  @Test
+  void by_default_a_singularitee_remote_variable_is_read() throws IOException {
+    var ws = loadWithDefaultAllowlist(
+      """
+          servers:
+            - id: pii
+              host: 127.0.0.1
+              port: 9090
+              username: svc
+              password: ${env:SINGULARITEE_REMOTE_UNSET_7F3A9C}
+      """
+    );
+
+    assertThat(ws.remoteErrors().get("pii")).isEqualTo(
+      "environment variable SINGULARITEE_REMOTE_UNSET_7F3A9C (password) is not set"
+    );
+  }
+
+  @Test
+  void a_configured_allowlist_replaces_the_default() throws IOException {
+    var ws = load(
+      """
+          servers:
+            - id: pii
+              host: 127.0.0.1
+              port: 9090
+              username: svc
+              password: ${env:SINGULARITEE_REMOTE_UNSET_7F3A9C}
+      """,
+      EnvironmentAllowlist.of(List.of(SET))
+    );
+
+    assertThat(ws.remoteErrors().get("pii"))
+      .contains("SINGULARITEE_REMOTE_UNSET_7F3A9C")
+      .contains("not allowed");
   }
 }
