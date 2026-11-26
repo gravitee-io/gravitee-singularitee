@@ -125,6 +125,7 @@ The full key tables are in [Configuration](../../reference/configuration.md#serv
 | `services.opentelemetry.enabled` | bool | `false` | Emit spans. |
 | `services.opentelemetry.verbose` | bool | `false` | Request and response attributes on spans. |
 | `services.opentelemetry.exclude-paths` | list | `/health`, `/healthz`, `/ready`, `/readyz`, `/readiness`, `/live`, `/livez`, `/liveness`, `/metrics`, `/_node/*` | HTTP API paths that open no span. Comma-separated or a YAML list; a trailing `*` is a prefix; a configured value replaces the default, blank traces every path. |
+| `services.opentelemetry.extraAttributes` | list | unset | Extra resource attributes on every span. An entry for `gravitee.api.id` or `gravitee.env.id` wins over the value a synced node derives from its token. |
 | `services.opentelemetry.exporter.endpoint` | string | `http://localhost:4317` | OTLP collector. |
 | `services.opentelemetry.exporter.protocol` | string | `grpc` | `grpc` or `http/protobuf`. |
 | `services.opentelemetry.exporter.compression` / `.timeout` / `.headers` | | unset | `gzip`; ms; `name=value` list. |
@@ -144,6 +145,17 @@ Attribute keys use the default prefix `singularitee`.
 | `singularitee.embed`, `singularitee.embed.batch`, `singularitee.text_similarity`, `singularitee.text_rerank`, `singularitee.classify`, `singularitee.classify.batch`, `singularitee.decide` | `INTERNAL` | `model.id` | `ServiceInstrumentation`, per direct unary RPC. |
 
 Streaming `Infer` is recorded in metrics but opens no child span of its own under the server span.
+
+### Synced nodes
+
+Gamma's Tracing screen scopes Singularitee traces by two span resource attributes. A node with `ai.sync.enabled` sets them itself, from its sync token, so nothing needs configuring per node:
+
+| Resource attribute | Value | Source |
+| --- | --- | --- |
+| `gravitee.api.id` | The deployment id: the server group id, which the control plane also renders as the synced workspace's name. | The token's `gid` claim. |
+| `gravitee.env.id` | The environment id. | The token's `env` claim; not set for a token issued before tokens named the environment. |
+
+The resource is built once, when the node starts, and the token is already known then, so the attributes come from the token and not from the workspace delivered later. The payload is decoded without verifying the signature: the token is the node's own and is used only for labelling. A key set in `services.opentelemetry.extraAttributes` wins, so an operator can still override either value. A node that does not sync, or whose token cannot be read, adds neither.
 
 ### Status
 

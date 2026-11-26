@@ -281,6 +281,8 @@ services:
     # openinference: true           # also emit OpenInference attributes (for OpenInference-aware tools)
     # exclude-paths: /health,/ready,/metrics,/_node/*  # HTTP API paths that open no span (default: health, readiness, liveness, metrics probes)
     # name-prefix: singularitee     # prefix for emitted span names and attributes; metrics unaffected
+    # extraAttributes:              # extra span resource attributes; with ai.sync.enabled the node already sets
+    #   - gravitee.api.id: my-deployment   # gravitee.api.id and gravitee.env.id from its sync token, and an entry here wins
     exporter:
       endpoint: http://localhost:4317 # OTLP collector endpoint
       protocol: grpc # grpc (4317) | http/protobuf (4318)
